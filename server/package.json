@@ -9,10 +9,10 @@
   },
   "dependencies": {
     "@colyseus/schema": "^4.0.26",
-    "colyseus": "^0.17.10"
+    "colyseus": "^0.17.10",
+    "tsx": "^4.20.3"
   },
   "devDependencies": {
-    "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }
 }

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "set PORT=4001 && npm run dev --prefix server",
+    "install:all": "npm install && npm install --prefix server",
     "build": "vite build",
     "build:client": "vite build",
     "preview": "vite preview",
