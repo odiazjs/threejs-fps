@@ -7,8 +7,9 @@ services:
     startCommand: npm start
     plan: free
 
-staticSites:
-  - name: threejs-fps-client
+  - type: web
+    name: threejs-fps-client
+    runtime: static
     buildCommand: npm install && npm run build:client
     staticPublishPath: dist
     envVars:
