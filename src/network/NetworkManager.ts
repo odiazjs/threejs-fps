@@ -20,6 +20,10 @@ export class NetworkManager {
     console.info('[Network] connected to room', this.roomClient.sessionId);
   }
   update(delta: number, player: Player, controls: PlayerControls): void {
+    if (this.roomClient.connected) {
+      this.remotePlayers.interpolate(delta);
+    }
+
     if (!this.roomClient.connected || !controls.isLocked) return;
 
     this.sendAccumulator += delta;

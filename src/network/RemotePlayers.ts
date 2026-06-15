@@ -31,7 +31,8 @@ export class RemotePlayers {
   private addPlayer(sessionId: string, snapshot: PlayerSnapshot): void {
     if (this.isLocal(sessionId)) return;
 
-    const player = Player.createRemote();    player.setFromSnapshot(snapshot);
+    const player = Player.createRemote();
+    player.setFromSnapshot(snapshot, true);
     player.attachToScene(this.scene);
     this.players.set(sessionId, player);
   }
@@ -39,6 +40,12 @@ export class RemotePlayers {
   private updatePlayer(sessionId: string, snapshot: PlayerSnapshot): void {
     if (this.isLocal(sessionId)) return;
     this.players.get(sessionId)?.setFromSnapshot(snapshot);
+  }
+
+  interpolate(delta: number): void {
+    for (const player of this.players.values()) {
+      player.interpolateRemote(delta);
+    }
   }
 
   private removePlayer(sessionId: string): void {

@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { movePlayer } from '../../shared/level/collision';
+import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { createWeapon } from '../content/weapon';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -6,7 +8,7 @@ import { createToonMaterial } from '../visuals/toonMaterial';
 import { addEdgeLines } from '../visuals/edgeLines';
 
 const MOVE_SPEED = 5;
-const EYE_HEIGHT = 1.6;
+const REMOTE_INTERPOLATION_SPEED = 12;
 const WEAPON_OFFSET = new THREE.Vector3(0.15, -0.18, -0.35);
 
 export class Player {
@@ -16,6 +18,8 @@ export class Player {
   private weapon = createWeapon();
   private forward = new THREE.Vector3();
   private right = new THREE.Vector3();
+  private targetPosition = new THREE.Vector3();
+  private targetYaw = 0;
 
   private constructor(local: boolean, bodyColor = 0x6a9fd4) {
     if (local) {
@@ -46,9 +50,21 @@ export class Player {
     scene.add(this.object);
   }
 
-  setFromSnapshot(snapshot: PlayerSnapshot): void {
-    this.object.position.set(snapshot.x, snapshot.y - EYE_HEIGHT, snapshot.z);
-    this.object.rotation.y = snapshot.yaw;
+  setFromSnapshot(snapshot: PlayerSnapshot, snap = false): void {
+    this.targetPosition.set(snapshot.x, snapshot.y - EYE_HEIGHT, snapshot.z);
+    this.targetYaw = snapshot.yaw;
+    if (snap) {
+      this.object.position.copy(this.targetPosition);
+      this.object.rotation.y = this.targetYaw;
+    }
+  }
+
+  interpolateRemote(delta: number): void {
+    if (this.camera) return;
+
+    const t = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * delta);
+    this.object.position.lerp(this.targetPosition, t);
+    this.object.rotation.y = THREE.MathUtils.lerp(this.object.rotation.y, this.targetYaw, t);
   }
 
   update(delta: number, input: KeyboardInput, canMove: boolean): void {
@@ -62,10 +78,36 @@ export class Player {
 
     this.right.crossVectors(this.forward, this.camera.up).normalize();
 
-    if (input.isPressed('KeyW')) this.object.position.addScaledVector(this.forward, speed);
-    if (input.isPressed('KeyS')) this.object.position.addScaledVector(this.forward, -speed);
-    if (input.isPressed('KeyD')) this.object.position.addScaledVector(this.right, speed);
-    if (input.isPressed('KeyA')) this.object.position.addScaledVector(this.right, -speed);
+    let deltaX = 0;
+    let deltaZ = 0;
+
+    if (input.isPressed('KeyW')) {
+      deltaX += this.forward.x * speed;
+      deltaZ += this.forward.z * speed;
+    }
+    if (input.isPressed('KeyS')) {
+      deltaX -= this.forward.x * speed;
+      deltaZ -= this.forward.z * speed;
+    }
+    if (input.isPressed('KeyD')) {
+      deltaX += this.right.x * speed;
+      deltaZ += this.right.z * speed;
+    }
+    if (input.isPressed('KeyA')) {
+      deltaX -= this.right.x * speed;
+      deltaZ -= this.right.z * speed;
+    }
+
+    if (deltaX === 0 && deltaZ === 0) return;
+
+    const resolved = movePlayer(
+      this.object.position.x,
+      this.object.position.y,
+      this.object.position.z,
+      deltaX,
+      deltaZ,
+    );
+    this.object.position.set(resolved.x, resolved.y, resolved.z);
   }
 
   resize(): void {

@@ -1,13 +1,12 @@
 import { Client, Callbacks, type Room } from '@colyseus/sdk';
 import { FpsState, type PlayerState } from '../../shared/schema/FpsState';
+import { SERVER_URL } from '../config/serverUrl';
 import type {
   PlayerAddHandler,
   PlayerChangeHandler,
   PlayerRemoveHandler,
   PlayerSnapshot,
 } from './types';
-
-const DEFAULT_URL = 'http://localhost:4001';
 
 function toSnapshot(player: PlayerState): PlayerSnapshot {
   return {
@@ -34,7 +33,7 @@ export class RoomClient {
     return this.room !== null;
   }
 
-  async connect(url = import.meta.env.VITE_COLYSEUS_URL ?? DEFAULT_URL): Promise<void> {
+  async connect(url = SERVER_URL): Promise<void> {
     const client = new Client(url);
     this.room = await client.joinOrCreate('fps', {}, FpsState);
   }

@@ -1,4 +1,6 @@
 import { Room } from 'colyseus';
+import { movePlayer } from '../../../shared/level/collision.js';
+import { EYE_HEIGHT } from '../../../shared/level/levelData.js';
 import { FpsState, PlayerState } from '../../../shared/schema/FpsState.js';
 
 interface MoveMessage {
@@ -23,9 +25,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
 
-      player.x = data.x;
-      player.y = data.y;
-      player.z = data.z;
+      const feetY = player.y - EYE_HEIGHT;
+      const deltaX = data.x - player.x;
+      const deltaZ = data.z - player.z;
+      const resolved = movePlayer(player.x, feetY, player.z, deltaX, deltaZ);
+
+      player.x = resolved.x;
+      player.y = resolved.y + EYE_HEIGHT;
+      player.z = resolved.z;
       player.yaw = data.yaw;
       player.pitch = data.pitch;
     },
@@ -34,7 +41,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   onJoin(client): void {
     const player = new PlayerState();
     player.x = (Math.random() - 0.5) * 4;
-    player.y = 1.6;
+    player.y = EYE_HEIGHT;
     player.z = (Math.random() - 0.5) * 4;
     this.state.players.set(client.sessionId, player);
   }

@@ -6,6 +6,7 @@
     "dev": "vite",
     "dev:server": "set PORT=4001 && npm run dev --prefix server",
     "build": "vite build",
+    "build:client": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
