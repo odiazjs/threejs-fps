@@ -55,6 +55,13 @@ export class RoomClient {
     this.onChangeHandlers.push(handler);
   }
 
+  getLocalSnapshot(): PlayerSnapshot | null {
+    if (!this.room) return null;
+
+    const player = this.room.state.players.get(this.room.sessionId) as PlayerState | undefined;
+    return player ? toSnapshot(player) : null;
+  }
+
   sendMove(x: number, y: number, z: number, yaw: number, pitch: number): void {
     this.room?.send('move', { x, y, z, yaw, pitch });
   }

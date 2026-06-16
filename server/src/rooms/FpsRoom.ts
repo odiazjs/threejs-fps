@@ -1,6 +1,7 @@
 import { Room } from 'colyseus';
-import { movePlayer } from '../../../shared/level/collision.js';
+import { clampEyeY, movePlayer } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT } from '../../../shared/level/levelData.js';
+import { pickSpawnPoint } from '../../../shared/level/kiloSectorColliders.js';
 import { FpsState, PlayerState } from '../../../shared/schema/FpsState.js';
 
 interface MoveMessage {
@@ -13,7 +14,7 @@ interface MoveMessage {
 
 export class FpsRoom extends Room<{ state: FpsState }> {
   state = new FpsState();
-  maxClients = 16;
+  maxClients = 8;
 
   onCreate(): void {
     this.autoDispose = true;
@@ -31,8 +32,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const resolved = movePlayer(player.x, feetY, player.z, deltaX, deltaZ);
 
       player.x = resolved.x;
-      player.y = resolved.y + EYE_HEIGHT;
       player.z = resolved.z;
+      player.y = clampEyeY(resolved.x, resolved.z, data.y);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
     },
@@ -40,9 +41,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   onJoin(client): void {
     const player = new PlayerState();
-    player.x = (Math.random() - 0.5) * 4;
+    const spawn = pickSpawnPoint(this.state.players.size);
+
+    player.x = spawn.x;
     player.y = EYE_HEIGHT;
-    player.z = (Math.random() - 0.5) * 4;
+    player.z = spawn.z;
     this.state.players.set(client.sessionId, player);
   }
 

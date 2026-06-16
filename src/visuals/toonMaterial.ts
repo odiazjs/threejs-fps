@@ -34,3 +34,17 @@ export function createToonMaterial(
     toneMapped: false,
   });
 }
+
+export function createEmissiveToonMaterial(
+  color: THREE.ColorRepresentation,
+  emissive: THREE.ColorRepresentation,
+  emissiveIntensity = 1.4,
+): THREE.MeshToonMaterial {
+  return new THREE.MeshToonMaterial({
+    color,
+    emissive: new THREE.Color(emissive),
+    emissiveIntensity,
+    gradientMap: getGradientMap(),
+    toneMapped: false,
+  });
+}
