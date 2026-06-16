@@ -1,6 +1,7 @@
 import type { Scene } from 'three';
 import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
+import { readPlayerAim } from '../player/playerAim';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
@@ -38,12 +39,8 @@ export class NetworkManager {
     this.sendAccumulator = 0;
 
     const feet = player.object.position;
+    const { yaw, pitch } = readPlayerAim(player.camera!);
 
-    this.roomClient.sendMove(
-      feet.x,
-      feet.y + EYE_HEIGHT,
-      feet.z,
-      player.camera!.rotation.y,
-      player.camera!.rotation.x,
-    );  }
+    this.roomClient.sendMove(feet.x, feet.y + EYE_HEIGHT, feet.z, yaw, pitch);
+  }
 }

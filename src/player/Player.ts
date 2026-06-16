@@ -3,15 +3,21 @@ import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../sh
 import { createWeapon } from '../content/weapon';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import type { PlayerSnapshot } from '../network/types';
-import { createToonMaterial } from '../visuals/toonMaterial';
-import { addEdgeLines } from '../visuals/edgeLines';
 import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
 import { HeadBob } from './HeadBob';
+import {
+  createRemoteHead,
+  createRemoteTorso,
+  REMOTE_AIM_HEIGHT,
+} from './RemoteAvatar';
+import { applyPlayerAim } from './playerAim';
 
 const MOVE_SPEED = 5;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const WEAPON_OFFSET = new THREE.Vector3(0.15, -0.18, -0.35);
-const WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
+const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
+/** Third-person: weapon mesh +X must map to lookRig forward (-Z). */
+const REMOTE_WEAPON_ROTATION = new THREE.Euler(0, Math.PI / 2, 0);
 
 function lerpAngle(from: number, to: number, t: number): number {
   const delta = THREE.MathUtils.euclideanModulo(to - from + Math.PI, Math.PI * 2) - Math.PI;
@@ -34,7 +40,8 @@ export class Player {
   private sprint = new SprintStamina();
   private headBob = new HeadBob();
   private headRig: THREE.Group | null = null;
-  private aimRig: THREE.Group | null = null;
+  private bodyRoot: THREE.Group | null = null;
+  private lookRig: THREE.Group | null = null;
 
   private constructor(local: boolean, bodyColor = 0x6a9fd4) {
     if (local) {
@@ -48,14 +55,18 @@ export class Player {
       this.camera.position.set(0, EYE_HEIGHT, 0);
       this.headRig.add(this.camera);
       this.object.add(this.headRig);
-      this.attachWeapon(this.camera);
+      this.attachWeapon(this.camera, LOCAL_WEAPON_ROTATION);
     } else {
       this.camera = null;
-      this.aimRig = new THREE.Group();
-      this.aimRig.position.set(0, EYE_HEIGHT, 0);
-      this.object.add(this.createBodyMesh(bodyColor));
-      this.object.add(this.aimRig);
-      this.attachWeapon(this.aimRig);
+      this.bodyRoot = new THREE.Group();
+      this.lookRig = new THREE.Group();
+      this.lookRig.position.y = REMOTE_AIM_HEIGHT;
+
+      this.bodyRoot.add(createRemoteTorso(bodyColor));
+      this.object.add(this.bodyRoot);
+      this.object.add(this.lookRig);
+      this.lookRig.add(createRemoteHead(bodyColor));
+      this.attachWeapon(this.lookRig, REMOTE_WEAPON_ROTATION);
     }
   }
 
@@ -194,25 +205,15 @@ export class Player {
   }
 
   private applyRemoteAim(): void {
-    if (!this.aimRig) return;
+    if (!this.bodyRoot || !this.lookRig) return;
 
-    this.object.rotation.set(0, this.currentYaw, 0);
-    this.aimRig.rotation.set(this.currentPitch, 0, 0);
+    this.bodyRoot.rotation.set(0, this.currentYaw, 0);
+    applyPlayerAim(this.lookRig, this.currentYaw, this.currentPitch);
   }
 
-  private createBodyMesh(color: number): THREE.Mesh {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 1.6, 0.6),
-      createToonMaterial(color),
-    );
-    mesh.position.y = 0.8;
-    addEdgeLines(mesh);
-    return mesh;
-  }
-
-  private attachWeapon(parent: THREE.Object3D): void {
+  private attachWeapon(parent: THREE.Object3D, rotation: THREE.Euler): void {
     parent.add(this.weapon);
     this.weapon.position.copy(WEAPON_OFFSET);
-    this.weapon.rotation.copy(WEAPON_ROTATION);
+    this.weapon.rotation.copy(rotation);
   }
 }
