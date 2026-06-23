@@ -8,6 +8,7 @@ import {
   type PlayerState,
 } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
+import type { GameJoinIntent } from '../auth/gameJoin';
 import type {
   AmmoBoxChangeHandler,
   AmmoBoxSnapshot,
@@ -65,9 +66,21 @@ export class RoomClient {
     return this.room !== null;
   }
 
-  async connect(username: string, url = SERVER_URL): Promise<void> {
+  async connect(
+    username: string,
+    joinIntent?: GameJoinIntent | null,
+    url = SERVER_URL,
+  ): Promise<void> {
     const client = new Client(url);
-    this.room = await client.joinOrCreate('fps', { username }, FpsState);
+    if (joinIntent?.mode === 'join' && joinIntent.roomId) {
+      this.room = await client.joinById(
+        joinIntent.roomId,
+        { username, teamId: joinIntent.teamId },
+        FpsState,
+      );
+    } else {
+      this.room = await client.joinOrCreate('fps', { username }, FpsState);
+    }
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
     this.bindKillMessages();

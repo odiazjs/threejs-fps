@@ -29,14 +29,19 @@ interface MoveMessage {
 interface JoinOptions {
   username?: string;
   teamId?: number;
+  inviteMatch?: boolean;
 }
 
 export class FpsRoom extends Room<{ state: FpsState }> {
   state = new FpsState();
   maxClients = 8;
+  private inviteMatch = false;
+  private emptyDisposeTimer?: ReturnType<Room['clock']['setTimeout']>;
 
-  onCreate(): void {
-    this.autoDispose = true;
+  onCreate(options: JoinOptions = {}): void {
+    this.inviteMatch = options.inviteMatch === true;
+    this.autoDispose = !this.inviteMatch;
+    this.maxClients = this.inviteMatch ? 2 : 8;
     this.patchRate = 50;
 
     for (const pos of AMMO_BOX_POSITIONS) {
@@ -138,6 +143,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   };
 
   onJoin(client: Client, options: JoinOptions): void {
+    if (this.emptyDisposeTimer) {
+      this.emptyDisposeTimer.clear();
+      this.emptyDisposeTimer = undefined;
+    }
+
     const player = new PlayerState();
     const spawn = pickSpawnPoint(this.state.players.size);
     const username = this.sanitizeUsername(options.username);
@@ -154,6 +164,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   onLeave(client: Client): void {
     this.state.players.delete(client.sessionId);
+
+    if (!this.inviteMatch || this.clients.length > 0) return;
+
+    this.emptyDisposeTimer = this.clock.setTimeout(() => {
+      if (this.clients.length === 0) {
+        this.disconnect();
+      }
+    }, 60_000);
   }
 
   private sanitizeUsername(raw?: string): string {
