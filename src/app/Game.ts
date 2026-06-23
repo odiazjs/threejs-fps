@@ -15,6 +15,7 @@ import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
 import { recordDeath, recordKill, getSession } from '../auth/playerSession';
+import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 
@@ -45,11 +46,15 @@ export class Game {
     username: 'Player',
   };
 
-  async start(username: string, onConnected?: () => void): Promise<void> {
+  async start(
+    username: string,
+    joinIntent?: GameJoinIntent | null,
+    onConnected?: () => void,
+  ): Promise<void> {
     this.initWorld();
     this.initPlayer();
     this.initResize();
-    await this.initNetwork(username);
+    await this.initNetwork(username, joinIntent);
     onConnected?.();
     document.getElementById('blocker')!.hidden = false;
     this.running = true;
@@ -96,7 +101,10 @@ export class Game {
     });
   }
 
-  private async initNetwork(username: string): Promise<void> {
+  private async initNetwork(
+    username: string,
+    joinIntent?: GameJoinIntent | null,
+  ): Promise<void> {
     this.network = new NetworkManager(
       this.scene,
       this.projectiles,
@@ -115,7 +123,7 @@ export class Game {
       },
     );
     this.network.bindShoot(this.player);
-    await this.network.connect(username);
+    await this.network.connect(username, joinIntent);
     this.network.applyLocalSpawn(this.player);
   }
 

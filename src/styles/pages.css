@@ -177,3 +177,164 @@ body {
   pointer-events: auto;
   min-width: 160px;
 }
+
+.friends-panel {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  width: min(280px, 42vw);
+  padding: 1rem;
+  pointer-events: auto;
+}
+
+.friends-title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.85);
+  margin-bottom: 0.75rem;
+}
+
+.friends-add-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.friends-add-row .primary-btn {
+  padding-inline: 0.85rem;
+}
+
+.friends-status {
+  min-height: 1.1em;
+  margin-bottom: 0.65rem;
+  font-size: 0.75rem;
+  color: #82dbdb;
+}
+
+.friends-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.friends-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.friends-item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-invite-btn {
+  flex-shrink: 0;
+  padding: 0.3rem 0.45rem;
+  border: 1px solid rgba(130, 219, 219, 0.45);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #82dbdb;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.friend-invite-btn:hover:not(:disabled) {
+  background: rgba(130, 219, 219, 0.12);
+}
+
+.friend-invite-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.game-start-btn {
+  width: 100%;
+  margin-bottom: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.72rem;
+}
+
+.game-start-btn[hidden] {
+  display: none;
+}
+
+.friends-empty {
+  font-size: 0.78rem;
+  opacity: 0.55;
+  padding: 0.25rem 0.1rem;
+}
+
+.friend-toasts {
+  position: fixed;
+  top: 5.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: min(300px, 42vw);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.friend-toast {
+  padding: 0.85rem;
+  pointer-events: auto;
+}
+
+.friend-toast-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.friend-toast-room {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: #82dbdb;
+  margin-bottom: 0.65rem;
+}
+
+.friend-toast-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.friend-toast-accept {
+  width: 100%;
+  padding: 0.55rem 0.5rem;
+  font-size: 0.72rem;
+}
+
+.friend-toast-decline {
+  padding: 0.55rem 0.5rem;
+  border: 1px solid rgba(229, 160, 136, 0.55);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #e5a088;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.friend-toast-decline:hover {
+  background: rgba(229, 160, 136, 0.12);
+}

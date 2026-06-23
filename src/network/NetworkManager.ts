@@ -10,6 +10,7 @@ import type { AmmoPickups } from '../world/AmmoPickups';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { LocalCombatState } from './types';
+import type { GameJoinIntent } from '../auth/gameJoin';
 
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
@@ -39,7 +40,7 @@ export class NetworkManager {
     this.ammoPickups.bindNetwork(null, this.onLocalAmmoPickup);
   }
 
-  async connect(username: string): Promise<void> {
+  async connect(username: string, joinIntent?: GameJoinIntent | null): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
       _origin.set(spawn.x, spawn.y, spawn.z);
@@ -71,7 +72,7 @@ export class NetworkManager {
       (targetId) => this.roomClient.sendHit(targetId),
     );
 
-    await this.roomClient.connect(username);
+    await this.roomClient.connect(username, joinIntent);
     this.ammoPickups.bindNetwork(
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,

@@ -19,6 +19,29 @@
         </div>
       </div>
       <div class="lobby-username" id="lobby-username">Player</div>
+
+      <aside id="friends-panel" class="friends-panel panel">
+        <h2 class="friends-title">FRIENDS</h2>
+        <div class="friends-add-row">
+          <input
+            id="friend-username-input"
+            class="text-input"
+            type="text"
+            placeholder="Username"
+            maxlength="16"
+            autocomplete="off"
+          />
+          <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+        </div>
+        <div id="friends-status" class="friends-status"></div>
+        <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
+          START GAME
+        </button>
+        <ul id="friends-list" class="friends-list"></ul>
+      </aside>
+
+      <div id="friend-toasts" class="friend-toasts"></div>
+
       <button id="lobby-join-btn" class="primary-btn" type="button">JOIN GAME</button>
     </div>
     <script type="module" src="/src/lobby/main.ts"></script>
