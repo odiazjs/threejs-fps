@@ -4,10 +4,12 @@ import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
 import { readPlayerAim } from '../player/playerAim';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
+import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
+import type { LocalCombatState } from './types';
 
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
@@ -17,18 +19,27 @@ export class NetworkManager {
   private remotePlayers: RemotePlayers;
   private sendAccumulator = 0;
   private readonly sendInterval = 1 / 20;
+  private localCombat: LocalCombatState = {
+    hp: PLAYER_MAX_HP,
+    maxHp: PLAYER_MAX_HP,
+    alive: true,
+    teamId: 0,
+    username: 'Player',
+  };
 
   constructor(
     scene: THREE.Scene,
     private readonly projectiles: ProjectileManager,
     private readonly ammoPickups: AmmoPickups,
     private readonly onLocalAmmoPickup: LocalPickupHandler,
+    private readonly onLocalPlayerChange: (state: LocalCombatState) => void,
+    private readonly onKillFeed: (killerName: string, victimName: string) => void,
   ) {
     this.remotePlayers = new RemotePlayers(scene, this.roomClient);
     this.ammoPickups.bindNetwork(null, this.onLocalAmmoPickup);
   }
 
-  async connect(): Promise<void> {
+  async connect(username: string, teamId: number): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
       _origin.set(spawn.x, spawn.y, spawn.z);
@@ -41,12 +52,44 @@ export class NetworkManager {
     this.roomClient.onAmmoPickupGranted(() => {
       this.onLocalAmmoPickup();
     });
-    await this.roomClient.connect();
+    this.roomClient.onKillFeed((killerName, victimName) => {
+      this.onKillFeed(killerName, victimName);
+    });
+    this.roomClient.onLocalPlayerChange((snapshot) => {
+      this.localCombat = {
+        hp: snapshot.hp,
+        maxHp: PLAYER_MAX_HP,
+        alive: snapshot.alive,
+        teamId: snapshot.teamId,
+        username: snapshot.username,
+      };
+      this.onLocalPlayerChange(this.localCombat);
+    });
+
+    this.projectiles.setPlayerHitHandlers(
+      () => this.remotePlayers.getEnemyHitTargets(this.localCombat.teamId),
+      (targetId) => this.roomClient.sendHit(targetId),
+    );
+
+    await this.roomClient.connect(username, teamId);
     this.ammoPickups.bindNetwork(
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,
     );
     this.roomClient.bindState();
+
+    const snapshot = this.roomClient.getLocalSnapshot();
+    if (snapshot) {
+      this.localCombat = {
+        hp: snapshot.hp,
+        maxHp: PLAYER_MAX_HP,
+        alive: snapshot.alive,
+        teamId: snapshot.teamId,
+        username: snapshot.username,
+      };
+      this.onLocalPlayerChange(this.localCombat);
+    }
+
     console.info('[Network] connected to room', this.roomClient.sessionId);
   }
 
@@ -68,14 +111,22 @@ export class NetworkManager {
     const snapshot = this.roomClient.getLocalSnapshot();
     if (!snapshot) return;
     player.setEyePosition(snapshot.x, snapshot.y, snapshot.z);
+    player.setProjectileSpawnOptions(snapshot.teamId);
+    player.setFromSnapshot(snapshot, true);
+  }
+
+  getLocalCombatState(): LocalCombatState {
+    return this.localCombat;
+  }
+
+  getAllPlayers() {
+    return this.roomClient.getAllPlayerSnapshots();
   }
 
   update(delta: number, player: Player, controls: PlayerControls): void {
-    if (this.roomClient.connected) {
-      this.remotePlayers.interpolate(delta);
+    if (!this.roomClient.connected || !controls.isLocked || !this.localCombat.alive) {
+      return;
     }
-
-    if (!this.roomClient.connected || !controls.isLocked) return;
 
     this.sendAccumulator += delta;
     if (this.sendAccumulator < this.sendInterval) return;
@@ -85,5 +136,10 @@ export class NetworkManager {
     const { yaw, pitch } = readPlayerAim(player.camera!);
 
     this.roomClient.sendMove(feet.x, feet.y + EYE_HEIGHT, feet.z, yaw, pitch);
+  }
+
+  interpolateRemotes(delta: number, camera: THREE.Camera): void {
+    if (!this.roomClient.connected) return;
+    this.remotePlayers.interpolate(delta, camera);
   }
 }

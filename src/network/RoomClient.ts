@@ -1,5 +1,7 @@
 import { Client, Callbacks, type Room } from '@colyseus/sdk';
+import type { KillFeedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
+import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import {
   FpsState,
   type AmmoBoxState,
@@ -10,6 +12,8 @@ import type {
   AmmoBoxChangeHandler,
   AmmoBoxSnapshot,
   AmmoPickupGrantedHandler,
+  KillFeedHandler,
+  LocalPlayerChangeHandler,
   PlayerAddHandler,
   PlayerChangeHandler,
   PlayerRemoveHandler,
@@ -24,6 +28,10 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     z: player.z,
     yaw: player.yaw,
     pitch: player.pitch,
+    username: player.username,
+    teamId: player.teamId,
+    hp: player.hp,
+    alive: player.alive,
   };
 }
 
@@ -38,13 +46,16 @@ function toAmmoBoxSnapshot(box: AmmoBoxState): AmmoBoxSnapshot {
 export class RoomClient {
   private room: Room | null = null;
   private readonly boundAmmoBoxes = new Set<number>();
+  private readonly boundPlayers = new Set<string>();
 
   private onAddHandlers: PlayerAddHandler[] = [];
   private onRemoveHandlers: PlayerRemoveHandler[] = [];
   private onChangeHandlers: PlayerChangeHandler[] = [];
+  private onLocalChangeHandlers: LocalPlayerChangeHandler[] = [];
   private onProjectileHandlers: ProjectileSpawnHandler[] = [];
   private onAmmoBoxChangeHandlers: AmmoBoxChangeHandler[] = [];
   private onAmmoPickupGrantedHandlers: AmmoPickupGrantedHandler[] = [];
+  private onKillFeedHandlers: KillFeedHandler[] = [];
 
   get sessionId(): string | null {
     return this.room?.sessionId ?? null;
@@ -54,11 +65,12 @@ export class RoomClient {
     return this.room !== null;
   }
 
-  async connect(url = SERVER_URL): Promise<void> {
+  async connect(username: string, teamId: number, url = SERVER_URL): Promise<void> {
     const client = new Client(url);
-    this.room = await client.joinOrCreate('fps', {}, FpsState);
+    this.room = await client.joinOrCreate('fps', { username, teamId }, FpsState);
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
+    this.bindKillMessages();
   }
 
   bindState(): void {
@@ -78,6 +90,10 @@ export class RoomClient {
     this.onChangeHandlers.push(handler);
   }
 
+  onLocalPlayerChange(handler: LocalPlayerChangeHandler): void {
+    this.onLocalChangeHandlers.push(handler);
+  }
+
   onProjectileSpawn(handler: ProjectileSpawnHandler): void {
     this.onProjectileHandlers.push(handler);
   }
@@ -90,11 +106,33 @@ export class RoomClient {
     this.onAmmoPickupGrantedHandlers.push(handler);
   }
 
+  onKillFeed(handler: KillFeedHandler): void {
+    this.onKillFeedHandlers.push(handler);
+  }
+
   getLocalSnapshot(): PlayerSnapshot | null {
     if (!this.room) return null;
 
-    const player = this.room.state.players.get(this.room.sessionId) as PlayerState | undefined;
+    const state = this.room.state as FpsState;
+    const player = state.players?.get(this.room.sessionId) as PlayerState | undefined;
     return player ? toSnapshot(player) : null;
+  }
+
+  getAllPlayerSnapshots(): Array<PlayerSnapshot & { sessionId: string }> {
+    if (!this.room) return [];
+
+    const state = this.room.state as FpsState;
+    if (!state.players) return [];
+
+    const players: Array<PlayerSnapshot & { sessionId: string }> = [];
+    state.players.forEach((player, sessionId) => {
+      players.push({
+        sessionId,
+        ...toSnapshot(player as PlayerState),
+      });
+    });
+
+    return players;
   }
 
   sendMove(x: number, y: number, z: number, yaw: number, pitch: number): void {
@@ -109,6 +147,10 @@ export class RoomClient {
     this.room?.send('pickupAmmo', { index, x: feetX, z: feetZ });
   }
 
+  sendHit(targetId: string): void {
+    this.room?.send('hit', { targetId });
+  }
+
   private bindProjectileMessages(): void {
     this.room?.onMessage('projectile', (data: ProjectileSpawnMessage) => {
       this.onProjectileHandlers.forEach((handler) => handler(data));
@@ -121,36 +163,67 @@ export class RoomClient {
     });
   }
 
+  private bindKillMessages(): void {
+    this.room?.onMessage('kill', (data: KillFeedMessage) => {
+      this.onKillFeedHandlers.forEach((handler) =>
+        handler(data.killerName, data.victimName),
+      );
+    });
+  }
+
   private bindStateCallbacks(): void {
     if (!this.room) return;
 
     const callbacks = Callbacks.get(this.room);
-
     const myId = this.room.sessionId;
 
     callbacks.onAdd('players', (player, sessionId) => {
-      const id = sessionId as string;
-      if (id === myId) return;
-
-      const schemaPlayer = player as PlayerState;
-      this.onAddHandlers.forEach((handler) => handler(id, toSnapshot(schemaPlayer)));
-
-      callbacks.onChange(schemaPlayer, () => {
-        this.onChangeHandlers.forEach((handler) => handler(id, toSnapshot(schemaPlayer)));
-      });
+      this.bindPlayerCallbacks(
+        callbacks,
+        sessionId as string,
+        player as PlayerState,
+        myId,
+      );
     });
 
     callbacks.onRemove('players', (_player, sessionId) => {
+      this.boundPlayers.delete(sessionId as string);
       this.onRemoveHandlers.forEach((handler) => handler(sessionId as string));
-    });
-
-    const state = this.room.state as FpsState;
-    state.ammoBoxes.forEach((box, index) => {
-      this.bindAmmoBoxCallbacks(callbacks, index, box as AmmoBoxState);
     });
 
     callbacks.onAdd('ammoBoxes', (box, index) => {
       this.bindAmmoBoxCallbacks(callbacks, index as number, box as AmmoBoxState);
+    });
+  }
+
+  private bindPlayerCallbacks(
+    callbacks: ReturnType<typeof Callbacks.get>,
+    sessionId: string,
+    player: PlayerState,
+    myId: string,
+  ): void {
+    if (this.boundPlayers.has(sessionId)) return;
+    this.boundPlayers.add(sessionId);
+
+    if (sessionId === myId) {
+      this.onLocalChangeHandlers.forEach((handler) =>
+        handler(toSnapshot(player)),
+      );
+      callbacks.onChange(player, () => {
+        this.onLocalChangeHandlers.forEach((handler) =>
+          handler(toSnapshot(player)),
+        );
+      });
+      return;
+    }
+
+    this.onAddHandlers.forEach((handler) =>
+      handler(sessionId, toSnapshot(player)),
+    );
+    callbacks.onChange(player, () => {
+      this.onChangeHandlers.forEach((handler) =>
+        handler(sessionId, toSnapshot(player)),
+      );
     });
   }
 
@@ -173,3 +246,5 @@ export class RoomClient {
     });
   }
 }
+
+export { PLAYER_MAX_HP };

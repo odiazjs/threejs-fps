@@ -4,6 +4,14 @@ import { clampEyeY, movePlayer } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { pickSpawnPoint } from '../../../shared/level/kiloSectorColliders.js';
 import {
+  MAX_HIT_DISTANCE,
+  PLASMA_RIFLE_DAMAGE,
+  PLAYER_MAX_HP,
+  RESPAWN_DELAY_SEC,
+} from '../../../shared/combat/damage.js';
+import { isValidTeamId } from '../../../shared/combat/teams.js';
+import type { KillFeedMessage, PlayerHitMessage } from '../../../shared/network/damage.js';
+import {
   PICKUP_MAX_DESYNC,
   type PickupAmmoMessage,
 } from '../../../shared/network/pickup.js';
@@ -16,6 +24,11 @@ interface MoveMessage {
   z: number;
   yaw: number;
   pitch: number;
+}
+
+interface JoinOptions {
+  username?: string;
+  teamId?: number;
 }
 
 export class FpsRoom extends Room<{ state: FpsState }> {
@@ -37,7 +50,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   messages = {
     move: (client: Client, data: MoveMessage) => {
       const player = this.state.players.get(client.sessionId);
-      if (!player) return;
+      if (!player?.alive) return;
 
       const feetY = player.y - EYE_HEIGHT;
       const deltaX = data.x - player.x;
@@ -52,7 +65,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     },
 
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
-      if (!this.state.players.has(client.sessionId)) return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
       this.broadcast('projectile', data, { except: client });
     },
 
@@ -64,7 +78,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!box || box.collected) return;
 
       const player = this.state.players.get(client.sessionId);
-      if (!player) return;
+      if (!player?.alive) return;
 
       const serverOverlap = overlapsAmmoBox(
         player.x,
@@ -94,12 +108,44 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       box.collected = true;
       client.send('ammoPickupGranted', { index });
     },
+
+    hit: (client: Client, data: PlayerHitMessage) => {
+      const shooter = this.state.players.get(client.sessionId);
+      const target = this.state.players.get(data.targetId);
+      if (!shooter?.alive || !target?.alive) return;
+      if (shooter.teamId === target.teamId) return;
+
+      const distance = Math.hypot(shooter.x - target.x, shooter.z - target.z);
+      if (distance > MAX_HIT_DISTANCE) return;
+
+      target.hp = Math.max(0, target.hp - PLASMA_RIFLE_DAMAGE);
+      if (target.hp > 0) return;
+
+      target.hp = 0;
+      target.alive = false;
+
+      const killFeed: KillFeedMessage = {
+        killerName: shooter.username,
+        victimName: target.username,
+      };
+      this.broadcast('kill', killFeed);
+
+      const targetId = data.targetId;
+      this.clock.setTimeout(() => {
+        this.respawnPlayer(targetId);
+      }, RESPAWN_DELAY_SEC * 1000);
+    },
   };
 
-  onJoin(client: Client): void {
+  onJoin(client: Client, options: JoinOptions): void {
     const player = new PlayerState();
     const spawn = pickSpawnPoint(this.state.players.size);
+    const username = this.sanitizeUsername(options.username);
 
+    player.username = username;
+    player.teamId = this.resolveTeamId(options.teamId);
+    player.hp = PLAYER_MAX_HP;
+    player.alive = true;
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
@@ -108,5 +154,44 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   onLeave(client: Client): void {
     this.state.players.delete(client.sessionId);
+  }
+
+  private sanitizeUsername(raw?: string): string {
+    const trimmed = raw?.trim().slice(0, 16);
+    return trimmed && trimmed.length > 0 ? trimmed : 'Player';
+  }
+
+  private resolveTeamId(requested?: number): number {
+    const team = Number(requested);
+    if (Number.isFinite(team) && isValidTeamId(team)) {
+      return team;
+    }
+    return this.pickBalancedTeam();
+  }
+
+  private pickBalancedTeam(): number {
+    let team0 = 0;
+    let team1 = 0;
+
+    for (const player of this.state.players.values()) {
+      if (player.teamId === 0) team0 += 1;
+      else team1 += 1;
+    }
+
+    return team0 <= team1 ? 0 : 1;
+  }
+
+  private respawnPlayer(sessionId: string): void {
+    const player = this.state.players.get(sessionId);
+    if (!player) return;
+
+    const spawn = pickSpawnPoint(this.state.players.size);
+    player.hp = PLAYER_MAX_HP;
+    player.alive = true;
+    player.x = spawn.x;
+    player.y = EYE_HEIGHT;
+    player.z = spawn.z;
+    player.yaw = 0;
+    player.pitch = 0;
   }
 }

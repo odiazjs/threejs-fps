@@ -1,6 +1,11 @@
 import { Schema, type, MapSchema, ArraySchema } from '@colyseus/schema';
+import { PLAYER_MAX_HP } from '../combat/damage.js';
 
 export class PlayerState extends Schema {
+  @type('string') username = 'Player';
+  @type('number') teamId = 0;
+  @type('number') hp = PLAYER_MAX_HP;
+  @type('boolean') alive = true;
   @type('number') x = 0;
   @type('number') y = 1.6;
   @type('number') z = 0;

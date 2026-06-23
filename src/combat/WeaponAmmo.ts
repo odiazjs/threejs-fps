@@ -1,4 +1,4 @@
-import type { WeaponConfig } from '../content/weaponConfig';
+import type { WeaponConfig } from '../../shared/content/weaponConfig';
 
 export interface AmmoState {
   clip: number;

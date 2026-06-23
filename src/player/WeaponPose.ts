@@ -16,6 +16,10 @@ export class WeaponPose {
     return HIP_OFFSET;
   }
 
+  reset(): void {
+    this.blend = 0;
+  }
+
   update(delta: number, ads: boolean): void {
     const target = ads ? 1 : 0;
     this.blend += (target - this.blend) * (1 - Math.exp(-BLEND_SPEED * delta));
