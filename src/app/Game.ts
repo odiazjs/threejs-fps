@@ -14,6 +14,7 @@ import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
+import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 
@@ -34,6 +35,8 @@ export class Game {
   private renderContext = new RenderContext();
   private clock = new THREE.Clock();
   private wasAlive = true;
+  private running = false;
+  private leaving = false;
   private localCombat: LocalCombatState = {
     hp: 100,
     maxHp: 100,
@@ -42,18 +45,30 @@ export class Game {
     username: 'Player',
   };
 
-  async start(
-    username: string,
-    teamId: number,
-    onConnected?: () => void,
-  ): Promise<void> {
+  async start(username: string, onConnected?: () => void): Promise<void> {
     this.initWorld();
     this.initPlayer();
     this.initResize();
-    await this.initNetwork(username, teamId);
+    await this.initNetwork(username);
     onConnected?.();
     document.getElementById('blocker')!.hidden = false;
+    this.running = true;
     this.loop();
+  }
+
+  private async leaveGame(): Promise<void> {
+    if (this.leaving) return;
+    this.leaving = true;
+    this.running = false;
+    this.playerControls.setLeaveEnabled(false);
+
+    try {
+      await this.network.disconnect();
+    } catch (error) {
+      console.warn('[Game] disconnect failed', error);
+    }
+
+    window.location.href = '/lobby.html';
   }
 
   private initWorld(): void {
@@ -76,9 +91,12 @@ export class Game {
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setKillFeedHud(this.killFeedHud);
+    this.playerControls.setLeaveHandler(() => {
+      void this.leaveGame();
+    });
   }
 
-  private async initNetwork(username: string, teamId: number): Promise<void> {
+  private async initNetwork(username: string): Promise<void> {
     this.network = new NetworkManager(
       this.scene,
       this.projectiles,
@@ -88,10 +106,16 @@ export class Game {
         this.messageHud.push('Picked up some ammo');
       },
       (state) => this.handleLocalCombatChange(state),
-      (killerName, victimName) => this.killFeedHud.addKill(killerName, victimName),
+      (killerName, victimName) => {
+        this.killFeedHud.addKill(killerName, victimName);
+        const session = getSession();
+        if (!session) return;
+        if (killerName === session.username) recordKill(session.username);
+        if (victimName === session.username) recordDeath(session.username);
+      },
     );
     this.network.bindShoot(this.player);
-    await this.network.connect(username, teamId);
+    await this.network.connect(username);
     this.network.applyLocalSpawn(this.player);
   }
 
@@ -119,6 +143,8 @@ export class Game {
   }
 
   private loop = (): void => {
+    if (!this.running) return;
+
     requestAnimationFrame(this.loop);
     const delta = Math.min(this.clock.getDelta(), 0.05);
 

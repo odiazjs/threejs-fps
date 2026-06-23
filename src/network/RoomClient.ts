@@ -65,9 +65,9 @@ export class RoomClient {
     return this.room !== null;
   }
 
-  async connect(username: string, teamId: number, url = SERVER_URL): Promise<void> {
+  async connect(username: string, url = SERVER_URL): Promise<void> {
     const client = new Client(url);
-    this.room = await client.joinOrCreate('fps', { username, teamId }, FpsState);
+    this.room = await client.joinOrCreate('fps', { username }, FpsState);
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
     this.bindKillMessages();
@@ -149,6 +149,16 @@ export class RoomClient {
 
   sendHit(targetId: string): void {
     this.room?.send('hit', { targetId });
+  }
+
+  async disconnect(): Promise<void> {
+    if (!this.room) return;
+
+    const room = this.room;
+    this.room = null;
+    this.boundPlayers.clear();
+    this.boundAmmoBoxes.clear();
+    await room.leave(true);
   }
 
   private bindProjectileMessages(): void {
