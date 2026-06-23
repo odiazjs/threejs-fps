@@ -32,7 +32,10 @@ export class Projectile {
     this.velocity.copy(direction).multiplyScalar(speed);
   }
 
-  update(delta: number): ProjectileUpdateResult {
+  update(
+    delta: number,
+    onStep?: (from: THREE.Vector3, to: THREE.Vector3) => boolean,
+  ): ProjectileUpdateResult {
     this.age += delta;
     if (this.age >= PROJECTILE_MAX_AGE) {
       return { alive: false };
@@ -65,13 +68,23 @@ export class Projectile {
       );
 
       if (hit) {
-        pos.set(hit.x, hit.y, hit.z);
+        const hitPoint = new THREE.Vector3(hit.x, hit.y, hit.z);
+        if (onStep?.(pos.clone(), hitPoint)) {
+          pos.copy(hitPoint);
+          return { alive: false };
+        }
+
+        pos.copy(hitPoint);
         return { alive: false, hit: { point: pos.clone() } };
       }
 
+      const from = pos.clone();
       pos.x += dirX * step;
       pos.y += dirY * step;
       pos.z += dirZ * step;
+      if (onStep?.(from, pos)) {
+        return { alive: false };
+      }
       remaining -= step;
     }
 

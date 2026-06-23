@@ -10,6 +10,7 @@ const HEAD_SIZE = 0.28;
 
 /** Vertical pivot for remote look pitch — eye line on the avatar. */
 export const REMOTE_AIM_HEIGHT = EYE_HEIGHT - 0.06;
+export { HEAD_SIZE };
 
 export function createRemoteTorso(color: number): THREE.Mesh {
   const mesh = new THREE.Mesh(

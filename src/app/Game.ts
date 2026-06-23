@@ -5,12 +5,15 @@ import { KeyboardInput } from '../input/KeyboardInput';
 import { PointerInput } from '../input/PointerInput';
 import { ProjectileManager } from '../combat/ProjectileManager';
 import { NetworkManager } from '../network/NetworkManager';
+import type { LocalCombatState } from '../network/types';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
 import { StaminaHud } from '../ui/StaminaHud';
 import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
+import { HealthHud } from '../ui/HealthHud';
+import { KillFeedHud } from '../ui/KillFeedHud';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 
@@ -21,6 +24,8 @@ export class Game {
   private network!: NetworkManager;
   private staminaHud = new StaminaHud();
   private ammoHud = new AmmoHud();
+  private healthHud = new HealthHud();
+  private killFeedHud = new KillFeedHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
   private input = new KeyboardInput();
@@ -28,12 +33,26 @@ export class Game {
   private projectiles!: ProjectileManager;
   private renderContext = new RenderContext();
   private clock = new THREE.Clock();
+  private wasAlive = true;
+  private localCombat: LocalCombatState = {
+    hp: 100,
+    maxHp: 100,
+    alive: true,
+    teamId: 0,
+    username: 'Player',
+  };
 
-  start(): void {
+  async start(
+    username: string,
+    teamId: number,
+    onConnected?: () => void,
+  ): Promise<void> {
     this.initWorld();
     this.initPlayer();
-    this.initNetwork();
     this.initResize();
+    await this.initNetwork(username, teamId);
+    onConnected?.();
+    document.getElementById('blocker')!.hidden = false;
     this.loop();
   }
 
@@ -55,8 +74,11 @@ export class Game {
     this.playerControls = new PlayerControls(this.player.camera!);
     this.playerControls.setStaminaHud(this.staminaHud);
     this.playerControls.setAmmoHud(this.ammoHud);
+    this.playerControls.setHealthHud(this.healthHud);
+    this.playerControls.setKillFeedHud(this.killFeedHud);
   }
-  private initNetwork(): void {
+
+  private async initNetwork(username: string, teamId: number): Promise<void> {
     this.network = new NetworkManager(
       this.scene,
       this.projectiles,
@@ -65,17 +87,28 @@ export class Game {
         this.player.addReserveClip();
         this.messageHud.push('Picked up some ammo');
       },
+      (state) => this.handleLocalCombatChange(state),
+      (killerName, victimName) => this.killFeedHud.addKill(killerName, victimName),
     );
     this.network.bindShoot(this.player);
-    this.network.connect().then(() => {
+    await this.network.connect(username, teamId);
+    this.network.applyLocalSpawn(this.player);
+  }
+
+  private handleLocalCombatChange(state: LocalCombatState): void {
+    if (!state.alive && this.wasAlive) {
+      this.messageHud.push('You died');
+      this.playerControls.controls.unlock();
+    }
+
+    if (state.alive && !this.wasAlive) {
       this.network.applyLocalSpawn(this.player);
-    }).catch((error) => {
-      console.warn('[Network] offline — start server with: npm run dev:server', error);
-      this.ammoPickups.bindNetwork(null, () => {
-        this.player.addReserveClip();
-        this.messageHud.push('Picked up some ammo');
-      });
-    });
+    }
+
+    this.wasAlive = state.alive;
+    this.localCombat = state;
+    this.player.setProjectileSpawnOptions(state.teamId);
+    this.healthHud.update(state);
   }
 
   private initResize(): void {
@@ -89,17 +122,22 @@ export class Game {
     requestAnimationFrame(this.loop);
     const delta = Math.min(this.clock.getDelta(), 0.05);
 
+    const canAct = this.playerControls.isLocked && this.localCombat.alive;
+
     this.player.update(
       delta,
       this.input,
       this.pointer,
-      this.playerControls.isLocked,
+      canAct,
       this.projectiles,
     );
+    this.network?.interpolateRemotes(delta, this.player.camera!);
     this.projectiles.update(delta);
-    this.network.update(delta, this.player, this.playerControls);
+    this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
-    if (this.playerControls.isLocked) {
+    this.killFeedHud.update(delta);
+
+    if (this.playerControls.isLocked && this.network) {
       this.ammoPickups.tryPickup(
         this.player.object.position.x,
         this.player.object.position.z,
@@ -109,7 +147,10 @@ export class Game {
       this.staminaHud.update(this.player.getSprintState());
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
+
+      this.healthHud.update(this.localCombat);
     }
+
     this.renderContext.render(this.scene, this.player.camera!);
     this.input.endFrame();
     this.pointer.endFrame();

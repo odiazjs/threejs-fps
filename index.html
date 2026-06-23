@@ -153,10 +153,239 @@
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
       }
+      #join-lobby {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.75);
+        z-index: 20;
+      }
+      #join-lobby[hidden] {
+        display: none !important;
+      }
+      #join-lobby .join-panel {
+        width: min(360px, 90vw);
+        padding: 2rem;
+        border: 1px solid rgba(130, 219, 219, 0.35);
+        border-radius: 8px;
+        background: rgba(20, 24, 28, 0.92);
+        text-align: center;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      }
+      #join-lobby h1 {
+        color: #fff;
+        font-size: 1.75rem;
+        margin-bottom: 1.25rem;
+      }
+      #username-input {
+        width: 100%;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid rgba(130, 219, 219, 0.45);
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.35);
+        color: #fff;
+        font-size: 1rem;
+        margin-bottom: 0.85rem;
+      }
+      #username-input:focus {
+        outline: none;
+        border-color: #82dbdb;
+        box-shadow: 0 0 0 2px rgba(130, 219, 219, 0.25);
+      }
+      #join-game-btn {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: none;
+        border-radius: 4px;
+        background: linear-gradient(90deg, #5eb8c4, #82dbdb);
+        color: #111;
+        font-size: 0.85rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        cursor: pointer;
+      }
+      #join-game-btn:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      #join-error {
+        margin-top: 0.75rem;
+        color: #e5a088;
+        font-size: 0.8rem;
+        min-height: 1.2em;
+      }
+      .team-picker {
+        margin-bottom: 0.85rem;
+        text-align: left;
+      }
+      .team-picker-label {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.65rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        margin-bottom: 0.5rem;
+      }
+      .team-options {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+      }
+      .team-option {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        padding: 0.55rem 0.65rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.25);
+        cursor: pointer;
+        color: #fff;
+        font-size: 0.8rem;
+        font-weight: 600;
+      }
+      .team-option.team-blue {
+        border-color: rgba(106, 159, 212, 0.55);
+      }
+      .team-option.team-orange {
+        border-color: rgba(229, 160, 136, 0.55);
+      }
+      .team-option:has(input:checked) {
+        background: rgba(255, 255, 255, 0.08);
+        box-shadow: inset 0 0 0 1px rgba(130, 219, 219, 0.35);
+      }
+      .team-option input {
+        accent-color: #82dbdb;
+      }
+      #health-hud {
+        position: fixed;
+        left: 1.5rem;
+        bottom: -10.5rem;
+        width: min(220px, 38vw);
+        pointer-events: none;
+        z-index: 5;
+      }
+      #health-hud .health-label {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.65rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        margin-bottom: 0.35rem;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #health-hud .health-track {
+        position: relative;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        border-radius: 999px;
+        background: rgba(20, 24, 28, 0.55);
+        overflow: hidden;
+      }
+      #health-hud .health-fill {
+        height: 100%;
+        width: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #6ecf8a, #9de8b0);
+        transition: width 80ms linear;
+      }
+      #health-hud .health-value {
+        position: absolute;
+        right: 0.5rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #health-hud.dead .health-fill {
+        background: linear-gradient(90deg, #c88870, #e5a088);
+      }
+      .remote-health-bar {
+        width: 88px;
+        pointer-events: none;
+        user-select: none;
+        text-align: center;
+        margin-bottom: 2.2rem;
+      }
+      .remote-health-bar-name {
+        margin-bottom: 0.2rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+      }
+      .remote-health-bar-track {
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(10, 12, 14, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+      }
+      .remote-health-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        transition: width 80ms linear;
+      }
+      #kill-feed {
+        position: fixed;
+        top: 1.5rem;
+        right: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        align-items: flex-end;
+        pointer-events: none;
+        z-index: 5;
+      }
+      #kill-feed .kill-feed-entry {
+        padding: 0.35rem 0.65rem;
+        border-radius: 4px;
+        background: rgba(20, 24, 28, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        white-space: nowrap;
+      }
+      #kill-feed .kill-feed-killer {
+        color: #82dbdb;
+      }
+      #kill-feed .kill-feed-icon {
+        margin: 0 0.35rem;
+        color: rgba(255, 255, 255, 0.45);
+      }
+      #kill-feed .kill-feed-victim {
+        color: #e5a088;
+      }
     </style>
   </head>
   <body>
-    <div id="blocker">
+    <div id="join-lobby">
+      <div class="join-panel">
+        <h1>Three.js FPS</h1>
+        <input id="username-input" type="text" placeholder="Username" maxlength="16" autocomplete="username" />
+        <div class="team-picker">
+          <div class="team-picker-label">PICK TEAM</div>
+          <div class="team-options">
+            <label class="team-option team-blue">
+              <input type="radio" name="team" value="0" checked />
+              <span>Blue</span>
+            </label>
+            <label class="team-option team-orange">
+              <input type="radio" name="team" value="1" />
+              <span>Orange</span>
+            </label>
+          </div>
+        </div>
+        <button id="join-game-btn" type="button">JOIN GAME</button>
+        <div id="join-error" hidden></div>
+      </div>
+    </div>
+    <div id="blocker" hidden>
       <div id="instructions">
         <h1>Click to play</h1>
         <p>WASD to move · Shift+W to sprint · Space to jump · Mouse to look · R to reload</p>
@@ -164,6 +393,14 @@
     </div>
     <div id="crosshair"></div>
     <div id="message-hud"></div>
+    <div id="kill-feed" hidden></div>
+    <div id="health-hud" hidden>
+      <div class="health-label">HEALTH</div>
+      <div class="health-track">
+        <div class="health-fill"></div>
+        <div class="health-value">100</div>
+      </div>
+    </div>
     <div id="stamina-hud" hidden>
       <div class="stamina-label">STAMINA</div>
       <div class="stamina-track">

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import type { ProjectileHitTarget } from '../combat/ProjectileManager';
 import { Player } from '../player/Player';
 import type { RoomClient } from './RoomClient';
 import type { PlayerSnapshot } from './types';
+
+const TEAM_COLORS = [0x6a9fd4, 0xe5a088] as const;
 
 export class RemotePlayers {
   private readonly players = new Map<string, Player>();
@@ -24,6 +27,26 @@ export class RemotePlayers {
       this.updatePlayer(sessionId, snapshot);
     });
   }
+
+  getEnemyHitTargets(localTeamId: number): ProjectileHitTarget[] {
+    const targets: ProjectileHitTarget[] = [];
+
+    for (const [sessionId, player] of this.players) {
+      if (!player.isAlive() || player.getTeamId() === localTeamId) continue;
+
+      const feet = player.getFeetPosition();
+      targets.push({
+        sessionId,
+        teamId: player.getTeamId(),
+        feetX: feet.x,
+        feetY: feet.y,
+        feetZ: feet.z,
+      });
+    }
+
+    return targets;
+  }
+
   private isLocal(sessionId: string): boolean {
     return sessionId === this.roomClient.sessionId;
   }
@@ -31,7 +54,8 @@ export class RemotePlayers {
   private addPlayer(sessionId: string, snapshot: PlayerSnapshot): void {
     if (this.isLocal(sessionId)) return;
 
-    const player = Player.createRemote();
+    const color = TEAM_COLORS[snapshot.teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0];
+    const player = Player.createRemote(color);
     player.setFromSnapshot(snapshot, true);
     player.attachToScene(this.scene);
     this.players.set(sessionId, player);
@@ -42,9 +66,10 @@ export class RemotePlayers {
     this.players.get(sessionId)?.setFromSnapshot(snapshot);
   }
 
-  interpolate(delta: number): void {
+  interpolate(delta: number, camera: THREE.Camera): void {
     for (const player of this.players.values()) {
       player.interpolateRemote(delta);
+      player.updateRemoteHealthBar(camera);
     }
   }
 

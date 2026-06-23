@@ -1,4 +1,4 @@
-export const PROJECTILE_SPEED = 80;
+export const PROJECTILE_SPEED = 160;
 export const PROJECTILE_MAX_AGE = 3;
 export const MAX_AIM_DISTANCE = 1000;
 export const HIT_SPLASH_DURATION = 0.5;

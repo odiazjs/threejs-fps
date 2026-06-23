@@ -15,6 +15,7 @@ import {
   createRemoteTorso,
   REMOTE_AIM_HEIGHT,
 } from './RemoteAvatar';
+import { RemoteHealthBar } from './RemoteHealthBar';
 import { applyPlayerAim } from './playerAim';
 import { WeaponPose, WEAPON_HIP_OFFSET } from './WeaponPose';
 
@@ -49,6 +50,7 @@ export class Player {
   private headRig: THREE.Group | null = null;
   private bodyRoot: THREE.Group | null = null;
   private lookRig: THREE.Group | null = null;
+  private remoteHealthBar: RemoteHealthBar | null = null;
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
@@ -56,6 +58,14 @@ export class Player {
   private onShoot: ShootCallback | null = null;
   private fireCooldown = 0;
   private readonly fireInterval = 1 / PLASMA_RIFLE_CONFIG.fireRate;
+  private projectileSpawnOptions: {
+    canHitPlayers: boolean;
+    ownerTeamId: number;
+  } = { canHitPlayers: false, ownerTeamId: -1 };
+  private teamId = 0;
+  private alive = true;
+  private username = 'Player';
+  private hp = 100;
 
   private constructor(local: boolean, bodyColor = 0x6a9fd4) {
     if (local) {
@@ -83,11 +93,16 @@ export class Player {
       this.object.add(this.lookRig);
       this.lookRig.add(createRemoteHead(bodyColor));
       this.attachWeapon(this.lookRig, REMOTE_WEAPON_ROTATION);
+
+      this.remoteHealthBar = new RemoteHealthBar();
+      this.lookRig.add(this.remoteHealthBar.object);
     }
   }
 
   static createLocal(): Player {
-    return new Player(true);
+    const player = new Player(true);
+    player.setProjectileSpawnOptions(0);
+    return player;
   }
 
   static createRemote(color = 0x6a9fd4): Player {
@@ -114,18 +129,69 @@ export class Player {
     this.onShoot = callback;
   }
 
+  setProjectileSpawnOptions(ownerTeamId: number): void {
+    this.projectileSpawnOptions = {
+      canHitPlayers: true,
+      ownerTeamId,
+    };
+  }
+
+  getTeamId(): number {
+    return this.teamId;
+  }
+
+  isAlive(): boolean {
+    return this.alive;
+  }
+
+  getUsername(): string {
+    return this.username;
+  }
+
+  getHp(): number {
+    return this.hp;
+  }
+
+  getFeetPosition(): THREE.Vector3 {
+    return this.object.position;
+  }
+
   setEyePosition(x: number, y: number, z: number): void {
     this.object.position.set(x, y - EYE_HEIGHT, z);
+    this.object.rotation.set(0, 0, 0);
     this.physics = { verticalVelocity: 0, grounded: true };
+    this.resetLocalView();
+  }
+
+  private resetLocalView(): void {
+    if (!this.camera) return;
+
     this.headBob.reset();
-    if (this.headRig) this.headBob.apply(this.headRig, false);
-    if (this.camera) this.camera.rotation.z = 0;
+    if (this.headRig) {
+      this.headRig.position.set(0, 0, 0);
+      this.headRig.rotation.set(0, 0, 0);
+      this.headBob.apply(this.headRig, false);
+    }
+
+    applyPlayerAim(this.camera, 0, 0);
+    this.weaponPose?.reset();
+    this.weaponPose?.apply(this.weapon);
+    this.fireCooldown = 0;
   }
 
   setFromSnapshot(snapshot: PlayerSnapshot, snap = false): void {
     this.targetPosition.set(snapshot.x, snapshot.y - EYE_HEIGHT, snapshot.z);
     this.targetYaw = snapshot.yaw;
     this.targetPitch = snapshot.pitch;
+    this.teamId = snapshot.teamId;
+    this.alive = snapshot.alive;
+    this.username = snapshot.username;
+    this.hp = snapshot.hp;
+
+    if (!this.camera) {
+      this.object.visible = snapshot.alive;
+      this.remoteHealthBar?.update(snapshot.hp, snapshot.alive, snapshot.teamId, snapshot.username);
+    }
 
     if (snap) {
       this.object.position.copy(this.targetPosition);
@@ -143,6 +209,10 @@ export class Player {
     this.currentYaw = lerpAngle(this.currentYaw, this.targetYaw, t);
     this.currentPitch = THREE.MathUtils.lerp(this.currentPitch, this.targetPitch, t);
     this.applyRemoteAim();
+  }
+
+  updateRemoteHealthBar(camera: THREE.Camera): void {
+    this.remoteHealthBar?.updateLayout(camera);
   }
 
   update(
@@ -240,6 +310,8 @@ export class Player {
   }
 
   dispose(): void {
+    this.remoteHealthBar?.dispose();
+    this.remoteHealthBar = null;
     this.object.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
@@ -278,7 +350,7 @@ export class Player {
       this.muzzleOrigin,
       this.aimDirection,
     );
-    projectiles.spawn(this.muzzleOrigin, this.aimDirection);
+    projectiles.spawn(this.muzzleOrigin, this.aimDirection, this.projectileSpawnOptions);
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
     return true;
   }
