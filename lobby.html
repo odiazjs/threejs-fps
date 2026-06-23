@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js FPS — Lobby</title>
+  </head>
+  <body class="lobby-page">
+    <div id="lobby-canvas"></div>
+    <div class="lobby-ui">
+      <div class="lobby-stats">
+        <div class="lobby-stat">
+          <span class="lobby-stat-label">KILLS</span>
+          <span class="lobby-stat-value" id="stat-kills">0</span>
+        </div>
+        <div class="lobby-stat">
+          <span class="lobby-stat-label">K/D</span>
+          <span class="lobby-stat-value" id="stat-kd">0.00</span>
+        </div>
+      </div>
+      <div class="lobby-username" id="lobby-username">Player</div>
+      <button id="lobby-join-btn" class="primary-btn" type="button">JOIN GAME</button>
+    </div>
+    <script type="module" src="/src/lobby/main.ts"></script>
+  </body>
+</html>

@@ -39,7 +39,7 @@ export class NetworkManager {
     this.ammoPickups.bindNetwork(null, this.onLocalAmmoPickup);
   }
 
-  async connect(username: string, teamId: number): Promise<void> {
+  async connect(username: string): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
       _origin.set(spawn.x, spawn.y, spawn.z);
@@ -71,7 +71,7 @@ export class NetworkManager {
       (targetId) => this.roomClient.sendHit(targetId),
     );
 
-    await this.roomClient.connect(username, teamId);
+    await this.roomClient.connect(username);
     this.ammoPickups.bindNetwork(
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,
@@ -121,6 +121,10 @@ export class NetworkManager {
 
   getAllPlayers() {
     return this.roomClient.getAllPlayerSnapshots();
+  }
+
+  async disconnect(): Promise<void> {
+    await this.roomClient.disconnect();
   }
 
   update(delta: number, player: Player, controls: PlayerControls): void {

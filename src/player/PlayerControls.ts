@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
@@ -11,8 +10,18 @@ export class PlayerControls {
   private ammoHud: AmmoHud | null = null;
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
+  private onLeave: (() => void) | null = null;
+  private hasLockedOnce = false;
+
+  private readonly blocker: HTMLElement;
+  private readonly instructionsTitle: HTMLElement;
+  private readonly leaveButton: HTMLButtonElement;
 
   constructor(camera: THREE.Camera) {
+    this.blocker = document.getElementById('blocker')!;
+    this.instructionsTitle = this.blocker.querySelector('#instructions h1')!;
+    this.leaveButton = document.getElementById('leave-game-btn') as HTMLButtonElement;
+
     this.controls = new PointerLockControls(camera, document.body);
     this.initUI();
   }
@@ -33,17 +42,33 @@ export class PlayerControls {
     this.killFeedHud = hud;
   }
 
+  setLeaveHandler(handler: () => void): void {
+    this.onLeave = handler;
+  }
+
   get isLocked(): boolean {
     return this.controls.isLocked;
   }
 
   private initUI(): void {
-    const blocker = document.getElementById('blocker')!;
     const crosshair = document.getElementById('crosshair')!;
 
-    blocker.addEventListener('click', () => this.controls.lock());
+    this.blocker.addEventListener('click', () => {
+      if (!this.leaveButton.disabled) {
+        this.controls.lock();
+      }
+    });
+
+    this.leaveButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (this.leaveButton.disabled) return;
+      this.onLeave?.();
+    });
+
     this.controls.addEventListener('lock', () => {
-      blocker.style.display = 'none';
+      this.hasLockedOnce = true;
+      this.blocker.style.display = 'none';
+      this.leaveButton.hidden = true;
       crosshair.style.display = 'block';
       this.staminaHud?.setVisible(true);
       this.ammoHud?.setVisible(true);
@@ -51,15 +76,28 @@ export class PlayerControls {
       this.killFeedHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
     });
+
     this.controls.addEventListener('unlock', () => {
-      blocker.style.display = 'flex';
+      this.blocker.style.display = 'flex';
       crosshair.style.display = 'none';
       this.staminaHud?.setVisible(false);
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
+
+      if (this.hasLockedOnce) {
+        this.instructionsTitle.textContent = 'Paused';
+        this.leaveButton.hidden = false;
+      } else {
+        this.instructionsTitle.textContent = 'Click to play';
+        this.leaveButton.hidden = true;
+      }
     });
+  }
+
+  setLeaveEnabled(enabled: boolean): void {
+    this.leaveButton.disabled = !enabled;
   }
 
   private preventContextMenu = (e: MouseEvent): void => {
