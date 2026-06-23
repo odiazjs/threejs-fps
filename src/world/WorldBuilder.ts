@@ -1,14 +1,14 @@
-import * as THREE from 'three';
-import { SKY } from '../content/theme';
+import type * as THREE from 'three';
 import { SceneBuilder } from '../sceneBuilder';
 import { LevelBuilder } from './LevelBuilder';
 import { LightingBuilder } from './LightingBuilder';
+import { createSkyboxTexture } from './SkyboxBuilder';
 
 export class WorldBuilder {
   private sceneBuilder = new SceneBuilder();
 
   build(): this {
-    this.sceneBuilder.build().addBackground(new THREE.Color(SKY));
+    this.sceneBuilder.build().addBackground(createSkyboxTexture());
     return this;
   }
 

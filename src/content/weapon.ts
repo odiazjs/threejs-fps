@@ -98,5 +98,10 @@ export function createWeapon(): THREE.Group {
 
   weaponGroup.scale.set(0.1, 0.1, 0.1);
 
+  const muzzle = new THREE.Object3D();
+  muzzle.name = 'muzzle';
+  muzzle.position.set(3, 0.3, 0);
+  weaponGroup.add(muzzle);
+
   return weaponGroup;
 }

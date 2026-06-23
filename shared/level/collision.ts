@@ -7,9 +7,18 @@ import {
   PLAYER_HEIGHT,
   type Aabb,
 } from './levelData.js';
-import { getLevelColliders } from './kiloSectorColliders.js';
+import { getLevelColliders, MAP_HALF } from './kiloSectorColliders.js';
 
 export type { Aabb };
+
+export interface RaycastHit {
+  x: number;
+  y: number;
+  z: number;
+  distance: number;
+}
+
+const DEFAULT_RAYCAST_DISTANCE = 1000;
 
 const EPS = 1e-4;
 const MAX_JUMP_HEIGHT = (JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY) + 0.5;
@@ -61,6 +70,106 @@ export function getGroundHeight(feetX: number, feetZ: number, feetY: number): nu
   }
 
   return ground;
+}
+
+function rayAabbIntersect(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  box: Aabb,
+  maxDistance: number,
+): number | null {
+  let tMin = 0;
+  let tMax = maxDistance;
+
+  const axes: [number, number, number, number][] = [
+    [dx, ox, box.minX, box.maxX],
+    [dy, oy, box.minY, box.maxY],
+    [dz, oz, box.minZ, box.maxZ],
+  ];
+
+  for (const [d, o, min, max] of axes) {
+    if (Math.abs(d) < EPS) {
+      if (o < min || o > max) return null;
+      continue;
+    }
+
+    const inv = 1 / d;
+    let t0 = (min - o) * inv;
+    let t1 = (max - o) * inv;
+    if (t0 > t1) {
+      const swap = t0;
+      t0 = t1;
+      t1 = swap;
+    }
+
+    tMin = Math.max(tMin, t0);
+    tMax = Math.min(tMax, t1);
+    if (tMin > tMax) return null;
+  }
+
+  if (tMax < 0) return null;
+
+  const t = tMin >= 0 ? tMin : tMax;
+  return t <= maxDistance ? t : null;
+}
+
+function raycastGround(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  maxDistance: number,
+): number | null {
+  if (dy >= -EPS) return null;
+
+  const t = -oy / dy;
+  if (t < EPS || t > maxDistance) return null;
+
+  const hx = ox + dx * t;
+  const hz = oz + dz * t;
+  if (Math.abs(hx) > MAP_HALF || Math.abs(hz) > MAP_HALF) return null;
+
+  return t;
+}
+
+/** Raycast from the camera crosshair against level geometry. */
+export function raycastLevel(
+  ox: number,
+  oy: number,
+  oz: number,
+  dx: number,
+  dy: number,
+  dz: number,
+  maxDistance = DEFAULT_RAYCAST_DISTANCE,
+  minDistance = 0,
+): RaycastHit | null {
+  let closest: number | null = null;
+
+  for (const box of getLevelColliders()) {
+    const t = rayAabbIntersect(ox, oy, oz, dx, dy, dz, box, maxDistance);
+    if (t === null || t < minDistance) continue;
+    if (closest === null || t < closest) closest = t;
+  }
+
+  const groundT = raycastGround(ox, oy, oz, dx, dy, dz, maxDistance);
+  if (groundT !== null && groundT >= minDistance && (closest === null || groundT < closest)) {
+    closest = groundT;
+  }
+
+  if (closest === null) return null;
+
+  return {
+    x: ox + dx * closest,
+    y: oy + dy * closest,
+    z: oz + dz * closest,
+    distance: closest,
+  };
 }
 
 function resolveAxis(
