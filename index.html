@@ -80,21 +80,102 @@
       #stamina-hud.exhausted .stamina-label {
         color: #e5a088;
       }
+      #ammo-hud {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        min-width: 120px;
+        pointer-events: none;
+        z-index: 5;
+        text-align: right;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #ammo-hud .ammo-clip {
+        color: #fff;
+        font-size: 1.75rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.04em;
+        line-height: 1;
+      }
+      #ammo-hud .ammo-status {
+        margin-top: 0.5rem;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        color: #82dbdb;
+      }
+      #ammo-hud .ammo-reload-track {
+        margin-top: 0.4rem;
+        height: 6px;
+        border: 1px solid rgba(130, 219, 219, 0.45);
+        border-radius: 999px;
+        background: rgba(20, 24, 28, 0.55);
+        overflow: hidden;
+      }
+      #ammo-hud .ammo-reload-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #5eb8c4, #82dbdb);
+        transition: width 50ms linear;
+      }
+      #ammo-hud.reloading .ammo-clip {
+        color: rgba(255, 255, 255, 0.55);
+      }
+      #ammo-hud.empty .ammo-clip,
+      #ammo-hud.empty .ammo-status {
+        color: #e5a088;
+      }
+      #message-hud {
+        position: fixed;
+        top: 58%;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.35rem;
+        max-width: min(90vw, 320px);
+        pointer-events: none;
+        z-index: 6;
+      }
+      #message-hud .message-toast {
+        padding: 0.45rem 0.85rem;
+        border: 1px solid rgba(130, 219, 219, 0.35);
+        border-radius: 4px;
+        background: rgba(20, 24, 28, 0.78);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      }
     </style>
   </head>
   <body>
     <div id="blocker">
       <div id="instructions">
         <h1>Click to play</h1>
-        <p>WASD to move · Shift+W to sprint · Space to jump · Mouse to look</p>
+        <p>WASD to move · Shift+W to sprint · Space to jump · Mouse to look · R to reload</p>
       </div>
     </div>
     <div id="crosshair"></div>
+    <div id="message-hud"></div>
     <div id="stamina-hud" hidden>
       <div class="stamina-label">STAMINA</div>
       <div class="stamina-track">
         <div class="stamina-fill"></div>
         <div class="stamina-cooldown"></div>
+      </div>
+    </div>
+    <div id="ammo-hud" hidden>
+      <div class="ammo-clip">30 / 90</div>
+      <div class="ammo-status" hidden>RELOADING</div>
+      <div class="ammo-reload-track" hidden>
+        <div class="ammo-reload-fill"></div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 import type { StaminaHud } from '../ui/StaminaHud';
+import type { AmmoHud } from '../ui/AmmoHud';
 
 export class PlayerControls {
   readonly controls: PointerLockControls;
   private staminaHud: StaminaHud | null = null;
+  private ammoHud: AmmoHud | null = null;
 
   constructor(camera: THREE.Camera) {
     this.controls = new PointerLockControls(camera, document.body);
@@ -13,6 +15,10 @@ export class PlayerControls {
 
   setStaminaHud(hud: StaminaHud): void {
     this.staminaHud = hud;
+  }
+
+  setAmmoHud(hud: AmmoHud): void {
+    this.ammoHud = hud;
   }
 
   get isLocked(): boolean {
@@ -28,11 +34,19 @@ export class PlayerControls {
       blocker.style.display = 'none';
       crosshair.style.display = 'block';
       this.staminaHud?.setVisible(true);
+      this.ammoHud?.setVisible(true);
+      document.addEventListener('contextmenu', this.preventContextMenu);
     });
     this.controls.addEventListener('unlock', () => {
       blocker.style.display = 'flex';
       crosshair.style.display = 'none';
       this.staminaHud?.setVisible(false);
+      this.ammoHud?.setVisible(false);
+      document.removeEventListener('contextmenu', this.preventContextMenu);
     });
   }
+
+  private preventContextMenu = (e: MouseEvent): void => {
+    e.preventDefault();
+  };
 }

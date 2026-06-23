@@ -1,0 +1,89 @@
+import type { WeaponConfig } from '../content/weaponConfig';
+
+export interface AmmoState {
+  clip: number;
+  clipSize: number;
+  reserveRounds: number;
+  reloading: boolean;
+  reloadProgress: number;
+  outOfAmmo: boolean;
+  canReload: boolean;
+}
+
+export class WeaponAmmo {
+  private clip: number;
+  private reserveRounds: number;
+  private reloading = false;
+  private reloadRemaining = 0;
+  private reloadRoundsNeeded = 0;
+
+  constructor(private readonly config: WeaponConfig) {
+    this.clip = config.clipSize;
+    this.reserveRounds = config.reserveClips * config.clipSize;
+  }
+
+  private roundsToFillClip(): number {
+    return this.config.clipSize - this.clip;
+  }
+
+  getState(): AmmoState {
+    const { clipSize, reloadSec } = this.config;
+    const canReload = this.canReload();
+    const outOfAmmo =
+      this.clip <= 0 && !canReload && !this.reloading;
+
+    return {
+      clip: this.clip,
+      clipSize,
+      reserveRounds: this.reserveRounds,
+      reloading: this.reloading,
+      reloadProgress: this.reloading
+        ? 1 - this.reloadRemaining / reloadSec
+        : 0,
+      outOfAmmo,
+      canReload,
+    };
+  }
+
+  update(delta: number): void {
+    if (!this.reloading) return;
+
+    this.reloadRemaining -= delta;
+    if (this.reloadRemaining > 0) return;
+
+    this.reloading = false;
+    this.reloadRemaining = 0;
+    this.clip = this.config.clipSize;
+    this.reserveRounds = Math.max(0, this.reserveRounds - this.reloadRoundsNeeded);
+    this.reloadRoundsNeeded = 0;
+  }
+
+  canShoot(): boolean {
+    return !this.reloading && this.clip > 0;
+  }
+
+  tryShoot(): boolean {
+    if (!this.canShoot()) return false;
+    this.clip -= 1;
+    return true;
+  }
+
+  canReload(): boolean {
+    if (this.reloading) return false;
+    if (this.clip >= this.config.clipSize) return false;
+    return this.reserveRounds >= this.roundsToFillClip();
+  }
+
+  tryReload(): boolean {
+    if (!this.canReload()) return false;
+
+    this.reloadRoundsNeeded = this.roundsToFillClip();
+    this.reloading = true;
+    this.reloadRemaining = this.config.reloadSec;
+    return true;
+  }
+
+  addReserveClip(): void {
+    this.reserveRounds += this.config.clipSize;
+  }
+}
