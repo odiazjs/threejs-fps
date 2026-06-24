@@ -29,6 +29,7 @@ export class FriendsPanel {
   private readonly pendingGameInvites = new Map<string, GameInviteMessage>();
   private activeInvite: ActiveInvite | null = null;
   private launching = false;
+  private launchTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly lobby: LobbyClient) {
     this.root = document.getElementById('friends-panel')!;
@@ -69,7 +70,7 @@ export class FriendsPanel {
       this.setStatus('Game invite was cancelled');
     });
     this.lobby.onGameLaunch((data) => {
-      void this.launchGame(data.roomId, data.teamId);
+      this.launchGame(data.roomId, data.teamId);
     });
 
     this.renderFriends();
@@ -125,13 +126,29 @@ export class FriendsPanel {
     this.launching = true;
     this.startBtn.disabled = true;
     this.startBtn.textContent = 'STARTING...';
+    this.startLaunchTimeout();
     this.lobby.startGameInvite(this.activeInvite.inviteId);
   }
 
-  private async launchGame(roomId: string, teamId: number): Promise<void> {
+  private launchGame(roomId: string, teamId: number): void {
+    this.clearLaunchTimeout();
     setGameJoinIntent({ roomId, teamId, mode: 'join' });
-    await this.lobby.disconnect();
-    window.location.href = '/game.html';
+    void this.lobby.disconnect();
+    window.location.assign('/game.html');
+  }
+
+  private startLaunchTimeout(): void {
+    this.clearLaunchTimeout();
+    this.launchTimeout = setTimeout(() => {
+      if (!this.launching) return;
+      this.handleError('Game start timed out — try again');
+    }, 12_000);
+  }
+
+  private clearLaunchTimeout(): void {
+    if (!this.launchTimeout) return;
+    clearTimeout(this.launchTimeout);
+    this.launchTimeout = null;
   }
 
   private showRequestToast(data: FriendRequestMessage): void {
@@ -255,6 +272,7 @@ export class FriendsPanel {
   }
 
   private clearActiveInvite(): void {
+    this.clearLaunchTimeout();
     this.activeInvite = null;
     this.launching = false;
     this.updateStartButton();
@@ -313,6 +331,7 @@ export class FriendsPanel {
   }
 
   private handleError(message: string): void {
+    this.clearLaunchTimeout();
     if (this.launching) {
       this.launching = false;
       this.updateStartButton();

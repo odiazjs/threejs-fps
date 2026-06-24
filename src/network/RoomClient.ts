@@ -80,10 +80,10 @@ export class RoomClient {
   ): Promise<void> {
     const client = new Client(url);
     if (joinIntent?.mode === 'join' && joinIntent.roomId) {
-      this.room = await client.joinById(
+      this.room = await this.joinByIdWithRetry(
+        client,
         joinIntent.roomId,
         { username, teamId: joinIntent.teamId },
-        FpsState,
       );
     } else {
       this.room = await client.joinOrCreate('fps', { username }, FpsState);
@@ -91,6 +91,26 @@ export class RoomClient {
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
     this.bindKillMessages();
+  }
+
+  private async joinByIdWithRetry(
+    client: Client,
+    roomId: string,
+    options: { username: string; teamId: number },
+    attempts = 10,
+  ): Promise<Room> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        return await client.joinById(roomId, options, FpsState);
+      } catch (error) {
+        lastError = error;
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
   }
 
   bindState(): void {

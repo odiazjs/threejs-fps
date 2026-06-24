@@ -212,20 +212,30 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
         return;
       }
 
-      if (!invite.accepted || !invite.guestClient) {
+      if (!invite.accepted) {
         this.sendError(client, 'Your friend has not accepted yet');
+        return;
+      }
+
+      const guestClient =
+        this.clientsByUsername.get(usernameKey(invite.guestUsername)) ?? invite.guestClient;
+      if (!guestClient) {
+        this.sendError(client, 'Your friend left the lobby');
         return;
       }
 
       try {
         const fpsRoom = await matchMaker.createRoom('fps', { inviteMatch: true });
         const roomId = fpsRoom.roomId;
+        if (!roomId) {
+          throw new Error('matchmaker returned no room id');
+        }
 
         const hostLaunch: GameLaunchMessage = { roomId, teamId: 0 };
         const guestLaunch: GameLaunchMessage = { roomId, teamId: 1 };
 
-        invite.hostClient.send('gameLaunch', hostLaunch);
-        invite.guestClient.send('gameLaunch', guestLaunch);
+        client.send('gameLaunch', hostLaunch);
+        guestClient.send('gameLaunch', guestLaunch);
         this.clearInvite(invite.inviteId);
       } catch (error) {
         console.error('[LobbyRoom] failed to create fps room', error);

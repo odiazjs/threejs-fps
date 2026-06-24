@@ -33,7 +33,10 @@ export class LobbyClient {
     if (!this.room) return;
     const room = this.room;
     this.room = null;
-    await room.leave(true);
+    await Promise.race([
+      room.leave(true),
+      new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+    ]);
   }
 
   sendFriendRequest(targetUsername: string): void {
