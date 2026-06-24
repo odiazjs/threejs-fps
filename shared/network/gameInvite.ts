@@ -29,11 +29,6 @@ export interface GameLaunchMessage {
   teamId: number;
 }
 
-export interface PrepareGameLaunchMessage {
-  inviteId: string;
-  teamId: number;
-}
-
 export interface SendGameInviteMessage {
   targetUsername: string;
 }
@@ -46,9 +41,4 @@ export interface RespondGameInviteMessage {
 
 export interface StartGameInviteMessage {
   inviteId: string;
-}
-
-export interface ReportGameRoomMessage {
-  inviteId: string;
-  roomId: string;
 }

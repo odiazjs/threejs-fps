@@ -1,4 +1,4 @@
-import { Client, Room } from 'colyseus';
+import { Client, Room, matchMaker } from 'colyseus';
 import type {
   FriendRequestErrorMessage,
   FriendRequestMessage,
@@ -14,8 +14,6 @@ import type {
   GameInviteMessage,
   GameInviteSentMessage,
   GameLaunchMessage,
-  PrepareGameLaunchMessage,
-  ReportGameRoomMessage,
   RespondGameInviteMessage,
   SendGameInviteMessage,
   StartGameInviteMessage,
@@ -202,7 +200,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       invite.hostClient.send('gameInviteAccepted', accepted);
     },
 
-    startGameInvite: (client: Client, data: StartGameInviteMessage) => {
+    startGameInvite: async (client: Client, data: StartGameInviteMessage) => {
       const invite = this.invitesById.get(data.inviteId);
       if (!invite) {
         this.sendError(client, 'Invite is no longer active');
@@ -219,28 +217,20 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
         return;
       }
 
-      const prepare: PrepareGameLaunchMessage = {
-        inviteId: invite.inviteId,
-        teamId: 0,
-      };
-      client.send('prepareGameLaunch', prepare);
-    },
+      try {
+        const fpsRoom = await matchMaker.createRoom('fps', { inviteMatch: true });
+        const roomId = fpsRoom.roomId;
 
-    reportGameRoom: (client: Client, data: ReportGameRoomMessage) => {
-      const invite = this.invitesById.get(data.inviteId);
-      if (!invite) return;
-      if (invite.hostClient.sessionId !== client.sessionId) return;
-      if (!invite.accepted || !invite.guestClient) return;
+        const hostLaunch: GameLaunchMessage = { roomId, teamId: 0 };
+        const guestLaunch: GameLaunchMessage = { roomId, teamId: 1 };
 
-      const roomId = data.roomId.trim();
-      if (!roomId) return;
-
-      const hostLaunch: GameLaunchMessage = { roomId, teamId: 0 };
-      const guestLaunch: GameLaunchMessage = { roomId, teamId: 1 };
-
-      invite.hostClient.send('gameLaunch', hostLaunch);
-      invite.guestClient.send('gameLaunch', guestLaunch);
-      this.clearInvite(invite.inviteId);
+        invite.hostClient.send('gameLaunch', hostLaunch);
+        invite.guestClient.send('gameLaunch', guestLaunch);
+        this.clearInvite(invite.inviteId);
+      } catch (error) {
+        console.error('[LobbyRoom] failed to create fps room', error);
+        this.sendError(client, 'Could not create game room');
+      }
     },
   };
 
