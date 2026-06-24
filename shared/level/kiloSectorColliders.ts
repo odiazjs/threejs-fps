@@ -1,39 +1,36 @@
 import type { Aabb } from './levelData.js';
 
-export const FLOOR_SIZE = 60;
+export const FLOOR_SIZE = 120;
 export const MAP_HALF = FLOOR_SIZE / 2;
 
 const COLUMN_SIZE = 1.5;
 const COLUMN_HEIGHT = 3;
 const COLUMN_HALF = COLUMN_SIZE / 2;
 
-const WALL_HEIGHT = 3.5;
-const WALL_THICKNESS = 1.5;
-const WALL_SPAN = FLOOR_SIZE + WALL_THICKNESS;
-const WALL_OFFSET = MAP_HALF + WALL_THICKNESS / 2;
-
 export const COLUMN_POSITIONS = [
-  { x: -16, z: -16 },
-  { x: 16, z: -16 },
-  { x: -16, z: 16 },
-  { x: 16, z: 16 },
+  { x: -40, z: -40 },
+  { x: 40, z: -40 },
+  { x: -40, z: 40 },
+  { x: 40, z: 40 },
   { x: 0, z: 0 },
-  { x: -16, z: 0 },
-  { x: 16, z: 0 },
-  { x: 0, z: -16 },
-  { x: 0, z: 16 },
-  { x: 10, z: 10 },
+  { x: -40, z: 0 },
+  { x: 40, z: 0 },
+  { x: 0, z: -40 },
+  { x: 0, z: 40 },
+  { x: 28, z: 28 },
 ] as const;
 
 const SPAWN_POINTS = [
-  { x: 0, z: -24 },
-  { x: 0, z: 24 },
-  { x: -24, z: 0 },
-  { x: 24, z: 0 },
-  { x: -20, z: -20 },
-  { x: 20, z: -20 },
-  { x: -20, z: 20 },
-  { x: 20, z: 20 },
+  { x: 0, z: -50 },
+  { x: 0, z: 50 },
+  { x: -50, z: 0 },
+  { x: 50, z: 0 },
+  { x: -44, z: -44 },
+  { x: 44, z: -44 },
+  { x: -44, z: 44 },
+  { x: 44, z: 44 },
+  { x: -30, z: 30 },
+  { x: 30, z: -30 },
 ] as const;
 
 export function pickSpawnPoint(playerIndex: number): { x: number; z: number } {
@@ -55,47 +52,6 @@ function columnAabb(x: number, z: number): Aabb {
   };
 }
 
-function wallAabb(
-  centerX: number,
-  centerZ: number,
-  width: number,
-  depth: number,
-): Aabb {
-  return {
-    minX: centerX - width / 2,
-    maxX: centerX + width / 2,
-    minY: 0,
-    maxY: WALL_HEIGHT,
-    minZ: centerZ - depth / 2,
-    maxZ: centerZ + depth / 2,
-  };
-}
-
-function getBoundaryColliders(): Aabb[] {
-  const t = WALL_THICKNESS;
-  const o = WALL_OFFSET;
-  const span = WALL_SPAN;
-
-  return [
-    wallAabb(0, -o, span, t),
-    wallAabb(0, o, span, t),
-    wallAabb(-o, 0, t, span),
-    wallAabb(o, 0, t, span),
-  ];
-}
-
 export function getLevelColliders(): Aabb[] {
-  return [
-    ...COLUMN_POSITIONS.map(({ x, z }) => columnAabb(x, z)),
-    ...getBoundaryColliders(),
-  ];
+  return COLUMN_POSITIONS.map(({ x, z }) => columnAabb(x, z));
 }
-
-export const BOUNDARY_WALL = {
-  height: WALL_HEIGHT,
-  thickness: WALL_THICKNESS,
-  span: WALL_SPAN,
-  offset: WALL_OFFSET,
-  /** Lift wall meshes above the floor top to avoid z-fighting. */
-  floorGap: 0.03,
-} as const;

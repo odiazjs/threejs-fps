@@ -8,6 +8,7 @@ import {
   type Aabb,
 } from './levelData.js';
 import { getLevelColliders, MAP_HALF } from './kiloSectorColliders.js';
+import { sampleGroundHeight } from './terrainHeight.js';
 
 export type { Aabb };
 
@@ -21,6 +22,7 @@ export interface RaycastHit {
 const DEFAULT_RAYCAST_DISTANCE = 1000;
 
 const EPS = 1e-4;
+const GROUND_RAY_CLEARANCE = 0.06;
 const MAX_JUMP_HEIGHT = (JUMP_VELOCITY * JUMP_VELOCITY) / (2 * GRAVITY) + 0.5;
 
 export interface PlayerPhysicsState {
@@ -60,7 +62,7 @@ function overlapsXZ(feetX: number, feetZ: number, box: Aabb): boolean {
 }
 
 export function getGroundHeight(feetX: number, feetZ: number, feetY: number): number {
-  let ground = 0;
+  let ground = sampleGroundHeight(feetX, feetZ);
 
   for (const box of getLevelColliders()) {
     if (!overlapsXZ(feetX, feetZ, box)) continue;
@@ -125,11 +127,41 @@ function raycastGround(
   dy: number,
   dz: number,
   maxDistance: number,
+  minDistance = 0,
 ): number | null {
   if (dy >= -EPS) return null;
 
-  const t = -oy / dy;
-  if (t < EPS || t > maxDistance) return null;
+  const startGround = sampleGroundHeight(ox, oz);
+  if (oy <= startGround + GROUND_RAY_CLEARANCE) return null;
+
+  let lo = minDistance;
+  let hi = maxDistance;
+
+  const endX = ox + dx * hi;
+  const endZ = oz + dz * hi;
+  const endY = oy + dy * hi;
+  if (Math.abs(endX) <= MAP_HALF && Math.abs(endZ) <= MAP_HALF) {
+    const endGround = sampleGroundHeight(endX, endZ);
+    if (endY > endGround + GROUND_RAY_CLEARANCE) return null;
+  }
+
+  for (let i = 0; i < 28; i++) {
+    const t = (lo + hi) * 0.5;
+    const px = ox + dx * t;
+    const py = oy + dy * t;
+    const pz = oz + dz * t;
+
+    if (Math.abs(px) > MAP_HALF || Math.abs(pz) > MAP_HALF) {
+      hi = t;
+      continue;
+    }
+
+    if (py > sampleGroundHeight(px, pz) + GROUND_RAY_CLEARANCE) lo = t;
+    else hi = t;
+  }
+
+  const t = hi;
+  if (t <= minDistance + EPS || t > maxDistance) return null;
 
   const hx = ox + dx * t;
   const hz = oz + dz * t;
@@ -157,7 +189,7 @@ export function raycastLevel(
     if (closest === null || t < closest) closest = t;
   }
 
-  const groundT = raycastGround(ox, oy, oz, dx, dy, dz, maxDistance);
+  const groundT = raycastGround(ox, oy, oz, dx, dy, dz, maxDistance, minDistance);
   if (groundT !== null && groundT >= minDistance && (closest === null || groundT < closest)) {
     closest = groundT;
   }
@@ -224,6 +256,14 @@ function resolveCeiling(feetX: number, feetY: number, feetZ: number, nextFeetY: 
   return cappedFeetY;
 }
 
+function clampToMapBounds(x: number, z: number): { x: number; z: number } {
+  const limit = MAP_HALF - PLAYER_HALF_WIDTH - 0.5;
+  return {
+    x: Math.max(-limit, Math.min(limit, x)),
+    z: Math.max(-limit, Math.min(limit, z)),
+  };
+}
+
 export function movePlayer(
   feetX: number,
   feetY: number,
@@ -234,8 +274,9 @@ export function movePlayer(
   const colliders = getLevelColliders();
   const x = resolveAxis(feetX, feetY, feetZ, 'x', deltaX, colliders);
   const z = resolveAxis(x, feetY, feetZ, 'z', deltaZ, colliders);
+  const bounded = clampToMapBounds(x, z);
 
-  return { x, y: feetY, z };
+  return { x: bounded.x, y: feetY, z: bounded.z };
 }
 
 export function stepPlayerPhysics(

@@ -6,6 +6,8 @@ import {
   PROJECTILE_SPAWN_OFFSET,
 } from './projectileConfig';
 
+const AIM_RAY_MIN_DISTANCE = 0.35;
+
 const _cameraOrigin = new THREE.Vector3();
 const _cameraDirection = new THREE.Vector3();
 const _aimPoint = new THREE.Vector3();
@@ -44,6 +46,7 @@ export function readMuzzleFirePose(
     _cameraDirection.y,
     _cameraDirection.z,
     MAX_AIM_DISTANCE,
+    AIM_RAY_MIN_DISTANCE,
   );
 
   if (hit) {

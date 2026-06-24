@@ -18,6 +18,8 @@ import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
+import type { TerrainBuilder } from '../world/TerrainBuilder';
+import type { DroneField } from '../world/DroneField';
 
 export class Game {
   private scene!: THREE.Scene;
@@ -34,6 +36,8 @@ export class Game {
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
   private renderContext = new RenderContext();
+  private terrain: TerrainBuilder | null = null;
+  private droneField: DroneField | null = null;
   private clock = new THREE.Clock();
   private wasAlive = true;
   private running = false;
@@ -77,11 +81,15 @@ export class Game {
   }
 
   private initWorld(): void {
-    this.scene = new WorldBuilder()
+    const world = new WorldBuilder()
       .build()
       .withLighting()
+      .withTerrain()
       .withLevel()
-      .getScene();
+      .withDrones();
+    this.terrain = world.getTerrain();
+    this.droneField = world.getDroneField();
+    this.scene = world.getScene();
     this.projectiles = new ProjectileManager(this.scene);
     this.ammoPickups = new AmmoPickups(this.scene);
   }
@@ -170,6 +178,8 @@ export class Game {
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
+    this.terrain?.update(this.clock.getElapsedTime());
+    this.droneField?.update(this.network?.getWorldTime() ?? 0);
 
     if (this.playerControls.isLocked && this.network) {
       this.ammoPickups.tryPickup(
