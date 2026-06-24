@@ -20,7 +20,7 @@ joinBtn.addEventListener('click', () => {
 });
 
 lobbyClient.connect(session.username).then(() => {
-  new FriendsPanel(lobbyClient, session.username);
+  new FriendsPanel(lobbyClient);
 }).catch((error) => {
   console.warn('[Lobby] failed to connect', error);
   const status = document.getElementById('friends-status');

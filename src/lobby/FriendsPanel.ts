@@ -30,10 +30,7 @@ export class FriendsPanel {
   private activeInvite: ActiveInvite | null = null;
   private launching = false;
 
-  constructor(
-    private readonly lobby: LobbyClient,
-    private readonly username: string,
-  ) {
+  constructor(private readonly lobby: LobbyClient) {
     this.root = document.getElementById('friends-panel')!;
     this.list = document.getElementById('friends-list')!;
     this.input = document.getElementById('friend-username-input') as HTMLInputElement;
@@ -55,7 +52,7 @@ export class FriendsPanel {
       this.setStatus(`Friend request sent to ${data.toUsername}`);
     });
     this.lobby.onFriendRequestResult((data) => this.handleResult(data));
-    this.lobby.onFriendRequestError((data) => this.setStatus(data.message));
+    this.lobby.onFriendRequestError((data) => this.handleError(data.message));
 
     this.lobby.onGameInvite((data) => this.showGameInviteToast(data));
     this.lobby.onGameInviteSent((data) => this.handleInviteSent(data));
@@ -70,9 +67,6 @@ export class FriendsPanel {
       this.removeGameInviteToast(data.inviteId);
       this.pendingGameInvites.delete(data.inviteId);
       this.setStatus('Game invite was cancelled');
-    });
-    this.lobby.onPrepareGameLaunch((data) => {
-      void this.prepareHostedGame(data.inviteId, data.teamId);
     });
     this.lobby.onGameLaunch((data) => {
       void this.launchGame(data.roomId, data.teamId);
@@ -132,18 +126,6 @@ export class FriendsPanel {
     this.startBtn.disabled = true;
     this.startBtn.textContent = 'STARTING...';
     this.lobby.startGameInvite(this.activeInvite.inviteId);
-  }
-
-  private async prepareHostedGame(inviteId: string, teamId: number): Promise<void> {
-    try {
-      await this.lobby.createHostedGameRoom(this.username, inviteId, teamId);
-    } catch (error) {
-      console.warn('[Lobby] failed to create game room', error);
-      this.launching = false;
-      this.startBtn.disabled = false;
-      this.startBtn.textContent = 'START GAME';
-      this.setStatus('Could not create game room');
-    }
   }
 
   private async launchGame(roomId: string, teamId: number): Promise<void> {
@@ -328,6 +310,14 @@ export class FriendsPanel {
       item.append(name, inviteBtn);
       this.list.appendChild(item);
     }
+  }
+
+  private handleError(message: string): void {
+    if (this.launching) {
+      this.launching = false;
+      this.updateStartButton();
+    }
+    this.setStatus(message);
   }
 
   private setStatus(message: string): void {

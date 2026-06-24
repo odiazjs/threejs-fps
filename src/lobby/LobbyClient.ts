@@ -12,10 +12,8 @@ import type {
   GameInviteMessage,
   GameInviteSentMessage,
   GameLaunchMessage,
-  PrepareGameLaunchMessage,
 } from '../../shared/network/gameInvite';
 import { LobbyState } from '../../shared/schema/LobbyState';
-import { FpsState } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
 
 export class LobbyClient {
@@ -66,28 +64,6 @@ export class LobbyClient {
     this.room?.send('startGameInvite', { inviteId });
   }
 
-  reportGameRoom(inviteId: string, roomId: string): void {
-    this.room?.send('reportGameRoom', { inviteId, roomId });
-  }
-
-  async createHostedGameRoom(
-    username: string,
-    inviteId: string,
-    teamId: number,
-    url = SERVER_URL,
-  ): Promise<string> {
-    const client = new Client(url);
-    const fpsRoom = await client.create(
-      'fps',
-      { username, teamId, inviteMatch: true },
-      FpsState,
-    );
-    const roomId = fpsRoom.roomId;
-    this.reportGameRoom(inviteId, roomId);
-    await fpsRoom.leave(true);
-    return roomId;
-  }
-
   onFriendRequest(handler: (data: FriendRequestMessage) => void): void {
     this.friendRequestHandler = handler;
   }
@@ -124,10 +100,6 @@ export class LobbyClient {
     this.gameInviteCancelledHandler = handler;
   }
 
-  onPrepareGameLaunch(handler: (data: PrepareGameLaunchMessage) => void): void {
-    this.prepareGameLaunchHandler = handler;
-  }
-
   onGameLaunch(handler: (data: GameLaunchMessage) => void): void {
     this.gameLaunchHandler = handler;
   }
@@ -141,7 +113,6 @@ export class LobbyClient {
   private gameInviteAcceptedHandler: ((data: GameInviteAcceptedMessage) => void) | null = null;
   private gameInviteDeclinedHandler: ((data: GameInviteDeclinedMessage) => void) | null = null;
   private gameInviteCancelledHandler: ((data: GameInviteCancelledMessage) => void) | null = null;
-  private prepareGameLaunchHandler: ((data: PrepareGameLaunchMessage) => void) | null = null;
   private gameLaunchHandler: ((data: GameLaunchMessage) => void) | null = null;
 
   private bindMessages(): void {
@@ -171,9 +142,6 @@ export class LobbyClient {
     });
     this.room?.onMessage('gameInviteCancelled', (data: GameInviteCancelledMessage) => {
       this.gameInviteCancelledHandler?.(data);
-    });
-    this.room?.onMessage('prepareGameLaunch', (data: PrepareGameLaunchMessage) => {
-      this.prepareGameLaunchHandler?.(data);
     });
     this.room?.onMessage('gameLaunch', (data: GameLaunchMessage) => {
       this.gameLaunchHandler?.(data);
