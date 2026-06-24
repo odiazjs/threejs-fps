@@ -1,10 +1,9 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../shared/level/collision';
-import { PLASMA_RIFLE_CONFIG } from '../content/weaponConfig';
+import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { ProjectileManager } from '../combat/ProjectileManager';
-import { WeaponAmmo, type AmmoState } from '../combat/WeaponAmmo';
+import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation } from '../combat/WeaponLoadout';
 import { readMuzzleFirePose } from '../combat/aiming';
-import { createWeapon } from '../content/weapon';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -16,8 +15,16 @@ import {
   REMOTE_AIM_HEIGHT,
 } from './RemoteAvatar';
 import { RemoteHealthBar } from './RemoteHealthBar';
-import { applyPlayerAim } from './playerAim';
-import { WeaponPose, WEAPON_HIP_OFFSET } from './WeaponPose';
+import { DamageNumberStack } from '../ui/DamageNumberStack';
+import { applyPlayerAim, readWorldPlayerAim } from './playerAim';
+import { WeaponPose } from './WeaponPose';
+import { getReloadState } from '../../shared/combat/reload';
+import {
+  isWeaponId,
+  loadoutSlotFromKey,
+  LOADOUT_WEAPON_IDS,
+  type WeaponId,
+} from '../../shared/content/weaponIds';
 
 const MOVE_SPEED = 5;
 const REMOTE_INTERPOLATION_SPEED = 12;
@@ -31,12 +38,16 @@ function lerpAngle(from: number, to: number, t: number): number {
 }
 
 export type ShootCallback = (origin: THREE.Vector3, direction: THREE.Vector3) => void;
+export type WeaponSwitchCallback = (slot: number, weaponId: WeaponId) => void;
+export type ReloadNetworkCallback = (weaponId: WeaponId) => void;
 
 export class Player {
   readonly object = new THREE.Group();
   readonly camera: THREE.PerspectiveCamera | null;
+  /** Pointer-lock target — mouse look applies here. */
+  readonly aimRig: THREE.Group | null;
 
-  private weapon = createWeapon();
+  private loadout: WeaponLoadout | null = null;
   private forward = new THREE.Vector3();
   private right = new THREE.Vector3();
   private targetPosition = new THREE.Vector3();
@@ -48,16 +59,25 @@ export class Player {
   private sprint = new SprintStamina();
   private headBob = new HeadBob();
   private headRig: THREE.Group | null = null;
+  private yawRecoilRig: THREE.Group | null = null;
+  private pitchRecoilRig: THREE.Group | null = null;
   private bodyRoot: THREE.Group | null = null;
   private lookRig: THREE.Group | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
+  private damageNumberStack: DamageNumberStack | null = null;
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
-  private ammo: WeaponAmmo | null = null;
   private onShoot: ShootCallback | null = null;
+  private onReloadNetwork: ReloadNetworkCallback | null = null;
+  private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
+  private targetReloadEndAt = 0;
+  private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
+  private remoteDisplayedWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
+  private readonly remoteWeaponBasePosition = new THREE.Vector3();
+  private readonly remoteWeaponBaseRotation = new THREE.Euler();
+  private readonly activeMeshBaseRotation = new THREE.Euler();
   private fireCooldown = 0;
-  private readonly fireInterval = 1 / PLASMA_RIFLE_CONFIG.fireRate;
   private projectileSpawnOptions: {
     canHitPlayers: boolean;
     ownerTeamId: number;
@@ -68,8 +88,13 @@ export class Player {
   private hp = 100;
 
   private constructor(local: boolean, bodyColor = 0x6a9fd4) {
+    this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS);
+
     if (local) {
       this.headRig = new THREE.Group();
+      this.yawRecoilRig = new THREE.Group();
+      this.aimRig = new THREE.Group();
+      this.pitchRecoilRig = new THREE.Group();
       this.camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
@@ -77,13 +102,17 @@ export class Player {
         1000,
       );
       this.camera.position.set(0, EYE_HEIGHT, 0);
-      this.headRig.add(this.camera);
+      this.pitchRecoilRig.add(this.camera);
+      this.aimRig.add(this.pitchRecoilRig);
+      this.yawRecoilRig.add(this.aimRig);
+      this.headRig.add(this.yawRecoilRig);
       this.object.add(this.headRig);
       this.weaponPose = new WeaponPose();
-      this.ammo = new WeaponAmmo(PLASMA_RIFLE_CONFIG);
-      this.attachWeapon(this.camera, LOCAL_WEAPON_ROTATION);
+      this.weaponPose.setViewConfig(this.loadout.getActive().config.view);
+      this.loadout.attach(this.camera, LOCAL_WEAPON_ROTATION, 'local');
     } else {
       this.camera = null;
+      this.aimRig = null;
       this.bodyRoot = new THREE.Group();
       this.lookRig = new THREE.Group();
       this.lookRig.position.y = REMOTE_AIM_HEIGHT;
@@ -92,10 +121,17 @@ export class Player {
       this.object.add(this.bodyRoot);
       this.object.add(this.lookRig);
       this.lookRig.add(createRemoteHead(bodyColor));
-      this.attachWeapon(this.lookRig, REMOTE_WEAPON_ROTATION);
+      this.weaponPose = new WeaponPose();
+      const defaultHip = this.loadout.getActive().config.view.hip;
+      this.loadout.attach(this.lookRig, REMOTE_WEAPON_ROTATION, 'remote');
+      this.remoteWeaponBasePosition.set(defaultHip.x, defaultHip.y, defaultHip.z);
+      this.remoteWeaponBaseRotation.copy(REMOTE_WEAPON_ROTATION);
 
       this.remoteHealthBar = new RemoteHealthBar();
       this.lookRig.add(this.remoteHealthBar.object);
+
+      this.damageNumberStack = new DamageNumberStack();
+      this.lookRig.add(this.damageNumberStack.object);
     }
   }
 
@@ -117,16 +153,32 @@ export class Player {
     return this.sprint.getState();
   }
 
-  getAmmoState(): AmmoState | null {
-    return this.ammo?.getState() ?? null;
+  getAmmoState(): LoadoutAmmoState | null {
+    return this.loadout?.getAmmoState() ?? null;
+  }
+
+  getActiveWeaponId(): WeaponId {
+    return this.loadout?.getActiveWeaponId() ?? LOADOUT_WEAPON_IDS[0];
+  }
+
+  getActiveDamage(): number {
+    return this.loadout?.getActiveDamage() ?? 5;
   }
 
   addReserveClip(): void {
-    this.ammo?.addReserveClip();
+    this.loadout?.addReserveToActive();
   }
 
   setShootCallback(callback: ShootCallback | null): void {
     this.onShoot = callback;
+  }
+
+  setReloadNetworkCallback(callback: ReloadNetworkCallback | null): void {
+    this.onReloadNetwork = callback;
+  }
+
+  setWeaponSwitchNetworkCallback(callback: WeaponSwitchCallback | null): void {
+    this.onWeaponSwitchNetwork = callback;
   }
 
   setProjectileSpawnOptions(ownerTeamId: number): void {
@@ -156,6 +208,12 @@ export class Player {
     return this.object.position;
   }
 
+  getNetworkAim(): { yaw: number; pitch: number } {
+    if (!this.camera) return { yaw: 0, pitch: 0 };
+    this.object.updateMatrixWorld(true);
+    return readWorldPlayerAim(this.camera);
+  }
+
   setEyePosition(x: number, y: number, z: number): void {
     this.object.position.set(x, y - EYE_HEIGHT, z);
     this.object.rotation.set(0, 0, 0);
@@ -173,9 +231,16 @@ export class Player {
       this.headBob.apply(this.headRig, false);
     }
 
-    applyPlayerAim(this.camera, 0, 0);
+    applyPlayerAim(this.aimRig!, 0, 0);
+    this.loadout?.reset();
     this.weaponPose?.reset();
-    this.weaponPose?.apply(this.weapon);
+    if (this.loadout) {
+      this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
+    }
+    if (this.yawRecoilRig && this.pitchRecoilRig) {
+      this.applyActiveRecoilAim();
+    }
+    this.applyActiveWeaponPose();
     this.weaponPose?.applyCamera(this.camera);
     this.fireCooldown = 0;
   }
@@ -184,6 +249,11 @@ export class Player {
     this.targetPosition.set(snapshot.x, snapshot.y - EYE_HEIGHT, snapshot.z);
     this.targetYaw = snapshot.yaw;
     this.targetPitch = snapshot.pitch;
+    this.targetReloadEndAt = snapshot.reloadEndAt;
+    if (isWeaponId(snapshot.activeWeaponId)) {
+      this.targetActiveWeaponId = snapshot.activeWeaponId;
+      this.loadout?.setRemoteActiveWeapon(snapshot.activeWeaponId);
+    }
     this.teamId = snapshot.teamId;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
@@ -192,6 +262,9 @@ export class Player {
     if (!this.camera) {
       this.object.visible = snapshot.alive;
       this.remoteHealthBar?.update(snapshot.hp, snapshot.alive, snapshot.teamId, snapshot.username);
+      if (!snapshot.alive) {
+        this.damageNumberStack?.clear();
+      }
     }
 
     if (snap) {
@@ -216,6 +289,49 @@ export class Player {
     this.remoteHealthBar?.updateLayout(camera);
   }
 
+  showDamageNumber(amount: number): void {
+    this.damageNumberStack?.push(amount);
+  }
+
+  updateDamageNumbers(delta: number, camera: THREE.Camera): void {
+    this.damageNumberStack?.update(delta, camera);
+  }
+
+  updateRemoteWeapon(delta: number, worldTime: number): void {
+    if (this.camera || !this.weaponPose || !this.loadout) return;
+
+    const weaponChanged = this.targetActiveWeaponId !== this.remoteDisplayedWeaponId;
+    if (weaponChanged) {
+      this.loadout.setRemoteActiveWeapon(this.targetActiveWeaponId);
+      this.remoteDisplayedWeaponId = this.targetActiveWeaponId;
+      this.weaponPose.setViewConfig(this.loadout.getActive().config.view);
+      this.weaponPose.startSwitch(this.loadout.getSwitchReadySec());
+    }
+
+    const active = this.loadout.getActive();
+    const { hip } = active.config.view;
+    this.remoteWeaponBasePosition.set(hip.x, hip.y, hip.z);
+    resolveWeaponMeshRotation(
+      REMOTE_WEAPON_ROTATION,
+      active.config.view,
+      'remote',
+      this.remoteWeaponBaseRotation,
+    );
+    this.loadout.applyActiveRotation(REMOTE_WEAPON_ROTATION, 'remote');
+    const { reloading, progress } = getReloadState(
+      this.targetReloadEndAt,
+      worldTime,
+      this.targetActiveWeaponId,
+    );
+
+    this.weaponPose.update(delta, false, reloading, progress);
+    this.weaponPose.applyRemoteReload(
+      active.mesh,
+      this.remoteWeaponBasePosition,
+      this.remoteWeaponBaseRotation,
+    );
+  }
+
   update(
     delta: number,
     input: KeyboardInput,
@@ -223,7 +339,7 @@ export class Player {
     canAct: boolean,
     projectiles: ProjectileManager | null = null,
   ): void {
-    if (!this.camera) return;
+    if (!this.camera || !this.loadout) return;
 
     if (!canAct) {
       this.headBob.update(delta, false, false);
@@ -231,15 +347,45 @@ export class Player {
       return;
     }
 
-    this.weaponPose?.update(delta, pointer.isPressed(POINTER_ADS));
-    this.weaponPose?.apply(this.weapon);
-    this.weaponPose?.applyCamera(this.camera);
-
-    this.ammo?.update(delta);
+    this.trySwitchWeapon(input);
 
     if (input.isJustPressed('KeyR')) {
-      this.ammo?.tryReload();
+      if (
+        this.loadout.isWeaponReady() &&
+        !this.weaponPose?.isSwitching() &&
+        this.loadout.getActive().ammo.tryReload()
+      ) {
+        this.onReloadNetwork?.(this.loadout.getActiveWeaponId());
+      }
     }
+
+    const ads = pointer.isPressed(POINTER_ADS);
+    const active = this.loadout.getActive();
+    const ammoState = active.ammo.getState();
+    const shooting = this.isFiring(pointer, active.config.fireMode);
+
+    this.loadout.update(delta);
+
+    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.update(
+      delta,
+      ads,
+      ammoState.reloading,
+      ammoState.reloadProgress,
+    );
+    active.recoil.update(delta, shooting, ads);
+    if (this.yawRecoilRig && this.pitchRecoilRig) {
+      this.applyActiveRecoilAim();
+    }
+    this.applyActiveWeaponPose();
+    this.weaponPose?.applyCamera(this.camera);
+    const baseRotation = this.getActiveMeshBaseRotation();
+    const weaponRotation = this.weaponPose?.getWeaponRotation(baseRotation) ?? baseRotation;
+    active.recoil.applyWeaponVisual(
+      active.mesh,
+      weaponRotation,
+      this.weaponPose?.adsBlend ?? 0,
+    );
 
     this.updateFire(delta, pointer, projectiles);
 
@@ -314,6 +460,10 @@ export class Player {
   dispose(): void {
     this.remoteHealthBar?.dispose();
     this.remoteHealthBar = null;
+    this.damageNumberStack?.dispose();
+    this.damageNumberStack = null;
+    this.loadout?.dispose();
+    this.loadout = null;
     this.object.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
@@ -323,31 +473,61 @@ export class Player {
     this.object.removeFromParent();
   }
 
+  private trySwitchWeapon(input: KeyboardInput): void {
+    if (!this.loadout) return;
+
+    for (const code of ['Digit1', 'Digit2'] as const) {
+      if (!input.isJustPressed(code)) continue;
+      const slot = loadoutSlotFromKey(code);
+      if (slot === null) continue;
+      if (!this.loadout.trySwitch(slot)) continue;
+
+      this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
+      this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
+      this.loadout.applyActiveRotation(LOCAL_WEAPON_ROTATION, 'local');
+      this.onWeaponSwitchNetwork?.(slot, this.loadout.getActiveWeaponId());
+      break;
+    }
+  }
+
+  private isFiring(pointer: PointerInput, fireMode: 'auto' | 'semi'): boolean {
+    return fireMode === 'semi'
+      ? pointer.isJustPressed(POINTER_SHOOT)
+      : pointer.isPressed(POINTER_SHOOT);
+  }
+
   private updateFire(
     delta: number,
     pointer: PointerInput,
     projectiles: ProjectileManager | null,
   ): void {
-    if (!pointer.isPressed(POINTER_SHOOT)) {
-      this.fireCooldown = 0;
-      return;
-    }
+    if (!this.loadout) return;
 
-    this.fireCooldown -= delta;
+    this.fireCooldown = Math.max(0, this.fireCooldown - delta);
+
+    const active = this.loadout.getActive();
+    const wantsFire = this.isFiring(pointer, active.config.fireMode);
+    if (!wantsFire) return;
+
+    if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
     if (this.fireCooldown > 0) return;
 
     if (!this.shoot(projectiles)) return;
 
-    this.fireCooldown += this.fireInterval;
+    this.fireCooldown += active.fireInterval;
   }
 
   private shoot(projectiles: ProjectileManager | null): boolean {
-    if (!this.camera || !projectiles || !this.ammo?.tryShoot()) return false;
+    if (!this.camera || !this.loadout || !projectiles) return false;
 
+    const active = this.loadout.getActive();
+    if (!active.ammo.tryShoot()) return false;
+
+    active.recoil.onShot(this.weaponPose?.adsBlend ?? 0);
     this.object.updateMatrixWorld(true);
 
     readMuzzleFirePose(
-      this.weapon,
+      active.mesh,
       this.camera,
       this.muzzleOrigin,
       this.aimDirection,
@@ -357,16 +537,35 @@ export class Player {
     return true;
   }
 
+  private getActiveRecoil() {
+    return this.loadout?.getActive().recoil ?? null;
+  }
+
+  private applyActiveRecoilAim(): void {
+    const recoil = this.getActiveRecoil();
+    if (!recoil || !this.yawRecoilRig || !this.pitchRecoilRig) return;
+    recoil.applyAim(this.yawRecoilRig, this.pitchRecoilRig);
+  }
+
+  private applyActiveWeaponPose(): void {
+    if (!this.loadout) return;
+    this.weaponPose?.apply(this.loadout.getActive().mesh);
+  }
+
+  private getActiveMeshBaseRotation(): THREE.Euler {
+    const active = this.loadout!.getActive();
+    return resolveWeaponMeshRotation(
+      LOCAL_WEAPON_ROTATION,
+      active.config.view,
+      'local',
+      this.activeMeshBaseRotation,
+    );
+  }
+
   private applyRemoteAim(): void {
     if (!this.bodyRoot || !this.lookRig) return;
 
     this.bodyRoot.rotation.set(0, this.currentYaw, 0);
     applyPlayerAim(this.lookRig, this.currentYaw, this.currentPitch);
-  }
-
-  private attachWeapon(parent: THREE.Object3D, rotation: THREE.Euler): void {
-    parent.add(this.weapon);
-    this.weapon.position.copy(this.weaponPose?.hipOffset ?? WEAPON_HIP_OFFSET);
-    this.weapon.rotation.copy(rotation);
   }
 }

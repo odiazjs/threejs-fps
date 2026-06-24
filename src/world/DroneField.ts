@@ -138,15 +138,21 @@ function createDroneBody(): { body: THREE.Group; propellers: THREE.Group[] } {
   return { body, propellers };
 }
 
+export function createDroneVisual(): { root: THREE.Group; propellers: THREE.Group[] } {
+  const root = new THREE.Group();
+  const { body, propellers } = createDroneBody();
+  root.add(body);
+  root.scale.setScalar(0.85);
+  return { root, propellers };
+}
+
 export class DroneField {
   readonly group = new THREE.Group();
   private readonly agents: DroneAgent[];
 
   constructor() {
     this.agents = generateDroneConfigs().map((config) => {
-      const root = new THREE.Group();
-      const { body, propellers } = createDroneBody();
-      root.add(body);
+      const { root, propellers } = createDroneVisual();
       return { root, propellers, config };
     });
 

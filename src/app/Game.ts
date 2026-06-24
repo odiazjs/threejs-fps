@@ -99,7 +99,7 @@ export class Game {
     const spawn = pickSpawnPoint(0);
     this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
     this.player.attachToScene(this.scene);
-    this.playerControls = new PlayerControls(this.player.camera!);
+    this.playerControls = new PlayerControls(this.player.aimRig!);
     this.playerControls.setStaminaHud(this.staminaHud);
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
@@ -126,7 +126,10 @@ export class Game {
         this.killFeedHud.addKill(killerName, victimName);
         const session = getSession();
         if (!session) return;
-        if (killerName === session.username) recordKill(session.username);
+        if (killerName === session.username) {
+          recordKill(session.username);
+          this.messageHud.pushKill(victimName);
+        }
         if (victimName === session.username) recordDeath(session.username);
       },
     );

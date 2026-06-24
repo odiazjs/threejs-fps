@@ -67,10 +67,17 @@ export class RemotePlayers {
   }
 
   interpolate(delta: number, camera: THREE.Camera): void {
+    const worldTime = this.roomClient.getWorldTime();
     for (const player of this.players.values()) {
       player.interpolateRemote(delta);
+      player.updateRemoteWeapon(delta, worldTime);
       player.updateRemoteHealthBar(camera);
+      player.updateDamageNumbers(delta, camera);
     }
+  }
+
+  showDamage(sessionId: string, amount: number): void {
+    this.players.get(sessionId)?.showDamageNumber(amount);
   }
 
   private removePlayer(sessionId: string): void {

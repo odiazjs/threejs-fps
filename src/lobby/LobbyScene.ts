@@ -3,6 +3,9 @@ import { createWeapon } from '../content/weapon';
 import { createRemoteHead, createRemoteTorso } from '../player/RemoteAvatar';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { addEdgeLines } from '../visuals/edgeLines';
+import { GrassField } from '../world/GrassField';
+import { createDroneVisual } from '../world/DroneField';
+import { MAP_PALETTE } from '../../shared/level/mapPalette';
 
 const TEAM_COLOR = 0x6a9fd4;
 
@@ -29,6 +32,9 @@ export class LobbyScene {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly avatar = new THREE.Group();
+  private readonly grassField: GrassField;
+  private readonly droneRoot: THREE.Group;
+  private readonly dronePropellers: THREE.Group[];
   private readonly clock = new THREE.Clock();
   private animationId = 0;
 
@@ -57,17 +63,31 @@ export class LobbyScene {
     this.scene.add(hemi, key, rim);
 
     const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(2.2, 48),
+      new THREE.CircleGeometry(3.4, 48),
       new THREE.MeshStandardMaterial({
-        color: 0x1a2028,
-        metalness: 0.2,
-        roughness: 0.85,
+        color: MAP_PALETTE.grassDark,
+        metalness: 0.05,
+        roughness: 0.92,
       }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = 0;
     addEdgeLines(floor);
     this.scene.add(floor);
+
+    this.grassField = new GrassField(() => 0, {
+      halfExtent: 3.2,
+      maxBlades: 4_200,
+      gridStep: 0.2,
+      skipPatches: false,
+      seed: 0x10bb3,
+    });
+    this.scene.add(this.grassField.mesh);
+
+    const drone = createDroneVisual();
+    this.droneRoot = drone.root;
+    this.dronePropellers = drone.propellers;
+    this.scene.add(this.droneRoot);
 
     const bodyRoot = new THREE.Group();
     bodyRoot.add(createRemoteTorso(TEAM_COLOR));
@@ -97,6 +117,22 @@ export class LobbyScene {
     this.animationId = requestAnimationFrame(this.loop);
     const t = this.clock.getElapsedTime();
     this.avatar.rotation.y = Math.sin(t * 0.55) * 0.35;
+    this.grassField.update(t);
+
+    const orbitAngle = t * 0.72;
+    this.droneRoot.position.set(
+      Math.cos(orbitAngle) * 1.35,
+      2.05 + Math.sin(t * 1.25) * 0.28,
+      -0.35 + Math.sin(orbitAngle) * 0.95,
+    );
+    this.droneRoot.rotation.y = orbitAngle + Math.PI * 0.55;
+    this.droneRoot.rotation.z = Math.sin(orbitAngle * 1.4) * 0.14;
+
+    const spin = t * 28;
+    for (let i = 0; i < this.dronePropellers.length; i++) {
+      this.dronePropellers[i]!.rotation.y = spin * (i % 2 === 0 ? 1 : -1);
+    }
+
     this.renderer.render(this.scene, this.camera);
   };
 
@@ -114,6 +150,7 @@ export class LobbyScene {
   dispose(): void {
     cancelAnimationFrame(this.animationId);
     window.removeEventListener('resize', this.onResize);
+    this.grassField.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

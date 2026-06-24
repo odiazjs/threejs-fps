@@ -8,6 +8,7 @@ import {
   type PlayerState,
 } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
+import type { WeaponId } from '../../shared/content/weaponIds';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type {
   AmmoBoxChangeHandler,
@@ -33,6 +34,9 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     teamId: player.teamId,
     hp: player.hp,
     alive: player.alive,
+    reloading: player.reloading,
+    reloadEndAt: player.reloadEndAt,
+    activeWeaponId: player.activeWeaponId,
   };
 }
 
@@ -187,8 +191,16 @@ export class RoomClient {
     this.room?.send('pickupAmmo', { index, x: feetX, z: feetZ });
   }
 
-  sendHit(targetId: string): void {
-    this.room?.send('hit', { targetId });
+  sendHit(targetId: string, weaponId: WeaponId): void {
+    this.room?.send('hit', { targetId, weaponId });
+  }
+
+  sendReload(weaponId: WeaponId): void {
+    this.room?.send('reload', { weaponId });
+  }
+
+  sendSwitchWeapon(slot: number): void {
+    this.room?.send('switchWeapon', { slot });
   }
 
   async disconnect(): Promise<void> {

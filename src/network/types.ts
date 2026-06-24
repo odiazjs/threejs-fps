@@ -10,6 +10,9 @@ export interface PlayerSnapshot {
   teamId: number;
   hp: number;
   alive: boolean;
+  reloading: boolean;
+  reloadEndAt: number;
+  activeWeaponId: string;
 }
 
 export type { ProjectileSpawnMessage };

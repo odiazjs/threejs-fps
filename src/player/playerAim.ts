@@ -4,6 +4,7 @@ import * as THREE from 'three';
 export const AIM_ROTATION_ORDER = 'YXZ' as const;
 
 const _euler = new THREE.Euler(0, 0, 0, AIM_ROTATION_ORDER);
+const _quat = new THREE.Quaternion();
 
 export interface PlayerAim {
   yaw: number;
@@ -12,6 +13,13 @@ export interface PlayerAim {
 
 export function readPlayerAim(object: THREE.Object3D): PlayerAim {
   _euler.setFromQuaternion(object.quaternion, AIM_ROTATION_ORDER);
+  return { yaw: _euler.y, pitch: _euler.x };
+}
+
+/** World-space look yaw/pitch — includes aim and recoil parent rigs. */
+export function readWorldPlayerAim(object: THREE.Object3D): PlayerAim {
+  object.getWorldQuaternion(_quat);
+  _euler.setFromQuaternion(_quat, AIM_ROTATION_ORDER);
   return { yaw: _euler.y, pitch: _euler.x };
 }
 

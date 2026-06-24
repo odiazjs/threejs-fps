@@ -1,7 +1,8 @@
-import type { AmmoState } from '../combat/WeaponAmmo';
+import type { LoadoutAmmoState } from '../combat/WeaponLoadout';
 
 export class AmmoHud {
   private readonly root: HTMLElement;
+  private readonly weaponEl: HTMLElement;
   private readonly clipEl: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly reloadTrack: HTMLElement;
@@ -9,6 +10,7 @@ export class AmmoHud {
 
   constructor() {
     this.root = document.getElementById('ammo-hud')!;
+    this.weaponEl = this.root.querySelector('.ammo-weapon-name')!;
     this.clipEl = this.root.querySelector('.ammo-clip')!;
     this.statusEl = this.root.querySelector('.ammo-status')!;
     this.reloadTrack = this.root.querySelector('.ammo-reload-track')!;
@@ -19,7 +21,8 @@ export class AmmoHud {
     this.root.hidden = !visible;
   }
 
-  update(state: AmmoState): void {
+  update(state: LoadoutAmmoState): void {
+    this.weaponEl.textContent = `${state.weaponName} [${state.slotIndex + 1}]`;
     this.clipEl.textContent = `${state.clip} / ${state.reserveRounds}`;
 
     this.root.classList.toggle('reloading', state.reloading);

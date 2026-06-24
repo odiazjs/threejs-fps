@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
-import { readPlayerAim } from '../player/playerAim';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
@@ -67,11 +66,6 @@ export class NetworkManager {
       this.onLocalPlayerChange(this.localCombat);
     });
 
-    this.projectiles.setPlayerHitHandlers(
-      () => this.remotePlayers.getEnemyHitTargets(this.localCombat.teamId),
-      (targetId) => this.roomClient.sendHit(targetId),
-    );
-
     await this.roomClient.connect(username, joinIntent);
     this.ammoPickups.bindNetwork(
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
@@ -95,6 +89,15 @@ export class NetworkManager {
   }
 
   bindShoot(player: Player): void {
+    this.projectiles.setPlayerHitHandlers(
+      () => this.remotePlayers.getEnemyHitTargets(this.localCombat.teamId),
+      (targetId) => {
+        const weaponId = player.getActiveWeaponId();
+        this.roomClient.sendHit(targetId, weaponId);
+        this.remotePlayers.showDamage(targetId, player.getActiveDamage());
+      },
+    );
+
     player.setShootCallback((origin, direction) => {
       if (!this.roomClient.connected) return;
       this.roomClient.sendShoot({
@@ -105,6 +108,14 @@ export class NetworkManager {
         dirY: direction.y,
         dirZ: direction.z,
       });
+    });
+    player.setReloadNetworkCallback((weaponId) => {
+      if (!this.roomClient.connected) return;
+      this.roomClient.sendReload(weaponId);
+    });
+    player.setWeaponSwitchNetworkCallback((slot) => {
+      if (!this.roomClient.connected) return;
+      this.roomClient.sendSwitchWeapon(slot);
     });
   }
 
@@ -142,7 +153,7 @@ export class NetworkManager {
     this.sendAccumulator = 0;
 
     const feet = player.object.position;
-    const { yaw, pitch } = readPlayerAim(player.camera!);
+    const { yaw, pitch } = player.getNetworkAim();
 
     this.roomClient.sendMove(feet.x, feet.y + EYE_HEIGHT, feet.z, yaw, pitch);
   }

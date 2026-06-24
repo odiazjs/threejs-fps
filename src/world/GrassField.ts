@@ -9,6 +9,16 @@ const BLADE_WIDTH = 0.16;
 const BLADE_HEIGHT = 0.13;
 const GRID_STEP = 0.27;
 
+export interface GrassFieldOptions {
+  /** Half-size of the square coverage area. */
+  halfExtent?: number;
+  maxBlades?: number;
+  gridStep?: number;
+  /** Skip terrain patches (paths, structures). Lobby sets false. */
+  skipPatches?: boolean;
+  seed?: number;
+}
+
 const vertexShader = /* glsl */ `
 uniform float uTime;
 uniform float uBladeHeight;
@@ -94,8 +104,15 @@ export class GrassField {
   readonly mesh: THREE.InstancedMesh;
   private readonly material: THREE.ShaderMaterial;
 
-  constructor(sampleHeight: (x: number, z: number) => number = () => 0) {
+  constructor(
+    sampleHeight: (x: number, z: number) => number = () => 0,
+    options: GrassFieldOptions = {},
+  ) {
     const geometry = createTuftGeometry();
+    const half = options.halfExtent ?? FLOOR_SIZE / 2 - 1.0;
+    const maxCount = options.maxBlades ?? BLADE_COUNT;
+    const gridStep = options.gridStep ?? GRID_STEP;
+    const skipPatches = options.skipPatches ?? true;
 
     this.material = new THREE.ShaderMaterial({
       uniforms: {
@@ -110,22 +127,21 @@ export class GrassField {
       side: THREE.DoubleSide,
     });
 
-    this.mesh = new THREE.InstancedMesh(geometry, this.material, BLADE_COUNT);
+    this.mesh = new THREE.InstancedMesh(geometry, this.material, maxCount);
     this.mesh.frustumCulled = false;
     this.mesh.receiveShadow = false;
     this.mesh.castShadow = false;
 
-    const rand = seededRandom(42);
+    const rand = seededRandom(options.seed ?? 42);
     const dummy = new THREE.Object3D();
-    const half = FLOOR_SIZE / 2 - 1.0;
     let index = 0;
 
-    for (let gx = -half; gx < half && index < BLADE_COUNT; gx += GRID_STEP) {
-      for (let gz = -half; gz < half && index < BLADE_COUNT; gz += GRID_STEP) {
-        const jitter = GRID_STEP * 0.78;
+    for (let gx = -half; gx < half && index < maxCount; gx += gridStep) {
+      for (let gz = -half; gz < half && index < maxCount; gz += gridStep) {
+        const jitter = gridStep * 0.78;
         const x = gx + (rand() - 0.5) * jitter;
         const z = gz + (rand() - 0.5) * jitter;
-        if (shouldSkipGrass(x, z)) continue;
+        if (skipPatches && shouldSkipGrass(x, z)) continue;
 
         const scale = 0.82 + rand() * 0.42;
         const rotY = rand() * Math.PI * 2;

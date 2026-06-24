@@ -5,12 +5,21 @@ import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.j
 import { pickSpawnPoint } from '../../../shared/level/kiloSectorColliders.js';
 import {
   MAX_HIT_DISTANCE,
-  PLASMA_RIFLE_DAMAGE,
   PLAYER_MAX_HP,
   RESPAWN_DELAY_SEC,
 } from '../../../shared/combat/damage.js';
 import { isValidTeamId } from '../../../shared/combat/teams.js';
+import {
+  getWeaponDamage,
+  getWeaponReloadSec,
+} from '../../../shared/content/weaponStats.js';
+import {
+  isWeaponId,
+  LOADOUT_WEAPON_IDS,
+} from '../../../shared/content/weaponIds.js';
 import type { KillFeedMessage, PlayerHitMessage } from '../../../shared/network/damage.js';
+import type { ReloadMessage } from '../../../shared/network/reload.js';
+import type { SwitchWeaponMessage } from '../../../shared/network/weapon.js';
 import {
   PICKUP_MAX_DESYNC,
   type PickupAmmoMessage,
@@ -53,7 +62,18 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     this.setSimulationInterval((deltaTime) => {
       this.state.worldTime += deltaTime / 1000;
+      this.tickReloads();
     });
+  }
+
+  private tickReloads(): void {
+    const now = this.state.worldTime;
+    for (const player of this.state.players.values()) {
+      if (!player.reloading) continue;
+      if (now < player.reloadEndAt) continue;
+      player.reloading = false;
+      player.reloadEndAt = 0;
+    }
   }
 
   messages = {
@@ -71,6 +91,26 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.y = clampEyeY(resolved.x, resolved.z, data.y);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
+    },
+
+    reload: (client: Client, data: ReloadMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive || player.reloading) return;
+      if (!isWeaponId(data.weaponId)) return;
+
+      player.reloading = true;
+      player.activeWeaponId = data.weaponId;
+      player.reloadEndAt = this.state.worldTime + getWeaponReloadSec(data.weaponId);
+    },
+
+    switchWeapon: (client: Client, data: SwitchWeaponMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive || player.reloading) return;
+
+      const slot = data.slot;
+      if (slot < 0 || slot >= LOADOUT_WEAPON_IDS.length) return;
+
+      player.activeWeaponId = LOADOUT_WEAPON_IDS[slot]!;
     },
 
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
@@ -126,12 +166,16 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       const distance = Math.hypot(shooter.x - target.x, shooter.z - target.z);
       if (distance > MAX_HIT_DISTANCE) return;
+      if (!isWeaponId(data.weaponId)) return;
 
-      target.hp = Math.max(0, target.hp - PLASMA_RIFLE_DAMAGE);
+      const damage = getWeaponDamage(data.weaponId);
+      target.hp = Math.max(0, target.hp - damage);
       if (target.hp > 0) return;
 
       target.hp = 0;
       target.alive = false;
+      target.reloading = false;
+      target.reloadEndAt = 0;
 
       const killFeed: KillFeedMessage = {
         killerName: shooter.username,
@@ -215,5 +259,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.z = spawn.z;
     player.yaw = 0;
     player.pitch = 0;
+    player.reloading = false;
+    player.reloadEndAt = 0;
+    player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
   }
 }

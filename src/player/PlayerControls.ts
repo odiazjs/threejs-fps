@@ -17,12 +17,12 @@ export class PlayerControls {
   private readonly instructionsTitle: HTMLElement;
   private readonly leaveButton: HTMLButtonElement;
 
-  constructor(camera: THREE.Camera) {
+  constructor(aimTarget: THREE.Object3D) {
     this.blocker = document.getElementById('blocker')!;
     this.instructionsTitle = this.blocker.querySelector('#instructions h1')!;
     this.leaveButton = document.getElementById('leave-game-btn') as HTMLButtonElement;
 
-    this.controls = new PointerLockControls(camera, document.body);
+    this.controls = new PointerLockControls(aimTarget, document.body);
     this.initUI();
   }
 

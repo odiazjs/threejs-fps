@@ -11,6 +11,10 @@ export class PlayerState extends Schema {
   @type('number') z = 0;
   @type('number') yaw = 0;
   @type('number') pitch = 0;
+  @type('boolean') reloading = false;
+  /** Server world time when the reload finishes (0 when idle). */
+  @type('number') reloadEndAt = 0;
+  @type('string') activeWeaponId = 'pistol';
 }
 
 export class AmmoBoxState extends Schema {
