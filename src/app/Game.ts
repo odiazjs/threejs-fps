@@ -70,14 +70,15 @@ export class Game {
     this.leaving = true;
     this.running = false;
     this.playerControls.setLeaveEnabled(false);
+    this.playerControls.controls.unlock();
 
     try {
       await this.network.disconnect();
     } catch (error) {
       console.warn('[Game] disconnect failed', error);
+    } finally {
+      window.location.replace('/lobby.html');
     }
-
-    window.location.href = '/lobby.html';
   }
 
   private initWorld(): void {

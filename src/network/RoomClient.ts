@@ -210,7 +210,23 @@ export class RoomClient {
     this.room = null;
     this.boundPlayers.clear();
     this.boundAmmoBoxes.clear();
-    await room.leave(true);
+
+    try {
+      await Promise.race([
+        room.leave(true),
+        new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+      ]);
+    } catch (error) {
+      console.warn('[RoomClient] consented leave failed', error);
+      try {
+        await Promise.race([
+          room.leave(false),
+          new Promise<void>((resolve) => setTimeout(resolve, 500)),
+        ]);
+      } catch (fallbackError) {
+        console.warn('[RoomClient] forced leave failed', fallbackError);
+      }
+    }
   }
 
   private bindProjectileMessages(): void {
