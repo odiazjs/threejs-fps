@@ -7,9 +7,9 @@ export const AMMO_BOX_HALF_SIZE = 0.15;
 export const AMMO_BOX_PICKUP_PADDING = 0.35;
 
 const COLUMN_CLEARANCE = 2.5;
-const WALL_INSET = 5;
+const MAP_EDGE_INSET = 6;
 const MIN_SPACING = 4;
-const PICKUP_COUNT = 12;
+const PICKUP_COUNT = 18;
 const SEED = 0x4d4d4f;
 
 function seededRandom(state: { s: number }): number {
@@ -18,7 +18,7 @@ function seededRandom(state: { s: number }): number {
 }
 
 function isClear(x: number, z: number): boolean {
-  const inner = MAP_HALF - WALL_INSET;
+  const inner = MAP_HALF - MAP_EDGE_INSET;
   if (Math.abs(x) > inner || Math.abs(z) > inner) return false;
 
   for (const col of COLUMN_POSITIONS) {
@@ -40,7 +40,7 @@ function generateAmmoBoxPositions(): { x: number; z: number }[] {
 
   while (positions.length < PICKUP_COUNT && attempts < 500) {
     attempts += 1;
-    const inner = MAP_HALF - WALL_INSET;
+    const inner = MAP_HALF - MAP_EDGE_INSET;
     const x = (seededRandom(rng) * 2 - 1) * inner;
     const z = (seededRandom(rng) * 2 - 1) * inner;
     if (!isClear(x, z)) continue;

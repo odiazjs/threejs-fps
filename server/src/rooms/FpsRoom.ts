@@ -50,6 +50,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       box.z = pos.z;
       this.state.ammoBoxes.push(box);
     }
+
+    this.setSimulationInterval((deltaTime) => {
+      this.state.worldTime += deltaTime / 1000;
+    });
   }
 
   messages = {

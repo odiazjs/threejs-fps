@@ -48,6 +48,8 @@ export class RoomClient {
   private room: Room | null = null;
   private readonly boundAmmoBoxes = new Set<number>();
   private readonly boundPlayers = new Set<string>();
+  private syncedWorldTime = 0;
+  private worldTimeSyncAt = 0;
 
   private onAddHandlers: PlayerAddHandler[] = [];
   private onRemoveHandlers: PlayerRemoveHandler[] = [];
@@ -64,6 +66,11 @@ export class RoomClient {
 
   get connected(): boolean {
     return this.room !== null;
+  }
+
+  getWorldTime(): number {
+    if (!this.room) return 0;
+    return this.syncedWorldTime + (performance.now() - this.worldTimeSyncAt) / 1000;
   }
 
   async connect(
@@ -199,6 +206,12 @@ export class RoomClient {
 
     const callbacks = Callbacks.get(this.room);
     const myId = this.room.sessionId;
+    const state = this.room.state as FpsState;
+
+    this.syncWorldTime(state.worldTime);
+    callbacks.onChange(state, () => {
+      this.syncWorldTime(state.worldTime);
+    });
 
     callbacks.onAdd('players', (player, sessionId) => {
       this.bindPlayerCallbacks(
@@ -248,6 +261,11 @@ export class RoomClient {
         handler(sessionId, toSnapshot(player)),
       );
     });
+  }
+
+  private syncWorldTime(worldTime: number): void {
+    this.syncedWorldTime = worldTime;
+    this.worldTimeSyncAt = performance.now();
   }
 
   private bindAmmoBoxCallbacks(

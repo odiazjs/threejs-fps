@@ -65,6 +65,7 @@ export class Projectile {
         dirY,
         dirZ,
         step,
+        skin,
       );
 
       if (hit) {

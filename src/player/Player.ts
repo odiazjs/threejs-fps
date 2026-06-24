@@ -176,6 +176,7 @@ export class Player {
     applyPlayerAim(this.camera, 0, 0);
     this.weaponPose?.reset();
     this.weaponPose?.apply(this.weapon);
+    this.weaponPose?.applyCamera(this.camera);
     this.fireCooldown = 0;
   }
 
@@ -232,6 +233,7 @@ export class Player {
 
     this.weaponPose?.update(delta, pointer.isPressed(POINTER_ADS));
     this.weaponPose?.apply(this.weapon);
+    this.weaponPose?.applyCamera(this.camera);
 
     this.ammo?.update(delta);
 

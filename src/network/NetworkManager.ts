@@ -124,6 +124,10 @@ export class NetworkManager {
     return this.roomClient.getAllPlayerSnapshots();
   }
 
+  getWorldTime(): number {
+    return this.roomClient.getWorldTime();
+  }
+
   async disconnect(): Promise<void> {
     await this.roomClient.disconnect();
   }

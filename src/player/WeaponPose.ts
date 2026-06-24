@@ -2,6 +2,8 @@ import * as THREE from 'three';
 
 const HIP_OFFSET = new THREE.Vector3(0.15, -0.18, -0.35);
 const ADS_OFFSET = new THREE.Vector3(0, -0.14, -0.30);
+const HIP_FOV = 75;
+const ADS_FOV = 58;
 const BLEND_SPEED = 30;
 
 export { HIP_OFFSET as WEAPON_HIP_OFFSET };
@@ -28,5 +30,10 @@ export class WeaponPose {
   apply(weapon: THREE.Object3D): void {
     _offset.lerpVectors(HIP_OFFSET, ADS_OFFSET, this.blend);
     weapon.position.copy(_offset);
+  }
+
+  applyCamera(camera: THREE.PerspectiveCamera): void {
+    camera.fov = THREE.MathUtils.lerp(HIP_FOV, ADS_FOV, this.blend);
+    camera.updateProjectionMatrix();
   }
 }

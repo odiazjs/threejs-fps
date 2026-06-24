@@ -53,7 +53,7 @@ export class WeaponAmmo {
 
     this.reloading = false;
     this.reloadRemaining = 0;
-    this.clip = this.config.clipSize;
+    this.clip += this.reloadRoundsNeeded;
     this.reserveRounds = Math.max(0, this.reserveRounds - this.reloadRoundsNeeded);
     this.reloadRoundsNeeded = 0;
   }
@@ -71,13 +71,13 @@ export class WeaponAmmo {
   canReload(): boolean {
     if (this.reloading) return false;
     if (this.clip >= this.config.clipSize) return false;
-    return this.reserveRounds >= this.roundsToFillClip();
+    return this.reserveRounds > 0;
   }
 
   tryReload(): boolean {
     if (!this.canReload()) return false;
 
-    this.reloadRoundsNeeded = this.roundsToFillClip();
+    this.reloadRoundsNeeded = Math.min(this.roundsToFillClip(), this.reserveRounds);
     this.reloading = true;
     this.reloadRemaining = this.config.reloadSec;
     return true;

@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from './mapPalette.js';
-import {
-  BOUNDARY_WALL,
-  COLUMN_POSITIONS,
-  FLOOR_SIZE,
-} from './kiloSectorColliders.js';
+import { COLUMN_POSITIONS } from './kiloSectorColliders.js';
 
 const mapGroup = new THREE.Group();
 
@@ -20,13 +16,6 @@ function createStyledMesh(geometry: THREE.BufferGeometry, color: number): THREE.
 
   return group;
 }
-
-const floor = createStyledMesh(
-  new THREE.BoxGeometry(FLOOR_SIZE, 0.2, FLOOR_SIZE),
-  MAP_PALETTE.carbonGrey,
-);
-floor.position.y = -0.1;
-mapGroup.add(floor);
 
 function createColumn(): THREE.Group {
   const column = new THREE.Group();
@@ -91,76 +80,10 @@ function createColumn(): THREE.Group {
   return column;
 }
 
-function createBoundarySegment(width: number, depth: number): THREE.Group {
-  const wall = new THREE.Group();
-  const { height, floorGap } = BOUNDARY_WALL;
-
-  const sillHeight = 0.28;
-  const sillY = floorGap + sillHeight / 2;
-
-  const sill = createStyledMesh(
-    new THREE.BoxGeometry(width, sillHeight, depth),
-    MAP_PALETTE.darkGunmetal,
-  );
-  sill.position.y = sillY;
-  wall.add(sill);
-
-  const bodyHeight = height - sillHeight - 0.35;
-  const bodyY = floorGap + sillHeight + bodyHeight / 2;
-
-  const body = createStyledMesh(
-    new THREE.BoxGeometry(width - 0.12, bodyHeight, depth),
-    MAP_PALETTE.ironGrey,
-  );
-  body.position.y = bodyY;
-  wall.add(body);
-
-  const panel = createStyledMesh(
-    new THREE.BoxGeometry(width - 0.35, bodyHeight - 0.55, depth * 0.18),
-    MAP_PALETTE.pastelOrange,
-  );
-  panel.position.y = bodyY;
-  wall.add(panel);
-
-  const trim = createStyledMesh(
-    new THREE.BoxGeometry(width, 0.18, depth),
-    MAP_PALETTE.pastelTeal,
-  );
-  trim.position.y = floorGap + height - 0.12;
-  wall.add(trim);
-
-  const plasmaStrip = createStyledMesh(
-    new THREE.BoxGeometry(width - 0.8, 0.12, depth * 0.22),
-    MAP_PALETTE.pastelTeal,
-  );
-  plasmaStrip.position.y = floorGap + height * 0.62;
-  wall.add(plasmaStrip);
-
-  return wall;
-}
-
 for (const { x, z } of COLUMN_POSITIONS) {
   const column = createColumn();
   column.position.set(x, 0, z);
   mapGroup.add(column);
 }
-
-const { thickness, span, offset } = BOUNDARY_WALL;
-
-const northWall = createBoundarySegment(span, thickness);
-northWall.position.set(0, 0, -offset);
-mapGroup.add(northWall);
-
-const southWall = createBoundarySegment(span, thickness);
-southWall.position.set(0, 0, offset);
-mapGroup.add(southWall);
-
-const westWall = createBoundarySegment(thickness, span);
-westWall.position.set(-offset, 0, 0);
-mapGroup.add(westWall);
-
-const eastWall = createBoundarySegment(thickness, span);
-eastWall.position.set(offset, 0, 0);
-mapGroup.add(eastWall);
 
 export { mapGroup };
