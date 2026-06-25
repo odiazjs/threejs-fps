@@ -66,6 +66,7 @@ export function getRemoteWeaponMount(modelFile: string, weaponId: WeaponId): Rem
     return PISTOL_IDLE_PISTOL_MOUNT;
   }
 
+  if (modelFile === CHARACTER_MODEL_FILES.lobby) return RIFLE_AIMING_RIFLE_MOUNT;
   if (modelFile === CHARACTER_MODEL_FILES.rifleRunShoot) return RIFLE_RUN_MOUNT;
   if (modelFile === CHARACTER_MODEL_FILES.rifleWalking) return RIFLE_WALK_MOUNT;
   return RIFLE_AIMING_RIFLE_MOUNT;

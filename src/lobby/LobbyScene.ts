@@ -1,7 +1,15 @@
 import * as THREE from 'three';
-import { createCharacterInstance, loadLobbyCharacterTemplate, type CharacterInstance } from '../player/characterModel';
-import { createSkyboxTexture } from '../world/SkyboxBuilder';
-import { addEdgeLines } from '../visuals/edgeLines';
+import {
+  createCharacterInstance,
+  loadLobbyCharacterTemplate,
+  resolveCharacterRig,
+  type CharacterInstance,
+  type CharacterTemplate,
+} from '../player/characterModel';
+import { remoteWeaponMeshScale } from '../combat/WeaponLoadout';
+import { createWeaponMesh } from '../content/weaponMeshes';
+import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
+import { createSkyboxTexture } from '../world/SkyboxBuilder';import { addEdgeLines } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
 import { createDroneVisual } from '../world/DroneField';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
@@ -12,6 +20,7 @@ export class LobbyScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly avatar = new THREE.Group();
   private characterInstance: CharacterInstance | null = null;
+  private weaponMesh: THREE.Group | null = null;
   private readonly grassField: GrassField;
   private readonly droneRoot: THREE.Group;
   private readonly dronePropellers: THREE.Group[];
@@ -75,6 +84,7 @@ export class LobbyScene {
     void loadLobbyCharacterTemplate().then((template) => {
       this.characterInstance = createCharacterInstance(template);
       bodyRoot.add(this.characterInstance.root);
+      this.attachLobbyWeapon(template);
     }).catch((error) => {
       console.warn('[LobbyScene] Failed to load character model', error);
     });
@@ -111,6 +121,31 @@ export class LobbyScene {
     this.renderer.render(this.scene, this.camera);
   };
 
+  private attachLobbyWeapon(template: CharacterTemplate): void {
+    if (!this.characterInstance) return;
+
+    const rig = resolveCharacterRig(this.characterInstance.root, template.bones);
+    if (!rig) {
+      console.warn('[LobbyScene] Character hand bone not found');
+      return;
+    }
+
+    const mount = getRemoteWeaponMount(template.modelFile, 'plasma_rifle');
+    const handRig = new THREE.Group();
+    handRig.name = 'lobbyHandRig';
+    handRig.position.copy(mount.handPosition);
+    handRig.rotation.copy(mount.handRotation);
+    rig.rightHand.add(handRig);
+
+    const weapon = createWeaponMesh('plasma_rifle');
+    weapon.scale.setScalar(remoteWeaponMeshScale(template.fitScale));
+    weapon.position.copy(mount.weaponPosition);
+    weapon.rotation.copy(mount.weaponRotation);
+    weapon.frustumCulled = false;
+    handRig.add(weapon);
+    this.weaponMesh = weapon;
+  }
+
   private onResize = (): void => {
     const parent = this.renderer.domElement.parentElement;
     if (!parent) return;
@@ -127,6 +162,14 @@ export class LobbyScene {
     window.removeEventListener('resize', this.onResize);
     this.characterInstance?.dispose();
     this.characterInstance = null;
+    this.weaponMesh?.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        (child.material as THREE.Material).dispose();
+      }
+    });
+    this.weaponMesh?.removeFromParent();
+    this.weaponMesh = null;
     this.grassField.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
