@@ -1,4 +1,4 @@
-export const SPRINT_MULTIPLIER = 1.75;
+export const SPRINT_MULTIPLIER = 2;
 export const STAMINA_MAX = 1;
 export const STAMINA_DRAIN_PER_SEC = 0.3;
 export const EXHAUST_COOLDOWN_SEC = 10;

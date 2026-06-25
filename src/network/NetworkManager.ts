@@ -107,7 +107,6 @@ export class NetworkManager {
       (targetId) => {
         const weaponId = player.getActiveWeaponId();
         this.roomClient.sendHit(targetId, weaponId);
-        this.remotePlayers.showDamage(targetId, player.getActiveDamage());
       },
     );
 

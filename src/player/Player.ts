@@ -26,6 +26,7 @@ import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
 import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
+import { WeaponSway } from './WeaponSway';
 import { getReloadState } from '../../shared/combat/reload';
 import {
   isWeaponId,
@@ -89,6 +90,7 @@ export class Player {
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
+  private weaponSway: WeaponSway | null = null;
   private onShoot: ShootCallback | null = null;
   private onReloadNetwork: ReloadNetworkCallback | null = null;
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
@@ -139,6 +141,7 @@ export class Player {
       this.object.add(this.headRig);
       this.weaponPose = new WeaponPose();
       this.weaponPose.setViewConfig(this.loadout.getActive().config.view);
+      this.weaponSway = new WeaponSway();
       this.loadout.attach(this.camera, LOCAL_WEAPON_ROTATION, 'local');
     } else {
       this.camera = null;
@@ -179,11 +182,11 @@ export class Player {
     await preloadGameCharacterModels();
   }
 
-  async syncRemoteCharacterModel(): Promise<void> {
+  async syncRemoteCharacterModel(worldTime: number): Promise<void> {
     if (this.camera) return;
 
     const weaponId = this.targetActiveWeaponId;
-    const pose = this.getRemotePose();
+    const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
     if (this.displayedCharacterModelFile === modelFile && this.characterInstance) return;
 
@@ -194,11 +197,17 @@ export class Player {
     this.applyRemoteSpinePitch();
   }
 
-  private getRemotePose(): RemoteCharacterPose {
+  private getRemotePose(worldTime: number): RemoteCharacterPose {
+    const { reloading } = getReloadState(
+      this.targetReloadEndAt,
+      worldTime,
+      this.targetActiveWeaponId,
+    );
     return {
       sprinting: this.targetSprinting,
       walking: this.targetWalking,
       jumping: this.targetJumping,
+      reloading,
     };
   }
 
@@ -390,6 +399,7 @@ export class Player {
     this.aimControls?.resetLook();
     this.loadout?.reset();
     this.weaponPose?.reset();
+    this.weaponSway?.reset();
     if (this.loadout) {
       this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
     }
@@ -417,15 +427,19 @@ export class Player {
     this.teamId = snapshot.teamId;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
-    this.hp = snapshot.hp;
 
     if (!this.camera) {
+      if (snapshot.alive && snapshot.hp < this.hp) {
+        this.showDamageNumber(this.hp - snapshot.hp);
+      }
       this.object.visible = snapshot.alive;
       this.remoteHealthBar?.update(snapshot.hp, snapshot.alive, snapshot.teamId, snapshot.username);
       if (!snapshot.alive) {
         this.damageNumberStack?.clear();
       }
     }
+
+    this.hp = snapshot.hp;
 
     if (snap) {
       this.object.position.copy(this.targetPosition);
@@ -457,7 +471,7 @@ export class Player {
   private syncRemoteUiHeight(): void {
     if (!this.remoteHealthBar) return;
 
-    const clearance = 0.24;
+    const clearance = 0.38;
     const topOffset = this.characterInstance
       ? computeTopOffsetAboveFeet(this.characterInstance.root, this.object, clearance)
       : EYE_HEIGHT + clearance;
@@ -499,13 +513,7 @@ export class Player {
       this.remoteWeaponBaseRotation,
     );
     this.loadout.applyActiveRotation(this.remoteWeaponMount.weaponRotation, 'remote');
-    const { reloading, progress } = getReloadState(
-      this.targetReloadEndAt,
-      worldTime,
-      this.targetActiveWeaponId,
-    );
-
-    this.weaponPose.update(delta, false, reloading, progress);
+    this.weaponPose.update(delta, false, false, 0);
     this.weaponPose.applyRemoteReload(
       active.mesh,
       this.remoteWeaponBasePosition,
@@ -545,6 +553,20 @@ export class Player {
     const ammoState = active.ammo.getState();
     const shooting = this.isFiring(pointer, active.config.fireMode);
 
+    const wantsSprint =
+      input.isPressed('ShiftLeft') &&
+      input.isPressed('KeyW') &&
+      this.physics.grounded;
+    const isSprinting = this.sprint.update(delta, wantsSprint);
+    const isMoving =
+      this.physics.grounded &&
+      (input.isPressed('KeyW') ||
+        input.isPressed('KeyS') ||
+        input.isPressed('KeyA') ||
+        input.isPressed('KeyD'));
+    const isWalking = isMoving && !isSprinting;
+    this.locomotionWalking = isWalking;
+
     this.loadout.update(delta);
 
     this.weaponPose?.setViewConfig(active.config.view);
@@ -553,6 +575,15 @@ export class Player {
       ads,
       ammoState.reloading,
       ammoState.reloadProgress,
+    );
+    this.weaponSway?.update(
+      delta,
+      isWalking,
+      isSprinting,
+      shooting,
+      this.physics.grounded,
+      this.weaponPose?.adsBlend ?? 0,
+      active.config.sway,
     );
     active.recoil.update(delta, shooting, ads);
     if (this.yawRecoilRig && this.pitchRecoilRig) {
@@ -568,6 +599,11 @@ export class Player {
       weaponRotation,
       this.weaponPose?.adsBlend ?? 0,
     );
+    this.weaponSway?.apply(
+      active.mesh,
+      this.weaponPose!.hipOffset,
+      weaponRotation,
+    );
 
     this.updateFire(delta, pointer, projectiles);
 
@@ -579,12 +615,6 @@ export class Player {
 
     this.right.crossVectors(this.forward, this.camera.up).normalize();
 
-    const wantsSprint =
-      input.isPressed('ShiftLeft') &&
-      input.isPressed('KeyW') &&
-      this.physics.grounded;
-
-    const isSprinting = this.sprint.update(delta, wantsSprint);
     const forwardSpeed = speed * (isSprinting ? SPRINT_MULTIPLIER : 1);
 
     let deltaX = 0;
@@ -630,16 +660,8 @@ export class Player {
       this.locomotionJumping = false;
     }
 
-    const isMoving =
-      this.physics.grounded &&
-      (input.isPressed('KeyW') ||
-        input.isPressed('KeyS') ||
-        input.isPressed('KeyA') ||
-        input.isPressed('KeyD'));
-
     this.headBob.update(delta, isMoving, isSprinting);
     if (this.headRig) this.headBob.apply(this.headRig, isSprinting);
-    this.locomotionWalking = isMoving && !isSprinting;
   }
 
   resize(): void {

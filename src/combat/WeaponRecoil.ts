@@ -14,6 +14,8 @@ const DEFAULT_VISUAL_STYLE = {
   posXFromYaw: 0.18,
   posY: -0.025,
   posZ: 0.04,
+  kickBack: 0.08,
+  kickUp: -0.02,
 } as const;
 
 export class WeaponRecoil {
@@ -111,23 +113,25 @@ export class WeaponRecoil {
     }
 
     const adsVisual = this.config.adsVisualMultiplier ?? 0.6;
-    const kick =
+    const adsScale = THREE.MathUtils.lerp(1, adsVisual, adsBlend);
+    const rotKick = this.config.visualKick * this.visualCurrent * adsScale;
+    const pushKick =
       this.config.visualKick *
-      this.visualCurrent *
-      THREE.MathUtils.lerp(1, adsVisual, adsBlend);
+      Math.max(this.visualCurrent, this.visualImpulse * 0.9) *
+      adsScale;
 
     const style = { ...DEFAULT_VISUAL_STYLE, ...this.config.visualStyle };
     const yawSign = Math.sign(this.currentYaw || 1);
 
     weapon.rotation.set(
-      _weaponRot.x + style.rotX * kick,
+      _weaponRot.x + style.rotX * rotKick,
       _weaponRot.y + this.currentYaw * style.rotYFromYaw,
-      _weaponRot.z + style.rotZ * kick * yawSign,
+      _weaponRot.z + style.rotZ * rotKick * yawSign,
     );
     weapon.position.set(
-      _weaponPos.x + this.currentYaw * kick * style.posXFromYaw,
-      _weaponPos.y + style.posY * kick,
-      _weaponPos.z + style.posZ * kick,
+      _weaponPos.x + this.currentYaw * rotKick * style.posXFromYaw,
+      _weaponPos.y + style.posY * rotKick + style.kickUp * pushKick,
+      _weaponPos.z + style.posZ * rotKick + style.kickBack * pushKick,
     );
   }
 }

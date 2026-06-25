@@ -18,6 +18,9 @@ export const CHARACTER_MODEL_FILES = {
   pistolWalk: 'Pistol Walk.fbx',
   rifleJump: 'Rifle Jump.fbx',
   pistolJump: 'Pistol Jump.fbx',
+  reloadIdle: 'Reload Idle.fbx',
+  reloadWalk: 'Reload Walk.fbx',
+  reloadSprint: 'Reload Sprint.fbx',
 } as const;
 
 const ONE_SHOT_MODEL_FILES = new Set<string>([
@@ -25,10 +28,17 @@ const ONE_SHOT_MODEL_FILES = new Set<string>([
   CHARACTER_MODEL_FILES.pistolJump,
 ]);
 
+const ROOT_MOTION_STRIP_MODEL_FILES = new Set<string>([
+  ...ONE_SHOT_MODEL_FILES,
+  CHARACTER_MODEL_FILES.reloadWalk,
+  CHARACTER_MODEL_FILES.reloadSprint,
+]);
+
 export interface RemoteCharacterPose {
   sprinting: boolean;
   walking: boolean;
   jumping: boolean;
+  reloading: boolean;
 }
 
 const DEFAULT_BONES: CharacterBoneNames = {
@@ -44,7 +54,7 @@ function assetUrl(file: string): string {
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
   return (
-    animations.find((clip) => /jump|idle|run|shoot|aim|walk/i.test(clip.name)) ??
+    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload/i.test(clip.name)) ??
     animations[0] ??
     null
   );
@@ -228,7 +238,7 @@ async function loadCharacterTemplateByFile(modelFile: string): Promise<Character
     const fbx = await loadFbx(loader, assetUrl(modelFile));
     const oneShot = ONE_SHOT_MODEL_FILES.has(modelFile);
     let clip = pickAnimationClip(fbx.animations);
-    if (oneShot && clip) {
+    if (ROOT_MOTION_STRIP_MODEL_FILES.has(modelFile) && clip) {
       clip = stripRootMotionFromClip(clip);
     }
     const { scene, fitScale } = prepareModel(fbx);
@@ -261,6 +271,12 @@ export function gameModelFileForWeapon(
       : CHARACTER_MODEL_FILES.rifleJump;
   }
 
+  if (pose.reloading) {
+    if (pose.sprinting) return CHARACTER_MODEL_FILES.reloadSprint;
+    if (pose.walking) return CHARACTER_MODEL_FILES.reloadWalk;
+    return CHARACTER_MODEL_FILES.reloadIdle;
+  }
+
   if (pose.sprinting) {
     return weaponId === 'pistol'
       ? CHARACTER_MODEL_FILES.pistolRun
@@ -280,7 +296,12 @@ export function gameModelFileForWeapon(
 
 /** @deprecated Use gameModelFileForWeapon. */
 export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
-  return gameModelFileForWeapon(weaponId, { sprinting: false, walking: false, jumping: false });
+  return gameModelFileForWeapon(weaponId, {
+    sprinting: false,
+    walking: false,
+    jumping: false,
+    reloading: false,
+  });
 }
 
 export function loadGameCharacterTemplate(
@@ -296,7 +317,12 @@ export function loadLobbyCharacterTemplate(): Promise<CharacterTemplate> {
 
 /** @deprecated Use loadGameCharacterTemplate. */
 export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<CharacterTemplate> {
-  return loadGameCharacterTemplate(weaponId, { sprinting: false, walking: false, jumping: false });
+  return loadGameCharacterTemplate(weaponId, {
+    sprinting: false,
+    walking: false,
+    jumping: false,
+    reloading: false,
+  });
 }
 
 export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
@@ -309,6 +335,9 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.pistolWalk),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.rifleJump),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.pistolJump),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadIdle),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadWalk),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadSprint),
   ]);
 }
 

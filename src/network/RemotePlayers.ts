@@ -65,7 +65,7 @@ export class RemotePlayers {
     player.attachToScene(this.scene);
     this.players.set(sessionId, player);
 
-    void player.syncRemoteCharacterModel();
+    void player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
   }
 
   private updatePlayer(sessionId: string, snapshot: PlayerSnapshot): void {
@@ -75,22 +75,18 @@ export class RemotePlayers {
     if (!player) return;
 
     player.setFromSnapshot(snapshot);
-    void player.syncRemoteCharacterModel();
+    void player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
   }
 
   interpolate(delta: number, camera: THREE.Camera): void {
     const worldTime = this.roomClient.getWorldTime();
     for (const player of this.players.values()) {
       player.interpolateRemote(delta);
-      void player.syncRemoteCharacterModel();
+      void player.syncRemoteCharacterModel(worldTime);
       player.updateRemoteWeapon(delta, worldTime);
       player.updateRemoteHealthBar(camera);
       player.updateDamageNumbers(delta, camera);
     }
-  }
-
-  showDamage(sessionId: string, amount: number): void {
-    this.players.get(sessionId)?.showDamageNumber(amount);
   }
 
   private removePlayer(sessionId: string): void {

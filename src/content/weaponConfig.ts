@@ -63,16 +63,18 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     aimSmoothSpeed: 22,
     adsMultiplier: 0.5,
     yawScale: 0.9,
-    visualKick: 0.35,
+    visualKick: 0.5,
     visualRecoverySpeed: 14,
     adsVisualMultiplier: 0.45,
     visualStyle: {
-      rotX: 0.72,
-      rotYFromYaw: -0.2,
-      rotZ: -0.16,
-      posXFromYaw: -0.05,
-      posY: -0.1,
-      posZ: 0.2,
+      rotX: 0.34,
+      rotYFromYaw: -0.12,
+      rotZ: -0.1,
+      posXFromYaw: -0.03,
+      posY: -0.03,
+      posZ: 0,
+      kickBack: 0.065,
+      kickUp: -0.018,
     },
   },
   muzzleFlash: {
@@ -87,6 +89,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     glowLayers: 0,
     particleSizeScale: 1.15,
   },
+  sway: { intensity: 0.95 },
 };
 
 export const PISTOL_CONFIG: WeaponConfig = {
@@ -112,16 +115,18 @@ export const PISTOL_CONFIG: WeaponConfig = {
     aimSmoothSpeed: 20,
     adsMultiplier: 0.75,
     yawScale: 1.1,
-    visualKick: 3.6,
+    visualKick: 1.05,
     visualRecoverySpeed: 11,
     adsVisualMultiplier: 0.65,
     visualStyle: {
-      rotX: 0.72,
-      rotYFromYaw: -0.2,
-      rotZ: -0.16,
-      posXFromYaw: -0.05,
-      posY: -0.1,
-      posZ: 0.2,
+      rotX: 0.48,
+      rotYFromYaw: -0.14,
+      rotZ: -0.11,
+      posXFromYaw: -0.04,
+      posY: -0.04,
+      posZ: 0,
+      kickBack: 0.17,
+      kickUp: -0.035,
     },
   },
   muzzleFlash: {
@@ -134,6 +139,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
     lightIntensity: 3.2,
     lightDistance: 3.5,
   },
+  sway: { intensity: 1.08 },
 };
 
 export const WEAPON_CONFIGS: Record<(typeof LOADOUT_WEAPON_IDS)[number], WeaponConfig> = {

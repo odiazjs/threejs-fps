@@ -4,9 +4,15 @@ import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 
 const FALLBACK_TOP_OFFSET = 1.84;
 const REF_DISTANCE = 12;
-const MIN_SCALE = 0.8;
-const MAX_SCALE = 1.15;
-const SCREEN_LIFT_PX = 6;
+const MIN_SCALE = 0.38;
+const MAX_SCALE = 1;
+const SCREEN_LIFT_PX = 10;
+/** Extra world-space lift above the head when the camera is far away. */
+const FAR_WORLD_LIFT_MAX = 0.72;
+const FAR_WORLD_LIFT_START = 10;
+const FAR_WORLD_LIFT_RANGE = 36;
+/** Extra screen-space lift so the bar clears small distant silhouettes. */
+const FAR_SCREEN_LIFT_MAX = 42;
 
 const TEAM_COLORS = ['#6a9fd4', '#e5a088'] as const;
 
@@ -57,14 +63,22 @@ export class RemoteHealthBar {
 
   updateLayout(camera: THREE.Camera): void {
     this.object.position.y = this.topOffset;
-
     this.object.getWorldPosition(_anchor);
-    const dist = camera.position.distanceTo(_anchor);
-    const scale = THREE.MathUtils.clamp(dist / REF_DISTANCE, MIN_SCALE, MAX_SCALE);
+    const dist = Math.max(camera.position.distanceTo(_anchor), REF_DISTANCE * 0.35);
+    const farT = THREE.MathUtils.clamp(
+      (dist - FAR_WORLD_LIFT_START) / FAR_WORLD_LIFT_RANGE,
+      0,
+      1,
+    );
+    const extraWorldLift = farT * FAR_WORLD_LIFT_MAX;
+    this.object.position.y = this.topOffset + extraWorldLift;
+
+    const scale = THREE.MathUtils.clamp(REF_DISTANCE / dist, MIN_SCALE, MAX_SCALE);
+    const screenLift = SCREEN_LIFT_PX + farT * FAR_SCREEN_LIFT_MAX;
 
     this.root.style.transformOrigin = '50% 100%';
     this.root.style.transform =
-      `translate(-50%, -100%) translateY(-${SCREEN_LIFT_PX}px) scale(${scale})`;
+      `translate(-50%, -100%) translateY(-${screenLift}px) scale(${scale})`;
   }
 
   dispose(): void {

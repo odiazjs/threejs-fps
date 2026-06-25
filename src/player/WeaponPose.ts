@@ -196,7 +196,7 @@ export class WeaponPose {
     basePosition: THREE.Vector3,
     baseRotation: THREE.Euler,
   ): void {
-    const pose = this.getActivePoseOffsets();
+    const pose = this.isSwitching() ? sampleSwitchOffsets(this.getSwitchProgress()) : null;
 
     if (pose) {
       applyPoseOffsets(weapon.position, basePosition, pose);

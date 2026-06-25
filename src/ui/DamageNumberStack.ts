@@ -9,7 +9,8 @@ const MAX_HORIZONTAL_OFFSET_PX = 52;
 const BASE_VERTICAL_OFFSET_PX = 16;
 const REF_DISTANCE = 12;
 const MIN_SCALE = 0.85;
-const MAX_SCALE = 1.2;
+const MAX_SCALE = 1.5;
+const TEXT_SIZE_BIAS = 1.35;
 const BUMP_DECAY = 6;
 
 const DAMAGE_COLOR_LOW = 0xffe08a;
@@ -130,8 +131,9 @@ export class DamageNumberStack {
 
   private updateLayout(camera: THREE.Camera): void {
     this.object.getWorldPosition(_anchor);
-    const dist = camera.position.distanceTo(_anchor);
-    this.layoutScale = THREE.MathUtils.clamp(dist / REF_DISTANCE, MIN_SCALE, MAX_SCALE);
+    const dist = Math.max(camera.position.distanceTo(_anchor), REF_DISTANCE * 0.35);
+    this.layoutScale =
+      THREE.MathUtils.clamp(REF_DISTANCE / dist, MIN_SCALE, MAX_SCALE) * TEXT_SIZE_BIAS;
   }
 
   dispose(): void {

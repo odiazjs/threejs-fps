@@ -55,10 +55,14 @@ export interface VisualRecoilStyle {
   readonly rotYFromYaw?: number;
   readonly rotZ?: number;
   readonly posXFromYaw?: number;
-  /** Positive raises the grip. */
+  /** Positive raises the grip (legacy; prefer `kickUp`). */
   readonly posY?: number;
-  /** Positive pulls the handle toward the camera. */
+  /** Positive pulls the handle toward the camera (legacy; prefer `kickBack`). */
   readonly posZ?: number;
+  /** Shoulder push — positive shoves the viewmodel toward the player (+Z). */
+  readonly kickBack?: number;
+  /** Vertical shove on the grip while kicking (positive raises). */
+  readonly kickUp?: number;
 }
 
 export type WeaponFireMode = 'auto' | 'semi';
@@ -84,6 +88,11 @@ export interface MuzzleFlashConfig {
   readonly particleSizeScale?: number;
 }
 
+export interface WeaponSwayConfig {
+  /** Scales all sway axes for this weapon (default 1). */
+  readonly intensity?: number;
+}
+
 export interface WeaponConfig {
   readonly id: WeaponId;
   readonly name: string;
@@ -97,4 +106,6 @@ export interface WeaponConfig {
   readonly view: WeaponViewConfig;
   readonly recoil: RecoilConfig;
   readonly muzzleFlash: MuzzleFlashConfig;
+  /** Optional per-weapon sway intensity scale (defaults to 1). */
+  readonly sway?: WeaponSwayConfig;
 }
