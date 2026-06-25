@@ -9,11 +9,14 @@ import type { LocalCombatState } from '../network/types';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
+import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
+import type { LightBeams } from '../world/LightBeams';
 import { StaminaHud } from '../ui/StaminaHud';
 import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
+import { PerformanceHud } from '../ui/PerformanceHud';
 import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
@@ -30,6 +33,7 @@ export class Game {
   private ammoHud = new AmmoHud();
   private healthHud = new HealthHud();
   private killFeedHud = new KillFeedHud();
+  private performanceHud = new PerformanceHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
   private input = new KeyboardInput();
@@ -38,6 +42,7 @@ export class Game {
   private renderContext = new RenderContext();
   private terrain: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
+  private lightBeams: LightBeams | null = null;
   private clock = new THREE.Clock();
   private wasAlive = true;
   private running = false;
@@ -87,9 +92,11 @@ export class Game {
       .withLighting()
       .withTerrain()
       .withLevel()
-      .withDrones();
+      .withDrones()
+      .withLightBeams();
     this.terrain = world.getTerrain();
     this.droneField = world.getDroneField();
+    this.lightBeams = world.getLightBeams();
     this.scene = world.getScene();
     this.projectiles = new ProjectileManager(this.scene);
     this.ammoPickups = new AmmoPickups(this.scene);
@@ -182,8 +189,13 @@ export class Game {
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
-    this.terrain?.update(this.clock.getElapsedTime());
+    const camera = this.player.camera;
+    this.terrain?.update(this.clock.getElapsedTime(), {
+      playerPos: this.player.object.position,
+      cameraPos: camera?.position,
+    });
     this.droneField?.update(this.network?.getWorldTime() ?? 0);
+    this.lightBeams?.update(this.clock.getElapsedTime());
 
     if (this.playerControls.isLocked && this.network) {
       this.ammoPickups.tryPickup(
@@ -199,7 +211,9 @@ export class Game {
       this.healthHud.update(this.localCombat);
     }
 
+    updateEdgeLinesForCamera(this.player.camera!);
     this.renderContext.render(this.scene, this.player.camera!);
+    this.performanceHud.update(delta, this.renderContext.renderer);
     this.input.endFrame();
     this.pointer.endFrame();
   };

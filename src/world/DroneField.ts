@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
+import { createFlatKitMesh } from '../../shared/visuals/edgeLines.js';
 import {
   computeDronePose,
   generateDroneConfigs,
   type DroneConfig,
 } from '../../shared/world/droneSimulation';
-
 interface DroneAgent {
   root: THREE.Group;
   propellers: THREE.Group[];
@@ -13,15 +13,7 @@ interface DroneAgent {
 }
 
 function createStyledMesh(geometry: THREE.BufferGeometry, color: number): THREE.Group {
-  const group = new THREE.Group();
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color }));
-  group.add(mesh);
-
-  const edges = new THREE.EdgesGeometry(geometry);
-  const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
-  group.add(line);
-
-  return group;
+  return createFlatKitMesh(geometry, color);
 }
 
 function createPropeller(): THREE.Group {

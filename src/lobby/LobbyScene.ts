@@ -9,10 +9,11 @@ import {
 import { remoteWeaponMeshScale } from '../combat/WeaponLoadout';
 import { createWeaponMesh } from '../content/weaponMeshes';
 import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
-import { createSkyboxTexture } from '../world/SkyboxBuilder';import { addEdgeLines } from '../visuals/edgeLines';
+import { createSkyboxTexture } from '../world/SkyboxBuilder';
+import { addEdgeLines, updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
 import { createDroneVisual } from '../world/DroneField';
-import { MAP_PALETTE } from '../../shared/level/mapPalette';
+import { PerformanceHud } from '../ui/PerformanceHud';
 
 export class LobbyScene {
   private readonly scene = new THREE.Scene();
@@ -25,6 +26,7 @@ export class LobbyScene {
   private readonly droneRoot: THREE.Group;
   private readonly dronePropellers: THREE.Group[];
   private readonly clock = new THREE.Clock();
+  private readonly performanceHud = new PerformanceHud();
   private animationId = 0;
 
   constructor(container: HTMLElement) {
@@ -54,7 +56,7 @@ export class LobbyScene {
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(3.4, 48),
       new THREE.MeshStandardMaterial({
-        color: MAP_PALETTE.grassDark,
+        color: 0x48b440,
         metalness: 0.05,
         roughness: 0.92,
       }),
@@ -66,15 +68,20 @@ export class LobbyScene {
 
     this.grassField = new GrassField(() => 0, {
       halfExtent: 3.2,
-      maxBlades: 4_200,
-      gridStep: 0.2,
+      maxBlades: 14_500,
+      gridStep: 0.08,
+      bladeHeight: 0.22,
+      bladeWidth: 0.026,
+      extraBladeChance: 0.78,
       skipPatches: false,
       seed: 0x10bb3,
+      sunDirection: new THREE.Vector3(2.5, 4, 3),
     });
     this.scene.add(this.grassField.mesh);
 
     const drone = createDroneVisual();
     this.droneRoot = drone.root;
+    this.droneRoot.scale.setScalar(0.42);
     this.dronePropellers = drone.propellers;
     this.scene.add(this.droneRoot);
 
@@ -102,7 +109,7 @@ export class LobbyScene {
     const t = this.clock.getElapsedTime();
     this.avatar.rotation.y = Math.sin(t * 0.55) * 0.35;
     this.characterInstance?.update(delta);
-    this.grassField.update(t);
+    this.grassField.update(t, { cameraPos: this.camera.position });
 
     const orbitAngle = t * 0.72;
     this.droneRoot.position.set(
@@ -118,7 +125,9 @@ export class LobbyScene {
       this.dronePropellers[i]!.rotation.y = spin * (i % 2 === 0 ? 1 : -1);
     }
 
+    updateEdgeLinesForCamera(this.camera);
     this.renderer.render(this.scene, this.camera);
+    this.performanceHud.update(delta, this.renderer);
   };
 
   private attachLobbyWeapon(template: CharacterTemplate): void {
@@ -155,6 +164,7 @@ export class LobbyScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    updateLineResolution(w, h);
   };
 
   dispose(): void {
@@ -171,6 +181,7 @@ export class LobbyScene {
     this.weaponMesh?.removeFromParent();
     this.weaponMesh = null;
     this.grassField.dispose();
+    this.performanceHud.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

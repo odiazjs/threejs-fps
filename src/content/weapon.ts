@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createFlatKitMesh } from '../../shared/visuals/edgeLines.js';
 
 const colors = {
   body: 0x4d533c,
@@ -7,17 +8,13 @@ const colors = {
   grip: 0x3b3f2e,
 };
 
+const WEAPON_EDGE_OPTIONS = {
+  thresholdAngle: 32,
+  lineWidth: 0.82,
+};
+
 function createPart(geometry: THREE.BufferGeometry, color: number): THREE.Group {
-  const group = new THREE.Group();
-
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color }));
-  group.add(mesh);
-
-  const edges = new THREE.EdgesGeometry(geometry);
-  const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
-  group.add(line);
-
-  return group;
+  return createFlatKitMesh(geometry, color, WEAPON_EDGE_OPTIONS);
 }
 
 export function createPlasmaRifle(): THREE.Group {

@@ -6,7 +6,7 @@ export interface BaldPatch {
   radius: number;
 }
 
-const PATCH_COUNT = 34;
+const PATCH_COUNT = 40;
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -29,12 +29,12 @@ function generatePatches(): BaldPatch[] {
   for (let attempts = 0; patches.length < PATCH_COUNT && attempts < 400; attempts++) {
     const x = (rand() - 0.5) * (MAP_HALF * 2 - margin * 2);
     const z = (rand() - 0.5) * (MAP_HALF * 2 - margin * 2);
-    const radius = 1.1 + rand() * 2.6;
+    const radius = 0.35 + rand() * 0.55;
 
     const tooClose = patches.some((patch) => {
       const dx = patch.x - x;
       const dz = patch.z - z;
-      return Math.hypot(dx, dz) < patch.radius + radius + 2.8;
+      return Math.hypot(dx, dz) < patch.radius + radius + 1.2;
     });
     if (tooClose) continue;
 
@@ -62,5 +62,5 @@ export function getBaldPatchInfluence(x: number, z: number): number {
 }
 
 export function shouldSkipGrass(x: number, z: number): boolean {
-  return getBaldPatchInfluence(x, z) > 0.38;
+  return getBaldPatchInfluence(x, z) > 0.88;
 }

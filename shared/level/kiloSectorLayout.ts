@@ -1,20 +1,12 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from './mapPalette.js';
 import { COLUMN_POSITIONS } from './kiloSectorColliders.js';
+import { createFlatKitMesh } from '../visuals/edgeLines.js';
 
 const mapGroup = new THREE.Group();
 
 function createStyledMesh(geometry: THREE.BufferGeometry, color: number): THREE.Group {
-  const group = new THREE.Group();
-
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color }));
-  group.add(mesh);
-
-  const edges = new THREE.EdgesGeometry(geometry);
-  const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0x000000 }));
-  group.add(line);
-
-  return group;
+  return createFlatKitMesh(geometry, color);
 }
 
 function createColumn(): THREE.Group {

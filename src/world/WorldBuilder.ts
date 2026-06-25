@@ -5,18 +5,20 @@ import { LevelBuilder } from './LevelBuilder';
 import { LightingBuilder } from './LightingBuilder';
 import { TerrainBuilder } from './TerrainBuilder';
 import { DroneField } from './DroneField';
+import { LightBeams } from './LightBeams';
 import { createSkyboxTexture } from './SkyboxBuilder';
 
 export class WorldBuilder {
   private sceneBuilder = new SceneBuilder();
   private terrainBuilder: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
+  private lightBeams: LightBeams | null = null;
 
   build(): this {
     this.sceneBuilder
       .build()
       .addBackground(createSkyboxTexture())
-      .addFog(0xb8ccd8, MAP_HALF * 0.55, MAP_HALF * 2.4);
+      .addFog(0x88d4f0, MAP_HALF * 0.5, MAP_HALF * 2.2);
     return this;
   }
 
@@ -45,12 +47,22 @@ export class WorldBuilder {
     return this;
   }
 
+  withLightBeams(): this {
+    this.lightBeams = new LightBeams();
+    this.sceneBuilder.addObject(this.lightBeams.group);
+    return this;
+  }
+
   getTerrain(): TerrainBuilder | null {
     return this.terrainBuilder;
   }
 
   getDroneField(): DroneField | null {
     return this.droneField;
+  }
+
+  getLightBeams(): LightBeams | null {
+    return this.lightBeams;
   }
 
   getScene(): THREE.Scene {

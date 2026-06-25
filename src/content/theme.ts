@@ -1,1 +1,1 @@
-export const SKY = 0xa8b4bc;
+export const SKY = 0x6ec8e8;

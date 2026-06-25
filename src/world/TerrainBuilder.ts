@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { FLOOR_SIZE } from '../../shared/level/kiloSectorColliders';
 import { sampleGroundHeight } from '../../shared/level/terrainHeight';
-import { MAP_PALETTE } from '../../shared/level/mapPalette';
-import { GrassField } from './GrassField';
+import { GrassField, type GrassUpdateContext } from './GrassField';
 
 const GROUND_SEGMENTS = 200;
 
@@ -13,7 +12,7 @@ function createGroundTexture(): THREE.CanvasTexture {
   canvas.height = size;
   const ctx = canvas.getContext('2d')!;
 
-  ctx.fillStyle = '#7ec86a';
+  ctx.fillStyle = '#48b440';
   ctx.fillRect(0, 0, size, size);
 
   const rand = (n: number) => {
@@ -110,7 +109,7 @@ export class TerrainBuilder {
     const ground = new THREE.Mesh(
       groundGeo,
       new THREE.MeshStandardMaterial({
-        color: MAP_PALETTE.grassMid,
+        color: 0x48b440,
         map: createGroundTexture(),
         normalMap: createGroundNormalTexture(),
         normalScale: new THREE.Vector2(0.35, 0.35),
@@ -124,8 +123,8 @@ export class TerrainBuilder {
     this.group.add(this.grassField.mesh);
   }
 
-  update(time: number): void {
-    this.grassField.update(time);
+  update(time: number, context?: GrassUpdateContext): void {
+    this.grassField.update(time, context);
   }
 
   build(): THREE.Group {
