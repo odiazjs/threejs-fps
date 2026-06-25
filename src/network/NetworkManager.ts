@@ -101,12 +101,13 @@ export class NetworkManager {
     console.info('[Network] connected to room', this.roomClient.sessionId);
   }
 
-  bindShoot(player: Player): void {
+  bindShoot(player: Player, onLocalHit?: () => void): void {
     this.projectiles.setPlayerHitHandlers(
       () => this.remotePlayers.getEnemyHitTargets(this.localCombat.teamId),
       (targetId) => {
         const weaponId = player.getActiveWeaponId();
         this.roomClient.sendHit(targetId, weaponId);
+        onLocalHit?.();
       },
     );
 

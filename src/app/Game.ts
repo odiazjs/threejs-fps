@@ -17,11 +17,13 @@ import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
+import { CrosshairHud } from '../ui/CrosshairHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
+import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
 
@@ -34,6 +36,7 @@ export class Game {
   private ammoHud = new AmmoHud();
   private healthHud = new HealthHud();
   private killFeedHud = new KillFeedHud();
+  private crosshairHud = new CrosshairHud();
   private performanceHud = new PerformanceHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
@@ -62,6 +65,7 @@ export class Game {
     onConnected?: () => void,
   ): Promise<void> {
     this.initWorld();
+    await preloadWeaponMeshes();
     this.initPlayer();
     this.initResize();
     await this.initNetwork(username, joinIntent);
@@ -115,6 +119,7 @@ export class Game {
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setKillFeedHud(this.killFeedHud);
+    this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
     });
@@ -144,7 +149,7 @@ export class Game {
         if (victimName === session.username) recordDeath(session.username);
       },
     );
-    this.network.bindShoot(this.player);
+    this.network.bindShoot(this.player, () => this.crosshairHud.onHit());
     await this.network.connect(username, joinIntent);
     this.network.applyLocalSpawn(this.player);
   }
@@ -211,6 +216,7 @@ export class Game {
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
 
+      this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
     }
 

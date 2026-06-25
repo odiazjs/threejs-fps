@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ProjectileHitTarget } from '../combat/ProjectileManager';
 import { Player } from '../player/Player';
 import { preloadGameCharacterModels } from '../player/characterModel';
+import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import type { RoomClient } from './RoomClient';
 import type { PlayerSnapshot } from './types';
 import { isWeaponId } from '../../shared/content/weaponIds';
@@ -13,7 +14,7 @@ export class RemotePlayers {
     private scene: THREE.Scene,
     private roomClient: RoomClient,
   ) {
-    void preloadGameCharacterModels();
+    void Promise.all([preloadGameCharacterModels(), preloadWeaponMeshes()]);
   }
 
   bind(): void {

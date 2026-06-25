@@ -7,7 +7,7 @@ import {
   type CharacterTemplate,
 } from '../player/characterModel';
 import { remoteWeaponMeshScale } from '../combat/WeaponLoadout';
-import { createWeaponMesh } from '../content/weaponMeshes';
+import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
 import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { addEdgeLines, updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
@@ -88,13 +88,15 @@ export class LobbyScene {
     const bodyRoot = new THREE.Group();
     bodyRoot.rotation.y = Math.PI;
     this.avatar.add(bodyRoot);
-    void loadLobbyCharacterTemplate().then((template) => {
-      this.characterInstance = createCharacterInstance(template);
-      bodyRoot.add(this.characterInstance.root);
-      this.attachLobbyWeapon(template);
-    }).catch((error) => {
-      console.warn('[LobbyScene] Failed to load character model', error);
-    });
+    void Promise.all([loadLobbyCharacterTemplate(), preloadWeaponMeshes()])
+      .then(([template]) => {
+        this.characterInstance = createCharacterInstance(template);
+        bodyRoot.add(this.characterInstance.root);
+        this.attachLobbyWeapon(template);
+      })
+      .catch((error) => {
+        console.warn('[LobbyScene] Failed to load lobby assets', error);
+      });
 
     this.scene.add(this.avatar);
 

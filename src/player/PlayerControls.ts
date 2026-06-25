@@ -1,5 +1,6 @@
 import type * as THREE from 'three';
 import { PointerAimControls } from './PointerAimControls';
+import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
@@ -11,6 +12,7 @@ export class PlayerControls {
   private ammoHud: AmmoHud | null = null;
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
+  private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private hasLockedOnce = false;
 
@@ -39,6 +41,10 @@ export class PlayerControls {
     this.healthHud = hud;
   }
 
+  setCrosshairHud(hud: CrosshairHud): void {
+    this.crosshairHud = hud;
+  }
+
   setKillFeedHud(hud: KillFeedHud): void {
     this.killFeedHud = hud;
   }
@@ -52,8 +58,6 @@ export class PlayerControls {
   }
 
   private initUI(): void {
-    const crosshair = document.getElementById('crosshair')!;
-
     this.blocker.addEventListener('click', () => {
       if (!this.leaveButton.disabled) {
         this.controls.lock();
@@ -70,7 +74,7 @@ export class PlayerControls {
       this.hasLockedOnce = true;
       this.blocker.style.display = 'none';
       this.leaveButton.hidden = true;
-      crosshair.style.display = 'block';
+      this.crosshairHud?.setVisible(true);
       this.staminaHud?.setVisible(true);
       this.ammoHud?.setVisible(true);
       this.healthHud?.setVisible(true);
@@ -80,7 +84,7 @@ export class PlayerControls {
 
     this.controls.onUnlock = () => {
       this.blocker.style.display = 'flex';
-      crosshair.style.display = 'none';
+      this.crosshairHud?.setVisible(false);
       this.staminaHud?.setVisible(false);
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);

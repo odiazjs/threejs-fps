@@ -19,7 +19,7 @@ const ADS_SWAY_REDUCTION = 0.42;
 
 /** Right-side high carry — muzzle toward the sky while sprinting. */
 const SPRINT_CARRY = {
-  position: { x: 0.15, y: 0.05, z: -0.1 },
+  position: { x: 0.12, y: 0.05, z: -0.1 },
   rotation: { x: 1.48, y: -0.1, z: -0.32 },
   bobAmp: 0.016,
   bobFreq: 3.1,

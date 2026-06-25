@@ -50,8 +50,8 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   fireMode: 'auto',
   damage: WEAPON_DAMAGE.plasma_rifle,
   view: {
-    hip: { x: 0.15, y: -0.18, z: -0.35 },
-    ads: { x: 0, y: -0.14, z: -0.3 },
+    hip: { x: 0.15, y: -0.25, z: -0.35 },
+    ads: { x: 0, y: -0.19, z: -0.35 },
     adsFov: 67,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -103,7 +103,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   damage: WEAPON_DAMAGE.pistol,
   view: {
     hip: { x: 0.12, y: -0.16, z: -0.28 },
-    ads: { x: 0.0, y: -0.07, z: -0.18 },
+    ads: { x: 0.0, y: -0.12, z: -0.25 },
     adsFov: 70,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },

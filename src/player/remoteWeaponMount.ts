@@ -13,7 +13,7 @@ export interface RemoteWeaponMount {
 const RIFLE_AIMING_RIFLE_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(10, 25, -5),
+  weaponPosition: new THREE.Vector3(5, 25, 7),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
@@ -21,7 +21,7 @@ const RIFLE_AIMING_RIFLE_MOUNT: RemoteWeaponMount = {
 const PISTOL_IDLE_PISTOL_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(2, 8.5, 0.2),
+  weaponPosition: new THREE.Vector3(2, 16, 6),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
@@ -29,7 +29,7 @@ const PISTOL_IDLE_PISTOL_MOUNT: RemoteWeaponMount = {
 const RIFLE_RUN_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(10, 25, -5),
+  weaponPosition: new THREE.Vector3(5, 25, 7),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
@@ -37,7 +37,7 @@ const RIFLE_RUN_MOUNT: RemoteWeaponMount = {
 const PISTOL_RUN_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(2, 8.5, 0.2),
+  weaponPosition: new THREE.Vector3(2, 16, 6),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
@@ -45,7 +45,7 @@ const PISTOL_RUN_MOUNT: RemoteWeaponMount = {
 const RIFLE_WALK_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(10, 25, -5),
+  weaponPosition: new THREE.Vector3(5, 25, 7),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
@@ -53,7 +53,7 @@ const RIFLE_WALK_MOUNT: RemoteWeaponMount = {
 const PISTOL_WALK_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(2, 8.5, 0.2),
+  weaponPosition: new THREE.Vector3(2, 16, 6),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 

@@ -40,13 +40,56 @@
         cursor: not-allowed;
       }
       #crosshair {
-        position: fixed; top: 50%; left: 50%;
-        width: 4px; height: 4px;
-        margin: -2px 0 0 -2px;
-        background: rgba(255, 255, 255, 0.8);
-        border-radius: 50%;
-        pointer-events: none; z-index: 5;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 30px;
+        height: 30px;
+        margin: -15px 0 0 -15px;
+        pointer-events: none;
+        z-index: 5;
         display: none;
+      }
+      #crosshair .crosshair-reticle {
+        position: absolute;
+        inset: 0;
+        transform-origin: center center;
+      }
+      #crosshair .crosshair-reticle span {
+        position: absolute;
+        width: 3px;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 1px;
+        box-shadow: 0 0 2px rgba(0, 0, 0, 0.45);
+      }
+      #crosshair .crosshair-reticle span:nth-child(1) {
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      #crosshair .crosshair-reticle span:nth-child(2) {
+        right: 0;
+        top: 50%;
+        width: 8px;
+        height: 3px;
+        transform: translateY(-50%);
+      }
+      #crosshair .crosshair-reticle span:nth-child(3) {
+        bottom: 0;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+      #crosshair .crosshair-reticle span:nth-child(4) {
+        left: 0;
+        top: 50%;
+        width: 8px;
+        height: 3px;
+        transform: translateY(-50%);
+      }
+      #crosshair.hit .crosshair-reticle span {
+        background: rgba(255, 118, 98, 0.98);
+        box-shadow: 0 0 4px rgba(255, 90, 70, 0.55);
       }
       #stamina-hud {
         position: fixed;
@@ -318,7 +361,11 @@
       </div>
       <button id="leave-game-btn" type="button" hidden>LEAVE GAME</button>
     </div>
-    <div id="crosshair"></div>
+    <div id="crosshair">
+      <div class="crosshair-reticle" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
     <div id="message-hud"></div>
     <div id="kill-feed" hidden></div>
     <div id="health-hud" hidden>
