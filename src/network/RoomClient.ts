@@ -37,6 +37,8 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     reloading: player.reloading,
     reloadEndAt: player.reloadEndAt,
     activeWeaponId: player.activeWeaponId,
+    sprinting: player.sprinting,
+    walking: player.walking,
   };
 }
 
@@ -179,8 +181,16 @@ export class RoomClient {
     return players;
   }
 
-  sendMove(x: number, y: number, z: number, yaw: number, pitch: number): void {
-    this.room?.send('move', { x, y, z, yaw, pitch });
+  sendMove(
+    x: number,
+    y: number,
+    z: number,
+    yaw: number,
+    pitch: number,
+    sprinting: boolean,
+    walking: boolean,
+  ): void {
+    this.room?.send('move', { x, y, z, yaw, pitch, sprinting, walking });
   }
 
   sendShoot(spawn: ProjectileSpawnMessage): void {

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import type { ProjectileHitTarget } from '../combat/ProjectileManager';
 import { Player } from '../player/Player';
+import { preloadGameCharacterModels } from '../player/characterModel';
 import type { RoomClient } from './RoomClient';
 import type { PlayerSnapshot } from './types';
-
-const TEAM_COLORS = [0x6a9fd4, 0xe5a088] as const;
+import { isWeaponId } from '../../shared/content/weaponIds';
 
 export class RemotePlayers {
   private readonly players = new Map<string, Player>();
@@ -12,7 +12,9 @@ export class RemotePlayers {
   constructor(
     private scene: THREE.Scene,
     private roomClient: RoomClient,
-  ) {}
+  ) {
+    void preloadGameCharacterModels();
+  }
 
   bind(): void {
     this.roomClient.onPlayerAdd((sessionId, snapshot) => {
@@ -54,22 +56,29 @@ export class RemotePlayers {
   private addPlayer(sessionId: string, snapshot: PlayerSnapshot): void {
     if (this.isLocal(sessionId)) return;
 
-    const color = TEAM_COLORS[snapshot.teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0];
-    const player = Player.createRemote(color);
+    const player = Player.createRemote();
     player.setFromSnapshot(snapshot, true);
     player.attachToScene(this.scene);
     this.players.set(sessionId, player);
+
+    void player.syncRemoteCharacterModel();
   }
 
   private updatePlayer(sessionId: string, snapshot: PlayerSnapshot): void {
     if (this.isLocal(sessionId)) return;
-    this.players.get(sessionId)?.setFromSnapshot(snapshot);
+
+    const player = this.players.get(sessionId);
+    if (!player) return;
+
+    player.setFromSnapshot(snapshot);
+    void player.syncRemoteCharacterModel();
   }
 
   interpolate(delta: number, camera: THREE.Camera): void {
     const worldTime = this.roomClient.getWorldTime();
     for (const player of this.players.values()) {
       player.interpolateRemote(delta);
+      void player.syncRemoteCharacterModel();
       player.updateRemoteWeapon(delta, worldTime);
       player.updateRemoteHealthBar(camera);
       player.updateDamageNumbers(delta, camera);

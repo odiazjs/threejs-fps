@@ -155,7 +155,17 @@ export class NetworkManager {
     const feet = player.object.position;
     const { yaw, pitch } = player.getNetworkAim();
 
-    this.roomClient.sendMove(feet.x, feet.y + EYE_HEIGHT, feet.z, yaw, pitch);
+    const locomotion = player.getLocomotionState();
+
+    this.roomClient.sendMove(
+      feet.x,
+      feet.y + EYE_HEIGHT,
+      feet.z,
+      yaw,
+      pitch,
+      locomotion.isSprinting,
+      locomotion.isWalking,
+    );
   }
 
   interpolateRemotes(delta: number, camera: THREE.Camera): void {

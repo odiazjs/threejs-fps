@@ -16,6 +16,8 @@ export interface WeaponViewConfig {
   readonly localMeshEuler?: WeaponViewOffset;
   /** Extra euler (radians) added on third-person attach rotation. */
   readonly remoteMeshEuler?: WeaponViewOffset;
+  /** Local offset from the right-hand bone for third-person weapon attach. */
+  readonly remoteHand?: WeaponViewOffset;
 }
 
 export interface RecoilKick {

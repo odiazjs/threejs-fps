@@ -7,8 +7,36 @@ import { WeaponRecoil } from './WeaponRecoil';
 import { createWeaponMesh } from '../content/weaponMeshes';
 
 const SWITCH_READY_SEC = 0.2;
+/** Default scale baked into procedural weapon meshes (first-person viewmodel size). */
+export const WEAPON_MESH_BASE_SCALE = 0.1;
 
 export type WeaponMeshContext = 'local' | 'remote';
+
+/** Extra multiplier so third-person weapons read clearly on the character mesh. */
+const REMOTE_WEAPON_SCALE_FACTOR = 1.6;
+
+export function remoteWeaponMeshScale(characterFitScale: number): number {
+  return (WEAPON_MESH_BASE_SCALE / characterFitScale) * REMOTE_WEAPON_SCALE_FACTOR;
+}
+
+function applyMeshContextScale(mesh: THREE.Object3D, context: WeaponMeshContext, characterFitScale?: number): void {
+  const scale =
+    context === 'remote' && characterFitScale
+      ? remoteWeaponMeshScale(characterFitScale)
+      : WEAPON_MESH_BASE_SCALE;
+  mesh.scale.setScalar(scale);
+  mesh.frustumCulled = false;
+}
+
+function getAttachOffset(
+  view: WeaponConfig['view'],
+  context: WeaponMeshContext,
+): { x: number; y: number; z: number } {
+  if (context === 'remote' && view.remoteHand) {
+    return view.remoteHand;
+  }
+  return view.hip;
+}
 
 export function applyWeaponMeshRotation(
   mesh: THREE.Object3D,
@@ -76,6 +104,7 @@ export class WeaponLoadout {
   private readonly slots: WeaponSlot[];
   private activeIndex = 0;
   private switchCooldown = 0;
+  private meshesForcedHidden = false;
 
   constructor(configs: readonly WeaponConfig[]) {
     if (configs.length !== LOADOUT_SIZE) {
@@ -85,13 +114,38 @@ export class WeaponLoadout {
     this.slots[0]!.mesh.visible = true;
   }
 
-  attach(parent: THREE.Object3D, rotation: THREE.Euler, context: WeaponMeshContext): void {
+  attach(
+    parent: THREE.Object3D,
+    rotation: THREE.Euler,
+    context: WeaponMeshContext,
+    characterFitScale?: number,
+  ): void {
     for (const slot of this.slots) {
       parent.add(slot.mesh);
-      const { hip } = slot.config.view;
-      slot.mesh.position.set(hip.x, hip.y, hip.z);
+      applyMeshContextScale(slot.mesh, context, characterFitScale);
+      const offset = getAttachOffset(slot.config.view, context);
+      slot.mesh.position.set(offset.x, offset.y, offset.z);
       applyWeaponMeshRotation(slot.mesh, rotation, slot.config.view, context);
     }
+    this.syncMeshVisibility();
+  }
+
+  reattach(
+    parent: THREE.Object3D,
+    rotation: THREE.Euler,
+    context: WeaponMeshContext,
+    characterFitScale?: number,
+    basePosition?: THREE.Vector3,
+  ): void {
+    for (const slot of this.slots) {
+      slot.mesh.removeFromParent();
+      parent.add(slot.mesh);
+      applyMeshContextScale(slot.mesh, context, characterFitScale);
+      const offset = basePosition ?? getAttachOffset(slot.config.view, context);
+      slot.mesh.position.copy(offset);
+      applyWeaponMeshRotation(slot.mesh, rotation, slot.config.view, context);
+    }
+    this.syncMeshVisibility();
   }
 
   getActiveIndex(): number {
@@ -149,7 +203,7 @@ export class WeaponLoadout {
 
     this.slots[this.activeIndex]!.mesh.visible = false;
     this.activeIndex = slotIndex;
-    this.slots[this.activeIndex]!.mesh.visible = true;
+    this.syncMeshVisibility();
     this.slots[this.activeIndex]!.recoil.reset();
     this.switchCooldown = SWITCH_READY_SEC;
     return true;
@@ -172,7 +226,18 @@ export class WeaponLoadout {
       slot.mesh.visible = false;
     }
     this.activeIndex = index;
-    this.slots[index]!.mesh.visible = true;
+    this.syncMeshVisibility();
+  }
+
+  setMeshesVisible(visible: boolean): void {
+    this.meshesForcedHidden = !visible;
+    this.syncMeshVisibility();
+  }
+
+  private syncMeshVisibility(): void {
+    for (let i = 0; i < this.slots.length; i++) {
+      this.slots[i]!.mesh.visible = !this.meshesForcedHidden && i === this.activeIndex;
+    }
   }
 
   reset(): void {

@@ -33,6 +33,8 @@ interface MoveMessage {
   z: number;
   yaw: number;
   pitch: number;
+  sprinting?: boolean;
+  walking?: boolean;
 }
 
 interface JoinOptions {
@@ -91,6 +93,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.y = clampEyeY(resolved.x, resolved.z, data.y);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
+      player.sprinting = data.sprinting === true;
+      player.walking = data.walking === true && !player.sprinting;
     },
 
     reload: (client: Client, data: ReloadMessage) => {
@@ -261,6 +265,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.pitch = 0;
     player.reloading = false;
     player.reloadEndAt = 0;
+    player.sprinting = false;
+    player.walking = false;
     player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
   }
 }

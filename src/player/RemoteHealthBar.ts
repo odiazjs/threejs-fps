@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
-import { HEAD_SIZE } from './RemoteAvatar';
+import { REMOTE_HEAD_TOP_OFFSET } from './RemoteAvatar';
 
 /** Local Y above lookRig origin (head top + gap). */
 const CLEARANCE_ABOVE_HEAD = 0.5;
@@ -40,7 +40,7 @@ export class RemoteHealthBar {
     this.root.append(this.name, track);
 
     this.object = new CSS2DObject(this.root);
-    this.object.position.y = HEAD_SIZE / 2 + CLEARANCE_ABOVE_HEAD;
+    this.object.position.y = REMOTE_HEAD_TOP_OFFSET + CLEARANCE_ABOVE_HEAD;
   }
 
   update(hp: number, alive: boolean, teamId: number, username: string): void {
@@ -66,7 +66,7 @@ export class RemoteHealthBar {
       MIN_CLEARANCE_ABOVE_HEAD,
       MAX_CLEARANCE_ABOVE_HEAD,
     );
-    this.object.position.y = HEAD_SIZE / 2 + clearance;
+    this.object.position.y = REMOTE_HEAD_TOP_OFFSET + clearance;
 
     const labelHeight = this.root.offsetHeight || 36;
     const margin = THREE.MathUtils.clamp(

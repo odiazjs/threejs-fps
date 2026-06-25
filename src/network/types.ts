@@ -13,6 +13,8 @@ export interface PlayerSnapshot {
   reloading: boolean;
   reloadEndAt: number;
   activeWeaponId: string;
+  sprinting: boolean;
+  walking: boolean;
 }
 
 export type { ProjectileSpawnMessage };

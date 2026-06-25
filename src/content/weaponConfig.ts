@@ -52,6 +52,8 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     hip: { x: 0.15, y: -0.18, z: -0.35 },
     ads: { x: 0, y: -0.14, z: -0.3 },
     adsFov: 67,
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
   },
   recoil: {
     pattern: buildPlasmaRifleRecoilPattern(),
@@ -79,6 +81,8 @@ export const PISTOL_CONFIG: WeaponConfig = {
     ads: { x: 0.0, y: -0.07, z: -0.18 },
     adsFov: 70,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
   },
   recoil: {
     pattern: buildPistolRecoilPattern(),

@@ -1,37 +1,17 @@
 import * as THREE from 'three';
-import { createWeapon } from '../content/weapon';
-import { createRemoteHead, createRemoteTorso } from '../player/RemoteAvatar';
+import { createCharacterInstance, loadLobbyCharacterTemplate, type CharacterInstance } from '../player/characterModel';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { addEdgeLines } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
 import { createDroneVisual } from '../world/DroneField';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
 
-const TEAM_COLOR = 0x6a9fd4;
-
-/** Right-hand grip on torso (+X), neutral forward (-Z). */
-const WEAPON_HAND_OFFSET = new THREE.Vector3(0.34, 0.74, 0.02);
-/** Nudge so the grip mesh sits in the hand after barrel-up alignment. */
-const WEAPON_GRIP_OFFSET = new THREE.Vector3(0.02, -0.1, 0);
-
-const _barrelAxis = new THREE.Vector3(1, 0, 0);
-const _skyAxis = new THREE.Vector3(0, 1, 0);
-const _tiltAxis = new THREE.Vector3(0, 1, 0);
-const _alignQuat = new THREE.Quaternion();
-const _tiltQuat = new THREE.Quaternion();
-
-function applyLobbyWeaponPose(weapon: THREE.Group): void {
-  _alignQuat.setFromUnitVectors(_barrelAxis, _skyAxis);
-  _tiltQuat.setFromAxisAngle(_tiltAxis, -0.18);
-  weapon.quaternion.copy(_tiltQuat).multiply(_alignQuat);
-  weapon.position.copy(WEAPON_GRIP_OFFSET);
-}
-
 export class LobbyScene {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly avatar = new THREE.Group();
+  private characterInstance: CharacterInstance | null = null;
   private readonly grassField: GrassField;
   private readonly droneRoot: THREE.Group;
   private readonly dronePropellers: THREE.Group[];
@@ -90,21 +70,14 @@ export class LobbyScene {
     this.scene.add(this.droneRoot);
 
     const bodyRoot = new THREE.Group();
-    bodyRoot.add(createRemoteTorso(TEAM_COLOR));
+    bodyRoot.rotation.y = Math.PI;
     this.avatar.add(bodyRoot);
-
-    const handRig = new THREE.Group();
-    handRig.position.copy(WEAPON_HAND_OFFSET);
-    bodyRoot.add(handRig);
-
-    const weapon = createWeapon();
-    applyLobbyWeaponPose(weapon);
-    handRig.add(weapon);
-
-    const lookRig = new THREE.Group();
-    lookRig.position.y = 1.54;
-    lookRig.add(createRemoteHead(TEAM_COLOR));
-    this.avatar.add(lookRig);
+    void loadLobbyCharacterTemplate().then((template) => {
+      this.characterInstance = createCharacterInstance(template);
+      bodyRoot.add(this.characterInstance.root);
+    }).catch((error) => {
+      console.warn('[LobbyScene] Failed to load character model', error);
+    });
 
     this.scene.add(this.avatar);
 
@@ -115,8 +88,10 @@ export class LobbyScene {
 
   private loop = (): void => {
     this.animationId = requestAnimationFrame(this.loop);
+    const delta = this.clock.getDelta();
     const t = this.clock.getElapsedTime();
     this.avatar.rotation.y = Math.sin(t * 0.55) * 0.35;
+    this.characterInstance?.update(delta);
     this.grassField.update(t);
 
     const orbitAngle = t * 0.72;
@@ -150,6 +125,8 @@ export class LobbyScene {
   dispose(): void {
     cancelAnimationFrame(this.animationId);
     window.removeEventListener('resize', this.onResize);
+    this.characterInstance?.dispose();
+    this.characterInstance = null;
     this.grassField.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();

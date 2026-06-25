@@ -15,6 +15,8 @@ export class PlayerState extends Schema {
   /** Server world time when the reload finishes (0 when idle). */
   @type('number') reloadEndAt = 0;
   @type('string') activeWeaponId = 'pistol';
+  @type('boolean') sprinting = false;
+  @type('boolean') walking = false;
 }
 
 export class AmmoBoxState extends Schema {

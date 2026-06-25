@@ -10,10 +10,16 @@ import type { PlayerSnapshot } from '../network/types';
 import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
 import { HeadBob } from './HeadBob';
 import {
-  createRemoteHead,
-  createRemoteTorso,
-  REMOTE_AIM_HEIGHT,
-} from './RemoteAvatar';
+  createCharacterInstance,
+  gameModelFileForWeapon,
+  loadGameCharacterTemplate,
+  preloadGameCharacterModels,
+  resolveCharacterRig,
+  type CharacterInstance,
+  type CharacterTemplate,
+  type RemoteCharacterPose,
+} from './characterModel';
+import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { applyPlayerAim, readWorldPlayerAim } from './playerAim';
@@ -26,11 +32,12 @@ import {
   type WeaponId,
 } from '../../shared/content/weaponIds';
 
-const MOVE_SPEED = 5;
+const MOVE_SPEED = 3;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
-/** Third-person: weapon mesh +X must map to lookRig forward (-Z). */
-const REMOTE_WEAPON_ROTATION = new THREE.Euler(0, Math.PI / 2, 0);
+
+const _spinePitchAxis = new THREE.Vector3(1, 0, 0);
+const _spinePitchQuat = new THREE.Quaternion();
 
 function lerpAngle(from: number, to: number, t: number): number {
   const delta = THREE.MathUtils.euclideanModulo(to - from + Math.PI, Math.PI * 2) - Math.PI;
@@ -62,7 +69,14 @@ export class Player {
   private yawRecoilRig: THREE.Group | null = null;
   private pitchRecoilRig: THREE.Group | null = null;
   private bodyRoot: THREE.Group | null = null;
+  private pitchPivot: THREE.Group | null = null;
   private lookRig: THREE.Group | null = null;
+  private handRig: THREE.Group | null = null;
+  private spineBone: THREE.Object3D | null = null;
+  private lookRigFollowsHead = false;
+  private characterInstance: CharacterInstance | null = null;
+  private displayedCharacterModelFile: string | null = null;
+  private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
   private damageNumberStack: DamageNumberStack | null = null;
   private muzzleOrigin = new THREE.Vector3();
@@ -73,6 +87,9 @@ export class Player {
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
   private targetReloadEndAt = 0;
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
+  private targetSprinting = false;
+  private targetWalking = false;
+  private locomotionWalking = false;
   private remoteDisplayedWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private readonly remoteWeaponBasePosition = new THREE.Vector3();
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
@@ -87,7 +104,7 @@ export class Player {
   private username = 'Player';
   private hp = 100;
 
-  private constructor(local: boolean, bodyColor = 0x6a9fd4) {
+  private constructor(local: boolean) {
     this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS);
 
     if (local) {
@@ -114,18 +131,15 @@ export class Player {
       this.camera = null;
       this.aimRig = null;
       this.bodyRoot = new THREE.Group();
+      this.pitchPivot = new THREE.Group();
       this.lookRig = new THREE.Group();
-      this.lookRig.position.y = REMOTE_AIM_HEIGHT;
 
-      this.bodyRoot.add(createRemoteTorso(bodyColor));
+      this.bodyRoot.add(this.pitchPivot);
       this.object.add(this.bodyRoot);
       this.object.add(this.lookRig);
-      this.lookRig.add(createRemoteHead(bodyColor));
+
       this.weaponPose = new WeaponPose();
-      const defaultHip = this.loadout.getActive().config.view.hip;
-      this.loadout.attach(this.lookRig, REMOTE_WEAPON_ROTATION, 'remote');
-      this.remoteWeaponBasePosition.set(defaultHip.x, defaultHip.y, defaultHip.z);
-      this.remoteWeaponBaseRotation.copy(REMOTE_WEAPON_ROTATION);
+      this.loadout.attach(this.lookRig, LOCAL_WEAPON_ROTATION, 'remote');
 
       this.remoteHealthBar = new RemoteHealthBar();
       this.lookRig.add(this.remoteHealthBar.object);
@@ -141,8 +155,93 @@ export class Player {
     return player;
   }
 
-  static createRemote(color = 0x6a9fd4): Player {
-    return new Player(false, color);
+  static createRemote(_color = 0x6a9fd4): Player {
+    return new Player(false);
+  }
+
+  static async preloadGameCharacterModels(): Promise<void> {
+    await preloadGameCharacterModels();
+  }
+
+  async syncRemoteCharacterModel(): Promise<void> {
+    if (this.camera) return;
+
+    const weaponId = this.targetActiveWeaponId;
+    const pose = this.getRemotePose();
+    const modelFile = gameModelFileForWeapon(weaponId, pose);
+    if (this.displayedCharacterModelFile === modelFile && this.characterInstance) return;
+
+    const template = await loadGameCharacterTemplate(weaponId, pose);
+    this.setCharacterModel(template);
+    this.applyRemoteAim();
+    this.characterInstance?.update(0);
+    this.applyRemoteSpinePitch();
+  }
+
+  private getRemotePose(): RemoteCharacterPose {
+    return { sprinting: this.targetSprinting, walking: this.targetWalking };
+  }
+
+  setCharacterModel(template: CharacterTemplate): void {
+    if (!this.pitchPivot || !this.lookRig || !this.loadout || this.camera) return;
+    if (this.displayedCharacterModelFile === template.modelFile && this.characterInstance) return;
+
+    if (this.lookRigFollowsHead && this.lookRig.parent) {
+      this.lookRig.parent.remove(this.lookRig);
+      this.object.add(this.lookRig);
+      this.lookRigFollowsHead = false;
+    }
+
+    this.characterInstance?.dispose();
+    this.characterInstance = createCharacterInstance(template);
+    this.pitchPivot.add(this.characterInstance.root);
+    this.displayedCharacterModelFile = template.modelFile;
+    this.bindRemoteCharacterRig(template);
+  }
+
+  private bindRemoteCharacterRig(template: CharacterTemplate): void {
+    if (!this.characterInstance || !this.lookRig || !this.loadout) return;
+
+    const rig = resolveCharacterRig(this.characterInstance.root, template.bones);
+    if (!rig) {
+      console.warn('[Player] Character hand/head bones not found');
+      return;
+    }
+
+    this.refreshRemoteWeaponMount(template);
+
+    this.handRig = new THREE.Group();
+    this.handRig.name = 'remoteHandRig';
+    this.handRig.position.copy(this.remoteWeaponMount!.handPosition);
+    this.handRig.rotation.copy(this.remoteWeaponMount!.handRotation);
+    rig.rightHand.add(this.handRig);
+    this.spineBone = rig.spine;
+
+    const mount = this.remoteWeaponMount!;
+    this.loadout.reattach(
+      this.handRig,
+      mount.weaponRotation,
+      'remote',
+      template.fitScale,
+      mount.weaponPosition,
+    );
+
+    this.object.remove(this.lookRig);
+    this.lookRig.position.set(0, 0, 0);
+    this.lookRig.rotation.set(0, 0, 0);
+    rig.head.add(this.lookRig);
+    this.lookRigFollowsHead = true;
+  }
+
+  private refreshRemoteWeaponMount(template: CharacterTemplate): void {
+    if (!this.loadout) return;
+
+    this.remoteWeaponMount = getRemoteWeaponMount(
+      template.modelFile,
+      this.loadout.getActiveWeaponId(),
+    );
+    this.remoteWeaponBasePosition.copy(this.remoteWeaponMount.weaponPosition);
+    this.remoteWeaponBaseRotation.copy(this.remoteWeaponMount.weaponRotation);
   }
 
   attachToScene(scene: THREE.Scene): void {
@@ -151,6 +250,20 @@ export class Player {
 
   getSprintState(): SprintState {
     return this.sprint.getState();
+  }
+
+  getLocomotionState(): { isSprinting: boolean; isWalking: boolean } {
+    if (this.camera) {
+      return {
+        isSprinting: this.sprint.getState().isSprinting,
+        isWalking: this.locomotionWalking,
+      };
+    }
+
+    return {
+      isSprinting: this.targetSprinting,
+      isWalking: this.targetWalking,
+    };
   }
 
   getAmmoState(): LoadoutAmmoState | null {
@@ -254,6 +367,8 @@ export class Player {
       this.targetActiveWeaponId = snapshot.activeWeaponId;
       this.loadout?.setRemoteActiveWeapon(snapshot.activeWeaponId);
     }
+    this.targetSprinting = snapshot.sprinting;
+    this.targetWalking = snapshot.walking;
     this.teamId = snapshot.teamId;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
@@ -272,6 +387,8 @@ export class Player {
       this.currentYaw = snapshot.yaw;
       this.currentPitch = snapshot.pitch;
       this.applyRemoteAim();
+      this.characterInstance?.update(0);
+      this.applyRemoteSpinePitch();
     }
   }
 
@@ -283,6 +400,8 @@ export class Player {
     this.currentYaw = lerpAngle(this.currentYaw, this.targetYaw, t);
     this.currentPitch = THREE.MathUtils.lerp(this.currentPitch, this.targetPitch, t);
     this.applyRemoteAim();
+    this.characterInstance?.update(delta);
+    this.applyRemoteSpinePitch();
   }
 
   updateRemoteHealthBar(camera: THREE.Camera): void {
@@ -308,16 +427,17 @@ export class Player {
       this.weaponPose.startSwitch(this.loadout.getSwitchReadySec());
     }
 
+    if (!this.remoteWeaponMount) return;
+
     const active = this.loadout.getActive();
-    const { hip } = active.config.view;
-    this.remoteWeaponBasePosition.set(hip.x, hip.y, hip.z);
+    this.remoteWeaponBasePosition.copy(this.remoteWeaponMount.weaponPosition);
     resolveWeaponMeshRotation(
-      REMOTE_WEAPON_ROTATION,
+      this.remoteWeaponMount.weaponRotation,
       active.config.view,
       'remote',
       this.remoteWeaponBaseRotation,
     );
-    this.loadout.applyActiveRotation(REMOTE_WEAPON_ROTATION, 'remote');
+    this.loadout.applyActiveRotation(this.remoteWeaponMount.weaponRotation, 'remote');
     const { reloading, progress } = getReloadState(
       this.targetReloadEndAt,
       worldTime,
@@ -449,6 +569,7 @@ export class Player {
 
     this.headBob.update(delta, isMoving, isSprinting);
     if (this.headRig) this.headBob.apply(this.headRig, isSprinting);
+    this.locomotionWalking = isMoving && !isSprinting;
   }
 
   resize(): void {
@@ -462,6 +583,13 @@ export class Player {
     this.remoteHealthBar = null;
     this.damageNumberStack?.dispose();
     this.damageNumberStack = null;
+    this.characterInstance?.dispose();
+    this.characterInstance = null;
+    this.displayedCharacterModelFile = null;
+    this.remoteWeaponMount = null;
+    this.handRig = null;
+    this.spineBone = null;
+    this.lookRigFollowsHead = false;
     this.loadout?.dispose();
     this.loadout = null;
     this.object.traverse((child) => {
@@ -563,9 +691,21 @@ export class Player {
   }
 
   private applyRemoteAim(): void {
-    if (!this.bodyRoot || !this.lookRig) return;
+    if (!this.bodyRoot || !this.pitchPivot || !this.lookRig) return;
 
     this.bodyRoot.rotation.set(0, this.currentYaw, 0);
-    applyPlayerAim(this.lookRig, this.currentYaw, this.currentPitch);
+    this.pitchPivot.rotation.set(0, 0, 0);
+
+    if (!this.lookRigFollowsHead) {
+      applyPlayerAim(this.lookRig, this.currentYaw, this.currentPitch);
+    }
+  }
+
+  /** Pitch on the spine (waist up) so legs stay grounded in the idle pose. */
+  private applyRemoteSpinePitch(): void {
+    if (!this.spineBone) return;
+
+    _spinePitchQuat.setFromAxisAngle(_spinePitchAxis, -this.currentPitch);
+    this.spineBone.quaternion.multiply(_spinePitchQuat);
   }
 }
