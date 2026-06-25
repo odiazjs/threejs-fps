@@ -66,6 +66,15 @@ export function getGroundHeight(feetX: number, feetZ: number, feetY: number): nu
 
   for (const box of getLevelColliders()) {
     if (!overlapsXZ(feetX, feetZ, box)) continue;
+
+    if (box.platform) {
+      // Latch onto the deck when feet rise into the platform volume from below.
+      if (feetY + GROUND_SNAP >= box.minY) {
+        ground = Math.max(ground, box.maxY);
+      }
+      continue;
+    }
+
     if (box.maxY <= feetY + GROUND_SNAP) {
       ground = Math.max(ground, box.maxY);
     }
@@ -332,6 +341,12 @@ export function clampEyeY(feetX: number, feetZ: number, eyeY: number): number {
   const minEyeY = ground + EYE_HEIGHT;
   const maxEyeY = ground + EYE_HEIGHT + MAX_JUMP_HEIGHT;
   return Math.max(minEyeY, Math.min(eyeY, maxEyeY));
+}
+
+/** Feet height used for server-side horizontal collision — matches client elevation on platforms. */
+export function resolveMoveFeetY(feetX: number, feetZ: number, clientFeetY: number): number {
+  const ground = getGroundHeight(feetX, feetZ, clientFeetY);
+  return Math.min(Math.max(clientFeetY, ground), ground + MAX_JUMP_HEIGHT);
 }
 
 export { EYE_HEIGHT, GRAVITY, JUMP_VELOCITY };

@@ -1,4 +1,5 @@
 import type { Aabb } from './levelData.js';
+import { getPlatformColliders } from './floatingPlatforms.js';
 
 export const FLOOR_SIZE = 120;
 export const MAP_HALF = FLOOR_SIZE / 2;
@@ -53,5 +54,8 @@ function columnAabb(x: number, z: number): Aabb {
 }
 
 export function getLevelColliders(): Aabb[] {
-  return COLUMN_POSITIONS.map(({ x, z }) => columnAabb(x, z));
+  return [
+    ...COLUMN_POSITIONS.map(({ x, z }) => columnAabb(x, z)),
+    ...getPlatformColliders(),
+  ];
 }

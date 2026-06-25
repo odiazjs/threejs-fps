@@ -14,13 +14,21 @@ const _aimPoint = new THREE.Vector3();
 const _muzzlePos = new THREE.Vector3();
 const _muzzleToAim = new THREE.Vector3();
 
-function readMuzzlePosition(weapon: THREE.Object3D, position: THREE.Vector3): void {
-  const muzzle = weapon.getObjectByName('muzzle');
+export function readWeaponMuzzleWorldPosition(
+  weapon: THREE.Object3D,
+  position: THREE.Vector3,
+): void {
+  const cached = weapon.userData.weaponMuzzle as THREE.Object3D | undefined;
+  const muzzle = cached ?? weapon.getObjectByName('muzzle');
   if (muzzle) {
     muzzle.getWorldPosition(position);
   } else {
     weapon.getWorldPosition(position);
   }
+}
+
+function readMuzzlePosition(weapon: THREE.Object3D, position: THREE.Vector3): void {
+  readWeaponMuzzleWorldPosition(weapon, position);
 }
 
 /**

@@ -9,6 +9,7 @@ import type { LocalCombatState } from '../network/types';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
+import { resolveGrassQuality } from '../render/grassQuality';
 import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
 import type { LightBeams } from '../world/LightBeams';
 import { StaminaHud } from '../ui/StaminaHud';
@@ -87,10 +88,11 @@ export class Game {
   }
 
   private initWorld(): void {
+    const grassQuality = resolveGrassQuality(this.renderContext.renderer);
     const world = new WorldBuilder()
       .build()
       .withLighting()
-      .withTerrain()
+      .withTerrain(grassQuality)
       .withLevel()
       .withDrones()
       .withLightBeams();
@@ -107,7 +109,8 @@ export class Game {
     const spawn = pickSpawnPoint(0);
     this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
     this.player.attachToScene(this.scene);
-    this.playerControls = new PlayerControls(this.player.aimRig!);
+    this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
+    this.player.bindAimControls(this.playerControls.controls);
     this.playerControls.setStaminaHud(this.staminaHud);
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);

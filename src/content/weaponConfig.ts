@@ -3,6 +3,7 @@ import {
   WEAPON_DAMAGE,
   WEAPON_RELOAD_SEC,
 } from '../../shared/content/weaponStats';
+import { MAP_PALETTE } from '../../shared/level/mapPalette';
 import { LOADOUT_WEAPON_IDS } from '../../shared/content/weaponIds';
 
 export type { WeaponConfig };
@@ -12,17 +13,17 @@ function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
 
   for (let i = 0; i < 30; i++) {
     const t = i / 29;
-    const pitch = 0.013 + t * 0.015;
+    const pitch = (0.013 + t * 0.015);
 
     let yaw: number;
     if (i < 7) {
-      yaw = -0.0045;
+      yaw = 0.0045;
     } else if (i < 15) {
-      yaw = 0.0055;
+      yaw = -0.0055;
     } else if (i < 23) {
-      yaw = -0.005;
+      yaw = 0.005;
     } else {
-      yaw = 0.004;
+      yaw = -0.004;
     }
 
     pattern.push({ pitch, yaw });
@@ -52,6 +53,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     hip: { x: 0.15, y: -0.18, z: -0.35 },
     ads: { x: 0, y: -0.14, z: -0.3 },
     adsFov: 67,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
   },
@@ -61,9 +63,29 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     aimSmoothSpeed: 22,
     adsMultiplier: 0.5,
     yawScale: 0.9,
-    visualKick: 0.85,
+    visualKick: 0.35,
     visualRecoverySpeed: 14,
     adsVisualMultiplier: 0.45,
+    visualStyle: {
+      rotX: 0.72,
+      rotYFromYaw: -0.2,
+      rotZ: -0.16,
+      posXFromYaw: -0.05,
+      posY: -0.1,
+      posZ: 0.2,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.17,
+    duration: 0.085,
+    particleCount: 12,
+    particleSpeed: 13,
+    particleSpread: 0.85,
+    colors: [MAP_PALETTE.neonCyan, 0x55eeff, 0x00b8ff],
+    lightIntensity: 2.0,
+    lightDistance: 3.5,
+    glowLayers: 0,
+    particleSizeScale: 1.15,
   },
 };
 
@@ -101,6 +123,16 @@ export const PISTOL_CONFIG: WeaponConfig = {
       posY: -0.1,
       posZ: 0.2,
     },
+  },
+  muzzleFlash: {
+    coreScale: 0.15,
+    duration: 0.09,
+    particleCount: 18,
+    particleSpeed: 20,
+    particleSpread: 1.1,
+    colors: [0xc77dff, MAP_PALETTE.neonCyan, 0x9b4dff],
+    lightIntensity: 3.2,
+    lightDistance: 3.5,
   },
 };
 

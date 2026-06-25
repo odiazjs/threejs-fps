@@ -85,6 +85,7 @@ export function createPlasmaRifle(): THREE.Group {
   }
 
   const plasmaBeam = createPart(new THREE.BoxGeometry(2.0, 0.1, 0.2), colors.plasma);
+  const plasmaBeamLength = 2.0;
   plasmaBeam.position.set(2.0, 0.3, 0);
   weaponGroup.add(plasmaBeam);
 
@@ -93,12 +94,19 @@ export function createPlasmaRifle(): THREE.Group {
   foregrip.rotation.z = -0.3;
   weaponGroup.add(foregrip);
 
-  weaponGroup.scale.set(0.1, 0.1, 0.1);
+  const lastSegmentCenterX = 1.3 + (segmentCount - 1) * spacing;
+  const barrelTipX = Math.max(
+    plasmaBeam.position.x + plasmaBeamLength / 2,
+    lastSegmentCenterX + segmentLength / 2,
+  );
 
   const muzzle = new THREE.Object3D();
   muzzle.name = 'muzzle';
-  muzzle.position.set(3, 0.3, 0);
+  muzzle.position.set(barrelTipX, plasmaBeam.position.y, 0);
   weaponGroup.add(muzzle);
+  weaponGroup.userData.weaponMuzzle = muzzle;
+
+  weaponGroup.scale.set(0.1, 0.1, 0.1);
 
   return weaponGroup;
 }
@@ -276,8 +284,9 @@ export function createPistol(): THREE.Group {
 
   const muzzle = new THREE.Object3D();
   muzzle.name = 'muzzle';
-  muzzle.position.set(1.85, 0.14, 0);
-  weaponGroup.add(muzzle);
+  muzzlePlate.add(muzzle);
+  muzzle.position.set(0, 0, 0);
+  weaponGroup.userData.weaponMuzzle = muzzle;
 
   return weaponGroup;
 }

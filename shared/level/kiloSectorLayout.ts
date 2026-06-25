@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from './mapPalette.js';
 import { COLUMN_POSITIONS } from './kiloSectorColliders.js';
+import { FLOATING_PLATFORMS } from './floatingPlatforms.js';
 import { createFlatKitMesh } from '../visuals/edgeLines.js';
 
 const mapGroup = new THREE.Group();
@@ -72,10 +73,44 @@ function createColumn(): THREE.Group {
   return column;
 }
 
+function createFloatingPlatform(
+  x: number,
+  z: number,
+  surfaceY: number,
+  width: number,
+  depth: number,
+  thickness = 0.32,
+): THREE.Group {
+  const platform = new THREE.Group();
+
+  const deck = createStyledMesh(
+    new THREE.BoxGeometry(width, thickness, depth),
+    MAP_PALETTE.neonCyan,
+  );
+  deck.position.y = surfaceY - thickness * 0.5;
+  platform.add(deck);
+
+  platform.position.set(x, 0, z);
+  return platform;
+}
+
 for (const { x, z } of COLUMN_POSITIONS) {
   const column = createColumn();
   column.position.set(x, 0, z);
   mapGroup.add(column);
+}
+
+for (const platform of FLOATING_PLATFORMS) {
+  mapGroup.add(
+    createFloatingPlatform(
+      platform.x,
+      platform.z,
+      platform.surfaceY,
+      platform.width,
+      platform.depth,
+      platform.thickness,
+    ),
+  );
 }
 
 export { mapGroup };

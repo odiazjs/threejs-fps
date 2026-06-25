@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FLOOR_SIZE } from '../../shared/level/kiloSectorColliders';
 import { sampleGroundHeight } from '../../shared/level/terrainHeight';
+import type { GrassQualityProfile } from '../render/grassQuality';
 import { GrassField, type GrassUpdateContext } from './GrassField';
 
 const GROUND_SEGMENTS = 200;
@@ -86,8 +87,14 @@ export class TerrainBuilder {
   readonly grassField: GrassField;
   private readonly group = new THREE.Group();
 
-  constructor() {
-    this.grassField = new GrassField(sampleGroundHeight);
+  constructor(quality?: GrassQualityProfile) {
+    this.grassField = new GrassField(sampleGroundHeight, {
+      maxBlades: quality?.maxBlades,
+      gridStep: quality?.gridStep,
+      bladeSegments: quality?.bladeSegments,
+      extraBladeChance: quality?.extraBladeChance,
+      drawRadius: quality?.drawRadius,
+    });
 
     const groundGeo = new THREE.PlaneGeometry(
       FLOOR_SIZE,

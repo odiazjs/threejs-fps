@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { FLOOR_SIZE } from '../../shared/level/kiloSectorColliders';
+import { MAP_PALETTE } from '../../shared/level/mapPalette';
 import { shouldSkipGrass } from '../../shared/visuals/terrainPatches';
 
 const BLADE_COUNT = 900_000;
@@ -9,7 +10,7 @@ const BLADE_HEIGHT = 0.24;
 const GRID_STEP = 0.12;
 const EXTRA_BLADE_CHANCE = 0.72;
 const GLOBAL_HEIGHT_SCALE = 0.7225;
-const GOLD_HEIGHT_SCALE = 0.5;
+const PATCH_HEIGHT_SCALE = 0.5;
 
 export interface GrassFieldOptions {
   halfExtent?: number;
@@ -17,7 +18,9 @@ export interface GrassFieldOptions {
   gridStep?: number;
   bladeHeight?: number;
   bladeWidth?: number;
+  bladeSegments?: number;
   extraBladeChance?: number;
+  drawRadius?: number;
   skipPatches?: boolean;
   seed?: number;
   sunDirection?: THREE.Vector3;
@@ -29,134 +32,95 @@ export interface GrassUpdateContext {
 }
 
 const vertexShader = /* glsl */ `
+precision highp float;
+
 uniform float uTime;
 uniform float uBladeHeight;
 uniform vec2 uPlayerPos;
 uniform float uPlayerActive;
 uniform float uPlayerRadius;
+uniform vec3 uCameraPos;
+uniform float uDrawRadius;
+uniform vec3 uSunDir;
 
-varying vec2 vUv;
+attribute float aPatchWeight;
+attribute float aPatchVariant;
+
 varying float vHeightT;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
+varying float vPatchWeight;
+varying float vPatchVariant;
+varying float vLighting;
 
 void main() {
-  vUv = uv;
   vHeightT = clamp(position.y / uBladeHeight, 0.0, 1.0);
+  vPatchWeight = aPatchWeight;
+  vPatchVariant = aPatchVariant;
 
-  vec3 pos = position;
-  vec4 worldPos = instanceMatrix * vec4(pos, 1.0);
-  vWorldNormal = normalize(mat3(instanceMatrix) * normal);
+  vec4 worldPos = instanceMatrix * vec4(position, 1.0);
+
+  vec3 toCam = worldPos.xyz - uCameraPos;
+  float dist = length(toCam);
+  if (dist > uDrawRadius) {
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    vLighting = 0.0;
+    return;
+  }
 
   float bladeT = vHeightT;
-  vec2 windDir = vec2(0.82, 0.38);
-  float wave = sin(dot(worldPos.xz, windDir) * 0.26 - uTime * 0.62);
-  float gust = sin(uTime * 0.22 + worldPos.x * 0.065 - worldPos.z * 0.052);
-  float swayStrength = 0.22 + wave * 0.1 + gust * 0.05;
-  float phase = uTime * 0.72 + worldPos.x * 0.32 + worldPos.z * 0.28;
-
-  float swayX = sin(phase) * swayStrength + sin(phase * 1.5 + 1.0) * 0.06;
-  float swayZ = cos(phase * 0.88 + 0.45) * swayStrength * 0.68 + sin(phase * 1.6) * 0.045;
-  float tipSway = 0.034;
-  float tallBoost = 1.0 + 0.18 * smoothstep(0.55, 1.0, bladeT);
-  worldPos.x += swayX * bladeT * bladeT * tipSway * tallBoost;
-  worldPos.z += swayZ * bladeT * bladeT * tipSway * tallBoost;
-  worldPos.y += sin(phase * 0.68) * bladeT * 0.0035;
+  float phase = uTime * 0.7 + dot(worldPos.xz, vec2(0.3, 0.26));
+  float sway = sin(phase) * (0.2 + sin(uTime * 0.2 + worldPos.x * 0.05) * 0.04);
+  float tip = bladeT * bladeT * 0.032;
+  worldPos.x += sway * tip;
+  worldPos.z += cos(phase * 0.9) * sway * tip * 0.72;
+  worldPos.y += sin(phase * 0.65) * bladeT * 0.003;
 
   vec2 toPlayer = worldPos.xz - uPlayerPos;
   float playerDist = length(toPlayer);
-  float playerInfluence = uPlayerActive * (1.0 - smoothstep(uPlayerRadius * 0.1, uPlayerRadius, playerDist));
+  float playerInfluence = uPlayerActive * (1.0 - smoothstep(uPlayerRadius * 0.15, uPlayerRadius, playerDist));
   playerInfluence *= bladeT * bladeT;
   if (playerDist > 0.001 && playerInfluence > 0.0) {
-    vec2 pushDir = toPlayer / playerDist;
-    worldPos.xz -= pushDir * playerInfluence * 0.55;
-    worldPos.y -= playerInfluence * 0.05;
+    worldPos.xz -= (toPlayer / playerDist) * playerInfluence * 0.5;
+    worldPos.y -= playerInfluence * 0.04;
   }
 
-  vWorldPos = worldPos.xyz;
+  vec3 normal = normalize(vec3(0.0, 0.35, 0.0));
+  vLighting = clamp(dot(normal, uSunDir) * 0.5 + 0.5, 0.72, 1.08);
+
   gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
 `;
 
 const fragmentShader = /* glsl */ `
-uniform vec3 uSunDir;
-uniform vec3 uCameraPos;
+precision mediump float;
+
 uniform vec3 uColorShadow;
 uniform vec3 uColorMid;
-uniform vec3 uColorHighlight;
 uniform vec3 uColorTip;
-uniform vec3 uColorRim;
-uniform vec3 uGoldShadow;
-uniform vec3 uGoldMid;
-uniform vec3 uGoldHighlight;
-uniform vec3 uGoldTip;
-uniform vec3 uGoldRim;
+uniform vec3 uCyanShadow;
+uniform vec3 uCyanMid;
+uniform vec3 uCyanTip;
+uniform vec3 uRoseShadow;
+uniform vec3 uRoseMid;
+uniform vec3 uRoseTip;
 
-varying vec2 vUv;
 varying float vHeightT;
-varying vec3 vWorldPos;
-varying vec3 vWorldNormal;
+varying float vPatchWeight;
+varying float vPatchVariant;
+varying float vLighting;
 
-float patchHash(vec2 cell) {
-  return fract(sin(dot(cell, vec2(127.1, 311.7))) * 43758.5453);
-}
-
-float goldPatchWeight(vec2 worldXZ) {
-  vec2 cell = floor(worldXZ * 0.075);
-  float h = patchHash(cell);
-  float h2 = patchHash(cell + vec2(17.0, 31.0));
-  float pick = h * 0.62 + h2 * 0.38;
-
-  vec2 local = fract(worldXZ * 0.075) - 0.5;
-  float edge = 1.0 - smoothstep(0.18, 0.48, length(local));
-  float soft = smoothstep(0.38, 0.62, pick) * edge;
-
-  float ripple = sin(worldXZ.x * 0.11 + worldXZ.y * 0.085) * 0.5 + 0.5;
-  return clamp(soft * 0.85 + ripple * 0.08, 0.0, 1.0);
-}
-
-vec3 shadeBlade(
-  vec3 shadow,
-  vec3 mid,
-  vec3 highlight,
-  vec3 tip,
-  vec3 rim,
-  vec3 viewDir,
-  vec3 lightDir,
-  vec3 normal
-) {
-  vec3 color = mix(shadow, mid, smoothstep(0.0, 0.38, vHeightT));
-  color = mix(color, highlight, smoothstep(0.3, 0.82, vHeightT));
-  color = mix(color, tip, smoothstep(0.7, 1.0, vHeightT));
-
-  float NdotL = dot(normal, lightDir);
-  color *= mix(0.72, 1.08, smoothstep(-0.15, 0.65, NdotL));
-
-  float groundAo = mix(0.48, 1.0, smoothstep(0.0, 0.18, vHeightT));
-  float depthAo = mix(0.88, 1.0, vUv.x);
-  color *= groundAo * depthAo;
-
-  float rimGlow = pow(1.0 - max(dot(viewDir, normal), 0.0), 2.2);
-  color += rim * rimGlow * 0.12 * smoothstep(0.55, 1.0, vHeightT);
-  return color;
+vec3 shadeBlade(vec3 shadow, vec3 mid, vec3 tip, float t) {
+  vec3 color = mix(shadow, mid, smoothstep(0.0, 0.45, t));
+  return mix(color, tip, smoothstep(0.55, 1.0, t));
 }
 
 void main() {
-  vec3 viewDir = normalize(uCameraPos - vWorldPos);
-  vec3 lightDir = normalize(uSunDir);
-  vec3 normal = normalize(vWorldNormal + vec3(0.0, 0.18, 0.0));
-
-  vec3 greenColor = shadeBlade(
-    uColorShadow, uColorMid, uColorHighlight, uColorTip, uColorRim,
-    viewDir, lightDir, normal
-  );
-  vec3 goldColor = shadeBlade(
-    uGoldShadow, uGoldMid, uGoldHighlight, uGoldTip, uGoldRim,
-    viewDir, lightDir, normal
-  );
-
-  float goldWeight = goldPatchWeight(vWorldPos.xz);
-  vec3 color = mix(greenColor, goldColor, goldWeight);
+  float t = vHeightT;
+  vec3 green = shadeBlade(uColorShadow, uColorMid, uColorTip, t);
+  vec3 cyan = shadeBlade(uCyanShadow, uCyanMid, uCyanTip, t);
+  vec3 rose = shadeBlade(uRoseShadow, uRoseMid, uRoseTip, t);
+  vec3 accent = mix(cyan, rose, vPatchVariant);
+  vec3 color = mix(green, accent, vPatchWeight);
+  color *= mix(0.5, 1.0, smoothstep(0.0, 0.18, t)) * vLighting;
 
   gl_FragColor = vec4(color, 1.0);
 }
@@ -183,7 +147,7 @@ function patchHash(cellX: number, cellZ: number): number {
   return fract(Math.sin(cellX * 127.1 + cellZ * 311.7) * 43758.5453);
 }
 
-function goldPatchWeight(x: number, z: number): number {
+function coloredPatchWeight(x: number, z: number): number {
   const scale = 0.075;
   const cellX = Math.floor(x * scale);
   const cellZ = Math.floor(z * scale);
@@ -200,32 +164,40 @@ function goldPatchWeight(x: number, z: number): number {
   return Math.max(0, Math.min(1, soft * 0.85 + ripple * 0.08));
 }
 
-function heightMultiplier(x: number, z: number, rand: () => number): number {
-  const goldWeight = goldPatchWeight(x, z);
-  const goldHeightMul = 1.0 - goldWeight * (1.0 - GOLD_HEIGHT_SCALE);
-  return (2.5 + rand() * 1.1) * GLOBAL_HEIGHT_SCALE * goldHeightMul;
+/** Per patch cell: 0 = neon cyan, 1 = pastel rose. */
+function coloredPatchVariant(x: number, z: number): number {
+  const scale = 0.075;
+  const cellX = Math.floor(x * scale);
+  const cellZ = Math.floor(z * scale);
+  return patchHash(cellX * 2.17 + 11, cellZ * 1.83 + 19) < 0.5 ? 0.0 : 1.0;
 }
 
 function createBladeGeometry(
   bladeWidth: number,
   bladeHeight: number,
+  bladeSegments: number,
 ): THREE.BufferGeometry {
   const blades: THREE.BufferGeometry[] = [];
   const bladeCount = 3;
   const spread = (Math.PI * 2) / bladeCount;
+  const heightSegments = Math.max(1, bladeSegments);
 
   for (let i = 0; i < bladeCount; i++) {
     const heightMul = 0.9 + (i % 2) * 0.12;
-    const blade = new THREE.PlaneGeometry(bladeWidth, bladeHeight * heightMul, 1, 6);
+    const blade = new THREE.PlaneGeometry(
+      bladeWidth,
+      bladeHeight * heightMul,
+      1,
+      heightSegments,
+    );
     const pos = blade.attributes.position;
 
     for (let j = 0; j < pos.count; j++) {
       const y = pos.getY(j);
       const h = bladeHeight * heightMul;
       const t = (y + h * 0.5) / h;
-      const widthScale = 1.0 - Math.pow(t, 1.35) * 0.98;
-      const curve = Math.sin(t * 1.2) * 0.015 * t;
-      pos.setX(j, pos.getX(j) * widthScale + curve);
+      const widthScale = 1.0 - t * t * 0.92;
+      pos.setX(j, pos.getX(j) * widthScale);
     }
 
     const yaw = spread * i + (i - 1) * 0.08;
@@ -253,7 +225,9 @@ export class GrassField {
     const bladeHeight = options.bladeHeight ?? BLADE_HEIGHT;
     const bladeWidth = options.bladeWidth ?? BLADE_WIDTH;
     const extraBladeChance = options.extraBladeChance ?? EXTRA_BLADE_CHANCE;
-    const geometry = createBladeGeometry(bladeWidth, bladeHeight);
+    const bladeSegments = options.bladeSegments ?? 4;
+    const drawRadius = options.drawRadius ?? 95;
+    const geometry = createBladeGeometry(bladeWidth, bladeHeight, bladeSegments);
     const half = options.halfExtent ?? FLOOR_SIZE / 2 - 1.0;
     const maxCount = options.maxBlades ?? BLADE_COUNT;
     const gridStep = options.gridStep ?? GRID_STEP;
@@ -266,26 +240,36 @@ export class GrassField {
         uBladeHeight: { value: bladeHeight },
         uSunDir: { value: sunDir },
         uCameraPos: { value: new THREE.Vector3() },
+        uDrawRadius: { value: drawRadius },
         uPlayerPos: { value: this.playerPos },
         uPlayerActive: { value: 0 },
         uPlayerRadius: { value: 0.85 },
-        uColorShadow: { value: new THREE.Color(0x1a5528) },
-        uColorMid: { value: new THREE.Color(0x52d040) },
-        uColorHighlight: { value: new THREE.Color(0x78e84e) },
-        uColorTip: { value: new THREE.Color(0xa8f060) },
-        uColorRim: { value: new THREE.Color(0xd0ff90) },
-        uGoldShadow: { value: new THREE.Color(0x6a5520) },
-        uGoldMid: { value: new THREE.Color(0xc8a830) },
-        uGoldHighlight: { value: new THREE.Color(0xe8c848) },
-        uGoldTip: { value: new THREE.Color(0xf5dc68) },
-        uGoldRim: { value: new THREE.Color(0xfff0a0) },
+        uColorShadow: { value: new THREE.Color(MAP_PALETTE.grassDark) },
+        uColorMid: { value: new THREE.Color(MAP_PALETTE.grassMid) },
+        uColorTip: { value: new THREE.Color(MAP_PALETTE.grassLight) },
+        uCyanShadow: { value: new THREE.Color(0x1a8f9c) },
+        uCyanMid: { value: new THREE.Color(MAP_PALETTE.neonCyan) },
+        uCyanTip: { value: new THREE.Color(0x9fffff) },
+        uRoseShadow: { value: new THREE.Color(0xc88898) },
+        uRoseMid: { value: new THREE.Color(MAP_PALETTE.pastelRose) },
+        uRoseTip: { value: new THREE.Color(0xffd8e4) },
       },
       vertexShader,
       fragmentShader,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
     });
 
+    const patchWeights = new Float32Array(maxCount);
+    const patchVariants = new Float32Array(maxCount);
     this.mesh = new THREE.InstancedMesh(geometry, this.material, maxCount);
+    geometry.setAttribute(
+      'aPatchWeight',
+      new THREE.InstancedBufferAttribute(patchWeights, 1),
+    );
+    geometry.setAttribute(
+      'aPatchVariant',
+      new THREE.InstancedBufferAttribute(patchVariants, 1),
+    );
     this.mesh.frustumCulled = false;
     this.mesh.receiveShadow = false;
     this.mesh.castShadow = false;
@@ -294,7 +278,9 @@ export class GrassField {
     const primary: Array<{ x: number; z: number }> = [];
     const extras: Array<{ x: number; z: number }> = [];
 
-    const boostedExtraChance = Math.min(0.95, extraBladeChance + 0.22);
+    const boostedExtraChance = Math.min(0.95, extraBladeChance + extraBladeChance * 0.3);
+    const patchWeightAttr = geometry.getAttribute('aPatchWeight') as THREE.InstancedBufferAttribute;
+    const patchVariantAttr = geometry.getAttribute('aPatchVariant') as THREE.InstancedBufferAttribute;
 
     for (let gx = -half; gx < half; gx += gridStep) {
       for (let gz = -half; gz < half; gz += gridStep) {
@@ -336,13 +322,16 @@ export class GrassField {
     }
 
     const dummy = new THREE.Object3D();
-    const extraBudget = Math.max(0, maxCount - primary.length);
-    const extraCount = Math.min(extras.length, extraBudget);
-    const placeCount = primary.length + extraCount;
+    let placeIndex = 0;
 
-    const placeBlade = (x: number, z: number, index: number) => {
+    const placeBlade = (x: number, z: number): void => {
+      if (placeIndex >= maxCount) return;
+
+      const patchWeight = coloredPatchWeight(x, z);
+      const patchVariant = coloredPatchVariant(x, z);
       const widthScale = (0.72 + rand() * 0.42) * 1.08;
-      const heightScale = heightMultiplier(x, z, rand);
+      const patchHeightMul = 1.0 - patchWeight * (1.0 - PATCH_HEIGHT_SCALE);
+      const heightScale = (2.5 + rand() * 1.1) * GLOBAL_HEIGHT_SCALE * patchHeightMul;
 
       const rotY = rand() * Math.PI * 2;
       const lean = (rand() - 0.5) * 0.2;
@@ -351,18 +340,34 @@ export class GrassField {
       dummy.rotation.set(lean, rotY, (rand() - 0.5) * 0.1);
       dummy.scale.set(widthScale, heightScale, widthScale);
       dummy.updateMatrix();
-      this.mesh.setMatrixAt(index, dummy.matrix);
+      this.mesh.setMatrixAt(placeIndex, dummy.matrix);
+      patchWeightAttr.setX(placeIndex, patchWeight);
+      patchVariantAttr.setX(placeIndex, patchVariant);
+      placeIndex++;
     };
 
-    for (let i = 0; i < primary.length; i++) {
-      placeBlade(primary[i]!.x, primary[i]!.z, i);
-    }
-    for (let i = 0; i < extraCount; i++) {
-      placeBlade(extras[i]!.x, extras[i]!.z, primary.length + i);
+    if (primary.length <= maxCount) {
+      for (const patch of primary) {
+        placeBlade(patch.x, patch.z);
+      }
+    } else {
+      const step = primary.length / maxCount;
+      for (let i = 0; i < maxCount; i++) {
+        const patch = primary[Math.floor(i * step)]!;
+        placeBlade(patch.x, patch.z);
+      }
     }
 
-    this.mesh.count = placeCount;
+    const extraCount = Math.min(extras.length, maxCount - placeIndex);
+    for (let i = 0; i < extraCount; i++) {
+      const patch = extras[i]!;
+      placeBlade(patch.x, patch.z);
+    }
+
+    this.mesh.count = placeIndex;
     this.mesh.instanceMatrix.needsUpdate = true;
+    patchWeightAttr.needsUpdate = true;
+    patchVariantAttr.needsUpdate = true;
   }
 
   update(time: number, context: GrassUpdateContext = {}): void {

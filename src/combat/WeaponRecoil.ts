@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import type { RecoilConfig } from '../../shared/content/weaponConfig';
-import { AIM_ROTATION_ORDER } from '../player/playerAim';
+import { AIM_PITCH_LIMIT, AIM_ROTATION_ORDER } from '../player/playerAim';
 
-const PITCH_LIMIT = Math.PI / 2 - 0.01;
 const DEFAULT_AIM_SMOOTH_SPEED = 26;
 
 const _weaponPos = new THREE.Vector3();
@@ -84,15 +83,17 @@ export class WeaponRecoil {
    * Yaw on a parent of pointer-lock aim; pitch on a child after aim.
    * Pitch on the parent would tilt the aim frame and feel disorienting.
    */
-  applyAim(yawRig: THREE.Object3D, pitchRig: THREE.Object3D): void {
+  applyAim(yawRig: THREE.Object3D, pitchRig: THREE.Object3D, basePitch: number): void {
     yawRig.rotation.set(0, this.currentYaw, 0);
 
-    pitchRig.rotation.order = AIM_ROTATION_ORDER;
-    pitchRig.rotation.set(
-      THREE.MathUtils.clamp(this.currentPitch, -PITCH_LIMIT, PITCH_LIMIT),
-      0,
-      0,
+    const totalPitch = THREE.MathUtils.clamp(
+      basePitch + this.currentPitch,
+      -AIM_PITCH_LIMIT,
+      AIM_PITCH_LIMIT,
     );
+
+    pitchRig.rotation.order = AIM_ROTATION_ORDER;
+    pitchRig.rotation.set(totalPitch - basePitch, 0, 0);
   }
 
   applyWeaponVisual(

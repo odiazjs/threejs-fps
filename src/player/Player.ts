@@ -3,7 +3,7 @@ import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../sh
 import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation } from '../combat/WeaponLoadout';
-import { readMuzzleFirePose } from '../combat/aiming';
+import { readMuzzleFirePose, readWeaponMuzzleWorldPosition } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -11,6 +11,7 @@ import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStam
 import { HeadBob } from './HeadBob';
 import {
   createCharacterInstance,
+  computeTopOffsetAboveFeet,
   gameModelFileForWeapon,
   loadGameCharacterTemplate,
   preloadGameCharacterModels,
@@ -22,7 +23,8 @@ import {
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
-import { applyPlayerAim, readWorldPlayerAim } from './playerAim';
+import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
+import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
 import { getReloadState } from '../../shared/combat/reload';
 import {
@@ -51,8 +53,12 @@ export type ReloadNetworkCallback = (weaponId: WeaponId) => void;
 export class Player {
   readonly object = new THREE.Group();
   readonly camera: THREE.PerspectiveCamera | null;
-  /** Pointer-lock target — mouse look applies here. */
+  /** Pointer-lock yaw target — mouse yaw applies here. */
   readonly aimRig: THREE.Group | null;
+  /** Pointer-lock pitch target — mouse pitch applies here. */
+  readonly pitchRig: THREE.Group | null;
+
+  private aimControls: PointerAimControls | null = null;
 
   private loadout: WeaponLoadout | null = null;
   private forward = new THREE.Vector3();
@@ -71,6 +77,7 @@ export class Player {
   private bodyRoot: THREE.Group | null = null;
   private pitchPivot: THREE.Group | null = null;
   private lookRig: THREE.Group | null = null;
+  private remoteUiRig: THREE.Group | null = null;
   private handRig: THREE.Group | null = null;
   private spineBone: THREE.Object3D | null = null;
   private lookRigFollowsHead = false;
@@ -89,7 +96,9 @@ export class Player {
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private targetSprinting = false;
   private targetWalking = false;
+  private targetJumping = false;
   private locomotionWalking = false;
+  private locomotionJumping = false;
   private remoteDisplayedWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private readonly remoteWeaponBasePosition = new THREE.Vector3();
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
@@ -111,6 +120,7 @@ export class Player {
       this.headRig = new THREE.Group();
       this.yawRecoilRig = new THREE.Group();
       this.aimRig = new THREE.Group();
+      this.pitchRig = new THREE.Group();
       this.pitchRecoilRig = new THREE.Group();
       this.camera = new THREE.PerspectiveCamera(
         75,
@@ -118,9 +128,12 @@ export class Player {
         0.1,
         1000,
       );
-      this.camera.position.set(0, EYE_HEIGHT, 0);
+      // Pitch rotates around the eyes, not the feet — keeps view height fixed while looking up/down.
+      this.camera.position.set(0, 0, 0);
+      this.pitchRig.position.set(0, EYE_HEIGHT, 0);
       this.pitchRecoilRig.add(this.camera);
-      this.aimRig.add(this.pitchRecoilRig);
+      this.pitchRig.add(this.pitchRecoilRig);
+      this.aimRig.add(this.pitchRig);
       this.yawRecoilRig.add(this.aimRig);
       this.headRig.add(this.yawRecoilRig);
       this.object.add(this.headRig);
@@ -130,22 +143,25 @@ export class Player {
     } else {
       this.camera = null;
       this.aimRig = null;
+      this.pitchRig = null;
       this.bodyRoot = new THREE.Group();
       this.pitchPivot = new THREE.Group();
       this.lookRig = new THREE.Group();
+      this.remoteUiRig = new THREE.Group();
 
       this.bodyRoot.add(this.pitchPivot);
       this.object.add(this.bodyRoot);
       this.object.add(this.lookRig);
+      this.object.add(this.remoteUiRig);
 
       this.weaponPose = new WeaponPose();
       this.loadout.attach(this.lookRig, LOCAL_WEAPON_ROTATION, 'remote');
 
       this.remoteHealthBar = new RemoteHealthBar();
-      this.lookRig.add(this.remoteHealthBar.object);
+      this.remoteUiRig.add(this.remoteHealthBar.object);
 
       this.damageNumberStack = new DamageNumberStack();
-      this.lookRig.add(this.damageNumberStack.object);
+      this.remoteUiRig.add(this.damageNumberStack.object);
     }
   }
 
@@ -179,7 +195,11 @@ export class Player {
   }
 
   private getRemotePose(): RemoteCharacterPose {
-    return { sprinting: this.targetSprinting, walking: this.targetWalking };
+    return {
+      sprinting: this.targetSprinting,
+      walking: this.targetWalking,
+      jumping: this.targetJumping,
+    };
   }
 
   setCharacterModel(template: CharacterTemplate): void {
@@ -208,7 +228,7 @@ export class Player {
       return;
     }
 
-    this.refreshRemoteWeaponMount(template);
+    this.refreshRemoteWeaponMount(template.modelFile);
 
     this.handRig = new THREE.Group();
     this.handRig.name = 'remoteHandRig';
@@ -233,11 +253,11 @@ export class Player {
     this.lookRigFollowsHead = true;
   }
 
-  private refreshRemoteWeaponMount(template: CharacterTemplate): void {
+  private refreshRemoteWeaponMount(modelFile: string): void {
     if (!this.loadout) return;
 
     this.remoteWeaponMount = getRemoteWeaponMount(
-      template.modelFile,
+      modelFile,
       this.loadout.getActiveWeaponId(),
     );
     this.remoteWeaponBasePosition.copy(this.remoteWeaponMount.weaponPosition);
@@ -248,21 +268,27 @@ export class Player {
     scene.add(this.object);
   }
 
+  bindAimControls(controls: PointerAimControls): void {
+    this.aimControls = controls;
+  }
+
   getSprintState(): SprintState {
     return this.sprint.getState();
   }
 
-  getLocomotionState(): { isSprinting: boolean; isWalking: boolean } {
+  getLocomotionState(): { isSprinting: boolean; isWalking: boolean; isJumping: boolean } {
     if (this.camera) {
       return {
         isSprinting: this.sprint.getState().isSprinting,
         isWalking: this.locomotionWalking,
+        isJumping: this.locomotionJumping,
       };
     }
 
     return {
       isSprinting: this.targetSprinting,
       isWalking: this.targetWalking,
+      isJumping: this.targetJumping,
     };
   }
 
@@ -321,6 +347,21 @@ export class Player {
     return this.object.position;
   }
 
+  /** Third-person active weapon muzzle in world space (remote observers). */
+  readActiveMuzzleWorldPosition(position: THREE.Vector3, weaponId?: WeaponId): boolean {
+    if (!this.loadout || this.camera) return false;
+
+    let mesh = this.loadout.getActive().mesh;
+    if (weaponId) {
+      const slotIndex = LOADOUT_WEAPON_IDS.indexOf(weaponId);
+      mesh = this.loadout.getSlot(slotIndex)?.mesh ?? mesh;
+    }
+
+    this.object.updateMatrixWorld(true);
+    readWeaponMuzzleWorldPosition(mesh, position);
+    return true;
+  }
+
   getNetworkAim(): { yaw: number; pitch: number } {
     if (!this.camera) return { yaw: 0, pitch: 0 };
     this.object.updateMatrixWorld(true);
@@ -344,7 +385,9 @@ export class Player {
       this.headBob.apply(this.headRig, false);
     }
 
-    applyPlayerAim(this.aimRig!, 0, 0);
+    applyLookYaw(this.aimRig!, 0);
+    applyLookPitch(this.pitchRig!, 0);
+    this.aimControls?.resetLook();
     this.loadout?.reset();
     this.weaponPose?.reset();
     if (this.loadout) {
@@ -353,6 +396,7 @@ export class Player {
     if (this.yawRecoilRig && this.pitchRecoilRig) {
       this.applyActiveRecoilAim();
     }
+    this.stabilizeCameraPitch();
     this.applyActiveWeaponPose();
     this.weaponPose?.applyCamera(this.camera);
     this.fireCooldown = 0;
@@ -369,6 +413,7 @@ export class Player {
     }
     this.targetSprinting = snapshot.sprinting;
     this.targetWalking = snapshot.walking;
+    this.targetJumping = snapshot.jumping;
     this.teamId = snapshot.teamId;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
@@ -405,7 +450,20 @@ export class Player {
   }
 
   updateRemoteHealthBar(camera: THREE.Camera): void {
+    this.syncRemoteUiHeight();
     this.remoteHealthBar?.updateLayout(camera);
+  }
+
+  private syncRemoteUiHeight(): void {
+    if (!this.remoteHealthBar) return;
+
+    const clearance = 0.24;
+    const topOffset = this.characterInstance
+      ? computeTopOffsetAboveFeet(this.characterInstance.root, this.object, clearance)
+      : EYE_HEIGHT + clearance;
+
+    this.remoteHealthBar.setHeadTopOffset(topOffset);
+    this.damageNumberStack?.setHeadTopOffset(topOffset + 0.16);
   }
 
   showDamageNumber(amount: number): void {
@@ -425,6 +483,9 @@ export class Player {
       this.remoteDisplayedWeaponId = this.targetActiveWeaponId;
       this.weaponPose.setViewConfig(this.loadout.getActive().config.view);
       this.weaponPose.startSwitch(this.loadout.getSwitchReadySec());
+      if (this.displayedCharacterModelFile) {
+        this.refreshRemoteWeaponMount(this.displayedCharacterModelFile);
+      }
     }
 
     if (!this.remoteWeaponMount) return;
@@ -497,6 +558,7 @@ export class Player {
     if (this.yawRecoilRig && this.pitchRecoilRig) {
       this.applyActiveRecoilAim();
     }
+    this.stabilizeCameraPitch();
     this.applyActiveWeaponPose();
     this.weaponPose?.applyCamera(this.camera);
     const baseRotation = this.getActiveMeshBaseRotation();
@@ -546,6 +608,7 @@ export class Player {
     }
 
     const jump = input.isJustPressed('Space');
+    const wasGrounded = this.physics.grounded;
     const result = stepPlayerPhysics(
       this.object.position.x,
       this.object.position.y,
@@ -559,6 +622,13 @@ export class Player {
 
     this.object.position.set(result.x, result.y, result.z);
     this.physics = result.state;
+
+    if (jump && wasGrounded) {
+      this.locomotionJumping = true;
+    }
+    if (this.physics.grounded) {
+      this.locomotionJumping = false;
+    }
 
     const isMoving =
       this.physics.grounded &&
@@ -653,6 +723,8 @@ export class Player {
 
     active.recoil.onShot(this.weaponPose?.adsBlend ?? 0);
     this.object.updateMatrixWorld(true);
+    this.camera.updateMatrixWorld(true);
+    active.mesh.updateMatrixWorld(true);
 
     readMuzzleFirePose(
       active.mesh,
@@ -660,7 +732,10 @@ export class Player {
       this.muzzleOrigin,
       this.aimDirection,
     );
-    projectiles.spawn(this.muzzleOrigin, this.aimDirection, this.projectileSpawnOptions);
+    projectiles.spawn(this.muzzleOrigin, this.aimDirection, {
+      ...this.projectileSpawnOptions,
+      muzzleFlash: active.config.muzzleFlash,
+    });
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
     return true;
   }
@@ -671,8 +746,30 @@ export class Player {
 
   private applyActiveRecoilAim(): void {
     const recoil = this.getActiveRecoil();
-    if (!recoil || !this.yawRecoilRig || !this.pitchRecoilRig) return;
-    recoil.applyAim(this.yawRecoilRig, this.pitchRecoilRig);
+    if (!recoil || !this.yawRecoilRig || !this.pitchRecoilRig || !this.pitchRig) return;
+    const basePitch = this.aimControls?.lookPitch ?? this.pitchRig.rotation.x;
+    recoil.applyAim(this.yawRecoilRig, this.pitchRecoilRig, basePitch);
+  }
+
+  /** Corrects euler drift so world pitch never flips past vertical. */
+  private stabilizeCameraPitch(): void {
+    if (!this.camera || !this.aimControls || !this.pitchRig || !this.pitchRecoilRig) return;
+
+    this.object.updateMatrixWorld(true);
+    const { pitch } = readWorldPlayerAim(this.camera);
+    if (Math.abs(pitch) <= AIM_PITCH_LIMIT) return;
+
+    const clamped = THREE.MathUtils.clamp(pitch, -AIM_PITCH_LIMIT, AIM_PITCH_LIMIT);
+    const recoilPitch = this.pitchRecoilRig.rotation.x;
+    const lookPitch = THREE.MathUtils.clamp(
+      clamped - recoilPitch,
+      -AIM_PITCH_LIMIT,
+      AIM_PITCH_LIMIT,
+    );
+
+    this.aimControls.lookPitch = lookPitch;
+    applyLookPitch(this.pitchRig, lookPitch);
+    this.pitchRecoilRig.rotation.set(clamped - lookPitch, 0, 0);
   }
 
   private applyActiveWeaponPose(): void {

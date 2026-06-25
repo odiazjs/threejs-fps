@@ -17,6 +17,7 @@ export class PlayerState extends Schema {
   @type('string') activeWeaponId = 'pistol';
   @type('boolean') sprinting = false;
   @type('boolean') walking = false;
+  @type('boolean') jumping = false;
 }
 
 export class AmmoBoxState extends Schema {

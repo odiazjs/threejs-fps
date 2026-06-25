@@ -6,6 +6,7 @@ export const MAP_PALETTE = {
   darkGunmetal: 0x383f46,
   pastelTeal: 0x82dbdb,
   pastelOrange: 0xe5a088,
+  pastelRose: 0xf0b4c8,
   neonCyan: 0x2efcff,
   grassDark: 0x5aad4e,
   grassMid: 0x7ec86a,

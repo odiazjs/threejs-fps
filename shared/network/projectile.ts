@@ -5,4 +5,7 @@ export interface ProjectileSpawnMessage {
   dirX: number;
   dirY: number;
   dirZ: number;
+  weaponId?: string;
+  /** Set by the server when broadcasting so observers can align VFX to the shooter mesh. */
+  shooterId?: string;
 }

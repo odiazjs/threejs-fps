@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 
-/** Must match PointerLockControls internal euler order. */
+/** Must match pointer-aim euler order. */
 export const AIM_ROTATION_ORDER = 'YXZ' as const;
+
+/** Vertical look limit — just under ±90° to avoid gimbal flip. */
+export const AIM_PITCH_LIMIT = Math.PI / 2 - 0.01;
 
 const _euler = new THREE.Euler(0, 0, 0, AIM_ROTATION_ORDER);
 const _quat = new THREE.Quaternion();
@@ -26,4 +29,18 @@ export function readWorldPlayerAim(object: THREE.Object3D): PlayerAim {
 export function applyPlayerAim(object: THREE.Object3D, yaw: number, pitch: number): void {
   object.rotation.order = AIM_ROTATION_ORDER;
   object.rotation.set(pitch, yaw, 0);
+}
+
+export function applyLookYaw(object: THREE.Object3D, yaw: number): void {
+  object.rotation.order = AIM_ROTATION_ORDER;
+  object.rotation.set(0, yaw, 0);
+}
+
+export function applyLookPitch(object: THREE.Object3D, pitch: number): void {
+  object.rotation.order = AIM_ROTATION_ORDER;
+  object.rotation.set(
+    THREE.MathUtils.clamp(pitch, -AIM_PITCH_LIMIT, AIM_PITCH_LIMIT),
+    0,
+    0,
+  );
 }

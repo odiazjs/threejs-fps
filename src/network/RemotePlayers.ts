@@ -30,6 +30,10 @@ export class RemotePlayers {
     });
   }
 
+  getPlayer(sessionId: string): Player | undefined {
+    return this.players.get(sessionId);
+  }
+
   getEnemyHitTargets(localTeamId: number): ProjectileHitTarget[] {
     const targets: ProjectileHitTarget[] = [];
 

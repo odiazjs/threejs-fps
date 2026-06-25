@@ -16,11 +16,19 @@ export const CHARACTER_MODEL_FILES = {
   pistolRun: 'Pistol Run.fbx',
   rifleWalking: 'Rifle Walking.fbx',
   pistolWalk: 'Pistol Walk.fbx',
+  rifleJump: 'Rifle Jump.fbx',
+  pistolJump: 'Pistol Jump.fbx',
 } as const;
+
+const ONE_SHOT_MODEL_FILES = new Set<string>([
+  CHARACTER_MODEL_FILES.rifleJump,
+  CHARACTER_MODEL_FILES.pistolJump,
+]);
 
 export interface RemoteCharacterPose {
   sprinting: boolean;
   walking: boolean;
+  jumping: boolean;
 }
 
 const DEFAULT_BONES: CharacterBoneNames = {
@@ -36,10 +44,28 @@ function assetUrl(file: string): string {
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
   return (
-    animations.find((clip) => /idle|run|shoot|aim|walk/i.test(clip.name)) ??
+    animations.find((clip) => /jump|idle|run|shoot|aim|walk/i.test(clip.name)) ??
     animations[0] ??
     null
   );
+}
+
+/** Remove hips/root translation so jump height comes from physics only. */
+function stripRootMotionFromClip(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const tracks = clip.tracks.filter((track) => !isRootMotionPositionTrack(track));
+  return new THREE.AnimationClip(clip.name, clip.duration, tracks);
+}
+
+function isRootMotionPositionTrack(track: THREE.KeyframeTrack): boolean {
+  const dot = track.name.indexOf('.');
+  if (dot === -1) return false;
+
+  const boneName = track.name.slice(0, dot);
+  const property = track.name.slice(dot + 1);
+  if (property !== 'position') return false;
+
+  const normalized = boneName.replace(/^mixamorig:?/i, '');
+  return /^(Hips|Root)$/i.test(normalized);
 }
 
 export interface CharacterBoneNames {
@@ -99,6 +125,22 @@ export function resolveCharacterRig(
   return { rightHand, head: head ?? rightHand, spine };
 }
 
+const _meshBounds = new THREE.Box3();
+const _feetWorld = new THREE.Vector3();
+
+/** World-space Y above `feetObject` to float UI above the character mesh top. */
+export function computeTopOffsetAboveFeet(
+  meshRoot: THREE.Object3D,
+  feetObject: THREE.Object3D,
+  clearance = 0.22,
+): number {
+  meshRoot.updateMatrixWorld(true);
+  feetObject.updateMatrixWorld(true);
+  _meshBounds.setFromObject(meshRoot);
+  feetObject.getWorldPosition(_feetWorld);
+  return _meshBounds.max.y - _feetWorld.y + clearance;
+}
+
 function prepareModel(model: THREE.Group): { scene: THREE.Group; fitScale: number } {
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -135,6 +177,7 @@ export interface CharacterTemplate {
   bones: CharacterBoneNames;
   /** Uniform scale applied to fit the FBX to TARGET_HEIGHT. */
   fitScale: number;
+  oneShot: boolean;
 }
 
 export interface CharacterInstance {
@@ -183,10 +226,21 @@ async function loadCharacterTemplateByFile(modelFile: string): Promise<Character
     const loader = new FBXLoader();
     loader.setResourcePath(ASSET_BASE);
     const fbx = await loadFbx(loader, assetUrl(modelFile));
-    const clip = pickAnimationClip(fbx.animations);
+    const oneShot = ONE_SHOT_MODEL_FILES.has(modelFile);
+    let clip = pickAnimationClip(fbx.animations);
+    if (oneShot && clip) {
+      clip = stripRootMotionFromClip(clip);
+    }
     const { scene, fitScale } = prepareModel(fbx);
     const bones = detectBoneNames(fbx) ?? DEFAULT_BONES;
-    const template: CharacterTemplate = { modelFile, scene, clip, bones, fitScale };
+    const template: CharacterTemplate = {
+      modelFile,
+      scene,
+      clip,
+      bones,
+      fitScale,
+      oneShot,
+    };
     templateCache.set(modelFile, template);
     return template;
   })().finally(() => {
@@ -201,6 +255,12 @@ export function gameModelFileForWeapon(
   weaponId: WeaponId,
   pose: RemoteCharacterPose,
 ): string {
+  if (pose.jumping) {
+    return weaponId === 'pistol'
+      ? CHARACTER_MODEL_FILES.pistolJump
+      : CHARACTER_MODEL_FILES.rifleJump;
+  }
+
   if (pose.sprinting) {
     return weaponId === 'pistol'
       ? CHARACTER_MODEL_FILES.pistolRun
@@ -220,7 +280,7 @@ export function gameModelFileForWeapon(
 
 /** @deprecated Use gameModelFileForWeapon. */
 export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
-  return gameModelFileForWeapon(weaponId, { sprinting: false, walking: false });
+  return gameModelFileForWeapon(weaponId, { sprinting: false, walking: false, jumping: false });
 }
 
 export function loadGameCharacterTemplate(
@@ -236,7 +296,7 @@ export function loadLobbyCharacterTemplate(): Promise<CharacterTemplate> {
 
 /** @deprecated Use loadGameCharacterTemplate. */
 export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<CharacterTemplate> {
-  return loadGameCharacterTemplate(weaponId, { sprinting: false, walking: false });
+  return loadGameCharacterTemplate(weaponId, { sprinting: false, walking: false, jumping: false });
 }
 
 export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
@@ -247,6 +307,8 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.pistolRun),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.rifleWalking),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.pistolWalk),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.rifleJump),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.pistolJump),
   ]);
 }
 
@@ -259,10 +321,18 @@ export function createCharacterInstance(template: CharacterTemplate): CharacterI
   const root = cloneSkeleton(template.scene) as THREE.Group;
 
   let mixer: THREE.AnimationMixer | null = null;
+
   if (template.clip) {
     mixer = new THREE.AnimationMixer(root);
     const action = mixer.clipAction(template.clip);
-    action.setLoop(THREE.LoopRepeat, Infinity);
+
+    if (template.oneShot) {
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = true;
+    } else {
+      action.setLoop(THREE.LoopRepeat, Infinity);
+    }
+
     action.play();
     mixer.update(0);
   }

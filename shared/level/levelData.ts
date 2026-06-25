@@ -13,4 +13,6 @@ export interface Aabb {
   maxX: number;
   maxY: number;
   maxZ: number;
+  /** Elevated deck — uses platform-specific ground snapping in collision. */
+  platform?: boolean;
 }

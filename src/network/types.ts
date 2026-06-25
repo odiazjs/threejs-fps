@@ -15,6 +15,7 @@ export interface PlayerSnapshot {
   activeWeaponId: string;
   sprinting: boolean;
   walking: boolean;
+  jumping: boolean;
 }
 
 export type { ProjectileSpawnMessage };

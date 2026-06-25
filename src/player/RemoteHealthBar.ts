@@ -1,18 +1,12 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
-import { REMOTE_HEAD_TOP_OFFSET } from './RemoteAvatar';
 
-/** Local Y above lookRig origin (head top + gap). */
-const CLEARANCE_ABOVE_HEAD = 0.5;
+const FALLBACK_TOP_OFFSET = 1.84;
 const REF_DISTANCE = 12;
 const MIN_SCALE = 0.8;
 const MAX_SCALE = 1.15;
-const BASE_MARGIN_PX = 18;
-const MIN_CLEARANCE_ABOVE_HEAD = 0.32;
-const MAX_CLEARANCE_ABOVE_HEAD = 0.62;
-const MIN_SCREEN_MARGIN_PX = 10;
-const MAX_SCREEN_MARGIN_PX = 26;
+const SCREEN_LIFT_PX = 6;
 
 const TEAM_COLORS = ['#6a9fd4', '#e5a088'] as const;
 
@@ -23,6 +17,7 @@ export class RemoteHealthBar {
   private readonly root: HTMLDivElement;
   private readonly name: HTMLDivElement;
   private readonly fill: HTMLDivElement;
+  private topOffset = FALLBACK_TOP_OFFSET;
 
   constructor() {
     this.root = document.createElement('div');
@@ -40,7 +35,12 @@ export class RemoteHealthBar {
     this.root.append(this.name, track);
 
     this.object = new CSS2DObject(this.root);
-    this.object.position.y = REMOTE_HEAD_TOP_OFFSET + CLEARANCE_ABOVE_HEAD;
+    this.object.position.y = this.topOffset;
+  }
+
+  setHeadTopOffset(offset: number): void {
+    this.topOffset = Math.max(1.5, offset);
+    this.object.position.y = this.topOffset;
   }
 
   update(hp: number, alive: boolean, teamId: number, username: string): void {
@@ -55,29 +55,16 @@ export class RemoteHealthBar {
     this.name.style.color = color;
   }
 
-  /** Keep screen size and bottom gap proportional to camera distance. */
   updateLayout(camera: THREE.Camera): void {
+    this.object.position.y = this.topOffset;
+
     this.object.getWorldPosition(_anchor);
     const dist = camera.position.distanceTo(_anchor);
     const scale = THREE.MathUtils.clamp(dist / REF_DISTANCE, MIN_SCALE, MAX_SCALE);
 
-    const clearance = THREE.MathUtils.clamp(
-      CLEARANCE_ABOVE_HEAD + (scale - 1) * 0.35,
-      MIN_CLEARANCE_ABOVE_HEAD,
-      MAX_CLEARANCE_ABOVE_HEAD,
-    );
-    this.object.position.y = REMOTE_HEAD_TOP_OFFSET + clearance;
-
-    const labelHeight = this.root.offsetHeight || 36;
-    const margin = THREE.MathUtils.clamp(
-      (BASE_MARGIN_PX + labelHeight * 0.2) * scale,
-      MIN_SCREEN_MARGIN_PX,
-      MAX_SCREEN_MARGIN_PX,
-    );
-
     this.root.style.transformOrigin = '50% 100%';
     this.root.style.transform =
-      `translate(-50%, -100%) translateY(-${margin}px) scale(${scale})`;
+      `translate(-50%, -100%) translateY(-${SCREEN_LIFT_PX}px) scale(${scale})`;
   }
 
   dispose(): void {

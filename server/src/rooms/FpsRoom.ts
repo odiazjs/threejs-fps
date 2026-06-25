@@ -1,6 +1,6 @@
 import { Client, Room } from 'colyseus';
 import { AMMO_BOX_POSITIONS, overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
-import { clampEyeY, movePlayer } from '../../../shared/level/collision.js';
+import { clampEyeY, movePlayer, resolveMoveFeetY } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { pickSpawnPoint } from '../../../shared/level/kiloSectorColliders.js';
 import {
@@ -35,6 +35,7 @@ interface MoveMessage {
   pitch: number;
   sprinting?: boolean;
   walking?: boolean;
+  jumping?: boolean;
 }
 
 interface JoinOptions {
@@ -83,18 +84,20 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
 
-      const feetY = player.y - EYE_HEIGHT;
+      const clientFeetY = data.y - EYE_HEIGHT;
+      const feetYForMove = resolveMoveFeetY(data.x, data.z, clientFeetY);
       const deltaX = data.x - player.x;
       const deltaZ = data.z - player.z;
-      const resolved = movePlayer(player.x, feetY, player.z, deltaX, deltaZ);
+      const resolved = movePlayer(player.x, feetYForMove, player.z, deltaX, deltaZ);
 
       player.x = resolved.x;
       player.z = resolved.z;
       player.y = clampEyeY(resolved.x, resolved.z, data.y);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
-      player.sprinting = data.sprinting === true;
-      player.walking = data.walking === true && !player.sprinting;
+      player.jumping = data.jumping === true;
+      player.sprinting = data.sprinting === true && !player.jumping;
+      player.walking = data.walking === true && !player.sprinting && !player.jumping;
     },
 
     reload: (client: Client, data: ReloadMessage) => {
@@ -120,7 +123,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
-      this.broadcast('projectile', data, { except: client });
+      this.broadcast('projectile', { ...data, shooterId: client.sessionId }, { except: client });
     },
 
     pickupAmmo: (client: Client, data: PickupAmmoMessage) => {
@@ -267,6 +270,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.reloadEndAt = 0;
     player.sprinting = false;
     player.walking = false;
+    player.jumping = false;
     player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
   }
 }

@@ -63,6 +63,27 @@ export interface VisualRecoilStyle {
 
 export type WeaponFireMode = 'auto' | 'semi';
 
+/** Brief muzzle burst — three additive plasma tones plus particle spray. */
+export interface MuzzleFlashConfig {
+  /** Radius of the brightest core sphere. */
+  readonly coreScale: number;
+  readonly duration: number;
+  readonly particleCount: number;
+  readonly particleSpeed: number;
+  /** Lateral spread of plasma sparks (world units per second). */
+  readonly particleSpread: number;
+  /** Three hex colors — typically cyan / purple plasma tones. */
+  readonly colors: readonly [number, number, number];
+  readonly lightIntensity: number;
+  readonly lightDistance: number;
+  /** Sphere glow size multiplier on `coreScale` (default ~0.42). */
+  readonly glowScale?: number;
+  /** Additive sphere layers — 0 disables ball glow (particles only). */
+  readonly glowLayers?: 0 | 1 | 2 | 3;
+  /** Point sprite size multiplier on `coreScale` (default 1.8). */
+  readonly particleSizeScale?: number;
+}
+
 export interface WeaponConfig {
   readonly id: WeaponId;
   readonly name: string;
@@ -75,4 +96,5 @@ export interface WeaponConfig {
   readonly damage: number;
   readonly view: WeaponViewConfig;
   readonly recoil: RecoilConfig;
+  readonly muzzleFlash: MuzzleFlashConfig;
 }

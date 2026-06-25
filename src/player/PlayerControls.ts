@@ -1,11 +1,12 @@
-import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
+import type * as THREE from 'three';
+import { PointerAimControls } from './PointerAimControls';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
 
 export class PlayerControls {
-  readonly controls: PointerLockControls;
+  readonly controls: PointerAimControls;
   private staminaHud: StaminaHud | null = null;
   private ammoHud: AmmoHud | null = null;
   private healthHud: HealthHud | null = null;
@@ -17,12 +18,12 @@ export class PlayerControls {
   private readonly instructionsTitle: HTMLElement;
   private readonly leaveButton: HTMLButtonElement;
 
-  constructor(aimTarget: THREE.Object3D) {
+  constructor(yawRig: THREE.Object3D, pitchRig: THREE.Object3D) {
     this.blocker = document.getElementById('blocker')!;
     this.instructionsTitle = this.blocker.querySelector('#instructions h1')!;
     this.leaveButton = document.getElementById('leave-game-btn') as HTMLButtonElement;
 
-    this.controls = new PointerLockControls(aimTarget, document.body);
+    this.controls = new PointerAimControls(yawRig, pitchRig, document.body);
     this.initUI();
   }
 
@@ -65,7 +66,7 @@ export class PlayerControls {
       this.onLeave?.();
     });
 
-    this.controls.addEventListener('lock', () => {
+    this.controls.onLock = () => {
       this.hasLockedOnce = true;
       this.blocker.style.display = 'none';
       this.leaveButton.hidden = true;
@@ -75,9 +76,9 @@ export class PlayerControls {
       this.healthHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
-    });
+    };
 
-    this.controls.addEventListener('unlock', () => {
+    this.controls.onUnlock = () => {
       this.blocker.style.display = 'flex';
       crosshair.style.display = 'none';
       this.staminaHud?.setVisible(false);
@@ -93,7 +94,7 @@ export class PlayerControls {
         this.instructionsTitle.textContent = 'Click to play';
         this.leaveButton.hidden = true;
       }
-    });
+    };
   }
 
   setLeaveEnabled(enabled: boolean): void {

@@ -40,6 +40,7 @@ export class DamageNumberStack {
   private bump = 0;
   private layoutScale = 1;
   private offsetX = 0;
+  private headTopOffset = 0.22;
 
   constructor() {
     this.root = document.createElement('div');
@@ -50,7 +51,7 @@ export class DamageNumberStack {
     this.root.appendChild(this.label);
 
     this.object = new CSS2DObject(this.root);
-    this.object.position.y = 0.22;
+    this.object.position.y = this.headTopOffset;
     this.object.renderOrder = 1000;
     this.root.style.zIndex = '1000';
     this.object.visible = false;
@@ -78,6 +79,11 @@ export class DamageNumberStack {
     this.label.textContent = '';
     this.label.style.opacity = '0';
     this.object.visible = false;
+  }
+
+  setHeadTopOffset(offset: number): void {
+    this.headTopOffset = Math.max(0.12, offset);
+    this.object.position.y = this.headTopOffset;
   }
 
   update(delta: number, camera: THREE.Camera): void {

@@ -6,6 +6,8 @@ import { LightingBuilder } from './LightingBuilder';
 import { TerrainBuilder } from './TerrainBuilder';
 import { DroneField } from './DroneField';
 import { LightBeams } from './LightBeams';
+import { PlatformLiftParticles } from './PlatformLiftParticles';
+import type { GrassQualityProfile } from '../render/grassQuality';
 import { createSkyboxTexture } from './SkyboxBuilder';
 
 export class WorldBuilder {
@@ -13,6 +15,7 @@ export class WorldBuilder {
   private terrainBuilder: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
+  private platformParticles: PlatformLiftParticles | null = null;
 
   build(): this {
     this.sceneBuilder
@@ -28,8 +31,8 @@ export class WorldBuilder {
     return this;
   }
 
-  withTerrain(): this {
-    this.terrainBuilder = new TerrainBuilder();
+  withTerrain(quality?: GrassQualityProfile): this {
+    this.terrainBuilder = new TerrainBuilder(quality);
     this.sceneBuilder.addObject(this.terrainBuilder.build());
     return this;
   }
@@ -53,6 +56,12 @@ export class WorldBuilder {
     return this;
   }
 
+  withPlatformParticles(): this {
+    this.platformParticles = new PlatformLiftParticles();
+    this.sceneBuilder.addObject(this.platformParticles.group);
+    return this;
+  }
+
   getTerrain(): TerrainBuilder | null {
     return this.terrainBuilder;
   }
@@ -63,6 +72,10 @@ export class WorldBuilder {
 
   getLightBeams(): LightBeams | null {
     return this.lightBeams;
+  }
+
+  getPlatformParticles(): PlatformLiftParticles | null {
+    return this.platformParticles;
   }
 
   getScene(): THREE.Scene {

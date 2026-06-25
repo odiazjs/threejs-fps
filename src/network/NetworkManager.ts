@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { ProjectileManager } from '../combat/ProjectileManager';
+import { getWeaponConfig } from '../content/weaponConfig';
+import { isWeaponId } from '../../shared/content/weaponIds';
 import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
@@ -42,9 +44,20 @@ export class NetworkManager {
   async connect(username: string, joinIntent?: GameJoinIntent | null): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
-      _origin.set(spawn.x, spawn.y, spawn.z);
       _direction.set(spawn.dirX, spawn.dirY, spawn.dirZ);
-      this.projectiles.spawn(_origin, _direction);
+      const weaponConfig = getWeaponConfig(spawn.weaponId ?? 'plasma_rifle');
+
+      const shooter = spawn.shooterId
+        ? this.remotePlayers.getPlayer(spawn.shooterId)
+        : undefined;
+      const weaponId = spawn.weaponId && isWeaponId(spawn.weaponId) ? spawn.weaponId : undefined;
+      if (!shooter?.readActiveMuzzleWorldPosition(_origin, weaponId)) {
+        _origin.set(spawn.x, spawn.y, spawn.z);
+      }
+
+      this.projectiles.spawn(_origin, _direction, {
+        muzzleFlash: weaponConfig?.muzzleFlash,
+      });
     });
     this.roomClient.onAmmoBoxChange((index, snapshot) => {
       this.ammoPickups.applySnapshot(index, snapshot);
@@ -107,6 +120,7 @@ export class NetworkManager {
         dirX: direction.x,
         dirY: direction.y,
         dirZ: direction.z,
+        weaponId: player.getActiveWeaponId(),
       });
     });
     player.setReloadNetworkCallback((weaponId) => {
@@ -165,6 +179,7 @@ export class NetworkManager {
       pitch,
       locomotion.isSprinting,
       locomotion.isWalking,
+      locomotion.isJumping,
     );
   }
 

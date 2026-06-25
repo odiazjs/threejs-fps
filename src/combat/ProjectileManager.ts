@@ -1,7 +1,9 @@
 import type { Scene, Vector3 } from 'three';
 import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
 import { rayHitsPlayer } from '../../shared/combat/playerHitbox';
+import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
 import { HitSplash } from './HitSplash';
+import { MuzzleFlash } from './MuzzleFlash';
 import { Projectile } from './Projectile';
 import { PROJECTILE_SPEED } from './projectileConfig';
 
@@ -18,6 +20,7 @@ interface ProjectileMeta {
 export class ProjectileManager {
   private readonly projectiles: Projectile[] = [];
   private readonly splashes: HitSplash[] = [];
+  private readonly muzzleFlashes: MuzzleFlash[] = [];
   private readonly meta = new WeakMap<Projectile, ProjectileMeta>();
   private getHitTargets: (() => ProjectileHitTarget[]) | null = null;
   private onPlayerHit: ((targetId: string) => void) | null = null;
@@ -35,8 +38,18 @@ export class ProjectileManager {
   spawn(
     origin: Vector3,
     direction: Vector3,
-    options?: { canHitPlayers?: boolean; ownerTeamId?: number },
+    options?: {
+      canHitPlayers?: boolean;
+      ownerTeamId?: number;
+      muzzleFlash?: MuzzleFlashConfig;
+    },
   ): void {
+    if (options?.muzzleFlash) {
+      const flash = new MuzzleFlash(origin, direction, options.muzzleFlash);
+      this.scene.add(flash.object);
+      this.muzzleFlashes.push(flash);
+    }
+
     const projectile = new Projectile(origin, direction, PROJECTILE_SPEED);
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);
@@ -81,6 +94,14 @@ export class ProjectileManager {
 
       splash.dispose();
       this.splashes.splice(i, 1);
+    }
+
+    for (let i = this.muzzleFlashes.length - 1; i >= 0; i--) {
+      const flash = this.muzzleFlashes[i];
+      if (flash.update(delta)) continue;
+
+      flash.dispose();
+      this.muzzleFlashes.splice(i, 1);
     }
   }
 

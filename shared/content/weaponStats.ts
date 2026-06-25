@@ -1,13 +1,13 @@
 import type { WeaponId } from './weaponIds.js';
 
 export const WEAPON_DAMAGE: Record<WeaponId, number> = {
-  plasma_rifle: 3,
-  pistol: 16,
+  plasma_rifle: 6,
+  pistol: 12,
 };
 
 export const WEAPON_RELOAD_SEC: Record<WeaponId, number> = {
   plasma_rifle: 2.25,
-  pistol: 1.6,
+  pistol: 1.5,
 };
 
 export function getWeaponDamage(weaponId: WeaponId): number {
