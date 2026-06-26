@@ -1,7 +1,11 @@
-import { PLAYER_HALF_WIDTH, PLAYER_HEIGHT } from '../level/levelData.js';
-
-/** Extra tolerance for laggy remote positions and fast projectiles. */
-export const PLAYER_HITBOX_PADDING = 0.25;
+/**
+ * Vertical capsule hit volume — same cross-section from every yaw angle, unlike
+ * world-axis mesh AABBs that balloon when a posed character rotates.
+ *
+ * Sized to match the fitted character mesh (~1.65 m), not the movement box.
+ */
+export const PLAYER_HIT_CAPSULE_RADIUS = 0.26;
+export const PLAYER_HIT_CAPSULE_HEIGHT = 1.62;
 
 export interface PlayerHitTarget {
   feetX: number;
@@ -9,19 +13,201 @@ export interface PlayerHitTarget {
   feetZ: number;
 }
 
-function playerAabb(feetX: number, feetY: number, feetZ: number) {
-  const pad = PLAYER_HITBOX_PADDING;
-  return {
-    minX: feetX - PLAYER_HALF_WIDTH - pad,
-    maxX: feetX + PLAYER_HALF_WIDTH + pad,
-    minY: feetY - pad,
-    maxY: feetY + PLAYER_HEIGHT + pad,
-    minZ: feetZ - PLAYER_HALF_WIDTH - pad,
-    maxZ: feetZ + PLAYER_HALF_WIDTH + pad,
-  };
+function intervalsOverlap(
+  aMin: number,
+  aMax: number,
+  bMin: number,
+  bMax: number,
+): boolean {
+  return Math.min(aMax, bMax) >= Math.max(aMin, bMin);
 }
 
-/** Ray segment vs player body AABB (used for projectile hit tests). */
+/** Ray segment t in [0, maxDist] where Y lies in [yMin, yMax]. */
+function rayYInterval(
+  originY: number,
+  dirY: number,
+  maxDist: number,
+  yMin: number,
+  yMax: number,
+): [number, number] | null {
+  if (Math.abs(dirY) < 1e-12) {
+    return originY >= yMin && originY <= yMax ? [0, maxDist] : null;
+  }
+
+  const tEnter = (yMin - originY) / dirY;
+  const tExit = (yMax - originY) / dirY;
+  const tMin = Math.max(Math.min(tEnter, tExit), 0);
+  const tMax = Math.min(Math.max(tEnter, tExit), maxDist);
+  return tMax >= tMin ? [tMin, tMax] : null;
+}
+
+function rayHitsSphereSegment(
+  originX: number,
+  originY: number,
+  originZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  maxDist: number,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+  radius: number,
+  minHitY: number,
+  maxHitY: number,
+): boolean {
+  const lx = originX - centerX;
+  const ly = originY - centerY;
+  const lz = originZ - centerZ;
+  const b = 2 * (dirX * lx + dirY * ly + dirZ * lz);
+  const c = lx * lx + ly * ly + lz * lz - radius * radius;
+  const disc = b * b - 4 * c;
+  if (disc < 0) return false;
+
+  const sqrtDisc = Math.sqrt(disc);
+  const t0 = (-b - sqrtDisc) * 0.5;
+  const t1 = (-b + sqrtDisc) * 0.5;
+
+  for (const t of [t0, t1]) {
+    if (t < 0 || t > maxDist) continue;
+    const hitY = originY + t * dirY;
+    if (hitY >= minHitY && hitY <= maxHitY) return true;
+  }
+
+  return false;
+}
+
+/** Ray segment vs the cylindrical body of a vertical capsule. */
+function rayHitsVerticalCapsuleCylinder(
+  originX: number,
+  originY: number,
+  originZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  maxDist: number,
+  centerX: number,
+  centerY0: number,
+  centerY1: number,
+  centerZ: number,
+  radius: number,
+): boolean {
+  const yInterval = rayYInterval(originY, dirY, maxDist, centerY0, centerY1);
+  if (!yInterval) return false;
+
+  const lx = originX - centerX;
+  const lz = originZ - centerZ;
+  const radiusSq = radius * radius;
+  const insideAtStart = lx * lx + lz * lz <= radiusSq;
+  const horizontalLenSq = dirX * dirX + dirZ * dirZ;
+
+  if (horizontalLenSq < 1e-12) {
+    return insideAtStart && intervalsOverlap(0, maxDist, yInterval[0], yInterval[1]);
+  }
+
+  const a = horizontalLenSq;
+  const b = 2 * (lx * dirX + lz * dirZ);
+  const c = lx * lx + lz * lz - radiusSq;
+  const disc = b * b - 4 * a * c;
+
+  if (disc < 0) {
+    if (!insideAtStart) return false;
+    return intervalsOverlap(0, maxDist, yInterval[0], yInterval[1]);
+  }
+
+  const sqrtDisc = Math.sqrt(disc);
+  const inv2a = 0.5 / a;
+  let tHorizMin = (-b - sqrtDisc) * inv2a;
+  let tHorizMax = (-b + sqrtDisc) * inv2a;
+  if (tHorizMin > tHorizMax) {
+    const swap = tHorizMin;
+    tHorizMin = tHorizMax;
+    tHorizMax = swap;
+  }
+
+  if (insideAtStart) {
+    tHorizMin = 0;
+  }
+
+  tHorizMin = Math.max(tHorizMin, 0);
+  tHorizMax = Math.min(tHorizMax, maxDist);
+  if (tHorizMax < tHorizMin) return false;
+
+  return intervalsOverlap(tHorizMin, tHorizMax, yInterval[0], yInterval[1]);
+}
+
+export function rayHitsVerticalCapsule(
+  originX: number,
+  originY: number,
+  originZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  maxDist: number,
+  feetX: number,
+  feetY: number,
+  feetZ: number,
+  radius = PLAYER_HIT_CAPSULE_RADIUS,
+  totalHeight = PLAYER_HIT_CAPSULE_HEIGHT,
+): boolean {
+  const y0 = feetY + radius;
+  const y1 = feetY + totalHeight - radius;
+  const topY = feetY + totalHeight;
+
+  if (
+    rayHitsVerticalCapsuleCylinder(
+      originX,
+      originY,
+      originZ,
+      dirX,
+      dirY,
+      dirZ,
+      maxDist,
+      feetX,
+      y0,
+      y1,
+      feetZ,
+      radius,
+    )
+  ) {
+    return true;
+  }
+
+  return (
+    rayHitsSphereSegment(
+      originX,
+      originY,
+      originZ,
+      dirX,
+      dirY,
+      dirZ,
+      maxDist,
+      feetX,
+      y0,
+      feetZ,
+      radius,
+      feetY,
+      y0,
+    ) ||
+    rayHitsSphereSegment(
+      originX,
+      originY,
+      originZ,
+      dirX,
+      dirY,
+      dirZ,
+      maxDist,
+      feetX,
+      y1,
+      feetZ,
+      radius,
+      y1,
+      topY,
+    )
+  );
+}
+
+/** Ray segment vs player body capsule. */
 export function rayHitsPlayer(
   originX: number,
   originY: number,
@@ -32,28 +218,16 @@ export function rayHitsPlayer(
   distance: number,
   target: PlayerHitTarget,
 ): boolean {
-  const box = playerAabb(target.feetX, target.feetY, target.feetZ);
-  const invX = dirX !== 0 ? 1 / dirX : Number.POSITIVE_INFINITY;
-  const invY = dirY !== 0 ? 1 / dirY : Number.POSITIVE_INFINITY;
-  const invZ = dirZ !== 0 ? 1 / dirZ : Number.POSITIVE_INFINITY;
-
-  let tMin = 0;
-  let tMax = distance;
-
-  const tx1 = (box.minX - originX) * invX;
-  const tx2 = (box.maxX - originX) * invX;
-  tMin = Math.max(tMin, Math.min(tx1, tx2));
-  tMax = Math.min(tMax, Math.max(tx1, tx2));
-
-  const ty1 = (box.minY - originY) * invY;
-  const ty2 = (box.maxY - originY) * invY;
-  tMin = Math.max(tMin, Math.min(ty1, ty2));
-  tMax = Math.min(tMax, Math.max(ty1, ty2));
-
-  const tz1 = (box.minZ - originZ) * invZ;
-  const tz2 = (box.maxZ - originZ) * invZ;
-  tMin = Math.max(tMin, Math.min(tz1, tz2));
-  tMax = Math.min(tMax, Math.max(tz1, tz2));
-
-  return tMax >= tMin && tMax >= 0;
+  return rayHitsVerticalCapsule(
+    originX,
+    originY,
+    originZ,
+    dirX,
+    dirY,
+    dirZ,
+    distance,
+    target.feetX,
+    target.feetY,
+    target.feetZ,
+  );
 }

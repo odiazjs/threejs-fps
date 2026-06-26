@@ -282,6 +282,15 @@ export class RoomClient {
       );
     });
 
+    state.players.forEach((player, sessionId) => {
+      this.bindPlayerCallbacks(
+        callbacks,
+        sessionId as string,
+        player as PlayerState,
+        myId,
+      );
+    });
+
     callbacks.onRemove('players', (_player, sessionId) => {
       this.boundPlayers.delete(sessionId as string);
       this.onRemoveHandlers.forEach((handler) => handler(sessionId as string));

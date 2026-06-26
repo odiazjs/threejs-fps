@@ -1,7 +1,7 @@
 export const SPRINT_MULTIPLIER = 2;
 export const STAMINA_MAX = 1;
 export const STAMINA_DRAIN_PER_SEC = 0.3;
-export const EXHAUST_COOLDOWN_SEC = 10;
+export const EXHAUST_COOLDOWN_SEC = 5;
 export const STAMINA_REGEN_PER_SEC = 0.35;
 
 export interface SprintState {

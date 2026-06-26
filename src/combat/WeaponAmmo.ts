@@ -1,4 +1,5 @@
 import type { WeaponConfig } from '../../shared/content/weaponConfig';
+import { PLAYER_START_RESERVE_ROUNDS } from '../../shared/content/weaponStats';
 
 export interface AmmoState {
   clip: number;
@@ -18,8 +19,15 @@ export class WeaponAmmo {
   private reloadRoundsNeeded = 0;
 
   constructor(private readonly config: WeaponConfig) {
-    this.clip = config.clipSize;
-    this.reserveRounds = config.reserveClips * config.clipSize;
+    this.refill();
+  }
+
+  refill(reserveRounds = PLAYER_START_RESERVE_ROUNDS): void {
+    this.clip = this.config.clipSize;
+    this.reserveRounds = reserveRounds;
+    this.reloading = false;
+    this.reloadRemaining = 0;
+    this.reloadRoundsNeeded = 0;
   }
 
   private roundsToFillClip(): number {

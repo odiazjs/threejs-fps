@@ -5,20 +5,25 @@ export class AmmoHud {
   private readonly weaponEl: HTMLElement;
   private readonly clipEl: HTMLElement;
   private readonly statusEl: HTMLElement;
-  private readonly reloadTrack: HTMLElement;
+  private readonly reloadRoot: HTMLElement;
   private readonly reloadFill: HTMLElement;
+  private hudVisible = false;
 
   constructor() {
     this.root = document.getElementById('ammo-hud')!;
     this.weaponEl = this.root.querySelector('.ammo-weapon-name')!;
     this.clipEl = this.root.querySelector('.ammo-clip')!;
     this.statusEl = this.root.querySelector('.ammo-status')!;
-    this.reloadTrack = this.root.querySelector('.ammo-reload-track')!;
-    this.reloadFill = this.root.querySelector('.ammo-reload-fill')!;
+    this.reloadRoot = document.getElementById('reload-hud')!;
+    this.reloadFill = this.reloadRoot.querySelector('.reload-fill')!;
   }
 
   setVisible(visible: boolean): void {
+    this.hudVisible = visible;
     this.root.hidden = !visible;
+    if (!visible) {
+      this.reloadRoot.hidden = true;
+    }
   }
 
   update(state: LoadoutAmmoState): void {
@@ -29,14 +34,13 @@ export class AmmoHud {
     this.root.classList.toggle('empty', state.outOfAmmo);
 
     if (state.reloading) {
-      this.statusEl.hidden = false;
-      this.statusEl.textContent = 'RELOADING';
-      this.reloadTrack.hidden = false;
+      this.statusEl.hidden = true;
+      this.reloadRoot.hidden = !this.hudVisible;
       this.reloadFill.style.width = `${state.reloadProgress * 100}%`;
       return;
     }
 
-    this.reloadTrack.hidden = true;
+    this.reloadRoot.hidden = true;
     this.reloadFill.style.width = '0%';
 
     if (state.outOfAmmo) {

@@ -1,16 +1,24 @@
 import { Client, Room } from 'colyseus';
 import { AMMO_BOX_POSITIONS, overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
-import { clampEyeY, movePlayer, resolveMoveFeetY } from '../../../shared/level/collision.js';
+import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { pickSpawnPoint } from '../../../shared/level/kiloSectorColliders.js';
 import {
-  MAX_HIT_DISTANCE,
   PLAYER_MAX_HP,
   RESPAWN_DELAY_SEC,
 } from '../../../shared/combat/damage.js';
 import { isValidTeamId } from '../../../shared/combat/teams.js';
 import {
+  isTrainingBotSessionId,
+  TRAINING_BOT_SPAWNS,
+  TRAINING_BOT_TEAM_ID,
+  trainingBotSessionId,
+  trainingBotSpawnEyeY,
+  trainingBotUsername,
+} from '../../../shared/combat/trainingBots.js';
+import {
   getWeaponDamage,
+  getWeaponMaxHitDistance,
   getWeaponReloadSec,
 } from '../../../shared/content/weaponStats.js';
 import {
@@ -49,6 +57,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   maxClients = 8;
   private inviteMatch = false;
   private emptyDisposeTimer?: ReturnType<Room['clock']['setTimeout']>;
+  private readonly botSpawns = new Map<string, { x: number; z: number; yaw: number }>();
+  private readonly botPhysics = new Map<string, PlayerPhysicsState>();
 
   onCreate(options: JoinOptions = {}): void {
     this.inviteMatch = options.inviteMatch === true;
@@ -63,9 +73,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.state.ammoBoxes.push(box);
     }
 
+    this.spawnTrainingBots();
+
     this.setSimulationInterval((deltaTime) => {
-      this.state.worldTime += deltaTime / 1000;
+      const deltaSec = deltaTime / 1000;
+      this.state.worldTime += deltaSec;
       this.tickReloads();
+      this.tickTrainingBots(deltaSec);
     });
   }
 
@@ -77,6 +91,49 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.reloading = false;
       player.reloadEndAt = 0;
     }
+  }
+
+  private tickTrainingBots(deltaSec: number): void {
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (!isTrainingBotSessionId(sessionId) || !player.alive) continue;
+
+      const physics = this.botPhysics.get(sessionId);
+      if (!physics || physics.grounded) {
+        player.jumping = false;
+        continue;
+      }
+
+      const feetY = player.y - EYE_HEIGHT;
+      const result = stepPlayerPhysics(
+        player.x,
+        feetY,
+        player.z,
+        physics,
+        0,
+        0,
+        false,
+        deltaSec,
+      );
+
+      player.x = result.x;
+      player.y = result.y + EYE_HEIGHT;
+      player.z = result.z;
+      player.jumping = !result.state.grounded;
+      this.botPhysics.set(sessionId, result.state);
+    }
+  }
+
+  private placeTrainingBot(
+    sessionId: string,
+    player: PlayerState,
+    spawn: { x: number; z: number; yaw: number },
+  ): void {
+    player.x = spawn.x;
+    player.z = spawn.z;
+    player.yaw = spawn.yaw;
+    player.y = trainingBotSpawnEyeY(spawn.x, spawn.z);
+    player.jumping = true;
+    this.botPhysics.set(sessionId, { verticalVelocity: 0, grounded: false });
   }
 
   messages = {
@@ -169,11 +226,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const shooter = this.state.players.get(client.sessionId);
       const target = this.state.players.get(data.targetId);
       if (!shooter?.alive || !target?.alive) return;
-      if (shooter.teamId === target.teamId) return;
+      if (data.targetId === client.sessionId) return;
+      if (
+        shooter.teamId === target.teamId &&
+        !isTrainingBotSessionId(data.targetId)
+      ) {
+        return;
+      }
 
       const distance = Math.hypot(shooter.x - target.x, shooter.z - target.z);
-      if (distance > MAX_HIT_DISTANCE) return;
       if (!isWeaponId(data.weaponId)) return;
+      if (distance > getWeaponMaxHitDistance(data.weaponId)) return;
 
       const damage = getWeaponDamage(data.weaponId);
       target.hp = Math.max(0, target.hp - damage);
@@ -204,7 +267,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
 
     const player = new PlayerState();
-    const spawn = pickSpawnPoint(this.state.players.size);
+    const spawn = pickSpawnPoint(this.countHumanPlayers());
     const username = this.sanitizeUsername(options.username);
 
     player.username = username;
@@ -229,6 +292,36 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }, 60_000);
   }
 
+  private countHumanPlayers(): number {
+    let count = 0;
+    for (const sessionId of this.state.players.keys()) {
+      if (!isTrainingBotSessionId(sessionId)) count += 1;
+    }
+    return count;
+  }
+
+  private spawnTrainingBots(): void {
+    TRAINING_BOT_SPAWNS.forEach((spawn, index) => {
+      const botIndex = index + 1;
+      const sessionId = trainingBotSessionId(botIndex);
+      const player = new PlayerState();
+
+      player.username = trainingBotUsername(botIndex);
+      player.teamId = TRAINING_BOT_TEAM_ID;
+      player.hp = PLAYER_MAX_HP;
+      player.alive = true;
+      player.pitch = 0;
+      player.sprinting = false;
+      player.walking = false;
+      player.reloading = false;
+      player.reloadEndAt = 0;
+
+      this.botSpawns.set(sessionId, spawn);
+      this.placeTrainingBot(sessionId, player, spawn);
+      this.state.players.set(sessionId, player);
+    });
+  }
+
   private sanitizeUsername(raw?: string): string {
     const trimmed = raw?.trim().slice(0, 16);
     return trimmed && trimmed.length > 0 ? trimmed : 'Player';
@@ -246,7 +339,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     let team0 = 0;
     let team1 = 0;
 
-    for (const player of this.state.players.values()) {
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
       if (player.teamId === 0) team0 += 1;
       else team1 += 1;
     }
@@ -258,7 +352,22 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const player = this.state.players.get(sessionId);
     if (!player) return;
 
-    const spawn = pickSpawnPoint(this.state.players.size);
+    if (isTrainingBotSessionId(sessionId)) {
+      const spawn = this.botSpawns.get(sessionId);
+      if (!spawn) return;
+
+      player.hp = PLAYER_MAX_HP;
+      player.alive = true;
+      player.pitch = 0;
+      player.reloading = false;
+      player.reloadEndAt = 0;
+      player.sprinting = false;
+      player.walking = false;
+      this.placeTrainingBot(sessionId, player, spawn);
+      return;
+    }
+
+    const spawn = pickSpawnPoint(this.countHumanPlayers());
     player.hp = PLAYER_MAX_HP;
     player.alive = true;
     player.x = spawn.x;

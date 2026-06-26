@@ -1,5 +1,6 @@
 import type { Scene, Vector3 } from 'three';
 import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
+import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import { rayHitsPlayer } from '../../shared/combat/playerHitbox';
 import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
 import { HitSplash } from './HitSplash';
@@ -15,6 +16,7 @@ export interface ProjectileHitTarget extends PlayerHitTarget {
 interface ProjectileMeta {
   canHitPlayers: boolean;
   ownerTeamId: number;
+  ownerSessionId: string;
 }
 
 export class ProjectileManager {
@@ -41,7 +43,9 @@ export class ProjectileManager {
     options?: {
       canHitPlayers?: boolean;
       ownerTeamId?: number;
+      ownerSessionId?: string;
       muzzleFlash?: MuzzleFlashConfig;
+      speed?: number;
     },
   ): void {
     if (options?.muzzleFlash) {
@@ -50,12 +54,17 @@ export class ProjectileManager {
       this.muzzleFlashes.push(flash);
     }
 
-    const projectile = new Projectile(origin, direction, PROJECTILE_SPEED);
+    const projectile = new Projectile(
+      origin,
+      direction,
+      options?.speed ?? PROJECTILE_SPEED,
+    );
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);
     this.meta.set(projectile, {
       canHitPlayers: options?.canHitPlayers ?? false,
       ownerTeamId: options?.ownerTeamId ?? -1,
+      ownerSessionId: options?.ownerSessionId ?? '',
     });
   }
 
@@ -126,7 +135,15 @@ export class ProjectileManager {
     const dirZ = dz / dist;
 
     for (const target of this.getHitTargets()) {
-      if (target.teamId === info.ownerTeamId) continue;
+      if (info.ownerSessionId && target.sessionId === info.ownerSessionId) {
+        continue;
+      }
+      if (
+        target.teamId === info.ownerTeamId &&
+        !isTrainingBotSessionId(target.sessionId)
+      ) {
+        continue;
+      }
       if (
         !rayHitsPlayer(
           from.x,

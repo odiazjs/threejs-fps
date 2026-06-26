@@ -8,6 +8,7 @@ import {
 
 const PROJECTILE_COLOR = 0x00f0ff;
 const FORWARD = new THREE.Vector3(0, 0, -1);
+const PROJECTILE_SIZE_SCALE = 0.75;
 
 export type ProjectileHit = {
   point: THREE.Vector3;
@@ -19,7 +20,11 @@ export type ProjectileUpdateResult =
 
 export class Projectile {
   readonly object = new THREE.Mesh(
-    new THREE.BoxGeometry(0.06, 0.06, 0.2),
+    new THREE.BoxGeometry(
+      0.06 * PROJECTILE_SIZE_SCALE,
+      0.06 * PROJECTILE_SIZE_SCALE,
+      0.2 * PROJECTILE_SIZE_SCALE,
+    ),
     new THREE.MeshBasicMaterial({ color: PROJECTILE_COLOR }),
   );
 

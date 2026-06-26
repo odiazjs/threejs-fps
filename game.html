@@ -39,57 +39,91 @@
         opacity: 0.55;
         cursor: not-allowed;
       }
+      #crosshair-reference {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 5px;
+        height: 5px;
+        margin: -2.5px 0 0 -2.5px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.18);
+        box-shadow: 0 0 2px rgba(255, 255, 255, 0.12);
+        pointer-events: none;
+        z-index: 4;
+        display: none;
+      }
+      #crosshair-hit {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 30px;
+        height: 30px;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        z-index: 6;
+        display: none;
+      }
+      #crosshair-hit .crosshair-reticle {
+        opacity: 0;
+      }
+      #crosshair-hit .crosshair-reticle span {
+        background: rgb(255, 72, 58);
+        box-shadow: 0 0 8px rgba(255, 60, 45, 0.9);
+      }
       #crosshair {
         position: fixed;
         top: 50%;
         left: 50%;
         width: 30px;
         height: 30px;
-        margin: -15px 0 0 -15px;
+        transform: translate(-50%, -50%);
         pointer-events: none;
         z-index: 5;
         display: none;
       }
-      #crosshair .crosshair-reticle {
+      .crosshair-reticle {
         position: absolute;
         inset: 0;
         transform-origin: center center;
       }
-      #crosshair .crosshair-reticle span {
+      .crosshair-reticle span {
         position: absolute;
         width: 3px;
         height: 8px;
-        background: rgba(255, 255, 255, 0.9);
         border-radius: 1px;
-        box-shadow: 0 0 2px rgba(0, 0, 0, 0.45);
       }
-      #crosshair .crosshair-reticle span:nth-child(1) {
+      .crosshair-reticle span:nth-child(1) {
         top: 0;
         left: 50%;
         transform: translateX(-50%);
       }
-      #crosshair .crosshair-reticle span:nth-child(2) {
+      .crosshair-reticle span:nth-child(2) {
         right: 0;
         top: 50%;
         width: 8px;
         height: 3px;
         transform: translateY(-50%);
       }
-      #crosshair .crosshair-reticle span:nth-child(3) {
+      .crosshair-reticle span:nth-child(3) {
         bottom: 0;
         left: 50%;
         transform: translateX(-50%);
       }
-      #crosshair .crosshair-reticle span:nth-child(4) {
+      .crosshair-reticle span:nth-child(4) {
         left: 0;
         top: 50%;
         width: 8px;
         height: 3px;
         transform: translateY(-50%);
       }
+      #crosshair .crosshair-reticle span {
+        background: rgb(46, 252, 255);
+        box-shadow: 0 0 6px rgba(46, 252, 255, 0.75);
+      }
       #crosshair.hit .crosshair-reticle span {
-        background: rgba(255, 118, 98, 0.98);
-        box-shadow: 0 0 4px rgba(255, 90, 70, 0.55);
+        background: rgb(255, 72, 58);
+        box-shadow: 0 0 8px rgba(255, 60, 45, 0.9);
       }
       #stamina-hud {
         position: fixed;
@@ -177,27 +211,44 @@
         letter-spacing: 0.12em;
         color: #82dbdb;
       }
-      #ammo-hud .ammo-reload-track {
-        margin-top: 0.4rem;
-        height: 6px;
-        border: 1px solid rgba(130, 219, 219, 0.45);
-        border-radius: 999px;
-        background: rgba(20, 24, 28, 0.55);
-        overflow: hidden;
-      }
-      #ammo-hud .ammo-reload-fill {
-        width: 0%;
-        height: 100%;
-        border-radius: 999px;
-        background: linear-gradient(90deg, #5eb8c4, #82dbdb);
-        transition: width 50ms linear;
-      }
       #ammo-hud.reloading .ammo-clip {
         color: rgba(255, 255, 255, 0.55);
       }
       #ammo-hud.empty .ammo-clip,
       #ammo-hud.empty .ammo-status {
         color: #e5a088;
+      }
+      #reload-hud {
+        position: fixed;
+        left: 50%;
+        bottom: calc(2.5rem + 2.75rem + 1rem);
+        transform: translateX(-50%) translateY(-50%);
+        width: min(300px, 52vw);
+        pointer-events: none;
+        z-index: 5;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #reload-hud .reload-status {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        color: #82dbdb;
+        margin-bottom: 0.45rem;
+      }
+      #reload-hud .reload-track {
+        height: 8px;
+        border: 1px solid rgba(130, 219, 219, 0.45);
+        border-radius: 999px;
+        background: rgba(20, 24, 28, 0.55);
+        overflow: hidden;
+      }
+      #reload-hud .reload-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #5eb8c4, #82dbdb);
+        transition: width 50ms linear;
       }
       #message-hud {
         position: fixed;
@@ -361,6 +412,12 @@
       </div>
       <button id="leave-game-btn" type="button" hidden>LEAVE GAME</button>
     </div>
+    <div id="crosshair-reference" aria-hidden="true"></div>
+    <div id="crosshair-hit" aria-hidden="true">
+      <div class="crosshair-reticle">
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </div>
     <div id="crosshair">
       <div class="crosshair-reticle" aria-hidden="true">
         <span></span><span></span><span></span><span></span>
@@ -385,9 +442,12 @@
     <div id="ammo-hud" hidden>
       <div class="ammo-weapon-name">Pistol [1]</div>
       <div class="ammo-clip">12 / 48</div>
-      <div class="ammo-status" hidden>RELOADING</div>
-      <div class="ammo-reload-track" hidden>
-        <div class="ammo-reload-fill"></div>
+      <div class="ammo-status" hidden>OUT OF AMMO</div>
+    </div>
+    <div id="reload-hud" hidden>
+      <div class="reload-status">RELOADING</div>
+      <div class="reload-track">
+        <div class="reload-fill"></div>
       </div>
     </div>
     <script type="module" src="/src/game/main.ts"></script>

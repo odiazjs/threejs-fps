@@ -103,6 +103,8 @@ export interface WeaponConfig {
   readonly fireRate: number;
   readonly fireMode: WeaponFireMode;
   readonly damage: number;
+  /** World units per second for hitscan-style projectile travel. */
+  readonly projectileSpeed: number;
   readonly view: WeaponViewConfig;
   readonly recoil: RecoilConfig;
   readonly muzzleFlash: MuzzleFlashConfig;

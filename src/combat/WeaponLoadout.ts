@@ -218,6 +218,12 @@ export class WeaponLoadout {
     this.getActive().ammo.addReserveClip();
   }
 
+  refillAllAmmo(reserveRounds?: number): void {
+    for (const slot of this.slots) {
+      slot.ammo.refill(reserveRounds);
+    }
+  }
+
   setRemoteActiveWeapon(weaponId: WeaponId): void {
     const index = this.slots.findIndex((slot) => slot.config.id === weaponId);
     if (index < 0) return;

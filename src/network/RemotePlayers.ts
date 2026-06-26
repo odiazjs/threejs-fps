@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import type { ProjectileHitTarget } from '../combat/ProjectileManager';
+import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import { Player } from '../player/Player';
 import { preloadGameCharacterModels } from '../player/characterModel';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import type { RoomClient } from './RoomClient';
 import type { PlayerSnapshot } from './types';
-import { isWeaponId } from '../../shared/content/weaponIds';
 
 export class RemotePlayers {
   private readonly players = new Map<string, Player>();
@@ -35,11 +35,14 @@ export class RemotePlayers {
     return this.players.get(sessionId);
   }
 
-  getEnemyHitTargets(localTeamId: number): ProjectileHitTarget[] {
+  getEnemyHitTargets(localTeamId: number, localSessionId: string): ProjectileHitTarget[] {
     const targets: ProjectileHitTarget[] = [];
 
     for (const [sessionId, player] of this.players) {
-      if (!player.isAlive() || player.getTeamId() === localTeamId) continue;
+      if (sessionId === localSessionId) continue;
+      if (!player.isAlive()) continue;
+      const isBot = isTrainingBotSessionId(sessionId);
+      if (!isBot && player.getTeamId() === localTeamId) continue;
 
       const feet = player.getFeetPosition();
       targets.push({

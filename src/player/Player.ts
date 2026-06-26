@@ -3,7 +3,7 @@ import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../sh
 import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation } from '../combat/WeaponLoadout';
-import { readMuzzleFirePose, readWeaponMuzzleWorldPosition } from '../combat/aiming';
+import { readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -27,17 +27,19 @@ import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_P
 import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
 import { WeaponSway } from './WeaponSway';
+import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled } from '../combat/HitCapsuleDebugMesh';
+import type { CrosshairHud } from '../ui/CrosshairHud';
 import { getReloadState } from '../../shared/combat/reload';
 import {
   isWeaponId,
-  loadoutSlotFromKey,
+  LOADOUT_SIZE,
   LOADOUT_WEAPON_IDS,
   type WeaponId,
 } from '../../shared/content/weaponIds';
-
 const MOVE_SPEED = 3;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
+const _crosshairAimOffset = { x: 0, y: 0 };
 
 const _spinePitchAxis = new THREE.Vector3(1, 0, 0);
 const _spinePitchQuat = new THREE.Quaternion();
@@ -109,11 +111,13 @@ export class Player {
   private projectileSpawnOptions: {
     canHitPlayers: boolean;
     ownerTeamId: number;
-  } = { canHitPlayers: false, ownerTeamId: -1 };
+    ownerSessionId: string;
+  } = { canHitPlayers: false, ownerTeamId: -1, ownerSessionId: '' };
   private teamId = 0;
   private alive = true;
   private username = 'Player';
   private hp = 100;
+  private hitCapsuleDebug: THREE.Group | null = null;
 
   private constructor(local: boolean) {
     this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS);
@@ -275,6 +279,10 @@ export class Player {
 
   attachToScene(scene: THREE.Scene): void {
     scene.add(this.object);
+    if (isHitCapsuleDebugEnabled() && !this.camera) {
+      this.hitCapsuleDebug = createHitCapsuleDebugMesh();
+      this.object.add(this.hitCapsuleDebug);
+    }
   }
 
   bindAimControls(controls: PointerAimControls): void {
@@ -317,6 +325,10 @@ export class Player {
     this.loadout?.addReserveToActive();
   }
 
+  refillAmmo(): void {
+    this.loadout?.refillAllAmmo();
+  }
+
   setShootCallback(callback: ShootCallback | null): void {
     this.onShoot = callback;
   }
@@ -329,10 +341,11 @@ export class Player {
     this.onWeaponSwitchNetwork = callback;
   }
 
-  setProjectileSpawnOptions(ownerTeamId: number): void {
+  setProjectileSpawnOptions(ownerTeamId: number, ownerSessionId = ''): void {
     this.projectileSpawnOptions = {
       canHitPlayers: true,
       ownerTeamId,
+      ownerSessionId,
     };
   }
 
@@ -352,6 +365,22 @@ export class Player {
     return this.hp;
   }
 
+  updateCrosshairAim(hud: CrosshairHud, width: number, height: number): void {
+    if (!this.camera || !this.loadout) {
+      hud.setAimOffset(0, 0);
+      return;
+    }
+
+    projectMuzzleAimToScreenOffset(
+      this.loadout.getActive().mesh,
+      this.camera,
+      width,
+      height,
+      _crosshairAimOffset,
+    );
+    hud.setAimOffset(_crosshairAimOffset.x, _crosshairAimOffset.y);
+  }
+
   getFeetPosition(): THREE.Vector3 {
     return this.object.position;
   }
@@ -362,8 +391,13 @@ export class Player {
 
     let mesh = this.loadout.getActive().mesh;
     if (weaponId) {
-      const slotIndex = LOADOUT_WEAPON_IDS.indexOf(weaponId);
-      mesh = this.loadout.getSlot(slotIndex)?.mesh ?? mesh;
+      for (let i = 0; i < LOADOUT_SIZE; i++) {
+        const slot = this.loadout.getSlot(i);
+        if (slot?.config.id === weaponId) {
+          mesh = slot.mesh;
+          break;
+        }
+      }
     }
 
     this.object.updateMatrixWorld(true);
@@ -684,8 +718,9 @@ export class Player {
     this.lookRigFollowsHead = false;
     this.loadout?.dispose();
     this.loadout = null;
+    this.hitCapsuleDebug = null;
     this.object.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
+      if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
         child.geometry.dispose();
         (child.material as THREE.Material).dispose();
       }
@@ -696,10 +731,9 @@ export class Player {
   private trySwitchWeapon(input: KeyboardInput): void {
     if (!this.loadout) return;
 
-    for (const code of ['Digit1', 'Digit2'] as const) {
+    for (let slot = 0; slot < LOADOUT_SIZE; slot++) {
+      const code = `Digit${slot + 1}`;
       if (!input.isJustPressed(code)) continue;
-      const slot = loadoutSlotFromKey(code);
-      if (slot === null) continue;
       if (!this.loadout.trySwitch(slot)) continue;
 
       this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
@@ -757,6 +791,7 @@ export class Player {
     projectiles.spawn(this.muzzleOrigin, this.aimDirection, {
       ...this.projectileSpawnOptions,
       muzzleFlash: active.config.muzzleFlash,
+      speed: active.config.projectileSpeed,
     });
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
     return true;

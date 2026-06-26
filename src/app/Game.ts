@@ -149,7 +149,9 @@ export class Game {
         if (victimName === session.username) recordDeath(session.username);
       },
     );
-    this.network.bindShoot(this.player, () => this.crosshairHud.onHit());
+    this.network.bindShoot(this.player, () => {
+      this.crosshairHud.onHit(this.player.getActiveWeaponId());
+    });
     await this.network.connect(username, joinIntent);
     this.network.applyLocalSpawn(this.player);
   }
@@ -166,7 +168,7 @@ export class Game {
 
     this.wasAlive = state.alive;
     this.localCombat = state;
-    this.player.setProjectileSpawnOptions(state.teamId);
+    this.player.setProjectileSpawnOptions(state.teamId, this.network?.getSessionId() ?? '');
     this.healthHud.update(state);
   }
 
@@ -216,6 +218,11 @@ export class Game {
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
 
+      this.player.updateCrosshairAim(
+        this.crosshairHud,
+        window.innerWidth,
+        window.innerHeight,
+      );
       this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
     }

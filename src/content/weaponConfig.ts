@@ -1,12 +1,15 @@
 import type { RecoilKick, WeaponConfig } from '../../shared/content/weaponConfig';
+import type { WeaponId } from '../../shared/content/weaponIds';
 import {
   WEAPON_DAMAGE,
   WEAPON_RELOAD_SEC,
 } from '../../shared/content/weaponStats';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
-import { LOADOUT_WEAPON_IDS } from '../../shared/content/weaponIds';
+import { PROJECTILE_SPEED } from '../combat/projectileConfig';
 
 export type { WeaponConfig };
+
+const SNIPER_PROJECTILE_SPEED = 520;
 
 function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
   const pattern: RecoilKick[] = [];
@@ -40,6 +43,14 @@ function buildPistolRecoilPattern(): RecoilKick[] {
   }));
 }
 
+/** Bolt-action sniper: punishing single-shot kick. */
+function buildSniperRecoilPattern(): RecoilKick[] {
+  return Array.from({ length: 8 }, (_, i) => ({
+    pitch: 0.168,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.038,
+  }));
+}
+
 export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   id: 'plasma_rifle',
   name: 'Plasma Rifle',
@@ -49,6 +60,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   fireRate: 10,
   fireMode: 'auto',
   damage: WEAPON_DAMAGE.plasma_rifle,
+  projectileSpeed: PROJECTILE_SPEED,
   view: {
     hip: { x: 0.15, y: -0.25, z: -0.35 },
     ads: { x: 0, y: -0.19, z: -0.35 },
@@ -101,6 +113,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   fireRate: 4,
   fireMode: 'semi',
   damage: WEAPON_DAMAGE.pistol,
+  projectileSpeed: PROJECTILE_SPEED,
   view: {
     hip: { x: 0.12, y: -0.16, z: -0.28 },
     ads: { x: 0.0, y: -0.12, z: -0.25 },
@@ -142,19 +155,75 @@ export const PISTOL_CONFIG: WeaponConfig = {
   sway: { intensity: 1.08 },
 };
 
-export const WEAPON_CONFIGS: Record<(typeof LOADOUT_WEAPON_IDS)[number], WeaponConfig> = {
-  plasma_rifle: PLASMA_RIFLE_CONFIG,
-  pistol: PISTOL_CONFIG,
+export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
+  id: 'sniper_rifle',
+  name: 'Sniper Rifle',
+  clipSize: 1,
+  reloadSec: WEAPON_RELOAD_SEC.sniper_rifle,
+  reserveClips: 16,
+  fireRate: 1.1,
+  fireMode: 'semi',
+  damage: WEAPON_DAMAGE.sniper_rifle,
+  projectileSpeed: SNIPER_PROJECTILE_SPEED,
+  view: {
+    hip: { x: 0.1, y: -0.24, z: -0.44 },
+    ads: { x: 0, y: -0.15, z: -0.4 },
+    adsFov: 18,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
+  },
+  recoil: {
+    pattern: buildSniperRecoilPattern(),
+    recoverySpeed: 5,
+    aimSmoothSpeed: 13,
+    adsMultiplier: 0.92,
+    yawScale: 1.45,
+    visualKick: 2.9,
+    visualRecoverySpeed: 6,
+    adsVisualMultiplier: 0.88,
+    visualStyle: {
+      rotX: 1.18,
+      rotYFromYaw: -0.32,
+      rotZ: -0.26,
+      posXFromYaw: -0.075,
+      posY: -0.07,
+      posZ: 0,
+      kickBack: 0.6,
+      kickUp: -0.125,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.26,
+    duration: 0.11,
+    particleCount: 8,
+    particleSpeed: 34,
+    particleSpread: 0.32,
+    colors: [0xfff4e8, 0xffb347, 0xff6a1a],
+    lightIntensity: 4.8,
+    lightDistance: 6.5,
+    glowScale: 0.55,
+    glowLayers: 2,
+    particleSizeScale: 1.35,
+  },
+  sway: { intensity: 0.72 },
 };
 
-export const DEFAULT_LOADOUT_CONFIGS: [WeaponConfig, WeaponConfig] = [
+export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
+  plasma_rifle: PLASMA_RIFLE_CONFIG,
+  pistol: PISTOL_CONFIG,
+  sniper_rifle: SNIPER_RIFLE_CONFIG,
+};
+
+export const DEFAULT_LOADOUT_CONFIGS = [
   PISTOL_CONFIG,
   PLASMA_RIFLE_CONFIG,
-];
+  SNIPER_RIFLE_CONFIG,
+] as const;
 
 export function getWeaponConfig(id: string): WeaponConfig | null {
   if (id in WEAPON_CONFIGS) {
-    return WEAPON_CONFIGS[id as keyof typeof WEAPON_CONFIGS];
+    return WEAPON_CONFIGS[id as WeaponId];
   }
   return null;
 }

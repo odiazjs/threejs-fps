@@ -57,6 +57,7 @@ export class NetworkManager {
 
       this.projectiles.spawn(_origin, _direction, {
         muzzleFlash: weaponConfig?.muzzleFlash,
+        speed: weaponConfig?.projectileSpeed,
       });
     });
     this.roomClient.onAmmoBoxChange((index, snapshot) => {
@@ -103,7 +104,11 @@ export class NetworkManager {
 
   bindShoot(player: Player, onLocalHit?: () => void): void {
     this.projectiles.setPlayerHitHandlers(
-      () => this.remotePlayers.getEnemyHitTargets(this.localCombat.teamId),
+      () =>
+        this.remotePlayers.getEnemyHitTargets(
+          this.localCombat.teamId,
+          this.roomClient.sessionId,
+        ),
       (targetId) => {
         const weaponId = player.getActiveWeaponId();
         this.roomClient.sendHit(targetId, weaponId);
@@ -137,8 +142,9 @@ export class NetworkManager {
     const snapshot = this.roomClient.getLocalSnapshot();
     if (!snapshot) return;
     player.setEyePosition(snapshot.x, snapshot.y, snapshot.z);
-    player.setProjectileSpawnOptions(snapshot.teamId);
+    player.setProjectileSpawnOptions(snapshot.teamId, this.roomClient.sessionId);
     player.setFromSnapshot(snapshot, true);
+    player.refillAmmo();
   }
 
   getLocalCombatState(): LocalCombatState {
@@ -151,6 +157,10 @@ export class NetworkManager {
 
   getWorldTime(): number {
     return this.roomClient.getWorldTime();
+  }
+
+  getSessionId(): string {
+    return this.roomClient.sessionId;
   }
 
   async disconnect(): Promise<void> {
