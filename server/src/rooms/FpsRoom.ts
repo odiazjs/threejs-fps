@@ -17,6 +17,12 @@ import {
   trainingBotUsername,
 } from '../../../shared/combat/trainingBots.js';
 import {
+  computeTrainingBotMoveDelta,
+  createTrainingBotMoveState,
+  updateTrainingBotMoveState,
+  type TrainingBotMoveState,
+} from '../../../shared/combat/trainingBotMovement.js';
+import {
   getWeaponDamage,
   getWeaponMaxHitDistance,
   getWeaponReloadSec,
@@ -59,6 +65,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private emptyDisposeTimer?: ReturnType<Room['clock']['setTimeout']>;
   private readonly botSpawns = new Map<string, { x: number; z: number; yaw: number }>();
   private readonly botPhysics = new Map<string, PlayerPhysicsState>();
+  private readonly botMoveState = new Map<string, TrainingBotMoveState>();
 
   onCreate(options: JoinOptions = {}): void {
     this.inviteMatch = options.inviteMatch === true;
@@ -94,32 +101,65 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   private tickTrainingBots(deltaSec: number): void {
+    const worldTime = this.state.worldTime;
+
     for (const [sessionId, player] of this.state.players.entries()) {
       if (!isTrainingBotSessionId(sessionId) || !player.alive) continue;
 
-      const physics = this.botPhysics.get(sessionId);
-      if (!physics || physics.grounded) {
-        player.jumping = false;
-        continue;
+      const spawn = this.botSpawns.get(sessionId);
+      if (!spawn) continue;
+
+      let moveState = this.botMoveState.get(sessionId);
+      if (!moveState) {
+        moveState = createTrainingBotMoveState(spawn.yaw, worldTime);
+        this.botMoveState.set(sessionId, moveState);
       }
 
+      moveState = updateTrainingBotMoveState(
+        moveState,
+        spawn.x,
+        spawn.z,
+        player.x,
+        player.z,
+        worldTime,
+      );
+
+      const physics = this.botPhysics.get(sessionId) ?? {
+        verticalVelocity: 0,
+        grounded: false,
+      };
+      const jump = moveState.jumpQueued && physics.grounded;
+      if (jump) {
+        moveState = { ...moveState, jumpQueued: false };
+      }
+
+      const { deltaX, deltaZ } = computeTrainingBotMoveDelta(moveState, deltaSec);
       const feetY = player.y - EYE_HEIGHT;
       const result = stepPlayerPhysics(
         player.x,
         feetY,
         player.z,
         physics,
-        0,
-        0,
-        false,
+        deltaX,
+        deltaZ,
+        jump,
         deltaSec,
       );
 
       player.x = result.x;
       player.y = result.y + EYE_HEIGHT;
       player.z = result.z;
+      if (moveState.moving) {
+        player.yaw = moveState.moveYaw;
+      }
       player.jumping = !result.state.grounded;
+      player.sprinting =
+        moveState.moving && moveState.sprinting && result.state.grounded;
+      player.walking =
+        moveState.moving && !moveState.sprinting && result.state.grounded;
+
       this.botPhysics.set(sessionId, result.state);
+      this.botMoveState.set(sessionId, moveState);
     }
   }
 
@@ -134,6 +174,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.y = trainingBotSpawnEyeY(spawn.x, spawn.z);
     player.jumping = true;
     this.botPhysics.set(sessionId, { verticalVelocity: 0, grounded: false });
+    this.botMoveState.set(
+      sessionId,
+      createTrainingBotMoveState(spawn.yaw, this.state.worldTime),
+    );
   }
 
   messages = {

@@ -9,7 +9,7 @@ import { PROJECTILE_SPEED } from '../combat/projectileConfig';
 
 export type { WeaponConfig };
 
-const SNIPER_PROJECTILE_SPEED = 520;
+const SNIPER_PROJECTILE_SPEED = 675;
 
 function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
   const pattern: RecoilKick[] = [];

@@ -4,22 +4,11 @@ import {
   PLAYER_HIT_CAPSULE_RADIUS,
 } from '../../shared/combat/playerHitbox';
 
-let enabled: boolean | null = null;
+/** Toggle translucent hit-capsule meshes on remote players. */
+export const SHOW_HIT_CAPSULE_DEBUG = false;
 
-/** On in dev builds, or add `?hitDebug=1` to the game URL. Disable in dev with `?hitDebug=0`. */
 export function isHitCapsuleDebugEnabled(): boolean {
-  if (enabled !== null) return enabled;
-
-  const params = new URLSearchParams(window.location.search);
-  const flag = params.get('hitDebug');
-  if (flag === '1' || flag === 'true') {
-    enabled = true;
-  } else if (flag === '0' || flag === 'false') {
-    enabled = false;
-  } else {
-    enabled = import.meta.env.DEV;
-  }
-  return enabled;
+  return SHOW_HIT_CAPSULE_DEBUG;
 }
 
 export function createHitCapsuleDebugMesh(): THREE.Group {

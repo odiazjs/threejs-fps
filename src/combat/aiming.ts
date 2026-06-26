@@ -1,11 +1,9 @@
 import * as THREE from 'three';
-import { raycastLevel } from '../../shared/level/collision';
 import {
   MAX_AIM_DISTANCE,
   PROJECTILE_SPAWN_OFFSET,
 } from './projectileConfig';
 
-const AIM_RAY_MIN_DISTANCE = 0.35;
 const BARREL_AXIS = new THREE.Vector3(1, 0, 0);
 
 const _aimPoint = new THREE.Vector3();
@@ -40,29 +38,6 @@ export function readMuzzleWorldAimDirection(
   direction.subVectors(_muzzlePos, _muzzleBack).normalize();
 }
 
-function readMuzzleAimPoint(weapon: THREE.Object3D, target: THREE.Vector3): void {
-  readMuzzlePosition(weapon, _muzzlePos);
-  readMuzzleWorldAimDirection(weapon, _muzzleDir);
-
-  const hit = raycastLevel(
-    _muzzlePos.x,
-    _muzzlePos.y,
-    _muzzlePos.z,
-    _muzzleDir.x,
-    _muzzleDir.y,
-    _muzzleDir.z,
-    MAX_AIM_DISTANCE,
-    AIM_RAY_MIN_DISTANCE,
-  );
-
-  if (hit) {
-    target.set(hit.x, hit.y, hit.z);
-    return;
-  }
-
-  target.copy(_muzzlePos).addScaledVector(_muzzleDir, MAX_AIM_DISTANCE);
-}
-
 /**
  * Fire from the muzzle along the bore (matches swayed crosshair placement).
  * Call after `weapon.updateMatrixWorld(true)`.
@@ -84,7 +59,7 @@ export interface ScreenOffset2D {
   y: number;
 }
 
-/** Pixel offset from screen center for where the muzzle is pointing. */
+/** Pixel offset from screen center for where the muzzle bore is pointing (sway / recoil only). */
 export function projectMuzzleAimToScreenOffset(
   weapon: THREE.Object3D,
   camera: THREE.Camera,
@@ -93,7 +68,9 @@ export function projectMuzzleAimToScreenOffset(
   target: ScreenOffset2D,
 ): void {
   weapon.updateMatrixWorld(true);
-  readMuzzleAimPoint(weapon, _aimPoint);
+  readMuzzlePosition(weapon, _muzzlePos);
+  readMuzzleWorldAimDirection(weapon, _muzzleDir);
+  _aimPoint.copy(_muzzlePos).addScaledVector(_muzzleDir, MAX_AIM_DISTANCE);
   _aimPoint.project(camera);
 
   target.x = (_aimPoint.x * 0.5 + 0.5) * width - width * 0.5;

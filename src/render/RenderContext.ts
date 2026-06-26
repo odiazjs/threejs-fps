@@ -28,6 +28,8 @@ export class RenderContext {
   }
 
   resize(): void {
+    const pixelRatio = Math.min(window.devicePixelRatio, 2);
+    this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.labelRenderer.setSize(window.innerWidth, window.innerHeight);
     updateLineResolution(window.innerWidth, window.innerHeight);

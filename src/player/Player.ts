@@ -313,6 +313,10 @@ export class Player {
     return this.loadout?.getAmmoState() ?? null;
   }
 
+  getAdsBlend(): number {
+    return this.weaponPose?.adsBlend ?? 0;
+  }
+
   getActiveWeaponId(): WeaponId {
     return this.loadout?.getActiveWeaponId() ?? LOADOUT_WEAPON_IDS[0];
   }
