@@ -29,6 +29,8 @@ import { WeaponPose } from './WeaponPose';
 import { WeaponSway } from './WeaponSway';
 import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled } from '../combat/HitCapsuleDebugMesh';
 import type { CrosshairHud } from '../ui/CrosshairHud';
+import type { WeaponSoundService } from '../audio/WeaponSoundService';
+import type { WeaponShotSoundVariant } from '../../shared/content/weaponConfig';
 import { getReloadState } from '../../shared/combat/reload';
 import {
   isWeaponId,
@@ -108,6 +110,8 @@ export class Player {
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
   private readonly activeMeshBaseRotation = new THREE.Euler();
   private fireCooldown = 0;
+  private autoFireBurst = false;
+  private weaponSounds: WeaponSoundService | null = null;
   private projectileSpawnOptions: {
     canHitPlayers: boolean;
     ownerTeamId: number;
@@ -335,6 +339,10 @@ export class Player {
 
   setShootCallback(callback: ShootCallback | null): void {
     this.onShoot = callback;
+  }
+
+  setWeaponSoundService(service: WeaponSoundService | null): void {
+    this.weaponSounds = service;
   }
 
   setReloadNetworkCallback(callback: ReloadNetworkCallback | null): void {
@@ -761,6 +769,10 @@ export class Player {
   ): void {
     if (!this.loadout) return;
 
+    if (!pointer.isPressed(POINTER_SHOOT)) {
+      this.autoFireBurst = false;
+    }
+
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
 
     const active = this.loadout.getActive();
@@ -781,6 +793,12 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active.ammo.tryShoot()) return false;
 
+    const soundVariant = this.resolveShotSoundVariant(active.config.fireMode);
+    this.weaponSounds?.playShot(active.config.sounds, soundVariant);
+    if (active.config.fireMode === 'auto') {
+      this.autoFireBurst = true;
+    }
+
     active.recoil.onShot(this.weaponPose?.adsBlend ?? 0);
     this.object.updateMatrixWorld(true);
     this.camera.updateMatrixWorld(true);
@@ -799,6 +817,11 @@ export class Player {
     });
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
     return true;
+  }
+
+  private resolveShotSoundVariant(fireMode: 'auto' | 'semi'): WeaponShotSoundVariant {
+    if (fireMode === 'semi') return 'single';
+    return this.autoFireBurst ? 'auto' : 'single';
   }
 
   private getActiveRecoil() {

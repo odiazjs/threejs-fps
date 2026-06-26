@@ -93,6 +93,18 @@ export interface WeaponSwayConfig {
   readonly intensity?: number;
 }
 
+/** Client-side audio paths (served from `public/`). */
+export interface WeaponSoundsConfig {
+  /** Semi-auto shots and the first shot of an auto burst. */
+  readonly singleShot?: string;
+  /** Sustained auto fire after the first shot while holding trigger. */
+  readonly autoShot?: string;
+  /** Per-weapon gain multiplier (default 1). */
+  readonly volume?: number;
+}
+
+export type WeaponShotSoundVariant = 'single' | 'auto';
+
 export interface WeaponConfig {
   readonly id: WeaponId;
   readonly name: string;
@@ -110,4 +122,6 @@ export interface WeaponConfig {
   readonly muzzleFlash: MuzzleFlashConfig;
   /** Optional per-weapon sway intensity scale (defaults to 1). */
   readonly sway?: WeaponSwayConfig;
+  /** Optional weapon fire SFX (client only). */
+  readonly sounds?: WeaponSoundsConfig;
 }

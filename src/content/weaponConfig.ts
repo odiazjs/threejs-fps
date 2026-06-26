@@ -153,6 +153,9 @@ export const PISTOL_CONFIG: WeaponConfig = {
     lightDistance: 3.5,
   },
   sway: { intensity: 1.08 },
+  sounds: {
+    singleShot: '/sounds/pistol_5.wav',
+  },
 };
 
 export const SNIPER_RIFLE_CONFIG: WeaponConfig = {

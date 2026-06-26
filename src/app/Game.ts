@@ -24,6 +24,8 @@ import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
+import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
+import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
 
@@ -51,6 +53,8 @@ export class Game {
   private wasAlive = true;
   private running = false;
   private leaving = false;
+  private readonly weaponSounds = new WeaponSoundService();
+  private audioUnlocked = false;
   private localCombat: LocalCombatState = {
     hp: 100,
     maxHp: 100,
@@ -65,7 +69,10 @@ export class Game {
     onConnected?: () => void,
   ): Promise<void> {
     this.initWorld();
-    await preloadWeaponMeshes();
+    await Promise.all([
+      preloadWeaponMeshes(),
+      this.weaponSounds.preload(collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS)),
+    ]);
     this.initPlayer();
     this.initResize();
     await this.initNetwork(username, joinIntent);
@@ -123,6 +130,7 @@ export class Game {
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
     });
+    this.player.setWeaponSoundService(this.weaponSounds);
   }
 
   private async initNetwork(
@@ -186,6 +194,11 @@ export class Game {
     const delta = Math.min(this.clock.getDelta(), 0.05);
 
     const canAct = this.playerControls.isLocked && this.localCombat.alive;
+
+    if (this.playerControls.isLocked && !this.audioUnlocked) {
+      this.weaponSounds.unlock();
+      this.audioUnlocked = true;
+    }
 
     this.player.update(
       delta,
