@@ -5,6 +5,35 @@ const MAP_MARGIN = 14;
 const COLUMN_CLEARANCE = 12;
 const DRONE_SEED = 0x0d20e;
 
+/** Global patrol speed multiplier (1.4 = 40% faster). */
+export const DRONE_MOVEMENT_SCALE = 1.4;
+
+export interface DroneLookResponseConfig {
+  /** Look detection range — matches drone proximity audio (meters). */
+  readonly maxDistance: number;
+  readonly lookAngleDeg: number;
+  /** Lateral dodge speed applied when the player first spots the drone (m/s). */
+  readonly escapeLateralSpeed: number;
+  /** Small upward kick on escape (m/s). */
+  readonly escapeVerticalSpeed: number;
+  /** How quickly escape velocity bleeds off (per second). */
+  readonly escapeDamping: number;
+  /** Pulls the drone back toward its patrol path after dodging (per second). */
+  readonly escapeReturn: number;
+  /** Max roll tilt during a dodge (radians). */
+  readonly escapeBank: number;
+}
+
+export const DEFAULT_DRONE_LOOK_RESPONSE: DroneLookResponseConfig = {
+  maxDistance: 24,
+  lookAngleDeg: 22,
+  escapeLateralSpeed: 18,
+  escapeVerticalSpeed: 4.5,
+  escapeDamping: 0.65,
+  escapeReturn: 0.55,
+  escapeBank: 0.6,
+};
+
 export interface DroneConfig {
   anchorX: number;
   anchorZ: number;
@@ -64,22 +93,27 @@ export function generateDroneConfigs(): DroneConfig[] {
   return configs;
 }
 
-export function computeDronePose(config: DroneConfig, time: number): DronePose {
+export function computeDronePose(
+  config: DroneConfig,
+  time: number,
+  speedScale = DRONE_MOVEMENT_SCALE,
+): DronePose {
+  const speed = config.speed * speedScale;
   const x =
     config.anchorX +
-    Math.sin(time * config.speed + config.phaseX) * config.radius;
+    Math.sin(time * speed + config.phaseX) * config.radius;
   const z =
     config.anchorZ +
-    Math.cos(time * config.speed * 0.82 + config.phaseZ) * config.radius * 0.88;
+    Math.cos(time * speed * 0.82 + config.phaseZ) * config.radius * 0.88;
   const y = config.height + Math.sin(time * 1.15 + config.phaseY) * 1.4;
 
   const dxdt =
-    Math.cos(time * config.speed + config.phaseX) * config.radius * config.speed;
+    Math.cos(time * speed + config.phaseX) * config.radius * speed;
   const dzdt =
-    -Math.sin(time * config.speed * 0.82 + config.phaseZ) *
+    -Math.sin(time * speed * 0.82 + config.phaseZ) *
     config.radius *
     0.88 *
-    config.speed *
+    speed *
     0.82;
 
   return {
@@ -87,7 +121,35 @@ export function computeDronePose(config: DroneConfig, time: number): DronePose {
     y,
     z,
     yaw: Math.hypot(dxdt, dzdt) > 1e-6 ? Math.atan2(dxdt, dzdt) : 0,
-    bank: Math.sin(time * 2.1 + config.phaseX) * 0.08,
-    propellerSpin: time * 34 * config.spinDir,
+    bank: Math.sin(time * 2.1 + config.phaseX) * 0.08 * Math.min(speedScale, 2.2),
+    propellerSpin: time * 34 * config.spinDir * speedScale,
   };
+}
+
+export function isDroneObserved(
+  cameraX: number,
+  cameraY: number,
+  cameraZ: number,
+  cameraForwardX: number,
+  cameraForwardY: number,
+  cameraForwardZ: number,
+  droneX: number,
+  droneY: number,
+  droneZ: number,
+  rangeMax: number,
+  lookAngleDeg: number,
+): boolean {
+  const dx = droneX - cameraX;
+  const dy = droneY - cameraY;
+  const dz = droneZ - cameraZ;
+  const distance = Math.hypot(dx, dy, dz);
+  if (distance > rangeMax || distance < 1e-4) return false;
+
+  const invDist = 1 / distance;
+  const dot =
+    dx * invDist * cameraForwardX +
+    dy * invDist * cameraForwardY +
+    dz * invDist * cameraForwardZ;
+  const cosThreshold = Math.cos((lookAngleDeg * Math.PI) / 180);
+  return dot >= cosThreshold;
 }

@@ -102,6 +102,10 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     particleSizeScale: 1.15,
   },
   sway: { intensity: 0.95 },
+  sounds: {
+    autoShot: '/sounds/rifle_auto_3.wav',
+    volume: 0.1,
+  },
 };
 
 export const PISTOL_CONFIG: WeaponConfig = {
@@ -154,7 +158,8 @@ export const PISTOL_CONFIG: WeaponConfig = {
   },
   sway: { intensity: 1.08 },
   sounds: {
-    singleShot: '/sounds/pistol_5.wav',
+    singleShot: '/sounds/pistol_7.wav',
+    volume: 0.05,
   },
 };
 
@@ -210,6 +215,10 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     particleSizeScale: 1.35,
   },
   sway: { intensity: 0.72 },
+  sounds: {
+    singleShot: '/sounds/sniper_1.wav',
+    volume: 0.2,
+  },
 };
 
 export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {

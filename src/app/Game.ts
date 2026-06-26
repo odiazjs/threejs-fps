@@ -25,6 +25,18 @@ import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
+import { FootstepSoundService } from '../audio/FootstepSoundService';
+import { ImpactSoundService } from '../audio/ImpactSoundService';
+import { EnvironmentSoundService } from '../audio/EnvironmentSoundService';
+import { LoopingSoundService } from '../audio/LoopingSoundService';
+import {
+  GAME_DRONE_PROXIMITY_AUDIO,
+  GAME_ENEMY_HIT_IMPACT_AUDIO,
+  GAME_ENVIRONMENT_AUDIO,
+  GAME_FOOTSTEP_AUDIO,
+  GAME_KILL_CONFIRM_AUDIO,
+  GAME_OUT_OF_AMMO_AUDIO,
+} from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
@@ -54,6 +66,10 @@ export class Game {
   private running = false;
   private leaving = false;
   private readonly weaponSounds = new WeaponSoundService();
+  private readonly environmentSounds = new EnvironmentSoundService();
+  private readonly droneProximitySounds = new LoopingSoundService();
+  private readonly footstepSounds = new FootstepSoundService();
+  private readonly impactSounds = new ImpactSoundService();
   private audioUnlocked = false;
   private localCombat: LocalCombatState = {
     hp: 100,
@@ -69,9 +85,18 @@ export class Game {
     onConnected?: () => void,
   ): Promise<void> {
     this.initWorld();
+    this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
+    this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
     await Promise.all([
       preloadWeaponMeshes(),
+      Player.preloadGameCharacterModels(),
       this.weaponSounds.preload(collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS)),
+      this.weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),
+      this.environmentSounds.preload(GAME_ENVIRONMENT_AUDIO.src),
+      this.droneProximitySounds.preload(GAME_DRONE_PROXIMITY_AUDIO.src),
+      this.footstepSounds.preload(GAME_FOOTSTEP_AUDIO),
+      this.impactSounds.preload(GAME_ENEMY_HIT_IMPACT_AUDIO),
+      this.impactSounds.preloadKillConfirm(GAME_KILL_CONFIRM_AUDIO),
     ]);
     this.initPlayer();
     this.initResize();
@@ -86,6 +111,8 @@ export class Game {
     if (this.leaving) return;
     this.leaving = true;
     this.running = false;
+    this.environmentSounds.stop();
+    this.droneProximitySounds.stop();
     this.playerControls.setLeaveEnabled(false);
     this.playerControls.controls.unlock();
 
@@ -131,6 +158,7 @@ export class Game {
       void this.leaveGame();
     });
     this.player.setWeaponSoundService(this.weaponSounds);
+    this.player.setFootstepSoundService(this.footstepSounds);
   }
 
   private async initNetwork(
@@ -153,6 +181,7 @@ export class Game {
         if (killerName === session.username) {
           recordKill(session.username);
           this.messageHud.pushKill(victimName);
+          this.impactSounds.playKillConfirm();
         }
         if (victimName === session.username) recordDeath(session.username);
       },
@@ -161,6 +190,8 @@ export class Game {
       this.crosshairHud.onHit(this.player.getActiveWeaponId());
     });
     await this.network.connect(username, joinIntent);
+    this.network.setFootstepSoundService(this.footstepSounds);
+    this.network.setImpactSoundService(this.impactSounds);
     this.network.applyLocalSpawn(this.player);
   }
 
@@ -197,6 +228,11 @@ export class Game {
 
     if (this.playerControls.isLocked && !this.audioUnlocked) {
       this.weaponSounds.unlock();
+      this.footstepSounds.unlock();
+      this.impactSounds.unlock();
+      this.environmentSounds.unlock();
+      this.droneProximitySounds.unlock();
+      this.environmentSounds.setActive(true);
       this.audioUnlocked = true;
     }
 
@@ -217,8 +253,18 @@ export class Game {
       playerPos: this.player.object.position,
       cameraPos: camera?.position,
     });
-    this.droneField?.update(this.network?.getWorldTime() ?? 0);
+    this.droneField?.update(this.network?.getWorldTime() ?? 0, camera ?? undefined, delta);
     this.lightBeams?.update(this.clock.getElapsedTime());
+
+    if (this.audioUnlocked && this.droneField && camera) {
+      const droneInView = this.droneField.hasDroneInView(
+        camera,
+        this.network?.getWorldTime() ?? 0,
+        GAME_DRONE_PROXIMITY_AUDIO.maxDistance,
+        GAME_DRONE_PROXIMITY_AUDIO.lookAngleDeg,
+      );
+      this.droneProximitySounds.setActive(droneInView);
+    }
 
     if (this.playerControls.isLocked && this.network) {
       this.ammoPickups.tryPickup(

@@ -30,7 +30,7 @@ import { WeaponSway } from './WeaponSway';
 import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled } from '../combat/HitCapsuleDebugMesh';
 import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
-import type { WeaponShotSoundVariant } from '../../shared/content/weaponConfig';
+import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import { getReloadState } from '../../shared/combat/reload';
 import {
   isWeaponId,
@@ -76,6 +76,7 @@ export class Player {
   private physics: PlayerPhysicsState = { verticalVelocity: 0, grounded: true };
   private sprint = new SprintStamina();
   private headBob = new HeadBob();
+  private footstepSounds: FootstepSoundService | null = null;
   private headRig: THREE.Group | null = null;
   private yawRecoilRig: THREE.Group | null = null;
   private pitchRecoilRig: THREE.Group | null = null;
@@ -110,7 +111,6 @@ export class Player {
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
   private readonly activeMeshBaseRotation = new THREE.Euler();
   private fireCooldown = 0;
-  private autoFireBurst = false;
   private weaponSounds: WeaponSoundService | null = null;
   private projectileSpawnOptions: {
     canHitPlayers: boolean;
@@ -345,6 +345,10 @@ export class Player {
     this.weaponSounds = service;
   }
 
+  setFootstepSoundService(service: FootstepSoundService | null): void {
+    this.footstepSounds = service;
+  }
+
   setReloadNetworkCallback(callback: ReloadNetworkCallback | null): void {
     this.onReloadNetwork = callback;
   }
@@ -434,6 +438,7 @@ export class Player {
     if (!this.camera) return;
 
     this.headBob.reset();
+    this.footstepSounds?.reset();
     if (this.headRig) {
       this.headRig.position.set(0, 0, 0);
       this.headRig.rotation.set(0, 0, 0);
@@ -577,6 +582,7 @@ export class Player {
     if (!this.camera || !this.loadout) return;
 
     if (!canAct) {
+      this.weaponSounds?.stopAutoFire();
       this.headBob.update(delta, false, false);
       if (this.headRig) this.headBob.apply(this.headRig, false);
       return;
@@ -597,6 +603,9 @@ export class Player {
     const ads = pointer.isPressed(POINTER_ADS);
     const active = this.loadout.getActive();
     const ammoState = active.ammo.getState();
+    if (ammoState.reloading) {
+      this.weaponSounds?.stopAutoFire();
+    }
     const shooting = this.isFiring(pointer, active.config.fireMode);
 
     const wantsSprint =
@@ -706,6 +715,9 @@ export class Player {
       this.locomotionJumping = false;
     }
 
+    const groundedMoving = isMoving && this.physics.grounded;
+    this.footstepSounds?.update(delta, groundedMoving, isSprinting);
+
     this.headBob.update(delta, isMoving, isSprinting);
     if (this.headRig) this.headBob.apply(this.headRig, isSprinting);
   }
@@ -748,6 +760,7 @@ export class Player {
       if (!input.isJustPressed(code)) continue;
       if (!this.loadout.trySwitch(slot)) continue;
 
+      this.weaponSounds?.stopAutoFire();
       this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
       this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
       this.loadout.applyActiveRotation(LOCAL_WEAPON_ROTATION, 'local');
@@ -770,7 +783,7 @@ export class Player {
     if (!this.loadout) return;
 
     if (!pointer.isPressed(POINTER_SHOOT)) {
-      this.autoFireBurst = false;
+      this.weaponSounds?.stopAutoFire();
     }
 
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
@@ -782,7 +795,14 @@ export class Player {
     if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
     if (this.fireCooldown > 0) return;
 
-    if (!this.shoot(projectiles)) return;
+    if (!this.shoot(projectiles)) {
+      const state = active.ammo.getState();
+      if (state.clip <= 0 && !state.reloading) {
+        this.weaponSounds?.playOutOfAmmo();
+        this.fireCooldown += active.fireInterval;
+      }
+      return;
+    }
 
     this.fireCooldown += active.fireInterval;
   }
@@ -791,12 +811,15 @@ export class Player {
     if (!this.camera || !this.loadout || !projectiles) return false;
 
     const active = this.loadout.getActive();
-    if (!active.ammo.tryShoot()) return false;
+    if (!active.ammo.tryShoot()) {
+      this.weaponSounds?.stopAutoFire();
+      return false;
+    }
 
-    const soundVariant = this.resolveShotSoundVariant(active.config.fireMode);
-    this.weaponSounds?.playShot(active.config.sounds, soundVariant);
     if (active.config.fireMode === 'auto') {
-      this.autoFireBurst = true;
+      this.weaponSounds?.startAutoFire(active.config.sounds);
+    } else {
+      this.weaponSounds?.playSingleShot(active.config.sounds);
     }
 
     active.recoil.onShot(this.weaponPose?.adsBlend ?? 0);
@@ -817,11 +840,6 @@ export class Player {
     });
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
     return true;
-  }
-
-  private resolveShotSoundVariant(fireMode: 'auto' | 'semi'): WeaponShotSoundVariant {
-    if (fireMode === 'semi') return 'single';
-    return this.autoFireBurst ? 'auto' : 'single';
   }
 
   private getActiveRecoil() {

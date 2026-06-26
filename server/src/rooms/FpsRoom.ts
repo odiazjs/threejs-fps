@@ -213,11 +213,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     switchWeapon: (client: Client, data: SwitchWeaponMessage) => {
       const player = this.state.players.get(client.sessionId);
-      if (!player?.alive || player.reloading) return;
+      if (!player?.alive) return;
 
       const slot = data.slot;
       if (slot < 0 || slot >= LOADOUT_WEAPON_IDS.length) return;
 
+      player.reloading = false;
+      player.reloadEndAt = 0;
       player.activeWeaponId = LOADOUT_WEAPON_IDS[slot]!;
     },
 

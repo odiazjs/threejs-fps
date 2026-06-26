@@ -91,6 +91,13 @@ export class WeaponAmmo {
     return true;
   }
 
+  cancelReload(): void {
+    if (!this.reloading) return;
+    this.reloading = false;
+    this.reloadRemaining = 0;
+    this.reloadRoundsNeeded = 0;
+  }
+
   addReserveClip(): void {
     this.reserveRounds += this.config.clipSize;
   }

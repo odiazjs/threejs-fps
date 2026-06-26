@@ -25,13 +25,13 @@ export class ProjectileManager {
   private readonly muzzleFlashes: MuzzleFlash[] = [];
   private readonly meta = new WeakMap<Projectile, ProjectileMeta>();
   private getHitTargets: (() => ProjectileHitTarget[]) | null = null;
-  private onPlayerHit: ((targetId: string) => void) | null = null;
+  private onPlayerHit: ((targetId: string, point: Vector3) => void) | null = null;
 
   constructor(private readonly scene: Scene) {}
 
   setPlayerHitHandlers(
     getHitTargets: () => ProjectileHitTarget[],
-    onPlayerHit: (targetId: string) => void,
+    onPlayerHit: (targetId: string, point: Vector3) => void,
   ): void {
     this.getHitTargets = getHitTargets;
     this.onPlayerHit = onPlayerHit;
@@ -159,7 +159,7 @@ export class ProjectileManager {
         continue;
       }
 
-      this.onPlayerHit(target.sessionId);
+      this.onPlayerHit(target.sessionId, to.clone());
       return to.clone();
     }
 

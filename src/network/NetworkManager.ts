@@ -10,6 +10,8 @@ import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
+import type { FootstepSoundService } from '../audio/FootstepSoundService';
+import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { LocalCombatState } from './types';
 import type { GameJoinIntent } from '../auth/gameJoin';
 
@@ -19,6 +21,7 @@ const _direction = new THREE.Vector3();
 export class NetworkManager {
   readonly roomClient = new RoomClient();
   private remotePlayers: RemotePlayers;
+  private impactSounds: ImpactSoundService | null = null;
   private sendAccumulator = 0;
   private readonly sendInterval = 1 / 20;
   private localCombat: LocalCombatState = {
@@ -109,7 +112,8 @@ export class NetworkManager {
           this.localCombat.teamId,
           this.roomClient.sessionId,
         ),
-      (targetId) => {
+      (targetId, _point) => {
+        this.impactSounds?.playEnemyHit();
         const weaponId = player.getActiveWeaponId();
         this.roomClient.sendHit(targetId, weaponId);
         onLocalHit?.();
@@ -161,6 +165,14 @@ export class NetworkManager {
 
   getSessionId(): string {
     return this.roomClient.sessionId;
+  }
+
+  setFootstepSoundService(service: FootstepSoundService | null): void {
+    this.remotePlayers.setFootstepSoundService(service);
+  }
+
+  setImpactSoundService(service: ImpactSoundService | null): void {
+    this.impactSounds = service;
   }
 
   async disconnect(): Promise<void> {

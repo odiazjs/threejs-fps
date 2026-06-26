@@ -199,7 +199,8 @@ export class WeaponLoadout {
     if (slotIndex < 0 || slotIndex >= this.slots.length) return false;
     if (slotIndex === this.activeIndex) return false;
     if (this.switchCooldown > 0) return false;
-    if (this.getActive().ammo.getState().reloading) return false;
+
+    this.getActive().ammo.cancelReload();
 
     this.slots[this.activeIndex]!.mesh.visible = false;
     this.activeIndex = slotIndex;

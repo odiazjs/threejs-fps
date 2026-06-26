@@ -4,17 +4,29 @@ import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import { Player } from '../player/Player';
 import { preloadGameCharacterModels } from '../player/characterModel';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
+import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import type { RoomClient } from './RoomClient';
 import type { PlayerSnapshot } from './types';
 
+const _listenerPos = new THREE.Vector3();
+
 export class RemotePlayers {
   private readonly players = new Map<string, Player>();
+  private footsteps: FootstepSoundService | null = null;
 
   constructor(
     private scene: THREE.Scene,
     private roomClient: RoomClient,
   ) {
     void Promise.all([preloadGameCharacterModels(), preloadWeaponMeshes()]);
+  }
+
+  setFootstepSoundService(service: FootstepSoundService | null): void {
+    this.footsteps = service;
+    if (!service) return;
+    for (const sessionId of this.players.keys()) {
+      service.removeRemote(sessionId);
+    }
   }
 
   bind(): void {
@@ -84,12 +96,33 @@ export class RemotePlayers {
 
   interpolate(delta: number, camera: THREE.Camera): void {
     const worldTime = this.roomClient.getWorldTime();
-    for (const player of this.players.values()) {
+    const footsteps = this.footsteps;
+    if (footsteps) {
+      footsteps.updateListener(camera);
+      camera.getWorldPosition(_listenerPos);
+    }
+
+    for (const [sessionId, player] of this.players) {
       player.interpolateRemote(delta);
       void player.syncRemoteCharacterModel(worldTime);
       player.updateRemoteWeapon(delta, worldTime);
       player.updateRemoteHealthBar(camera);
       player.updateDamageNumbers(delta, camera);
+
+      if (!footsteps) continue;
+
+      if (!player.isAlive()) {
+        footsteps.removeRemote(sessionId);
+        continue;
+      }
+
+      footsteps.updateRemote(
+        sessionId,
+        delta,
+        player.getFeetPosition(),
+        _listenerPos,
+        player.getLocomotionState(),
+      );
     }
   }
 
@@ -99,6 +132,7 @@ export class RemotePlayers {
     const player = this.players.get(sessionId);
     if (!player) return;
     player.dispose();
+    this.footsteps?.removeRemote(sessionId);
     this.players.delete(sessionId);
   }
 }

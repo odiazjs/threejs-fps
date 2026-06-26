@@ -94,12 +94,18 @@ export interface WeaponSwayConfig {
 }
 
 /** Client-side audio paths (served from `public/`). */
+export interface WeaponSoundClip {
+  readonly src: string;
+  /** Gain for this clip (defaults to `WeaponSoundsConfig.volume`, then 1). */
+  readonly volume?: number;
+}
+
 export interface WeaponSoundsConfig {
   /** Semi-auto shots and the first shot of an auto burst. */
-  readonly singleShot?: string;
+  readonly singleShot?: string | WeaponSoundClip;
   /** Sustained auto fire after the first shot while holding trigger. */
-  readonly autoShot?: string;
-  /** Per-weapon gain multiplier (default 1). */
+  readonly autoShot?: string | WeaponSoundClip;
+  /** Default gain for clips that omit their own `volume` (default 1). */
   readonly volume?: number;
 }
 
