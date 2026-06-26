@@ -3,11 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "sync:sounds": "node scripts/sync-sounds.mjs",
+    "dev": "npm run sync:sounds && vite",
     "dev:server": "npm run dev --prefix server",
     "install:all": "npm install && npm install --prefix server",
-    "build": "vite build",
-    "build:client": "vite build",
+    "build": "npm run sync:sounds && vite build",
+    "build:client": "npm run sync:sounds && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
