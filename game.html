@@ -401,6 +401,60 @@
       #kill-feed .kill-feed-victim {
         color: #e5a088;
       }
+      #damage-indicator-hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4;
+        overflow: hidden;
+      }
+      #damage-indicator-hud .damage-vignette {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        background:
+          radial-gradient(
+            ellipse at center,
+            transparent 42%,
+            rgba(255, 40, 40, 0.08) 72%,
+            rgba(180, 20, 20, 0.42) 100%
+          ),
+          linear-gradient(to right, rgba(255, 55, 55, 0.55), transparent 14%, transparent 86%, rgba(255, 55, 55, 0.55)),
+          linear-gradient(to bottom, rgba(255, 55, 55, 0.55), transparent 14%, transparent 86%, rgba(255, 55, 55, 0.55));
+        transition: opacity 40ms linear;
+      }
+      #damage-indicator-hud .damage-markers {
+        position: absolute;
+        inset: 0;
+      }
+      #damage-indicator-hud .damage-direction-marker {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 0;
+        height: 0;
+        transform-origin: center center;
+        opacity: 0;
+        filter: drop-shadow(0 0 6px rgba(255, 70, 70, 0.85));
+      }
+      #damage-indicator-hud .damage-direction-marker::before {
+        content: '';
+        position: absolute;
+        left: -13px;
+        top: -9px;
+        border-left: 13px solid transparent;
+        border-right: 13px solid transparent;
+        border-bottom: 18px solid rgba(255, 72, 72, 0.92);
+      }
+      #damage-indicator-hud .damage-direction-marker::after {
+        content: '';
+        position: absolute;
+        left: -8px;
+        top: -4px;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-bottom: 11px solid rgba(255, 210, 210, 0.95);
+      }
     </style>
   </head>
   <body>
@@ -431,6 +485,10 @@
         <div class="health-fill"></div>
         <div class="health-value">100</div>
       </div>
+    </div>
+    <div id="damage-indicator-hud" hidden aria-hidden="true">
+      <div class="damage-vignette"></div>
+      <div class="damage-markers"></div>
     </div>
     <div id="stamina-hud" hidden>
       <div class="stamina-label">STAMINA</div>

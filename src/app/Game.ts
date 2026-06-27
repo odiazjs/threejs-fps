@@ -18,6 +18,7 @@ import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
 import { CrosshairHud } from '../ui/CrosshairHud';
+import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import type { GameJoinIntent } from '../auth/gameJoin';
@@ -51,6 +52,7 @@ export class Game {
   private healthHud = new HealthHud();
   private killFeedHud = new KillFeedHud();
   private crosshairHud = new CrosshairHud();
+  private damageIndicatorHud = new DamageIndicatorHud();
   private performanceHud = new PerformanceHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
@@ -154,6 +156,7 @@ export class Game {
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
+    this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
     });
@@ -196,6 +199,12 @@ export class Game {
   }
 
   private handleLocalCombatChange(state: LocalCombatState): void {
+    if (state.alive && state.hp < this.localCombat.hp) {
+      const damage = this.localCombat.hp - state.hp;
+      const bearing = this.network.resolveDamageBearing(this.player);
+      this.damageIndicatorHud.onDamage(damage, bearing);
+    }
+
     if (!state.alive && this.wasAlive) {
       this.messageHud.push('You died');
       this.playerControls.controls.unlock();
@@ -248,6 +257,7 @@ export class Game {
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
+    this.damageIndicatorHud.update(delta);
     const camera = this.player.camera;
     this.terrain?.update(this.clock.getElapsedTime(), {
       playerPos: this.player.object.position,

@@ -47,6 +47,10 @@ export class RemotePlayers {
     return this.players.get(sessionId);
   }
 
+  getAllPlayers(): ReadonlyMap<string, Player> {
+    return this.players;
+  }
+
   getEnemyHitTargets(localTeamId: number, localSessionId: string): ProjectileHitTarget[] {
     const targets: ProjectileHitTarget[] = [];
 

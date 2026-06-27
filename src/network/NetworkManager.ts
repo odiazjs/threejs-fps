@@ -14,9 +14,14 @@ import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { LocalCombatState } from './types';
 import type { GameJoinIntent } from '../auth/gameJoin';
+import {
+  resolveDamageBearing,
+  type RecentThreat,
+} from '../combat/resolveDamageBearing';
 
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
+const MAX_RECENT_THREATS = 24;
 
 export class NetworkManager {
   readonly roomClient = new RoomClient();
@@ -31,6 +36,7 @@ export class NetworkManager {
     teamId: 0,
     username: 'Player',
   };
+  private readonly recentThreats: RecentThreat[] = [];
 
   constructor(
     scene: THREE.Scene,
@@ -47,7 +53,7 @@ export class NetworkManager {
   async connect(username: string, joinIntent?: GameJoinIntent | null): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
-      _direction.set(spawn.dirX, spawn.dirY, spawn.dirZ);
+      _direction.set(spawn.dirX, spawn.dirY, spawn.dirZ).normalize();
       const weaponConfig = getWeaponConfig(spawn.weaponId ?? 'plasma_rifle');
 
       const shooter = spawn.shooterId
@@ -56,6 +62,14 @@ export class NetworkManager {
       const weaponId = spawn.weaponId && isWeaponId(spawn.weaponId) ? spawn.weaponId : undefined;
       if (!shooter?.readActiveMuzzleWorldPosition(_origin, weaponId)) {
         _origin.set(spawn.x, spawn.y, spawn.z);
+      }
+
+      if (
+        spawn.shooterId &&
+        spawn.shooterId !== this.roomClient.sessionId &&
+        shooter?.isAlive()
+      ) {
+        this.recordThreat(spawn.shooterId, _origin, _direction);
       }
 
       this.projectiles.spawn(_origin, _direction, {
@@ -165,6 +179,48 @@ export class NetworkManager {
 
   getSessionId(): string {
     return this.roomClient.sessionId;
+  }
+
+  resolveDamageBearing(player: Player): number | null {
+    const camera = player.camera;
+    if (!camera) return null;
+
+    const sessionId = this.roomClient.sessionId;
+    if (!sessionId) return null;
+
+    this.pruneThreats(this.getWorldTime());
+    return resolveDamageBearing(
+      player,
+      camera,
+      this.remotePlayers,
+      this.localCombat.teamId,
+      sessionId,
+      this.recentThreats,
+      this.getWorldTime(),
+    );
+  }
+
+  private recordThreat(
+    shooterId: string,
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+  ): void {
+    this.recentThreats.push({
+      shooterId,
+      origin: origin.clone(),
+      direction: direction.clone(),
+      time: this.getWorldTime(),
+    });
+    if (this.recentThreats.length > MAX_RECENT_THREATS) {
+      this.recentThreats.shift();
+    }
+  }
+
+  private pruneThreats(now: number): void {
+    const cutoff = now - 2.5;
+    while (this.recentThreats.length > 0 && this.recentThreats[0]!.time < cutoff) {
+      this.recentThreats.shift();
+    }
   }
 
   setFootstepSoundService(service: FootstepSoundService | null): void {

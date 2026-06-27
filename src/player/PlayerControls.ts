@@ -5,6 +5,7 @@ import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
+import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 
 export class PlayerControls {
   readonly controls: PointerAimControls;
@@ -12,6 +13,7 @@ export class PlayerControls {
   private ammoHud: AmmoHud | null = null;
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
+  private damageIndicatorHud: DamageIndicatorHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private hasLockedOnce = false;
@@ -49,6 +51,10 @@ export class PlayerControls {
     this.killFeedHud = hud;
   }
 
+  setDamageIndicatorHud(hud: DamageIndicatorHud): void {
+    this.damageIndicatorHud = hud;
+  }
+
   setLeaveHandler(handler: () => void): void {
     this.onLeave = handler;
   }
@@ -79,6 +85,7 @@ export class PlayerControls {
       this.ammoHud?.setVisible(true);
       this.healthHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
+      this.damageIndicatorHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
@@ -89,6 +96,7 @@ export class PlayerControls {
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);
+      this.damageIndicatorHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
 
       if (this.hasLockedOnce) {
