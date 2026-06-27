@@ -3,6 +3,8 @@ import type { WeaponViewConfig } from '../../shared/content/weaponConfig';
 
 const HIP_FOV = 75;
 const DEFAULT_ADS_FOV = 68;
+const HIP_CAMERA_NEAR = 0.1;
+const ADS_CAMERA_NEAR = 0.01;
 const BLEND_SPEED = 30;
 const RELOAD_ADS_BLEND_SPEED = 55;
 export const WEAPON_SWITCH_SEC = 0.2;
@@ -222,6 +224,7 @@ export class WeaponPose {
 
   applyCamera(camera: THREE.PerspectiveCamera): void {
     camera.fov = THREE.MathUtils.lerp(HIP_FOV, this.adsFov, this.blend);
+    camera.near = THREE.MathUtils.lerp(HIP_CAMERA_NEAR, ADS_CAMERA_NEAR, this.blend);
     camera.updateProjectionMatrix();
   }
 }

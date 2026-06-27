@@ -26,6 +26,7 @@ const SNIPER_MESH_CONFIG = {
 let sniperTemplate: THREE.Group | null = null;
 let sniperLoadPromise: Promise<THREE.Group> | null = null;
 
+
 function loadSniperTemplate(): Promise<THREE.Group> {
   if (sniperTemplate) return Promise.resolve(sniperTemplate);
   if (sniperLoadPromise) return sniperLoadPromise;

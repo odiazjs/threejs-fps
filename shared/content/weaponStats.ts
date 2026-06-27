@@ -1,15 +1,15 @@
 import type { WeaponId } from './weaponIds.js';
 
 export const WEAPON_DAMAGE: Record<WeaponId, number> = {
-  plasma_rifle: 6,
-  pistol: 12,
+  plasma_rifle: 7,
+  pistol: 11,
   sniper_rifle: 90,
 };
 
 export const WEAPON_RELOAD_SEC: Record<WeaponId, number> = {
-  plasma_rifle: 2.25,
+  plasma_rifle: 2.0,
   pistol: 1.5,
-  sniper_rifle: 4.2,
+  sniper_rifle: 2.75,
 };
 
 export const WEAPON_MAX_HIT_DISTANCE: Record<WeaponId, number> = {
