@@ -6,6 +6,7 @@ import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
 import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
+import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 
 export class PlayerControls {
   readonly controls: PointerAimControls;
@@ -14,9 +15,12 @@ export class PlayerControls {
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
   private damageIndicatorHud: DamageIndicatorHud | null = null;
+  private shieldRechargeHud: ShieldRechargeHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private hasLockedOnce = false;
+  private isPaused = false;
+  private inventoryOpen = false;
 
   private readonly blocker: HTMLElement;
   private readonly instructionsTitle: HTMLElement;
@@ -55,12 +59,25 @@ export class PlayerControls {
     this.damageIndicatorHud = hud;
   }
 
+  setShieldRechargeHud(hud: ShieldRechargeHud): void {
+    this.shieldRechargeHud = hud;
+  }
+
   setLeaveHandler(handler: () => void): void {
     this.onLeave = handler;
   }
 
+  setInventoryOpen(open: boolean): void {
+    this.inventoryOpen = open;
+  }
+
   get isLocked(): boolean {
     return this.controls.isLocked;
+  }
+
+  /** In-game and not ESC-paused (HUD active; may be soft-unlocked). */
+  get isPlaying(): boolean {
+    return this.hasLockedOnce && !this.isPaused;
   }
 
   private initUI(): void {
@@ -70,6 +87,15 @@ export class PlayerControls {
       }
     });
 
+    document.body.addEventListener('click', (event) => {
+      if (this.inventoryOpen) return;
+      if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
+      if (event.target === this.leaveButton) return;
+      this.controls.lock();
+    });
+
+    document.addEventListener('keydown', this.onKeyDown);
+
     this.leaveButton.addEventListener('click', (event) => {
       event.stopPropagation();
       if (this.leaveButton.disabled) return;
@@ -78,23 +104,27 @@ export class PlayerControls {
 
     this.controls.onLock = () => {
       this.hasLockedOnce = true;
+      this.isPaused = false;
       this.blocker.style.display = 'none';
       this.leaveButton.hidden = true;
       this.crosshairHud?.setVisible(true);
       this.staminaHud?.setVisible(true);
       this.ammoHud?.setVisible(true);
       this.healthHud?.setVisible(true);
+      this.shieldRechargeHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
       this.damageIndicatorHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
     this.controls.onUnlock = () => {
+      this.isPaused = true;
       this.blocker.style.display = 'flex';
       this.crosshairHud?.setVisible(false);
       this.staminaHud?.setVisible(false);
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);
+      this.shieldRechargeHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);
       this.damageIndicatorHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
@@ -115,5 +145,11 @@ export class PlayerControls {
 
   private preventContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
+  };
+
+  private onKeyDown = (event: KeyboardEvent): void => {
+    if (event.code !== 'Digit5' || !this.controls.isLocked || this.isPaused) return;
+    event.preventDefault();
+    this.controls.unlockSoft();
   };
 }

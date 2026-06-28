@@ -83,3 +83,26 @@ export const GAME_KILL_CONFIRM_AUDIO: GlobalAudioConfig = {
   src: '/sounds/kill_confirm_2.wav',
   volume: 0.25,
 };
+
+export const GAME_SHIELD_BREAK_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/shield_brake_1.wav',
+  volume: 0.15,
+};
+
+/** Played when the local player breaks an opponent's shield. */
+export const GAME_SHIELD_BREAK_LOCAL_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/shield_brake_local_1.wav',
+  volume: 0.15,
+};
+
+/** Looped while the local player is recharging shield with a charge. */
+export const GAME_SHIELD_CHARGE_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/shield_charge_1.wav',
+  volume: 0.22,
+};
+
+/** One-shot when a shield charge finishes recharging. */
+export const GAME_SHIELD_CHARGE_END_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/shield_charge_end_1.wav',
+  volume: 0.28,
+};

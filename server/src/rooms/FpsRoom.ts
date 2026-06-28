@@ -1,8 +1,12 @@
 import { Client, Room } from 'colyseus';
 import { AMMO_BOX_POSITIONS, overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
+import {
+  SHIELD_CHARGE_POSITIONS,
+  overlapsShieldCharge,
+} from '../../../shared/level/shieldChargeSpawns.js';
 import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
-import { pickSpawnPoint } from '../../../shared/level/kiloSectorColliders.js';
+import { pickSpawnPoint, HUMAN_RESPAWN_POINT } from '../../../shared/level/kiloSectorColliders.js';
 import {
   PLAYER_MAX_HP,
   RESPAWN_DELAY_SEC,
@@ -27,6 +31,8 @@ import {
   getWeaponMaxHitDistance,
   getWeaponReloadSec,
 } from '../../../shared/content/weaponStats.js';
+import { applyDamageWithShield, applyShieldChargeRecharge, canUseShieldCharge, getShieldCapacity, resetPlayerShield } from '../../../shared/combat/shield.js';
+import { SHIELD_CHARGE_TIME_SEC } from '../../../shared/combat/shieldRecharge.js';
 import {
   isWeaponId,
   LOADOUT_WEAPON_IDS,
@@ -38,8 +44,11 @@ import {
   PICKUP_MAX_DESYNC,
   type PickupAmmoMessage,
 } from '../../../shared/network/pickup.js';
+import type { PickupShieldChargeMessage } from '../../../shared/network/shieldPickup.js';
+import type { StartShieldRechargeMessage } from '../../../shared/network/shieldRecharge.js';
+import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
-import { AmmoBoxState, FpsState, PlayerState } from '../../../shared/schema/FpsState.js';
+import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState } from '../../../shared/schema/FpsState.js';
 
 interface MoveMessage {
   x: number;
@@ -80,12 +89,20 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.state.ammoBoxes.push(box);
     }
 
+    for (const pos of SHIELD_CHARGE_POSITIONS) {
+      const charge = new ShieldChargeState();
+      charge.x = pos.x;
+      charge.z = pos.z;
+      this.state.shieldCharges.push(charge);
+    }
+
     this.spawnTrainingBots();
 
     this.setSimulationInterval((deltaTime) => {
       const deltaSec = deltaTime / 1000;
       this.state.worldTime += deltaSec;
       this.tickReloads();
+      this.tickShieldRecharges();
       this.tickTrainingBots(deltaSec);
     });
   }
@@ -98,6 +115,47 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.reloading = false;
       player.reloadEndAt = 0;
     }
+  }
+
+  private tickShieldRecharges(): void {
+    const now = this.state.worldTime;
+    for (const player of this.state.players.values()) {
+      if (!player.shieldRecharging) continue;
+      if (now < player.shieldRechargeEndAt) continue;
+      this.completeShieldRecharge(player);
+    }
+  }
+
+  private completeShieldRecharge(player: PlayerState): void {
+    player.shieldRecharging = false;
+    player.shieldRechargeEndAt = 0;
+    if (player.shieldCharges <= 0) return;
+    if (!canUseShieldCharge(player.shieldLevel, player.shieldPoints)) return;
+
+    player.shieldCharges -= 1;
+    const recharged = applyShieldChargeRecharge(
+      player.shieldLevel,
+      player.shieldPoints,
+    );
+    player.shieldLevel = recharged.shieldLevel;
+    player.shieldPoints = recharged.shieldPoints;
+  }
+
+  private cancelShieldRecharge(player: PlayerState): void {
+    if (!player.shieldRecharging) return;
+    player.shieldRecharging = false;
+    player.shieldRechargeEndAt = 0;
+  }
+
+  private tryStartShieldRecharge(player: PlayerState): boolean {
+    if (!player.alive) return false;
+    if (player.shieldRecharging) return false;
+    if (player.shieldCharges <= 0) return false;
+    if (!canUseShieldCharge(player.shieldLevel, player.shieldPoints)) return false;
+
+    player.shieldRecharging = true;
+    player.shieldRechargeEndAt = this.state.worldTime + SHIELD_CHARGE_TIME_SEC;
+    return true;
   }
 
   private tickTrainingBots(deltaSec: number): void {
@@ -199,6 +257,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.jumping = data.jumping === true;
       player.sprinting = data.sprinting === true && !player.jumping;
       player.walking = data.walking === true && !player.sprinting && !player.jumping;
+
+      if (player.shieldRecharging && (player.jumping || player.sprinting)) {
+        this.cancelShieldRecharge(player);
+      }
     },
 
     reload: (client: Client, data: ReloadMessage) => {
@@ -221,12 +283,20 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.reloading = false;
       player.reloadEndAt = 0;
       player.activeWeaponId = LOADOUT_WEAPON_IDS[slot]!;
+      this.cancelShieldRecharge(player);
     },
 
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      this.cancelShieldRecharge(player);
       this.broadcast('projectile', { ...data, shooterId: client.sessionId }, { except: client });
+    },
+
+    startShieldRecharge: (client: Client, _data: StartShieldRechargeMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      this.tryStartShieldRecharge(player);
     },
 
     pickupAmmo: (client: Client, data: PickupAmmoMessage) => {
@@ -268,6 +338,47 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       client.send('ammoPickupGranted', { index });
     },
 
+    pickupShieldCharge: (client: Client, data: PickupShieldChargeMessage) => {
+      const index = data.index;
+      if (index < 0 || index >= this.state.shieldCharges.length) return;
+
+      const charge = this.state.shieldCharges.at(index);
+      if (!charge || charge.collected) return;
+
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (player.shieldCharges >= MAX_SHIELD_CHARGES) return;
+
+      const serverOverlap = overlapsShieldCharge(
+        player.x,
+        player.z,
+        charge.x,
+        charge.z,
+        PLAYER_HALF_WIDTH,
+      );
+
+      if (!serverOverlap) {
+        const desync = Math.hypot(data.x - player.x, data.z - player.z);
+        if (desync > PICKUP_MAX_DESYNC) return;
+
+        if (
+          !overlapsShieldCharge(
+            data.x,
+            data.z,
+            charge.x,
+            charge.z,
+            PLAYER_HALF_WIDTH,
+          )
+        ) {
+          return;
+        }
+      }
+
+      charge.collected = true;
+      player.shieldCharges += 1;
+      client.send('shieldChargePickupGranted', { index });
+    },
+
     hit: (client: Client, data: PlayerHitMessage) => {
       const shooter = this.state.players.get(client.sessionId);
       const target = this.state.players.get(data.targetId);
@@ -285,13 +396,16 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (distance > getWeaponMaxHitDistance(data.weaponId)) return;
 
       const damage = getWeaponDamage(data.weaponId);
-      target.hp = Math.max(0, target.hp - damage);
+      const result = applyDamageWithShield(target.hp, target.shieldPoints, damage);
+      target.shieldPoints = result.shieldPoints;
+      target.hp = result.hp;
       if (target.hp > 0) return;
 
       target.hp = 0;
       target.alive = false;
       target.reloading = false;
       target.reloadEndAt = 0;
+      this.cancelShieldRecharge(target);
 
       const killFeed: KillFeedMessage = {
         killerName: shooter.username,
@@ -319,6 +433,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.username = username;
     player.teamId = this.resolveTeamId(options.teamId);
     player.hp = PLAYER_MAX_HP;
+    const shield = resetPlayerShield();
+    player.shieldLevel = shield.shieldLevel;
+    player.shieldPoints = shield.shieldPoints;
     player.alive = true;
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
@@ -403,6 +520,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!spawn) return;
 
       player.hp = PLAYER_MAX_HP;
+      const botShield = resetPlayerShield();
+      player.shieldLevel = botShield.shieldLevel;
+      player.shieldPoints = botShield.shieldPoints;
       player.alive = true;
       player.pitch = 0;
       player.reloading = false;
@@ -413,8 +533,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       return;
     }
 
-    const spawn = pickSpawnPoint(this.countHumanPlayers());
+    const spawn = HUMAN_RESPAWN_POINT;
     player.hp = PLAYER_MAX_HP;
+    const shield = resetPlayerShield();
+    player.shieldLevel = shield.shieldLevel;
+    player.shieldPoints = shield.shieldPoints;
+    this.cancelShieldRecharge(player);
     player.alive = true;
     player.x = spawn.x;
     player.y = EYE_HEIGHT;

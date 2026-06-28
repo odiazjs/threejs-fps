@@ -23,6 +23,7 @@ import {
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
+import { ShieldBreakFx } from '../effects/ShieldBreakFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
 import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
@@ -32,6 +33,9 @@ import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import { getReloadState } from '../../shared/combat/reload';
+import { getDefaultShieldPoints } from '../../shared/combat/shield';
+import { PlayerInventory } from '../inventory/PlayerInventory';
+import type { InventoryWeaponEntry } from '../ui/InventoryHud';
 import {
   isWeaponId,
   LOADOUT_SIZE,
@@ -54,6 +58,7 @@ function lerpAngle(from: number, to: number, t: number): number {
 export type ShootCallback = (origin: THREE.Vector3, direction: THREE.Vector3) => void;
 export type WeaponSwitchCallback = (slot: number, weaponId: WeaponId) => void;
 export type ReloadNetworkCallback = (weaponId: WeaponId) => void;
+export type ShieldRechargeNetworkCallback = () => void;
 
 export class Player {
   readonly object = new THREE.Group();
@@ -66,6 +71,7 @@ export class Player {
   private aimControls: PointerAimControls | null = null;
 
   private loadout: WeaponLoadout | null = null;
+  private readonly inventory = new PlayerInventory();
   private forward = new THREE.Vector3();
   private right = new THREE.Vector3();
   private targetPosition = new THREE.Vector3();
@@ -92,6 +98,8 @@ export class Player {
   private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
   private damageNumberStack: DamageNumberStack | null = null;
+  private shieldBreakFx: ShieldBreakFx | null = null;
+  private onShieldBreakListener: (() => void) | null = null;
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
@@ -99,6 +107,7 @@ export class Player {
   private onShoot: ShootCallback | null = null;
   private onReloadNetwork: ReloadNetworkCallback | null = null;
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
+  private onShieldRechargeNetwork: ShieldRechargeNetworkCallback | null = null;
   private targetReloadEndAt = 0;
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private targetSprinting = false;
@@ -121,6 +130,7 @@ export class Player {
   private alive = true;
   private username = 'Player';
   private hp = 100;
+  private shieldPoints = getDefaultShieldPoints();
   private hitCapsuleDebug: THREE.Group | null = null;
 
   private constructor(local: boolean) {
@@ -173,6 +183,9 @@ export class Player {
 
       this.damageNumberStack = new DamageNumberStack();
       this.remoteUiRig.add(this.damageNumberStack.object);
+
+      this.shieldBreakFx = new ShieldBreakFx();
+      this.object.add(this.shieldBreakFx.object);
     }
   }
 
@@ -317,6 +330,22 @@ export class Player {
     return this.loadout?.getAmmoState() ?? null;
   }
 
+  getInventory(): PlayerInventory {
+    return this.inventory;
+  }
+
+  getInventoryWeapons(): InventoryWeaponEntry[] {
+    if (!this.loadout) return [];
+
+    const activeIndex = this.loadout.getActiveIndex();
+    return DEFAULT_LOADOUT_CONFIGS.map((config, slotIndex) => ({
+      slotIndex,
+      weaponId: config.id,
+      name: config.name,
+      active: slotIndex === activeIndex,
+    }));
+  }
+
   getAdsBlend(): number {
     return this.weaponPose?.adsBlend ?? 0;
   }
@@ -355,6 +384,10 @@ export class Player {
 
   setWeaponSwitchNetworkCallback(callback: WeaponSwitchCallback | null): void {
     this.onWeaponSwitchNetwork = callback;
+  }
+
+  setShieldRechargeNetworkCallback(callback: ShieldRechargeNetworkCallback | null): void {
+    this.onShieldRechargeNetwork = callback;
   }
 
   setProjectileSpawnOptions(ownerTeamId: number, ownerSessionId = ''): void {
@@ -480,8 +513,17 @@ export class Player {
     this.username = snapshot.username;
 
     if (!this.camera) {
-      if (snapshot.alive && snapshot.hp < this.hp) {
-        this.showDamageNumber(this.hp - snapshot.hp);
+      if (snapshot.alive) {
+        const hpLoss = Math.max(0, this.hp - snapshot.hp);
+        const shieldLoss = Math.max(0, this.shieldPoints - snapshot.shieldPoints);
+        const totalDamage = Math.floor(hpLoss + shieldLoss);
+        if (totalDamage > 0) {
+          this.showDamageNumber(totalDamage);
+        }
+        if (this.shieldPoints > 0 && snapshot.shieldPoints <= 0) {
+          this.shieldBreakFx?.play();
+          this.onShieldBreakListener?.();
+        }
       }
       this.object.visible = snapshot.alive;
       this.remoteHealthBar?.update(snapshot.hp, snapshot.alive, snapshot.teamId, snapshot.username);
@@ -491,6 +533,10 @@ export class Player {
     }
 
     this.hp = snapshot.hp;
+    this.shieldPoints = snapshot.shieldPoints;
+    if (this.camera) {
+      this.inventory.setShieldCharges(snapshot.shieldCharges);
+    }
 
     if (snap) {
       this.object.position.copy(this.targetPosition);
@@ -535,8 +581,13 @@ export class Player {
     this.damageNumberStack?.push(amount);
   }
 
+  setShieldBreakListener(listener: (() => void) | null): void {
+    this.onShieldBreakListener = listener;
+  }
+
   updateDamageNumbers(delta: number, camera: THREE.Camera): void {
     this.damageNumberStack?.update(delta, camera);
+    this.shieldBreakFx?.update(delta, camera);
   }
 
   updateRemoteWeapon(delta: number, worldTime: number): void {
@@ -585,10 +636,12 @@ export class Player {
       this.weaponSounds?.stopAutoFire();
       this.headBob.update(delta, false, false);
       if (this.headRig) this.headBob.apply(this.headRig, false);
+      if (this.aimControls) this.aimControls.pointerSpeed = 1;
       return;
     }
 
     this.trySwitchWeapon(input);
+    this.tryStartShieldRecharge(input);
 
     if (input.isJustPressed('KeyR')) {
       if (
@@ -596,6 +649,7 @@ export class Player {
         !this.weaponPose?.isSwitching() &&
         this.loadout.getActive().ammo.tryReload()
       ) {
+        this.weaponSounds?.playReload(this.loadout.getActive().config.sounds);
         this.onReloadNetwork?.(this.loadout.getActiveWeaponId());
       }
     }
@@ -631,6 +685,11 @@ export class Player {
       ammoState.reloading,
       ammoState.reloadProgress,
     );
+    if (this.aimControls) {
+      const adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;
+      const adsBlend = this.weaponPose?.adsBlend ?? 0;
+      this.aimControls.pointerSpeed = THREE.MathUtils.lerp(1, adsLookSensitivity, adsBlend);
+    }
     this.weaponSway?.update(
       delta,
       isWalking,
@@ -733,6 +792,8 @@ export class Player {
     this.remoteHealthBar = null;
     this.damageNumberStack?.dispose();
     this.damageNumberStack = null;
+    this.shieldBreakFx?.dispose();
+    this.shieldBreakFx = null;
     this.characterInstance?.dispose();
     this.characterInstance = null;
     this.displayedCharacterModelFile = null;
@@ -767,6 +828,11 @@ export class Player {
       this.onWeaponSwitchNetwork?.(slot, this.loadout.getActiveWeaponId());
       break;
     }
+  }
+
+  private tryStartShieldRecharge(input: KeyboardInput): void {
+    if (!input.isJustPressed('Digit4')) return;
+    this.onShieldRechargeNetwork?.();
   }
 
   private isFiring(pointer: PointerInput, fireMode: 'auto' | 'semi'): boolean {

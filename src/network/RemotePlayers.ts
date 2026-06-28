@@ -13,6 +13,7 @@ const _listenerPos = new THREE.Vector3();
 export class RemotePlayers {
   private readonly players = new Map<string, Player>();
   private footsteps: FootstepSoundService | null = null;
+  private onShieldBreakHandler: ((sessionId: string) => void) | null = null;
 
   constructor(
     private scene: THREE.Scene,
@@ -27,6 +28,10 @@ export class RemotePlayers {
     for (const sessionId of this.players.keys()) {
       service.removeRemote(sessionId);
     }
+  }
+
+  onShieldBreak(handler: (sessionId: string) => void): void {
+    this.onShieldBreakHandler = handler;
   }
 
   bind(): void {
@@ -81,6 +86,9 @@ export class RemotePlayers {
     if (this.isLocal(sessionId)) return;
 
     const player = Player.createRemote();
+    player.setShieldBreakListener(() => {
+      this.onShieldBreakHandler?.(sessionId);
+    });
     player.setFromSnapshot(snapshot, true);
     player.attachToScene(this.scene);
     this.players.set(sessionId, player);

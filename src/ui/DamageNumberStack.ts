@@ -59,13 +59,16 @@ export class DamageNumberStack {
   }
 
   push(amount: number): void {
+    const damage = Math.floor(amount);
+    if (damage <= 0) return;
+
     const wasInactive = this.age >= LIFETIME_SEC || !this.object.visible;
     if (wasInactive) {
       this.offsetX = (Math.random() - 0.5) * 2 * MAX_HORIZONTAL_OFFSET_PX;
     }
 
-    this.total += amount;
-    this.label.textContent = String(this.total);
+    this.total += damage;
+    this.label.textContent = String(Math.floor(this.total));
     this.applyDamageColor();
     this.age = 0;
     this.bump = 1;

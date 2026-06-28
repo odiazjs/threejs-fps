@@ -9,6 +9,11 @@ export interface PlayerSnapshot {
   username: string;
   teamId: number;
   hp: number;
+  shieldLevel: number;
+  shieldPoints: number;
+  shieldCharges: number;
+  shieldRecharging: boolean;
+  shieldRechargeEndAt: number;
   alive: boolean;
   reloading: boolean;
   reloadEndAt: number;
@@ -26,9 +31,21 @@ export interface AmmoBoxSnapshot {
   collected: boolean;
 }
 
+export interface ShieldChargeSnapshot {
+  x: number;
+  z: number;
+  collected: boolean;
+}
+
 export interface LocalCombatState {
   hp: number;
   maxHp: number;
+  shieldLevel: number;
+  shieldPoints: number;
+  shieldCapacity: number;
+  shieldCharges: number;
+  shieldRecharging: boolean;
+  shieldRechargeEndAt: number;
   alive: boolean;
   teamId: number;
   username: string;
@@ -41,4 +58,6 @@ export type LocalPlayerChangeHandler = (player: PlayerSnapshot) => void;
 export type ProjectileSpawnHandler = (spawn: ProjectileSpawnMessage) => void;
 export type AmmoBoxChangeHandler = (index: number, box: AmmoBoxSnapshot) => void;
 export type AmmoPickupGrantedHandler = () => void;
+export type ShieldChargeChangeHandler = (index: number, charge: ShieldChargeSnapshot) => void;
+export type ShieldChargePickupGrantedHandler = () => void;
 export type KillFeedHandler = (killerName: string, victimName: string) => void;

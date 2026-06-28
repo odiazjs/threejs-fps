@@ -6,6 +6,9 @@ import { PointerInput } from '../input/PointerInput';
 import { ProjectileManager } from '../combat/ProjectileManager';
 import { NetworkManager } from '../network/NetworkManager';
 import type { LocalCombatState } from '../network/types';
+import { getShieldCapacity, canUseShieldCharge } from '../../shared/combat/shield';
+import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
+import { DEFAULT_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
@@ -19,11 +22,14 @@ import { HealthHud } from '../ui/HealthHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
 import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
+import { InventoryHud } from '../ui/InventoryHud';
+import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
+import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -37,6 +43,10 @@ import {
   GAME_FOOTSTEP_AUDIO,
   GAME_KILL_CONFIRM_AUDIO,
   GAME_OUT_OF_AMMO_AUDIO,
+  GAME_SHIELD_BREAK_AUDIO,
+  GAME_SHIELD_BREAK_LOCAL_AUDIO,
+  GAME_SHIELD_CHARGE_AUDIO,
+  GAME_SHIELD_CHARGE_END_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
@@ -53,9 +63,17 @@ export class Game {
   private killFeedHud = new KillFeedHud();
   private crosshairHud = new CrosshairHud();
   private damageIndicatorHud = new DamageIndicatorHud();
+  private inventoryHud = new InventoryHud(
+    DEFAULT_LOADOUT_CONFIGS.map((config) => ({
+      id: config.id,
+      name: config.name,
+    })),
+  );
+  private shieldRechargeHud = new ShieldRechargeHud();
   private performanceHud = new PerformanceHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
+  private shieldChargePickups!: ShieldChargePickups;
   private input = new KeyboardInput();
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
@@ -70,12 +88,20 @@ export class Game {
   private readonly weaponSounds = new WeaponSoundService();
   private readonly environmentSounds = new EnvironmentSoundService();
   private readonly droneProximitySounds = new LoopingSoundService();
+  private readonly shieldChargeSounds = new LoopingSoundService();
   private readonly footstepSounds = new FootstepSoundService();
   private readonly impactSounds = new ImpactSoundService();
   private audioUnlocked = false;
+  private inventoryOpen = false;
   private localCombat: LocalCombatState = {
     hp: 100,
     maxHp: 100,
+    shieldLevel: 1,
+    shieldPoints: getShieldCapacity(1),
+    shieldCapacity: getShieldCapacity(1),
+    shieldCharges: DEFAULT_SHIELD_CHARGES,
+    shieldRecharging: false,
+    shieldRechargeEndAt: 0,
     alive: true,
     teamId: 0,
     username: 'Player',
@@ -89,6 +115,7 @@ export class Game {
     this.initWorld();
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
+    this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
     await Promise.all([
       preloadWeaponMeshes(),
       Player.preloadGameCharacterModels(),
@@ -96,9 +123,13 @@ export class Game {
       this.weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),
       this.environmentSounds.preload(GAME_ENVIRONMENT_AUDIO.src),
       this.droneProximitySounds.preload(GAME_DRONE_PROXIMITY_AUDIO.src),
+      this.shieldChargeSounds.preload(GAME_SHIELD_CHARGE_AUDIO.src),
       this.footstepSounds.preload(GAME_FOOTSTEP_AUDIO),
       this.impactSounds.preload(GAME_ENEMY_HIT_IMPACT_AUDIO),
       this.impactSounds.preloadKillConfirm(GAME_KILL_CONFIRM_AUDIO),
+      this.impactSounds.preloadShieldBreak(GAME_SHIELD_BREAK_AUDIO),
+      this.impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
+      this.impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
     ]);
     this.initPlayer();
     this.initResize();
@@ -115,6 +146,7 @@ export class Game {
     this.running = false;
     this.environmentSounds.stop();
     this.droneProximitySounds.stop();
+    this.shieldChargeSounds.stop();
     this.playerControls.setLeaveEnabled(false);
     this.playerControls.controls.unlock();
 
@@ -142,6 +174,7 @@ export class Game {
     this.scene = world.getScene();
     this.projectiles = new ProjectileManager(this.scene);
     this.ammoPickups = new AmmoPickups(this.scene);
+    this.shieldChargePickups = new ShieldChargePickups(this.scene);
   }
 
   private initPlayer(): void {
@@ -157,12 +190,21 @@ export class Game {
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
+    this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
     });
     this.player.setWeaponSoundService(this.weaponSounds);
     this.player.setFootstepSoundService(this.footstepSounds);
+
+    document.addEventListener('keydown', this.onTabKeyDown);
   }
+
+  private onTabKeyDown = (event: KeyboardEvent): void => {
+    if (event.code !== 'Tab' || !this.running) return;
+    if (!this.playerControls.isPlaying || !this.localCombat.alive) return;
+    event.preventDefault();
+  };
 
   private async initNetwork(
     username: string,
@@ -172,9 +214,13 @@ export class Game {
       this.scene,
       this.projectiles,
       this.ammoPickups,
+      this.shieldChargePickups,
       () => {
         this.player.addReserveClip();
         this.messageHud.push('Picked up some ammo');
+      },
+      () => {
+        this.messageHud.push('Picked up shield charge');
       },
       (state) => this.handleLocalCombatChange(state),
       (killerName, victimName) => {
@@ -192,6 +238,20 @@ export class Game {
     this.network.bindShoot(this.player, () => {
       this.crosshairHud.onHit(this.player.getActiveWeaponId());
     });
+    this.player.setShieldRechargeNetworkCallback(() => {
+      const snapshot = this.network.getLocalSnapshot();
+      if (!snapshot) return;
+      if (snapshot.shieldRecharging) return;
+      if (!canUseShieldCharge(snapshot.shieldLevel, snapshot.shieldPoints)) {
+        this.messageHud.push('Shield is already full');
+        return;
+      }
+      if (snapshot.shieldCharges <= 0) {
+        this.messageHud.push('No shield charges');
+        return;
+      }
+      this.network.sendStartShieldRecharge();
+    });
     await this.network.connect(username, joinIntent);
     this.network.setFootstepSoundService(this.footstepSounds);
     this.network.setImpactSoundService(this.impactSounds);
@@ -199,14 +259,55 @@ export class Game {
   }
 
   private handleLocalCombatChange(state: LocalCombatState): void {
-    if (state.alive && state.hp < this.localCombat.hp) {
-      const damage = this.localCombat.hp - state.hp;
-      const bearing = this.network.resolveDamageBearing(this.player);
-      this.damageIndicatorHud.onDamage(damage, bearing);
+    const prev = this.localCombat;
+
+    if (
+      prev.shieldRecharging &&
+      !state.shieldRecharging &&
+      (state.shieldLevel > prev.shieldLevel || state.shieldPoints > prev.shieldPoints)
+    ) {
+      this.impactSounds.playShieldChargeEnd();
+    }
+
+    if (state.alive) {
+      const shieldDamage = Math.max(0, prev.shieldPoints - state.shieldPoints);
+      const healthDamage = Math.max(0, prev.hp - state.hp);
+      const shieldBroken = prev.shieldPoints > 0 && state.shieldPoints <= 0;
+
+      if (shieldDamage > 0 || healthDamage > 0 || shieldBroken) {
+        this.player.object.updateMatrixWorld(true);
+        const hit = this.network.resolveDamageHit(this.player);
+        const shooterWorldPos = hit?.shooterWorldPos ?? null;
+        const camera = this.player.camera;
+
+        if (shieldDamage > 0) {
+          this.damageIndicatorHud.onDamage(
+            shieldDamage,
+            shooterWorldPos,
+            camera,
+            'shield',
+          );
+        }
+
+        if (shieldBroken) {
+          this.damageIndicatorHud.onShieldBroken(shooterWorldPos, camera);
+          this.network.playLocalShieldBreak();
+        }
+
+        if (healthDamage > 0) {
+          this.damageIndicatorHud.onDamage(
+            healthDamage,
+            shooterWorldPos,
+            camera,
+            'health',
+          );
+        }
+      }
     }
 
     if (!state.alive && this.wasAlive) {
       this.messageHud.push('You died');
+      this.closeInventory();
       this.playerControls.controls.unlock();
     }
 
@@ -216,8 +317,41 @@ export class Game {
 
     this.wasAlive = state.alive;
     this.localCombat = state;
+    this.player.getInventory().setShieldCharges(state.shieldCharges);
     this.player.setProjectileSpawnOptions(state.teamId, this.network?.getSessionId() ?? '');
     this.healthHud.update(state);
+  }
+
+  private closeInventory(): void {
+    if (!this.inventoryOpen) return;
+    this.inventoryOpen = false;
+    this.inventoryHud.setOpen(false);
+    this.playerControls.setInventoryOpen(false);
+    if (this.playerControls.isPlaying && this.localCombat.alive) {
+      this.playerControls.controls.lock();
+      this.crosshairHud.setVisible(true);
+    }
+  }
+
+  private toggleInventory(): void {
+    this.inventoryOpen = !this.inventoryOpen;
+    this.inventoryHud.setOpen(this.inventoryOpen);
+    this.playerControls.setInventoryOpen(this.inventoryOpen);
+
+    if (this.inventoryOpen) {
+      this.playerControls.controls.unlockSoft();
+      this.crosshairHud.setVisible(false);
+      this.inventoryHud.update({
+        weapons: this.player.getInventoryWeapons(),
+        shieldCharges: this.player.getInventory().getShieldCharges(),
+      });
+      return;
+    }
+
+    if (this.playerControls.isPlaying && this.localCombat.alive) {
+      this.playerControls.controls.lock();
+      this.crosshairHud.setVisible(true);
+    }
   }
 
   private initResize(): void {
@@ -233,14 +367,28 @@ export class Game {
     requestAnimationFrame(this.loop);
     const delta = Math.min(this.clock.getDelta(), 0.05);
 
-    const canAct = this.playerControls.isLocked && this.localCombat.alive;
+    if (this.inventoryOpen && !this.playerControls.isPlaying) {
+      this.closeInventory();
+    }
 
-    if (this.playerControls.isLocked && !this.audioUnlocked) {
+    if (
+      this.input.isJustPressed('Tab') &&
+      this.playerControls.isPlaying &&
+      this.localCombat.alive
+    ) {
+      this.toggleInventory();
+    }
+
+    const canAct =
+      this.playerControls.isLocked && this.localCombat.alive && !this.inventoryOpen;
+
+    if (this.playerControls.isPlaying && !this.audioUnlocked) {
       this.weaponSounds.unlock();
       this.footstepSounds.unlock();
       this.impactSounds.unlock();
       this.environmentSounds.unlock();
       this.droneProximitySounds.unlock();
+      this.shieldChargeSounds.unlock();
       this.environmentSounds.setActive(true);
       this.audioUnlocked = true;
     }
@@ -255,10 +403,11 @@ export class Game {
     this.network?.interpolateRemotes(delta, this.player.camera!);
     this.projectiles.update(delta);
     this.network?.update(delta, this.player, this.playerControls);
+    const camera = this.player.camera;
+    this.player.object.updateMatrixWorld(true);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
-    this.damageIndicatorHud.update(delta);
-    const camera = this.player.camera;
+    this.damageIndicatorHud.update(delta, camera ?? null);
     this.terrain?.update(this.clock.getElapsedTime(), {
       playerPos: this.player.object.position,
       cameraPos: camera?.position,
@@ -276,8 +425,13 @@ export class Game {
       this.droneProximitySounds.setActive(droneInView);
     }
 
-    if (this.playerControls.isLocked && this.network) {
+    if (this.playerControls.isPlaying && this.network) {
       this.ammoPickups.tryPickup(
+        this.player.object.position.x,
+        this.player.object.position.z,
+        delta,
+      );
+      this.shieldChargePickups.tryPickup(
         this.player.object.position.x,
         this.player.object.position.z,
         delta,
@@ -294,6 +448,23 @@ export class Game {
       );
       this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
+      this.shieldRechargeHud.update(
+        getShieldRechargeState(
+          this.localCombat.shieldRecharging,
+          this.localCombat.shieldRechargeEndAt,
+          this.network.getWorldTime(),
+        ),
+      );
+      this.shieldChargeSounds.setActive(
+        this.audioUnlocked && this.localCombat.alive && this.localCombat.shieldRecharging,
+      );
+
+      if (this.inventoryOpen) {
+        this.inventoryHud.update({
+          weapons: this.player.getInventoryWeapons(),
+          shieldCharges: this.player.getInventory().getShieldCharges(),
+        });
+      }
     }
 
     updateEdgeLinesForCamera(this.player.camera!);

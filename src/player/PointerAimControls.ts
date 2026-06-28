@@ -22,8 +22,11 @@ export class PointerAimControls {
 
   onLock: (() => void) | null = null;
   onUnlock: (() => void) | null = null;
+  /** Pointer released without pausing (e.g. key 5). */
+  onSoftUnlock: (() => void) | null = null;
 
   private readonly domElement: HTMLElement;
+  private softUnlockPending = false;
 
   constructor(yawRig: THREE.Object3D, pitchRig: THREE.Object3D, domElement: HTMLElement) {
     this.yawRig = yawRig;
@@ -55,6 +58,13 @@ export class PointerAimControls {
     this.domElement.ownerDocument.exitPointerLock();
   }
 
+  /** Release the cursor without triggering the pause/unlock UI flow. */
+  unlockSoft(): void {
+    if (!this.isLocked) return;
+    this.softUnlockPending = true;
+    this.domElement.ownerDocument.exitPointerLock();
+  }
+
   resetLook(): void {
     this.lookYaw = 0;
     this.lookPitch = 0;
@@ -77,12 +87,19 @@ export class PointerAimControls {
 
   private onPointerlockChange(): void {
     if (this.domElement.ownerDocument.pointerLockElement === this.domElement) {
+      this.softUnlockPending = false;
       this.isLocked = true;
       this.onLock?.();
       return;
     }
 
     this.isLocked = false;
+    if (this.softUnlockPending) {
+      this.softUnlockPending = false;
+      this.onSoftUnlock?.();
+      return;
+    }
+
     this.onUnlock?.();
   }
 

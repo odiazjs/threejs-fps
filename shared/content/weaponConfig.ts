@@ -12,6 +12,8 @@ export interface WeaponViewConfig {
   readonly ads: WeaponViewOffset;
   /** Camera FOV when fully ADS (higher = less zoom). Defaults to 68. */
   readonly adsFov?: number;
+  /** Mouse look speed multiplier when fully ADS (1 = unchanged). */
+  readonly adsLookSensitivity?: number;
   /** Extra euler (radians) added on first-person attach rotation. */
   readonly localMeshEuler?: WeaponViewOffset;
   /** Extra euler (radians) added on third-person attach rotation. */
@@ -105,6 +107,8 @@ export interface WeaponSoundsConfig {
   readonly singleShot?: string | WeaponSoundClip;
   /** Sustained auto fire after the first shot while holding trigger. */
   readonly autoShot?: string | WeaponSoundClip;
+  /** One-shot played when a reload starts. */
+  readonly reload?: string | WeaponSoundClip;
   /** Default gain for clips that omit their own `volume` (default 1). */
   readonly volume?: number;
 }

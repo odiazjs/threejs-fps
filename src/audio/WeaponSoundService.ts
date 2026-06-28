@@ -101,6 +101,7 @@ export function collectWeaponSoundUrls(configs: readonly WeaponConfig[]): string
     if (!sounds) continue;
     addSoundUrl(urls, sounds.singleShot);
     addSoundUrl(urls, sounds.autoShot);
+    addSoundUrl(urls, sounds.reload);
   }
 
   return [...urls];
@@ -215,6 +216,16 @@ export class WeaponSoundService {
   playOutOfAmmo(): void {
     if (!this.outOfAmmoConfig) return;
     this.playOneShot(this.outOfAmmoConfig.src, this.outOfAmmoConfig.volume);
+  }
+
+  playReload(sounds: WeaponSoundsConfig | undefined): void {
+    if (!sounds) return;
+
+    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const clip = resolveSoundClip(sounds.reload, defaultVolume);
+    if (!clip) return;
+
+    this.playOneShot(clip.url, clip.volume);
   }
 
   private playOneShot(url: string, volume: number): void {

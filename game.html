@@ -250,6 +250,38 @@
         background: linear-gradient(90deg, #5eb8c4, #82dbdb);
         transition: width 50ms linear;
       }
+      #shield-recharge-hud {
+        position: fixed;
+        left: 50%;
+        bottom: calc(2.5rem + 2.75rem + 1rem + 3.25rem);
+        transform: translateX(-50%) translateY(-50%);
+        width: min(300px, 52vw);
+        pointer-events: none;
+        z-index: 5;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #shield-recharge-hud .shield-recharge-status {
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        color: #00e8ff;
+        margin-bottom: 0.45rem;
+      }
+      #shield-recharge-hud .shield-recharge-track {
+        height: 8px;
+        border: 1px solid rgba(0, 232, 255, 0.45);
+        border-radius: 999px;
+        background: rgba(20, 24, 28, 0.55);
+        overflow: hidden;
+      }
+      #shield-recharge-hud .shield-recharge-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #00b8d4, #00e8ff);
+        transition: width 50ms linear;
+      }
       #message-hud {
         position: fixed;
         top: 58%;
@@ -287,6 +319,77 @@
         width: min(220px, 38vw);
         pointer-events: none;
         z-index: 5;
+      }
+      #health-hud .shield-hud {
+        margin-bottom: 0.55rem;
+      }
+      #health-hud .shield-label,
+      #health-hud .health-label {
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 0.65rem;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        margin-bottom: 0.35rem;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #health-hud .shield-label {
+        color: rgba(120, 245, 255, 0.95);
+      }
+      #health-hud .shield-levels {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.28rem;
+        margin-bottom: 0.3rem;
+      }
+      #health-hud .shield-level {
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        transition: background 120ms linear, box-shadow 120ms linear;
+      }
+      #health-hud .shield-level.active {
+        background: rgba(0, 210, 255, 0.28);
+        border-color: rgba(0, 240, 255, 0.45);
+        box-shadow: 0 0 8px rgba(0, 240, 255, 0.35);
+      }
+      #health-hud .shield-level.broken {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 120, 120, 0.55);
+        box-shadow: 0 0 10px rgba(255, 70, 70, 0.45);
+      }
+      #health-hud .shield-track {
+        position: relative;
+        height: 12px;
+        border: 2px solid rgba(0, 220, 255, 0.42);
+        border-radius: 999px;
+        background: rgba(8, 24, 32, 0.62);
+        overflow: hidden;
+      }
+      #health-hud .shield-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #00c8ff, #6ef5ff);
+        box-shadow: 0 0 12px rgba(0, 240, 255, 0.55);
+        transition: width 80ms linear;
+      }
+      #health-hud .shield-value {
+        position: absolute;
+        right: 0.45rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #d8fbff;
+        font-size: 0.6rem;
+        font-weight: 700;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #health-hud .shield-hud.depleted .shield-track {
+        border-color: rgba(255, 110, 110, 0.55);
+      }
+      #health-hud .shield-hud.depleted .shield-fill {
+        background: linear-gradient(90deg, #7a8a90, #9aa8ad);
+        box-shadow: none;
       }
       #health-hud .health-label {
         color: rgba(255, 255, 255, 0.85);
@@ -423,37 +526,221 @@
           linear-gradient(to bottom, rgba(255, 55, 55, 0.55), transparent 14%, transparent 86%, rgba(255, 55, 55, 0.55));
         transition: opacity 40ms linear;
       }
+      #damage-indicator-hud.shield-hit .damage-vignette {
+        background:
+          radial-gradient(
+            ellipse at center,
+            transparent 42%,
+            rgba(0, 220, 255, 0.1) 72%,
+            rgba(0, 170, 220, 0.42) 100%
+          ),
+          linear-gradient(to right, rgba(0, 240, 255, 0.58), transparent 14%, transparent 86%, rgba(0, 240, 255, 0.58)),
+          linear-gradient(to bottom, rgba(0, 240, 255, 0.58), transparent 14%, transparent 86%, rgba(0, 240, 255, 0.58));
+      }
+      #damage-indicator-hud .shield-break-flash {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at center, rgba(180, 255, 255, 0.55) 0%, rgba(0, 220, 255, 0.2) 34%, transparent 62%),
+          repeating-linear-gradient(
+            -45deg,
+            rgba(255, 255, 255, 0.12) 0 8px,
+            rgba(255, 80, 80, 0.18) 8px 16px
+          );
+        mix-blend-mode: screen;
+      }
+      #damage-indicator-hud.shield-broken .damage-vignette {
+        background:
+          radial-gradient(
+            ellipse at center,
+            rgba(255, 255, 255, 0.12) 20%,
+            rgba(255, 80, 80, 0.2) 58%,
+            rgba(180, 20, 20, 0.55) 100%
+          ),
+          linear-gradient(to right, rgba(255, 90, 90, 0.72), transparent 12%, transparent 88%, rgba(255, 90, 90, 0.72)),
+          linear-gradient(to bottom, rgba(255, 90, 90, 0.72), transparent 12%, transparent 88%, rgba(255, 90, 90, 0.72));
+      }
       #damage-indicator-hud .damage-markers {
         position: absolute;
         inset: 0;
       }
       #damage-indicator-hud .damage-direction-marker {
         position: absolute;
-        left: 50%;
-        top: 50%;
-        width: 0;
-        height: 0;
-        transform-origin: center center;
+        width: 2.4rem;
+        height: 2.4rem;
         opacity: 0;
-        filter: drop-shadow(0 0 6px rgba(255, 70, 70, 0.85));
+        pointer-events: none;
       }
-      #damage-indicator-hud .damage-direction-marker::before {
-        content: '';
-        position: absolute;
-        left: -13px;
-        top: -9px;
-        border-left: 13px solid transparent;
-        border-right: 13px solid transparent;
-        border-bottom: 18px solid rgba(255, 72, 72, 0.92);
+      #damage-indicator-hud .damage-arrow-icon {
+        width: 100%;
+        height: 100%;
+        fill: rgba(255, 58, 58, 0.95);
+        filter: drop-shadow(0 0 10px rgba(255, 50, 50, 0.95))
+          drop-shadow(0 0 4px rgba(255, 200, 200, 0.8));
       }
-      #damage-indicator-hud .damage-direction-marker::after {
-        content: '';
-        position: absolute;
-        left: -8px;
-        top: -4px;
-        border-left: 8px solid transparent;
-        border-right: 8px solid transparent;
-        border-bottom: 11px solid rgba(255, 210, 210, 0.95);
+      #damage-indicator-hud .damage-direction-marker.shield-marker .damage-arrow-icon {
+        fill: rgba(0, 240, 255, 0.98);
+        filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.95))
+          drop-shadow(0 0 5px rgba(180, 255, 255, 0.85));
+      }
+      #inventory-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 12;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(6, 10, 14, 0.72);
+        backdrop-filter: blur(4px);
+        pointer-events: auto;
+      }
+      #inventory-overlay[hidden] {
+        display: none !important;
+      }
+      .inventory-panel {
+        width: min(980px, 96vw);
+        padding: 2.25rem 2.5rem 2rem;
+        border: 1px solid rgba(0, 220, 255, 0.28);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(14, 22, 28, 0.96), rgba(8, 14, 18, 0.98));
+        box-shadow:
+          0 0 28px rgba(0, 200, 255, 0.12),
+          0 18px 40px rgba(0, 0, 0, 0.45);
+      }
+      .inventory-title {
+        color: #d8fbff;
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.22em;
+        margin-bottom: 1.65rem;
+        text-shadow: 0 0 10px rgba(0, 220, 255, 0.35);
+      }
+      .inventory-section {
+        margin-bottom: 1.75rem;
+      }
+      .inventory-section:last-of-type {
+        margin-bottom: 1rem;
+      }
+      .inventory-section-label {
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        margin-bottom: 0.95rem;
+      }
+      #inventory-loadout {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1.35rem;
+      }
+      .inventory-weapon-slot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.7rem;
+        padding: 1.15rem 0.85rem 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        background: transparent;
+        transition: border-color 120ms linear, box-shadow 120ms linear;
+      }
+      .inventory-weapon-slot.active {
+        border-color: rgba(0, 230, 255, 0.72);
+        box-shadow: 0 0 22px rgba(0, 220, 255, 0.22);
+      }
+      .inventory-slot-key {
+        align-self: flex-end;
+        min-width: 1.55rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, 0.35);
+        color: rgba(255, 255, 255, 0.75);
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-align: center;
+      }
+      .inventory-icon-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 9.5rem;
+        height: 9.5rem;
+        background: transparent;
+      }
+      .inventory-weapon-icon,
+      .inventory-item-icon {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        background: transparent;
+        border: none;
+        image-rendering: auto;
+        pointer-events: none;
+        user-select: none;
+      }
+      .inventory-weapon-icon {
+        filter: drop-shadow(0 0 10px rgba(0, 220, 255, 0.2));
+      }
+      .inventory-weapon-slot.active .inventory-weapon-icon {
+        filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.45));
+      }
+      .inventory-item-icon-wrap {
+        width: 6.5rem;
+        height: 6.5rem;
+        flex-shrink: 0;
+      }
+      .inventory-item-icon {
+        filter: drop-shadow(0 0 10px rgba(0, 220, 255, 0.35));
+      }
+      .inventory-weapon-name {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-align: center;
+        line-height: 1.2;
+      }
+      .inventory-item-row {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        padding: 1.25rem 1.4rem;
+        border: 1px solid rgba(0, 220, 255, 0.2);
+        border-radius: 12px;
+        background: transparent;
+      }
+      .inventory-item-details {
+        flex: 1;
+        min-width: 0;
+      }
+      .inventory-item-name {
+        color: #d8fbff;
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .inventory-item-desc {
+        color: rgba(255, 255, 255, 0.55);
+        font-size: 0.82rem;
+        margin-top: 0.25rem;
+      }
+      .inventory-item-count {
+        min-width: 3rem;
+        color: #00f0ff;
+        font-size: 1.75rem;
+        font-weight: 800;
+        text-align: right;
+        text-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
+      }
+      .inventory-hint {
+        margin-top: 1.35rem;
+        color: rgba(255, 255, 255, 0.42);
+        font-size: 0.75rem;
+        letter-spacing: 0.12em;
+        text-align: center;
       }
     </style>
   </head>
@@ -462,7 +749,7 @@
       <div id="instructions">
         <h1>Click to play</h1>
         <p>WASD to move · Shift+W to sprint · Space to jump · Mouse to look · R to reload · 1 / 2 weapons</p>
-        <p>Press ESC to pause</p>
+        <p>5 — release mouse · ESC — pause · Click to re-capture mouse</p>
       </div>
       <button id="leave-game-btn" type="button" hidden>LEAVE GAME</button>
     </div>
@@ -480,6 +767,18 @@
     <div id="message-hud"></div>
     <div id="kill-feed" hidden></div>
     <div id="health-hud" hidden>
+      <div class="shield-hud">
+        <div class="shield-label">SHIELD</div>
+        <div class="shield-levels" aria-hidden="true">
+          <div class="shield-level"></div>
+          <div class="shield-level"></div>
+          <div class="shield-level"></div>
+        </div>
+        <div class="shield-track">
+          <div class="shield-fill"></div>
+          <div class="shield-value">0</div>
+        </div>
+      </div>
       <div class="health-label">HEALTH</div>
       <div class="health-track">
         <div class="health-fill"></div>
@@ -488,6 +787,7 @@
     </div>
     <div id="damage-indicator-hud" hidden aria-hidden="true">
       <div class="damage-vignette"></div>
+      <div class="shield-break-flash"></div>
       <div class="damage-markers"></div>
     </div>
     <div id="stamina-hud" hidden>
@@ -506,6 +806,35 @@
       <div class="reload-status">RELOADING</div>
       <div class="reload-track">
         <div class="reload-fill"></div>
+      </div>
+    </div>
+    <div id="shield-recharge-hud" hidden>
+      <div class="shield-recharge-status">RECHARGING SHIELD</div>
+      <div class="shield-recharge-track">
+        <div class="shield-recharge-fill"></div>
+      </div>
+    </div>
+    <div id="inventory-overlay" hidden>
+      <div class="inventory-panel">
+        <div class="inventory-title">INVENTORY</div>
+        <section class="inventory-section">
+          <div class="inventory-section-label">LOADOUT</div>
+          <div id="inventory-loadout"></div>
+        </section>
+        <section class="inventory-section">
+          <div class="inventory-section-label">SHIELD RECHARGES</div>
+          <div class="inventory-item-row">
+            <div class="inventory-icon-wrap inventory-item-icon-wrap">
+              <img id="inventory-shield-icon" class="inventory-item-icon" alt="" />
+            </div>
+            <div class="inventory-item-details">
+              <div class="inventory-item-name">Shield Charge</div>
+              <div class="inventory-item-desc">Restores shield protection</div>
+            </div>
+            <div id="inventory-shield-count" class="inventory-item-count">0</div>
+          </div>
+        </section>
+        <div class="inventory-hint">TAB — CLOSE</div>
       </div>
     </div>
     <script type="module" src="/src/game/main.ts"></script>

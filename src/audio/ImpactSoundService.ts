@@ -10,6 +10,9 @@ export class ImpactSoundService {
   private masterGain: GainNode | null = null;
   private enemyHit: LoadedGlobalSound | null = null;
   private killConfirm: LoadedGlobalSound | null = null;
+  private shieldBreak: LoadedGlobalSound | null = null;
+  private shieldBreakLocal: LoadedGlobalSound | null = null;
+  private shieldChargeEnd: LoadedGlobalSound | null = null;
 
   async preload(config: GlobalAudioConfig): Promise<void> {
     this.enemyHit = await this.loadSound(config);
@@ -17,6 +20,18 @@ export class ImpactSoundService {
 
   async preloadKillConfirm(config: GlobalAudioConfig): Promise<void> {
     this.killConfirm = await this.loadSound(config);
+  }
+
+  async preloadShieldBreak(config: GlobalAudioConfig): Promise<void> {
+    this.shieldBreak = await this.loadSound(config);
+  }
+
+  async preloadShieldBreakLocal(config: GlobalAudioConfig): Promise<void> {
+    this.shieldBreakLocal = await this.loadSound(config);
+  }
+
+  async preloadShieldChargeEnd(config: GlobalAudioConfig): Promise<void> {
+    this.shieldChargeEnd = await this.loadSound(config);
   }
 
   unlock(): void {
@@ -32,6 +47,18 @@ export class ImpactSoundService {
 
   playKillConfirm(): void {
     this.play(this.killConfirm);
+  }
+
+  playShieldBreak(): void {
+    this.play(this.shieldBreak);
+  }
+
+  playShieldBreakLocal(): void {
+    this.play(this.shieldBreakLocal);
+  }
+
+  playShieldChargeEnd(): void {
+    this.play(this.shieldChargeEnd);
   }
 
   private async loadSound(config: GlobalAudioConfig): Promise<LoadedGlobalSound> {

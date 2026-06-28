@@ -104,6 +104,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   sway: { intensity: 0.95 },
   sounds: {
     autoShot: '/sounds/rifle_auto_3.wav',
+    reload: '/sounds/rifle_reload_1.wav',
     volume: 0.1,
   },
 };
@@ -158,8 +159,9 @@ export const PISTOL_CONFIG: WeaponConfig = {
   },
   sway: { intensity: 1.08 },
   sounds: {
-    singleShot: '/sounds/pistol_7.wav',
-    volume: 0.05,
+    singleShot: '/sounds/pistol_8.wav',
+    reload: '/sounds/pistol_reload_1.wav',
+    volume: 0.15,
   },
 };
 
@@ -177,6 +179,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     hip: { x: 0.1, y: -0.24, z: -0.44 },
     ads: { x: 0, y: -0.15, z: -0.24 },
     adsFov: 18,
+    adsLookSensitivity: 0.5,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
@@ -216,7 +219,8 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   },
   sway: { intensity: 0.72 },
   sounds: {
-    singleShot: '/sounds/sniper_1.wav',
+    singleShot: '/sounds/sniper_3.wav',
+    reload: '/sounds/sniper_reload_1.wav',
     volume: 0.2,
   },
 };

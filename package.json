@@ -4,11 +4,12 @@
   "type": "module",
   "scripts": {
     "sync:sounds": "node scripts/sync-sounds.mjs",
-    "dev": "npm run sync:sounds && vite",
+    "sync:images": "node scripts/process-inventory-icons.mjs",
+    "dev": "npm run sync:sounds && npm run sync:images && vite",
     "dev:server": "npm run dev --prefix server",
     "install:all": "npm install && npm install --prefix server",
-    "build": "npm run sync:sounds && vite build",
-    "build:client": "npm run sync:sounds && vite build",
+    "build": "npm run sync:sounds && npm run sync:images && vite build",
+    "build:client": "npm run sync:sounds && npm run sync:images && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@types/three": "^0.177.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
   }

@@ -6,8 +6,12 @@ import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
+import { getShieldCapacity } from '../../shared/combat/shield';
+import { DEFAULT_SHIELD_CHARGES, MAX_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
+import type { LocalShieldPickupHandler } from '../world/ShieldChargePickups';
+import type { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -15,13 +19,18 @@ import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { LocalCombatState } from './types';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import {
-  resolveDamageBearing,
+  readProjectileShooterWorldPos,
+  resolveDamageHit,
   type RecentThreat,
-} from '../combat/resolveDamageBearing';
+} from '../combat/damageIndicatorMath';
+import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
+const _shooterWorldPos = new THREE.Vector3();
 const MAX_RECENT_THREATS = 24;
+/** Local hit still counts as breaking a shield if state sync arrives shortly after. */
+const LOCAL_HIT_SHIELD_BREAK_WINDOW_SEC = 0.75;
 
 export class NetworkManager {
   readonly roomClient = new RoomClient();
@@ -32,22 +41,35 @@ export class NetworkManager {
   private localCombat: LocalCombatState = {
     hp: PLAYER_MAX_HP,
     maxHp: PLAYER_MAX_HP,
+    shieldLevel: 1,
+    shieldPoints: getShieldCapacity(1),
+    shieldCapacity: getShieldCapacity(1),
+    shieldCharges: DEFAULT_SHIELD_CHARGES,
+    shieldRecharging: false,
+    shieldRechargeEndAt: 0,
     alive: true,
     teamId: 0,
     username: 'Player',
   };
   private readonly recentThreats: RecentThreat[] = [];
+  private readonly recentLocalHits = new Map<string, number>();
 
   constructor(
     scene: THREE.Scene,
     private readonly projectiles: ProjectileManager,
     private readonly ammoPickups: AmmoPickups,
+    private readonly shieldChargePickups: ShieldChargePickups,
     private readonly onLocalAmmoPickup: LocalPickupHandler,
+    private readonly onLocalShieldPickup: LocalShieldPickupHandler,
     private readonly onLocalPlayerChange: (state: LocalCombatState) => void,
     private readonly onKillFeed: (killerName: string, victimName: string) => void,
   ) {
     this.remotePlayers = new RemotePlayers(scene, this.roomClient);
+    this.remotePlayers.onShieldBreak((sessionId) => {
+      this.handleRemoteShieldBreak(sessionId);
+    });
     this.ammoPickups.bindNetwork(null, this.onLocalAmmoPickup);
+    this.shieldChargePickups.bindNetwork(null, this.onLocalShieldPickup);
   }
 
   async connect(username: string, joinIntent?: GameJoinIntent | null): Promise<void> {
@@ -60,6 +82,7 @@ export class NetworkManager {
         ? this.remotePlayers.getPlayer(spawn.shooterId)
         : undefined;
       const weaponId = spawn.weaponId && isWeaponId(spawn.weaponId) ? spawn.weaponId : undefined;
+
       if (!shooter?.readActiveMuzzleWorldPosition(_origin, weaponId)) {
         _origin.set(spawn.x, spawn.y, spawn.z);
       }
@@ -69,7 +92,13 @@ export class NetworkManager {
         spawn.shooterId !== this.roomClient.sessionId &&
         shooter?.isAlive()
       ) {
-        this.recordThreat(spawn.shooterId, _origin, _direction);
+        readProjectileShooterWorldPos(spawn, _shooterWorldPos);
+        this.recordThreat(
+          spawn.shooterId,
+          _shooterWorldPos,
+          _direction,
+          spawn.weaponId,
+        );
       }
 
       this.projectiles.spawn(_origin, _direction, {
@@ -83,6 +112,20 @@ export class NetworkManager {
     this.roomClient.onAmmoPickupGranted(() => {
       this.onLocalAmmoPickup();
     });
+    this.roomClient.onShieldChargeChange((index, snapshot) => {
+      this.shieldChargePickups.applySnapshot(index, snapshot);
+    });
+    this.roomClient.onShieldChargePickupGranted(() => {
+      const snapshot = this.roomClient.getLocalSnapshot();
+      if (snapshot && snapshot.shieldCharges !== this.localCombat.shieldCharges) {
+        this.localCombat = {
+          ...this.localCombat,
+          shieldCharges: snapshot.shieldCharges,
+        };
+        this.onLocalPlayerChange(this.localCombat);
+      }
+      this.onLocalShieldPickup();
+    });
     this.roomClient.onKillFeed((killerName, victimName) => {
       this.onKillFeed(killerName, victimName);
     });
@@ -90,6 +133,12 @@ export class NetworkManager {
       this.localCombat = {
         hp: snapshot.hp,
         maxHp: PLAYER_MAX_HP,
+        shieldLevel: snapshot.shieldLevel,
+        shieldPoints: snapshot.shieldPoints,
+        shieldCapacity: getShieldCapacity(snapshot.shieldLevel),
+        shieldCharges: snapshot.shieldCharges,
+        shieldRecharging: snapshot.shieldRecharging,
+        shieldRechargeEndAt: snapshot.shieldRechargeEndAt,
         alive: snapshot.alive,
         teamId: snapshot.teamId,
         username: snapshot.username,
@@ -102,6 +151,12 @@ export class NetworkManager {
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,
     );
+    this.shieldChargePickups.bindNetwork(
+      (index, feetX, feetZ) =>
+        this.roomClient.sendPickupShieldCharge(index, feetX, feetZ),
+      this.onLocalShieldPickup,
+      () => this.localCombat.shieldCharges < MAX_SHIELD_CHARGES,
+    );
     this.roomClient.bindState();
 
     const snapshot = this.roomClient.getLocalSnapshot();
@@ -109,6 +164,12 @@ export class NetworkManager {
       this.localCombat = {
         hp: snapshot.hp,
         maxHp: PLAYER_MAX_HP,
+        shieldLevel: snapshot.shieldLevel,
+        shieldPoints: snapshot.shieldPoints,
+        shieldCapacity: getShieldCapacity(snapshot.shieldLevel),
+        shieldCharges: snapshot.shieldCharges,
+        shieldRecharging: snapshot.shieldRecharging,
+        shieldRechargeEndAt: snapshot.shieldRechargeEndAt,
         alive: snapshot.alive,
         teamId: snapshot.teamId,
         username: snapshot.username,
@@ -128,6 +189,7 @@ export class NetworkManager {
         ),
       (targetId, _point) => {
         this.impactSounds?.playEnemyHit();
+        this.recordLocalHit(targetId);
         const weaponId = player.getActiveWeaponId();
         this.roomClient.sendHit(targetId, weaponId);
         onLocalHit?.();
@@ -136,6 +198,7 @@ export class NetworkManager {
 
     player.setShootCallback((origin, direction) => {
       if (!this.roomClient.connected) return;
+      const feet = player.object.position;
       this.roomClient.sendShoot({
         x: origin.x,
         y: origin.y,
@@ -144,6 +207,9 @@ export class NetworkManager {
         dirY: direction.y,
         dirZ: direction.z,
         weaponId: player.getActiveWeaponId(),
+        shooterWorldX: feet.x,
+        shooterWorldY: feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
+        shooterWorldZ: feet.z,
       });
     });
     player.setReloadNetworkCallback((weaponId) => {
@@ -165,6 +231,14 @@ export class NetworkManager {
     player.refillAmmo();
   }
 
+  sendStartShieldRecharge(): void {
+    this.roomClient.sendStartShieldRecharge();
+  }
+
+  getLocalSnapshot() {
+    return this.roomClient.getLocalSnapshot();
+  }
+
   getLocalCombatState(): LocalCombatState {
     return this.localCombat;
   }
@@ -181,34 +255,42 @@ export class NetworkManager {
     return this.roomClient.sessionId;
   }
 
-  resolveDamageBearing(player: Player): number | null {
-    const camera = player.camera;
-    if (!camera) return null;
-
+  resolveDamageHit(player: Player) {
     const sessionId = this.roomClient.sessionId;
     if (!sessionId) return null;
 
     this.pruneThreats(this.getWorldTime());
-    return resolveDamageBearing(
+    return resolveDamageHit(
       player,
-      camera,
       this.remotePlayers,
       this.localCombat.teamId,
       sessionId,
       this.recentThreats,
       this.getWorldTime(),
+      (targetId, out) => this.readPlayerSnapshotChest(targetId, out),
     );
+  }
+
+  private readPlayerSnapshotChest(sessionId: string, out: THREE.Vector3): boolean {
+    for (const snapshot of this.roomClient.getAllPlayerSnapshots()) {
+      if (snapshot.sessionId !== sessionId) continue;
+      out.set(snapshot.x, snapshot.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5, snapshot.z);
+      return true;
+    }
+    return false;
   }
 
   private recordThreat(
     shooterId: string,
-    origin: THREE.Vector3,
+    shooterWorldPos: THREE.Vector3,
     direction: THREE.Vector3,
+    weaponId?: string,
   ): void {
     this.recentThreats.push({
       shooterId,
-      origin: origin.clone(),
+      shooterWorldPos: shooterWorldPos.clone(),
       direction: direction.clone(),
+      weaponId,
       time: this.getWorldTime(),
     });
     if (this.recentThreats.length > MAX_RECENT_THREATS) {
@@ -221,6 +303,28 @@ export class NetworkManager {
     while (this.recentThreats.length > 0 && this.recentThreats[0]!.time < cutoff) {
       this.recentThreats.shift();
     }
+  }
+
+  playLocalShieldBreak(): void {
+    this.impactSounds?.playShieldBreak();
+  }
+
+  private recordLocalHit(targetId: string): void {
+    this.recentLocalHits.set(targetId, performance.now() / 1000);
+  }
+
+  private handleRemoteShieldBreak(sessionId: string): void {
+    const hitAt = this.recentLocalHits.get(sessionId);
+    if (hitAt == null) return;
+
+    const elapsed = performance.now() / 1000 - hitAt;
+    if (elapsed > LOCAL_HIT_SHIELD_BREAK_WINDOW_SEC) {
+      this.recentLocalHits.delete(sessionId);
+      return;
+    }
+
+    this.recentLocalHits.delete(sessionId);
+    this.impactSounds?.playShieldBreakLocal();
   }
 
   setFootstepSoundService(service: FootstepSoundService | null): void {
@@ -236,7 +340,7 @@ export class NetworkManager {
   }
 
   update(delta: number, player: Player, controls: PlayerControls): void {
-    if (!this.roomClient.connected || !controls.isLocked || !this.localCombat.alive) {
+    if (!this.roomClient.connected || !controls.isPlaying || !this.localCombat.alive) {
       return;
     }
 

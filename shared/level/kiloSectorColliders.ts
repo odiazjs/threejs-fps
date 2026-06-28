@@ -34,6 +34,9 @@ const SPAWN_POINTS = [
   { x: 30, z: -30 },
 ] as const;
 
+/** Fixed feet XZ for human respawns — keeps combat testing in one spot. */
+export const HUMAN_RESPAWN_POINT = { x: 0, z: -50 } as const;
+
 export function pickSpawnPoint(playerIndex: number): { x: number; z: number } {
   const spawn = SPAWN_POINTS[playerIndex % SPAWN_POINTS.length];
   return {
