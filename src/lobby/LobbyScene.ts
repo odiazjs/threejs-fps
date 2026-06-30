@@ -39,6 +39,7 @@ export class LobbyScene {
   private characterTemplate: CharacterTemplate | null = null;
   private partyMembers: PartyMember[] = [];
   private animationId = 0;
+  private active = true;
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
 
@@ -138,6 +139,17 @@ export class LobbyScene {
     return this.readyPromise;
   }
 
+  setActive(active: boolean): void {
+    if (this.active === active) return;
+    this.active = active;
+    if (active) {
+      this.loop();
+    } else {
+      cancelAnimationFrame(this.animationId);
+      this.animationId = 0;
+    }
+  }
+
   private scheduleReadyAfterRender(): void {
     requestAnimationFrame(() => {
       this.renderer.render(this.scene, this.camera);
@@ -193,6 +205,7 @@ export class LobbyScene {
   }
 
   private loop = (): void => {
+    if (!this.active) return;
     this.animationId = requestAnimationFrame(this.loop);
     const delta = this.clock.getDelta();
     const t = this.clock.getElapsedTime();

@@ -1,22 +1,11 @@
-import { handoffPageBoot } from '../app/pageBoot';
-import { apiGetLeaderboard } from '../auth/leaderboardApi';
-import { ensureSession, getKdRatio } from '../auth/playerSession';
-import { LoadingOverlay } from '../ui/LoadingOverlay';
-
-const loading = LoadingOverlay.shared();
-loading.show('Loading leaderboard...');
-handoffPageBoot();
-
-async function startLeaderboard(): Promise<void> {  const body = document.getElementById('leaderboard-body')!;
-  const status = document.getElementById('leaderboard-status')!;
-
-  try {
-    await ensureSession();
-
-    document.getElementById('leaderboard-back-btn')!.addEventListener('click', () => {
-      if (loading.active) return;
-      window.location.href = '/lobby.html';
-    });
+import { apiGetLeaderboard } from '../../auth/leaderboardApi';
+import { getKdRatio } from '../../auth/playerSession';
+export class LeaderboardView {
+  async mount(): Promise<void> {
+    const body = document.getElementById('leaderboard-body')!;
+    const status = document.getElementById('leaderboard-status')!;
+    body.replaceChildren();
+    status.textContent = 'Loading...';
 
     const data = await apiGetLeaderboard();
     body.replaceChildren();
@@ -54,13 +43,11 @@ async function startLeaderboard(): Promise<void> {  const body = document.getEle
       row.append(rankCell, nameCell, emailCell, killsCell, kdCell);
       body.appendChild(row);
     });
-  } catch (error) {
-    console.warn('[Leaderboard] failed to start', error);
-    status.textContent =
-      error instanceof Error ? error.message : 'Could not load leaderboard';
-  } finally {
-    loading.hide();
+  }
+
+  unmount(): void {
+    document.getElementById('leaderboard-body')?.replaceChildren();
+    const status = document.getElementById('leaderboard-status');
+    if (status) status.textContent = 'Loading...';
   }
 }
-
-void startLeaderboard();

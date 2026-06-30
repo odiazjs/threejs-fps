@@ -3,6 +3,7 @@ import type {
   FriendPresenceSnapshotMessage,
   FriendPresenceUpdate,
 } from '../../shared/network/friendPresence';
+import type { AppPresenceView, SetAppViewMessage } from '../../shared/network/appView';
 import type {
   FriendRequestErrorMessage,
   FriendRequestMessage,
@@ -66,6 +67,15 @@ export class LobbyClient {
 
   leaveParty(partyId: string): void {
     this.room?.send('leaveParty', { partyId });
+  }
+
+  setAppView(view: AppPresenceView): void {
+    const payload: SetAppViewMessage = { view };
+    this.room?.send('setAppView', payload);
+  }
+
+  requestFriendPresenceSnapshot(): void {
+    this.room?.send('requestFriendPresenceSnapshot', {});
   }
 
   onFriendRequest(handler: (data: FriendRequestMessage) => void): void {

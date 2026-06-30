@@ -20,6 +20,7 @@ import {
 import { setGameJoinIntent } from '../auth/gameJoin';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
+import { isInviteablePresence } from './friendPresenceUi';
 
 const ACTION_TIMEOUT_MS = 12_000;
 
@@ -121,10 +122,7 @@ export class FriendsPanel {
     });
 
     this.lobby.onFriendPresenceSnapshot((data) => {
-      for (const entry of data.friends) {
-        this.presenceByUserId.set(entry.userId, entry.presence);
-      }
-      this.renderFriends();
+      this.applyPresenceSnapshot(data.friends);
     });
     this.lobby.onFriendPresence((data) => {
       this.applyPresenceUpdate(data);
@@ -137,15 +135,39 @@ export class FriendsPanel {
 
   async init(): Promise<void> {
     await this.loadFriends();
+    this.refreshPresence();
+  }
+
+  refreshPresence(): void {
+    this.lobby.requestFriendPresenceSnapshot();
+  }
+
+  private applyPresenceSnapshot(updates: FriendPresenceUpdate[]): void {
+    for (const entry of updates) {
+      if (!this.friends.some((friend) => friend.userId === entry.userId)) continue;
+      this.presenceByUserId.set(entry.userId, entry.presence);
+      const friend = this.friends.find((item) => item.userId === entry.userId);
+      if (friend) {
+        friend.online = entry.online;
+        friend.presence = entry.presence;
+      }
+    }
+    this.renderFriends();
   }
 
   private async loadFriends(): Promise<void> {
     try {
       const data = await apiListFriends();
       this.friends = data.friends;
-      this.presenceByUserId.clear();
-      for (const friend of data.friends) {
-        this.presenceByUserId.set(friend.userId, friend.presence);
+
+      for (const friend of this.friends) {
+        const livePresence = this.presenceByUserId.get(friend.userId);
+        if (livePresence) {
+          friend.presence = livePresence;
+          friend.online = livePresence !== 'offline';
+        } else {
+          this.presenceByUserId.set(friend.userId, friend.presence);
+        }
       }
 
       for (const request of data.incoming) {
@@ -215,8 +237,8 @@ export class FriendsPanel {
       return;
     }
 
-    if (this.getFriendPresence(friend.userId) !== 'lobby') {
-      this.setStatus(`${friend.displayName} is not in the lobby`);
+    if (!isInviteablePresence(this.getFriendPresence(friend.userId))) {
+      this.setStatus(`${friend.displayName} is not available`);
       return;
     }
 
@@ -514,6 +536,8 @@ export class FriendsPanel {
     switch (presence) {
       case 'lobby':
         return 'IN LOBBY';
+      case 'menus':
+        return 'IN MENUS';
       case 'game':
         return 'IN GAME';
       default:
@@ -570,7 +594,7 @@ export class FriendsPanel {
         !blockInvites &&
         isHost &&
         !partyFull &&
-        presence === 'lobby' &&
+        isInviteablePresence(presence) &&
         !inParty &&
         !pending;
 
@@ -593,6 +617,8 @@ export class FriendsPanel {
           inviteBtn.title = 'Please wait for the current action to finish';
         } else if (!canInvite && presence === 'game') {
           inviteBtn.title = 'Friend is in a match';
+        } else if (!canInvite && presence === 'menus') {
+          inviteBtn.title = 'Friend is browsing menus';
         } else if (!canInvite && presence === 'offline') {
           inviteBtn.title = 'Friend is offline';
         } else if (!canInvite && partyFull) {

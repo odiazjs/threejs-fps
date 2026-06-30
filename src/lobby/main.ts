@@ -1,39 +1,53 @@
 import { handoffPageBoot } from '../app/pageBoot';
-import { apiGetMe } from '../auth/meApi';
-import { getKdRatio, ensureSession, logout } from '../auth/playerSession';
+import { AppShell, parseShellViewFromUrl } from '../app/AppShell';
+import { getAppProfile, initAppSession } from '../app/bootstrap';
+import { getKdRatio, logout } from '../auth/playerSession';
 import { FriendsPanel } from './FriendsPanel';
 import { LobbyClient } from './LobbyClient';
 import { LobbyScene } from './LobbyScene';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
+import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
 loading.show('Loading lobby...');
 handoffPageBoot();
 
+function shellPresenceView(view: ReturnType<typeof parseShellViewFromUrl>): AppPresenceView {
+  return view === 'lobby' ? 'lobby' : 'menus';
+}
+
 async function startLobby(): Promise<void> {
+  let appShell: AppShell | null = null;
+  const initialView = parseShellViewFromUrl();
+
   try {
-    const session = await ensureSession();
+    const session = await initAppSession();
     const scene = new LobbyScene(document.getElementById('lobby-canvas')!, session.userId);
     const lobbyClient = new LobbyClient();
+    const friendsPanel = new FriendsPanel(lobbyClient);
+    friendsPanel.onPartySnapshot((data) => {
+      scene.setPartyMembers(data.members);
+    });
+    appShell = new AppShell(lobbyClient, scene, friendsPanel);
 
     const me = await Promise.all([
-      apiGetMe(),
+      getAppProfile(),
       scene.whenReady(),
-      lobbyClient
-        .connect({ userId: session.userId, username: session.username })
-        .then(async () => {
-          const panel = new FriendsPanel(lobbyClient);
-          panel.onPartySnapshot((data) => {
-            scene.setPartyMembers(data.members);
-          });
-          await panel.init();
-        }),
+      lobbyClient.connect({ userId: session.userId, username: session.username }).then(async () => {
+        lobbyClient.setAppView(shellPresenceView(initialView));
+        await friendsPanel.init();
+      }),
     ]).then(([profile]) => profile);
 
     document.getElementById('lobby-username')!.textContent = me.displayName;
     document.getElementById('lobby-email')!.textContent = me.email;
     document.getElementById('stat-kills')!.textContent = String(me.stats.kills);
     document.getElementById('stat-kd')!.textContent = getKdRatio(me.stats);
+
+    appShell.bindNavigation();
+    if (initialView !== 'lobby') {
+      await appShell.showView(initialView);
+    }
 
     const logoutBtn = document.getElementById('lobby-logout-btn') as HTMLButtonElement;
     logoutBtn.addEventListener('click', () => {
@@ -49,19 +63,8 @@ async function startLobby(): Promise<void> {
       window.location.href = '/game.html';
     });
 
-    document.getElementById('lobby-weapons-btn')!.addEventListener('click', () => {
-      if (loading.active) return;
-      window.location.href = '/weapons.html';
-    });
-
-    document.getElementById('lobby-leaderboard-btn')!.addEventListener('click', () => {
-      if (loading.active) return;
-      window.location.href = '/leaderboard.html';
-    });
-
     window.addEventListener('pagehide', () => {
-      void lobbyClient.disconnect();
-      scene.dispose();
+      appShell?.teardown();
     });
   } catch (error) {
     console.warn('[Lobby] failed to initialize', error);

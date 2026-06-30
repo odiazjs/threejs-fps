@@ -40,9 +40,11 @@ import {
 
 } from '../../../shared/network/party.js';
 
+import type { SetAppViewMessage } from '../../../shared/network/appView.js';
+
 import { LobbyPlayerState, LobbyState } from '../../../shared/schema/LobbyState.js';
 
-import { registerLobbyUser, unregisterUser } from '../lobby/presence.js';
+import { registerLobbyUser, setLobbyAppView, unregisterUser } from '../lobby/presence.js';
 
 import { sendFriendPresenceSnapshot } from '../lobby/presenceNotify.js';
 
@@ -622,6 +624,20 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       this.removeMemberFromParty(userId, { createSolo: true });
 
+    },
+
+    setAppView: (client: Client, data: SetAppViewMessage) => {
+      const userId = this.getUserId(client);
+      if (!userId) return;
+
+      const view = data.view === 'menus' ? 'menus' : 'lobby';
+      setLobbyAppView(userId, view, client);
+    },
+
+    requestFriendPresenceSnapshot: (client: Client) => {
+      const userId = this.getUserId(client);
+      if (!userId) return;
+      void sendFriendPresenceSnapshot(client, userId);
     },
 
   };

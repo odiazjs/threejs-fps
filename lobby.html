@@ -10,8 +10,7 @@
         color-scheme: dark;
       }
 
-      body:not(.app-ready) .lobby-ui,
-      body:not(.app-ready) #lobby-canvas {
+      body:not(.app-ready) .app-view {
         visibility: hidden;
       }
 
@@ -42,78 +41,138 @@
     </style>
     <link rel="stylesheet" href="/src/styles/pages.css" />
   </head>
-  <body class="lobby-page">
+  <body class="lobby-page app-shell">
     <div id="page-boot-splash" aria-live="polite" aria-busy="true">
       <div class="page-boot-spinner" aria-hidden="true"></div>
     </div>
-    <div id="lobby-canvas"></div>
-    <div class="lobby-ui">
-      <div class="lobby-top-bar">
-        <div class="lobby-account-bar">
-          <div class="lobby-account panel">
-            <div class="lobby-account-label">SIGNED IN</div>
-            <div class="lobby-username" id="lobby-username">Player</div>
-            <div class="lobby-email" id="lobby-email">player@example.com</div>
-          </div>
-          <button id="lobby-logout-btn" class="secondary-btn lobby-logout-btn" type="button">
-            LOG OUT
-          </button>
-        </div>
-        <div class="lobby-stats">
-          <div class="lobby-stat">
-            <span class="lobby-stat-label">KILLS</span>
-            <span class="lobby-stat-value" id="stat-kills">0</span>
-          </div>
-          <div class="lobby-stat">
-            <span class="lobby-stat-label">K/D</span>
-            <span class="lobby-stat-value" id="stat-kd">0.00</span>
-          </div>
-        </div>
-      </div>
 
-      <aside id="friends-panel" class="friends-panel panel">
-        <h2 class="friends-title">FRIENDS</h2>
-        <div class="friends-add-row">
-          <input
-            id="friend-email-input"
-            class="text-input"
-            type="email"
-            placeholder="Friend email"
-            autocomplete="email"
-          />
-          <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+    <section id="app-view-lobby" class="app-view" data-view="lobby">
+      <div id="lobby-canvas"></div>
+      <div class="lobby-ui">
+        <div class="lobby-top-bar">
+          <div class="lobby-account-bar">
+            <div class="lobby-account panel">
+              <div class="lobby-account-label">SIGNED IN</div>
+              <div class="lobby-username" id="lobby-username">Player</div>
+              <div class="lobby-email" id="lobby-email">player@example.com</div>
+            </div>
+            <button id="lobby-logout-btn" class="secondary-btn lobby-logout-btn" type="button">
+              LOG OUT
+            </button>
+          </div>
+          <div class="lobby-stats">
+            <div class="lobby-stat">
+              <span class="lobby-stat-label">KILLS</span>
+              <span class="lobby-stat-value" id="stat-kills">0</span>
+            </div>
+            <div class="lobby-stat">
+              <span class="lobby-stat-label">K/D</span>
+              <span class="lobby-stat-value" id="stat-kd">0.00</span>
+            </div>
+          </div>
         </div>
-        <div id="friends-status" class="friends-status"></div>
-        <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
-          <input id="friendly-fire-checkbox" type="checkbox" />
-          <span>Friendly fire</span>
-        </label>
-        <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
-          START GAME
-        </button>
-        <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
-          LEAVE PARTY
-        </button>
+
+        <aside id="friends-panel" class="friends-panel panel">
+          <h2 class="friends-title">FRIENDS</h2>
+          <div class="friends-add-row">
+            <input
+              id="friend-email-input"
+              class="text-input"
+              type="email"
+              placeholder="Friend email"
+              autocomplete="email"
+            />
+            <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+          </div>
+          <div id="friends-status" class="friends-status"></div>
+          <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
+            <input id="friendly-fire-checkbox" type="checkbox" />
+            <span>Friendly fire</span>
+          </label>
+          <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
+            START GAME
+          </button>
+          <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
+            LEAVE PARTY
+          </button>
         <ul id="friends-list" class="friends-list"></ul>
       </aside>
 
-      <div id="friend-toasts" class="friend-toasts"></div>
-
       <nav id="lobby-menu" aria-label="Lobby menu">
-        <button
-          id="lobby-leaderboard-btn"
-          class="lobby-menu-item secondary-btn"
-          type="button"
-        >
-          LEADERBOARD
-        </button>
-        <button id="lobby-weapons-btn" class="lobby-menu-item secondary-btn" type="button">
-          WEAPONS
-        </button>
-      </nav>
+          <button
+            id="lobby-leaderboard-btn"
+            class="lobby-menu-item secondary-btn"
+            type="button"
+          >
+            LEADERBOARD
+          </button>
+          <button id="lobby-weapons-btn" class="lobby-menu-item secondary-btn" type="button">
+            WEAPONS
+          </button>
+        </nav>
 
-      <button id="lobby-join-btn" class="primary-btn" type="button">QUICK MATCH</button>
-    </div>
+        <button id="lobby-join-btn" class="primary-btn" type="button">QUICK MATCH</button>
+      </div>
+    </section>
+
+    <div id="friend-toasts" class="friend-toasts"></div>
+
+    <section id="app-view-weapons" class="app-view" data-view="weapons" hidden>
+      <div id="weapons-canvas"></div>
+      <div class="weapons-ui">
+        <nav id="weapons-picker" class="weapons-picker panel" aria-label="Weapon selection">
+          <button
+            type="button"
+            class="weapons-picker-btn active"
+            data-weapon-id="pistol"
+          >
+            Pistol
+          </button>
+          <button
+            type="button"
+            class="weapons-picker-btn"
+            data-weapon-id="plasma_rifle"
+          >
+            Assault Rifle
+          </button>
+          <button
+            type="button"
+            class="weapons-picker-btn"
+            data-weapon-id="sniper_rifle"
+          >
+            Sniper Rifle
+          </button>
+        </nav>
+        <button id="weapons-back-btn" class="secondary-btn weapons-back-btn" type="button">
+          BACK TO LOBBY
+        </button>
+      </div>
+    </section>
+
+    <section id="app-view-leaderboard" class="app-view" data-view="leaderboard" hidden>
+      <main class="leaderboard-shell panel">
+        <h1 class="leaderboard-title">LEADERBOARD</h1>
+        <p id="leaderboard-status" class="leaderboard-status">Loading...</p>
+        <div class="leaderboard-table-wrap">
+          <table class="leaderboard-table" aria-label="Global player rankings">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">Player</th>
+                <th scope="col">Email</th>
+                <th scope="col">Kills</th>
+                <th scope="col">K/D</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body"></tbody>
+          </table>
+        </div>
+      </main>
+      <button id="leaderboard-back-btn" class="secondary-btn leaderboard-back-btn" type="button">
+        BACK TO LOBBY
+      </button>
+    </section>
+
     <script type="module" src="/src/lobby/main.ts"></script>
   </body>
 </html>

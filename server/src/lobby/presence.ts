@@ -4,7 +4,7 @@ type LobbyClient = {
   send: (type: string, data: unknown) => void;
 };
 
-type ActivePresenceStatus = 'lobby' | 'game';
+type ActivePresenceStatus = 'lobby' | 'menus' | 'game';
 
 interface PresenceEntry {
   status: ActivePresenceStatus;
@@ -32,7 +32,8 @@ export function isUserOnline(userId: string): boolean {
 }
 
 export function isUserInLobby(userId: string): boolean {
-  return presenceByUserId.get(userId)?.status === 'lobby';
+  const status = presenceByUserId.get(userId)?.status;
+  return status === 'lobby' || status === 'menus';
 }
 
 export function buildPresenceUpdate(userId: string): FriendPresenceUpdate {
@@ -47,6 +48,25 @@ export function buildPresenceUpdate(userId: string): FriendPresenceUpdate {
 export function registerLobbyUser(userId: string, client: LobbyClient): void {
   presenceByUserId.set(userId, { status: 'lobby', lobbyClient: client });
   emitPresenceChange(userId);
+}
+
+export function setLobbyAppView(
+  userId: string,
+  view: 'lobby' | 'menus',
+  client?: LobbyClient,
+): void {
+  const entry = presenceByUserId.get(userId);
+  if (!entry || entry.status === 'game') return;
+
+  const lobbyClient = client ?? entry.lobbyClient;
+  if (!lobbyClient) return;
+
+  const statusChanged = entry.status !== view;
+  presenceByUserId.set(userId, { status: view, lobbyClient });
+
+  if (statusChanged) {
+    emitPresenceChange(userId);
+  }
 }
 
 export function registerGameUser(userId: string): void {

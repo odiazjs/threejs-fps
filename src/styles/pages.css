@@ -426,6 +426,11 @@ body {
   color: rgba(61, 214, 140, 0.55);
 }
 
+.friends-presence-dot--menus {
+  background: #7eb0e8;
+  color: rgba(126, 176, 232, 0.55);
+}
+
 .friends-presence-dot--game {
   background: #e8c547;
   color: rgba(232, 197, 71, 0.55);
@@ -445,6 +450,10 @@ body {
 
 .friends-presence-status--lobby {
   color: #9ef0c8;
+}
+
+.friends-presence-status--menus {
+  color: #b8d4f5;
 }
 
 .friends-presence-status--game {
@@ -610,6 +619,11 @@ body {
 
 .friend-toast-decline:hover {
   background: rgba(229, 160, 136, 0.12);
+}
+
+/* App shell */
+.app-view[hidden] {
+  display: none !important;
 }
 
 /* Weapons */

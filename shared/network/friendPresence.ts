@@ -1,4 +1,4 @@
-export type FriendPresenceStatus = 'offline' | 'lobby' | 'game';
+export type FriendPresenceStatus = 'offline' | 'lobby' | 'menus' | 'game';
 
 export interface FriendPresenceUpdate {
   userId: string;
