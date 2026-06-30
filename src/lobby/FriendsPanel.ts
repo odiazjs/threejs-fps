@@ -136,10 +136,15 @@ export class FriendsPanel {
   async init(): Promise<void> {
     await this.loadFriends();
     this.refreshPresence();
+    this.syncControls();
   }
 
   refreshPresence(): void {
     this.lobby.requestFriendPresenceSnapshot();
+  }
+
+  syncControls(): void {
+    this.updatePartyButtons();
   }
 
   private applyPresenceSnapshot(updates: FriendPresenceUpdate[]): void {
@@ -500,11 +505,11 @@ export class FriendsPanel {
     const canStart = isHost && partySize >= 2 && !this.launching && !this.isBusy();
     const canLeave = partySize > 1 && !isHost;
     const showHostControls = isHost && partySize >= 2;
-    const blockInputs = this.isBusy() || this.launching;
+    const blockPartyActions = this.launching;
 
     this.friendlyFireToggle.hidden = !showHostControls;
-    this.friendlyFireCheckbox.disabled = blockInputs;
-    this.addBtn.disabled = blockInputs;
+    this.friendlyFireCheckbox.disabled = blockPartyActions;
+    this.addBtn.disabled = false;
     this.input.disabled = false;
 
     this.startBtn.hidden = !canStart && !this.launching;
@@ -512,7 +517,7 @@ export class FriendsPanel {
     this.startBtn.textContent = this.launching ? 'STARTING...' : 'START GAME';
 
     this.leaveBtn.hidden = !canLeave;
-    this.leaveBtn.disabled = blockInputs || !canLeave;
+    this.leaveBtn.disabled = blockPartyActions || !canLeave;
   }
 
   private applyPresenceUpdate(update: FriendPresenceUpdate): void {

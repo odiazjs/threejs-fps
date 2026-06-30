@@ -18,13 +18,14 @@ function shellPresenceView(view: ReturnType<typeof parseShellViewFromUrl>): AppP
 
 async function startLobby(): Promise<void> {
   let appShell: AppShell | null = null;
+  let friendsPanel: FriendsPanel | null = null;
   const initialView = parseShellViewFromUrl();
 
   try {
     const session = await initAppSession();
     const scene = new LobbyScene(document.getElementById('lobby-canvas')!, session.userId);
     const lobbyClient = new LobbyClient();
-    const friendsPanel = new FriendsPanel(lobbyClient);
+    friendsPanel = new FriendsPanel(lobbyClient);
     friendsPanel.onPartySnapshot((data) => {
       scene.setPartyMembers(data.members);
     });
@@ -75,6 +76,7 @@ async function startLobby(): Promise<void> {
     }
   } finally {
     loading.hide();
+    friendsPanel?.syncControls();
   }
 }
 

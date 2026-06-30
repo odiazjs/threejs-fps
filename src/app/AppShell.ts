@@ -92,6 +92,7 @@ export class AppShell {
       if (loadingMessage) {
         this.loading.hide();
       }
+      this.friendsPanel?.syncControls();
       this.navigating = false;
     }
   }
