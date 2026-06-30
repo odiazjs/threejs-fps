@@ -18,6 +18,9 @@ export interface PlayerSnapshot {
   reloading: boolean;
   reloadEndAt: number;
   activeWeaponId: string;
+  weaponSlot0: string;
+  weaponSlot1: string;
+  weaponSlot2: string;
   sprinting: boolean;
   walking: boolean;
   jumping: boolean;
@@ -34,6 +37,14 @@ export interface AmmoBoxSnapshot {
 export interface ShieldChargeSnapshot {
   x: number;
   z: number;
+  collected: boolean;
+}
+
+export interface WeaponDropSnapshot {
+  x: number;
+  z: number;
+  yaw: number;
+  weaponId: string;
   collected: boolean;
 }
 
@@ -60,4 +71,10 @@ export type AmmoBoxChangeHandler = (index: number, box: AmmoBoxSnapshot) => void
 export type AmmoPickupGrantedHandler = () => void;
 export type ShieldChargeChangeHandler = (index: number, charge: ShieldChargeSnapshot) => void;
 export type ShieldChargePickupGrantedHandler = () => void;
+export type ShieldChargeDropGrantedHandler = (data: { index: number }) => void;
+export type WeaponDropChangeHandler = (index: number, drop: WeaponDropSnapshot) => void;
+export type WeaponPickupGrantedHandler = (data: {
+  index: number;
+  weaponId: string;
+}) => void;
 export type KillFeedHandler = (killerName: string, victimName: string) => void;

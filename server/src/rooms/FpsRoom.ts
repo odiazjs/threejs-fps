@@ -2,7 +2,6 @@ import { Client, Room } from 'colyseus';
 import { AMMO_BOX_POSITIONS, overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
 import {
   SHIELD_CHARGE_POSITIONS,
-  overlapsShieldCharge,
 } from '../../../shared/level/shieldChargeSpawns.js';
 import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
@@ -45,10 +44,24 @@ import {
   type PickupAmmoMessage,
 } from '../../../shared/network/pickup.js';
 import type { PickupShieldChargeMessage } from '../../../shared/network/shieldPickup.js';
+import { SHIELD_PICKUP_MAX_DISTANCE } from '../../../shared/network/shieldPickup.js';
+import type { DropShieldChargeMessage } from '../../../shared/network/shieldDrop.js';
 import type { StartShieldRechargeMessage } from '../../../shared/network/shieldRecharge.js';
+import type { DropWeaponMessage } from '../../../shared/network/weaponDrop.js';
+import type { PickupWeaponDropMessage } from '../../../shared/network/weaponPickup.js';
+import { WEAPON_PICKUP_MAX_DISTANCE } from '../../../shared/network/weaponPickup.js';
+import {
+  EMPTY_WEAPON_SLOT,
+  findLowestOccupiedLoadoutSlot,
+  getLoadoutSlotWeapon,
+  initDefaultLoadoutSlots,
+  isValidDropSlot,
+  resolveWeaponPickup,
+  setLoadoutSlotWeapon,
+} from '../../../shared/loadout/loadoutSlots.js';
 import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
-import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState } from '../../../shared/schema/FpsState.js';
+import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 
 interface MoveMessage {
   x: number;
@@ -156,6 +169,43 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.shieldRecharging = true;
     player.shieldRechargeEndAt = this.state.worldTime + SHIELD_CHARGE_TIME_SEC;
     return true;
+  }
+
+  private spawnWeaponDrop(
+    x: number,
+    z: number,
+    yaw: number,
+    weaponId: string,
+  ): number {
+    const drop = new WeaponDropState();
+    drop.x = x;
+    drop.z = z;
+    drop.yaw = yaw;
+    drop.weaponId = weaponId;
+    this.state.weaponDrops.push(drop);
+    const dropIndex = this.state.weaponDrops.length - 1;
+    this.broadcast('weaponDrop', {
+      index: dropIndex,
+      x: drop.x,
+      z: drop.z,
+      yaw: drop.yaw,
+      weaponId: drop.weaponId,
+    });
+    return dropIndex;
+  }
+
+  private spawnShieldCharge(x: number, z: number): number {
+    const charge = new ShieldChargeState();
+    charge.x = x;
+    charge.z = z;
+    this.state.shieldCharges.push(charge);
+    const index = this.state.shieldCharges.length - 1;
+    this.broadcast('shieldChargeSpawn', {
+      index,
+      x: charge.x,
+      z: charge.z,
+    });
+    return index;
   }
 
   private tickTrainingBots(deltaSec: number): void {
@@ -268,6 +318,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!player?.alive || player.reloading) return;
       if (!isWeaponId(data.weaponId)) return;
 
+      let hasWeapon = false;
+      for (let i = 0; i < LOADOUT_WEAPON_IDS.length; i++) {
+        if (getLoadoutSlotWeapon(player, i) === data.weaponId) {
+          hasWeapon = true;
+          break;
+        }
+      }
+      if (!hasWeapon) return;
+
       player.reloading = true;
       player.activeWeaponId = data.weaponId;
       player.reloadEndAt = this.state.worldTime + getWeaponReloadSec(data.weaponId);
@@ -279,11 +338,94 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       const slot = data.slot;
       if (slot < 0 || slot >= LOADOUT_WEAPON_IDS.length) return;
+      if (!getLoadoutSlotWeapon(player, slot)) return;
 
       player.reloading = false;
       player.reloadEndAt = 0;
-      player.activeWeaponId = LOADOUT_WEAPON_IDS[slot]!;
+      player.activeWeaponId = getLoadoutSlotWeapon(player, slot)!;
       this.cancelShieldRecharge(player);
+    },
+
+    dropWeapon: (client: Client, data: DropWeaponMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+
+      const slot = data.slot;
+      if (!isValidDropSlot(player, slot)) return;
+
+      const weaponId = getLoadoutSlotWeapon(player, slot);
+      if (!isWeaponId(weaponId)) return;
+
+      setLoadoutSlotWeapon(player, slot, EMPTY_WEAPON_SLOT);
+      this.spawnWeaponDrop(player.x, player.z, player.yaw, weaponId);
+
+      if (player.activeWeaponId === weaponId) {
+        const nextSlot = findLowestOccupiedLoadoutSlot(player);
+        if (nextSlot >= 0) {
+          player.activeWeaponId = getLoadoutSlotWeapon(player, nextSlot)!;
+        }
+      }
+
+      player.reloading = false;
+      player.reloadEndAt = 0;
+      this.cancelShieldRecharge(player);
+    },
+
+    dropShieldCharge: (client: Client, _data: DropShieldChargeMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (player.shieldCharges <= 0) return;
+
+      player.shieldCharges -= 1;
+      const index = this.spawnShieldCharge(player.x, player.z);
+      this.cancelShieldRecharge(player);
+      client.send('shieldChargeDropGranted', { index });
+    },
+
+    pickupWeaponDrop: (client: Client, data: PickupWeaponDropMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+
+      const index = data.index;
+      if (index < 0 || index >= this.state.weaponDrops.length) return;
+
+      const drop = this.state.weaponDrops.at(index);
+      if (!drop || drop.collected) return;
+      if (!isWeaponId(drop.weaponId)) return;
+
+      const distance = Math.hypot(player.x - drop.x, player.z - drop.z);
+      if (distance > WEAPON_PICKUP_MAX_DISTANCE) return;
+
+      const resolution = resolveWeaponPickup(
+        player,
+        player.activeWeaponId,
+        drop.weaponId,
+      );
+      if (!resolution) return;
+
+      drop.collected = true;
+      setLoadoutSlotWeapon(player, resolution.targetSlot, drop.weaponId);
+      player.activeWeaponId = drop.weaponId;
+
+      if (
+        resolution.replacedWeaponId &&
+        isWeaponId(resolution.replacedWeaponId)
+      ) {
+        this.spawnWeaponDrop(
+          player.x,
+          player.z,
+          player.yaw,
+          resolution.replacedWeaponId,
+        );
+      }
+
+      player.reloading = false;
+      player.reloadEndAt = 0;
+      this.cancelShieldRecharge(player);
+      client.send('weaponPickupGranted', {
+        index,
+        weaponId: drop.weaponId,
+      });
     },
 
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
@@ -349,30 +491,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!player?.alive) return;
       if (player.shieldCharges >= MAX_SHIELD_CHARGES) return;
 
-      const serverOverlap = overlapsShieldCharge(
-        player.x,
-        player.z,
-        charge.x,
-        charge.z,
-        PLAYER_HALF_WIDTH,
-      );
-
-      if (!serverOverlap) {
-        const desync = Math.hypot(data.x - player.x, data.z - player.z);
-        if (desync > PICKUP_MAX_DESYNC) return;
-
-        if (
-          !overlapsShieldCharge(
-            data.x,
-            data.z,
-            charge.x,
-            charge.z,
-            PLAYER_HALF_WIDTH,
-          )
-        ) {
-          return;
-        }
-      }
+      const distance = Math.hypot(player.x - charge.x, player.z - charge.z);
+      if (distance > SHIELD_PICKUP_MAX_DISTANCE) return;
 
       charge.collected = true;
       player.shieldCharges += 1;
@@ -550,6 +670,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.sprinting = false;
     player.walking = false;
     player.jumping = false;
+    initDefaultLoadoutSlots(player);
     player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
   }
 }

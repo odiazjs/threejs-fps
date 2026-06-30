@@ -1,7 +1,7 @@
+/** Client requests picking up a shield charge while aiming at it. */
 export interface PickupShieldChargeMessage {
-  index: number;
-  /** Client feet X at pickup attempt. */
-  x: number;
-  /** Client feet Z at pickup attempt. */
-  z: number;
+  readonly index: number;
 }
+
+/** Max distance from player feet to shield charge for pickup (meters). */
+export const SHIELD_PICKUP_MAX_DISTANCE = 4;

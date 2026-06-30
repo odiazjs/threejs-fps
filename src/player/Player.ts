@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../shared/level/collision';
-import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
+import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
+import {
+  isWeaponId,
+  LOADOUT_SIZE,
+  LOADOUT_WEAPON_IDS,
+  type WeaponId,
+} from '../../shared/content/weaponIds';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation } from '../combat/WeaponLoadout';
 import { readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
@@ -24,6 +30,7 @@ import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMoun
 import { RemoteHealthBar } from './RemoteHealthBar';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { ShieldBreakFx } from '../effects/ShieldBreakFx';
+import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
 import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
@@ -34,14 +41,9 @@ import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import { getReloadState } from '../../shared/combat/reload';
 import { getDefaultShieldPoints } from '../../shared/combat/shield';
+import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import { PlayerInventory } from '../inventory/PlayerInventory';
 import type { InventoryWeaponEntry } from '../ui/InventoryHud';
-import {
-  isWeaponId,
-  LOADOUT_SIZE,
-  LOADOUT_WEAPON_IDS,
-  type WeaponId,
-} from '../../shared/content/weaponIds';
 const MOVE_SPEED = 3;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
@@ -99,6 +101,7 @@ export class Player {
   private remoteHealthBar: RemoteHealthBar | null = null;
   private damageNumberStack: DamageNumberStack | null = null;
   private shieldBreakFx: ShieldBreakFx | null = null;
+  private shieldRechargeAuraFx: ShieldRechargeAuraFx | null = null;
   private onShieldBreakListener: (() => void) | null = null;
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
@@ -113,6 +116,8 @@ export class Player {
   private targetSprinting = false;
   private targetWalking = false;
   private targetJumping = false;
+  private targetShieldRecharging = false;
+  private targetShieldRechargeEndAt = 0;
   private locomotionWalking = false;
   private locomotionJumping = false;
   private remoteDisplayedWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
@@ -186,6 +191,9 @@ export class Player {
 
       this.shieldBreakFx = new ShieldBreakFx();
       this.object.add(this.shieldBreakFx.object);
+
+      this.shieldRechargeAuraFx = new ShieldRechargeAuraFx();
+      this.object.add(this.shieldRechargeAuraFx.object);
     }
   }
 
@@ -338,12 +346,28 @@ export class Player {
     if (!this.loadout) return [];
 
     const activeIndex = this.loadout.getActiveIndex();
-    return DEFAULT_LOADOUT_CONFIGS.map((config, slotIndex) => ({
-      slotIndex,
-      weaponId: config.id,
-      name: config.name,
-      active: slotIndex === activeIndex,
-    }));
+    return Array.from({ length: LOADOUT_SIZE }, (_, slotIndex) => {
+      const weaponId = this.loadout!.getSlotWeaponId(slotIndex);
+      const occupied = weaponId !== null;
+      return {
+        slotIndex,
+        weaponId,
+        name: occupied ? (getWeaponConfig(weaponId)!.name) : 'Empty',
+        active: occupied && slotIndex === activeIndex,
+        occupied,
+      };
+    });
+  }
+
+  applyLoadoutFromSnapshot(snapshot: PlayerSnapshot): void {
+    if (!this.loadout || !this.camera) return;
+
+    this.loadout.applyServerSlots(snapshot, snapshot.activeWeaponId);
+    if (isWeaponId(snapshot.activeWeaponId)) {
+      this.targetActiveWeaponId = snapshot.activeWeaponId;
+      this.loadout.setRemoteActiveWeapon(snapshot.activeWeaponId);
+      this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
+    }
   }
 
   getAdsBlend(): number {
@@ -508,6 +532,8 @@ export class Player {
     this.targetSprinting = snapshot.sprinting;
     this.targetWalking = snapshot.walking;
     this.targetJumping = snapshot.jumping;
+    this.targetShieldRecharging = snapshot.shieldRecharging;
+    this.targetShieldRechargeEndAt = snapshot.shieldRechargeEndAt;
     this.teamId = snapshot.teamId;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
@@ -536,6 +562,10 @@ export class Player {
     this.shieldPoints = snapshot.shieldPoints;
     if (this.camera) {
       this.inventory.setShieldCharges(snapshot.shieldCharges);
+    } else if (this.loadout && isWeaponId(snapshot.activeWeaponId)) {
+      this.loadout.applyServerSlots(snapshot, snapshot.activeWeaponId);
+      this.loadout.setRemoteActiveWeapon(snapshot.activeWeaponId);
+      this.targetActiveWeaponId = snapshot.activeWeaponId;
     }
 
     if (snap) {
@@ -588,6 +618,21 @@ export class Player {
   updateDamageNumbers(delta: number, camera: THREE.Camera): void {
     this.damageNumberStack?.update(delta, camera);
     this.shieldBreakFx?.update(delta, camera);
+  }
+
+  updateRemoteShieldRecharge(delta: number, worldTime: number, camera: THREE.Camera): void {
+    if (!this.shieldRechargeAuraFx) return;
+
+    const state = getShieldRechargeState(
+      this.targetShieldRecharging,
+      this.targetShieldRechargeEndAt,
+      worldTime,
+    );
+    const visible = state.recharging && this.alive;
+    this.shieldRechargeAuraFx.setActive(visible);
+    if (!visible) return;
+
+    this.shieldRechargeAuraFx.update(delta, camera, state.progress);
   }
 
   updateRemoteWeapon(delta: number, worldTime: number): void {
@@ -794,6 +839,8 @@ export class Player {
     this.damageNumberStack = null;
     this.shieldBreakFx?.dispose();
     this.shieldBreakFx = null;
+    this.shieldRechargeAuraFx?.dispose();
+    this.shieldRechargeAuraFx = null;
     this.characterInstance?.dispose();
     this.characterInstance = null;
     this.displayedCharacterModelFile = null;

@@ -1,57 +1,58 @@
 import * as THREE from 'three';
-import { SHIELD_PICKUP_MAX_DISTANCE } from '../../shared/network/shieldPickup';
 import { sampleGroundHeight } from '../../shared/level/terrainHeight';
-import type { ShieldChargeSnapshot } from '../network/types';
-import { createShieldChargePickup } from './shieldChargeVisual';
+import { WEAPON_PICKUP_MAX_DISTANCE } from '../../shared/network/weaponPickup';
+import type { WeaponDropSnapshot } from '../network/types';
+import { createWeaponDropMesh } from './weaponDropVisual';
 
-export interface ShieldChargeRaycastHit {
+export interface WeaponDropRaycastHit {
   index: number;
+  weaponId: string;
   distance: number;
 }
 
 const _raycaster = new THREE.Raycaster();
 
-export class ShieldChargePickups {
+export class WeaponDrops {
   private readonly root: THREE.Group;
-  private readonly pickups = new Map<number, THREE.Group>();
-  private readonly snapshots = new Map<number, ShieldChargeSnapshot>();
+  private readonly drops = new Map<number, THREE.Group>();
+  private readonly snapshots = new Map<number, WeaponDropSnapshot>();
 
   constructor(scene: THREE.Scene) {
     this.root = new THREE.Group();
-    this.root.name = 'shield-charge-pickups';
+    this.root.name = 'weapon-drops';
     scene.add(this.root);
   }
 
-  applySnapshot(index: number, snapshot: ShieldChargeSnapshot): void {
+  applySnapshot(index: number, snapshot: WeaponDropSnapshot): void {
     if (snapshot.collected) {
-      this.removePickup(index);
+      this.removeDrop(index);
       return;
     }
 
     this.snapshots.set(index, snapshot);
 
-    let pickup = this.pickups.get(index);
-    if (!pickup) {
-      pickup = createShieldChargePickup();
-      pickup.userData.shieldChargeIndex = index;
-      this.pickups.set(index, pickup);
-      this.root.add(pickup);
+    let drop = this.drops.get(index);
+    if (!drop) {
+      drop = createWeaponDropMesh(snapshot.weaponId);
+      drop.userData.weaponDropIndex = index;
+      this.drops.set(index, drop);
+      this.root.add(drop);
     }
 
     const groundY = sampleGroundHeight(snapshot.x, snapshot.z);
-    pickup.position.set(snapshot.x, groundY, snapshot.z);
-    pickup.visible = true;
+    drop.position.set(snapshot.x, groundY + 0.02, snapshot.z);
+    drop.rotation.y = snapshot.yaw;
   }
 
   raycastFromCamera(
     camera: THREE.Camera,
-    maxDistance = SHIELD_PICKUP_MAX_DISTANCE,
-  ): ShieldChargeRaycastHit | null {
+    maxDistance = WEAPON_PICKUP_MAX_DISTANCE,
+  ): WeaponDropRaycastHit | null {
     _raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
     const meshes: THREE.Object3D[] = [];
-    for (const pickup of this.pickups.values()) {
-      pickup.traverse((child) => {
+    for (const drop of this.drops.values()) {
+      drop.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           meshes.push(child);
         }
@@ -66,12 +67,13 @@ export class ShieldChargePickups {
 
       let node: THREE.Object3D | null = hit.object;
       while (node && node !== this.root) {
-        const index = node.userData.shieldChargeIndex as number | undefined;
+        const index = node.userData.weaponDropIndex as number | undefined;
         if (index !== undefined) {
           const snapshot = this.snapshots.get(index);
           if (!snapshot || snapshot.collected) return null;
           return {
             index,
+            weaponId: snapshot.weaponId,
             distance: hit.distance,
           };
         }
@@ -82,14 +84,14 @@ export class ShieldChargePickups {
     return null;
   }
 
-  private removePickup(index: number): void {
+  private removeDrop(index: number): void {
     this.snapshots.delete(index);
 
-    const pickup = this.pickups.get(index);
-    if (!pickup) return;
+    const drop = this.drops.get(index);
+    if (!drop) return;
 
-    pickup.removeFromParent();
-    pickup.traverse((child) => {
+    drop.removeFromParent();
+    drop.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry.dispose();
         const material = child.material;
@@ -100,6 +102,6 @@ export class ShieldChargePickups {
         }
       }
     });
-    this.pickups.delete(index);
+    this.drops.delete(index);
   }
 }

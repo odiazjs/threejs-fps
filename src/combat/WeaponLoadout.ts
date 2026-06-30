@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { WeaponConfig } from '../../shared/content/weaponConfig';
 import type { WeaponId } from '../../shared/content/weaponIds';
-import { LOADOUT_SIZE } from '../../shared/content/weaponIds';
+import { isWeaponId, LOADOUT_SIZE } from '../../shared/content/weaponIds';
+import type { LoadoutSlotSnapshot } from '../../shared/loadout/loadoutSlots';
 import { WeaponAmmo, type AmmoState } from './WeaponAmmo';
 import { WeaponRecoil } from './WeaponRecoil';
 import { createWeaponMesh } from '../content/weaponMeshes';
@@ -66,6 +67,10 @@ export function resolveWeaponMeshRotation(
   );
 }
 
+function parseSlotWeaponId(raw: string): WeaponId | null {
+  return isWeaponId(raw) ? raw : null;
+}
+
 export interface LoadoutAmmoState extends AmmoState {
   weaponName: string;
   slotIndex: number;
@@ -101,7 +106,8 @@ export class WeaponSlot {
 }
 
 export class WeaponLoadout {
-  private readonly slots: WeaponSlot[];
+  private readonly weaponsById: Map<WeaponId, WeaponSlot>;
+  private readonly slotAssignments: (WeaponId | null)[];
   private activeIndex = 0;
   private switchCooldown = 0;
   private meshesForcedHidden = false;
@@ -110,8 +116,9 @@ export class WeaponLoadout {
     if (configs.length !== LOADOUT_SIZE) {
       throw new Error(`Loadout requires exactly ${LOADOUT_SIZE} weapons`);
     }
-    this.slots = configs.map((config) => new WeaponSlot(config));
-    this.slots[0]!.mesh.visible = true;
+    this.weaponsById = new Map(configs.map((config) => [config.id, new WeaponSlot(config)]));
+    this.slotAssignments = configs.map((config) => config.id);
+    this.syncMeshVisibility();
   }
 
   attach(
@@ -120,7 +127,7 @@ export class WeaponLoadout {
     context: WeaponMeshContext,
     characterFitScale?: number,
   ): void {
-    for (const slot of this.slots) {
+    for (const slot of this.weaponsById.values()) {
       parent.add(slot.mesh);
       applyMeshContextScale(slot.mesh, context, characterFitScale);
       const offset = getAttachOffset(slot.config.view, context);
@@ -137,7 +144,7 @@ export class WeaponLoadout {
     characterFitScale?: number,
     basePosition?: THREE.Vector3,
   ): void {
-    for (const slot of this.slots) {
+    for (const slot of this.weaponsById.values()) {
       slot.mesh.removeFromParent();
       parent.add(slot.mesh);
       applyMeshContextScale(slot.mesh, context, characterFitScale);
@@ -152,8 +159,18 @@ export class WeaponLoadout {
     return this.activeIndex;
   }
 
+  getSlotWeaponId(index: number): WeaponId | null {
+    return this.slotAssignments[index] ?? null;
+  }
+
   getActive(): WeaponSlot {
-    return this.slots[this.activeIndex]!;
+    const weaponId = this.slotAssignments[this.activeIndex];
+    if (!weaponId) {
+      const fallback = this.slotAssignments.find((id) => id !== null);
+      if (fallback) return this.weaponsById.get(fallback)!;
+      return this.weaponsById.values().next().value!;
+    }
+    return this.weaponsById.get(weaponId)!;
   }
 
   getActiveWeaponId(): WeaponId {
@@ -165,7 +182,33 @@ export class WeaponLoadout {
   }
 
   getSlot(index: number): WeaponSlot | null {
-    return this.slots[index] ?? null;
+    const weaponId = this.slotAssignments[index];
+    if (!weaponId) return null;
+    return this.weaponsById.get(weaponId) ?? null;
+  }
+
+  isSlotFilled(index: number): boolean {
+    return this.slotAssignments[index] !== null;
+  }
+
+  applyServerSlots(snapshot: LoadoutSlotSnapshot, activeWeaponId: string): void {
+    this.slotAssignments[0] = parseSlotWeaponId(snapshot.weaponSlot0);
+    this.slotAssignments[1] = parseSlotWeaponId(snapshot.weaponSlot1);
+    this.slotAssignments[2] = parseSlotWeaponId(snapshot.weaponSlot2);
+
+    const activeWeapon = isWeaponId(activeWeaponId) ? activeWeaponId : null;
+    const activeSlot = activeWeapon
+      ? this.slotAssignments.indexOf(activeWeapon)
+      : -1;
+
+    if (activeSlot >= 0) {
+      this.activeIndex = activeSlot;
+    } else {
+      const fallback = this.slotAssignments.findIndex((id) => id !== null);
+      if (fallback >= 0) this.activeIndex = fallback;
+    }
+
+    this.syncMeshVisibility();
   }
 
   getAmmoState(): LoadoutAmmoState {
@@ -190,22 +233,21 @@ export class WeaponLoadout {
       this.switchCooldown = Math.max(0, this.switchCooldown - delta);
     }
 
-    for (const slot of this.slots) {
+    for (const slot of this.weaponsById.values()) {
       slot.ammo.update(delta);
     }
   }
 
   trySwitch(slotIndex: number): boolean {
-    if (slotIndex < 0 || slotIndex >= this.slots.length) return false;
+    if (slotIndex < 0 || slotIndex >= LOADOUT_SIZE) return false;
+    if (!this.slotAssignments[slotIndex]) return false;
     if (slotIndex === this.activeIndex) return false;
     if (this.switchCooldown > 0) return false;
 
     this.getActive().ammo.cancelReload();
-
-    this.slots[this.activeIndex]!.mesh.visible = false;
     this.activeIndex = slotIndex;
     this.syncMeshVisibility();
-    this.slots[this.activeIndex]!.recoil.reset();
+    this.getActive().recoil.reset();
     this.switchCooldown = SWITCH_READY_SEC;
     return true;
   }
@@ -220,18 +262,15 @@ export class WeaponLoadout {
   }
 
   refillAllAmmo(reserveRounds?: number): void {
-    for (const slot of this.slots) {
+    for (const slot of this.weaponsById.values()) {
       slot.ammo.refill(reserveRounds);
     }
   }
 
   setRemoteActiveWeapon(weaponId: WeaponId): void {
-    const index = this.slots.findIndex((slot) => slot.config.id === weaponId);
+    const index = this.slotAssignments.indexOf(weaponId);
     if (index < 0) return;
 
-    for (const slot of this.slots) {
-      slot.mesh.visible = false;
-    }
     this.activeIndex = index;
     this.syncMeshVisibility();
   }
@@ -242,20 +281,26 @@ export class WeaponLoadout {
   }
 
   private syncMeshVisibility(): void {
-    for (let i = 0; i < this.slots.length; i++) {
-      this.slots[i]!.mesh.visible = !this.meshesForcedHidden && i === this.activeIndex;
+    for (const slot of this.weaponsById.values()) {
+      slot.mesh.visible = false;
     }
+
+    const activeId = this.slotAssignments[this.activeIndex];
+    if (!activeId || this.meshesForcedHidden) return;
+
+    const active = this.weaponsById.get(activeId);
+    if (active) active.mesh.visible = true;
   }
 
   reset(): void {
-    for (const slot of this.slots) {
+    for (const slot of this.weaponsById.values()) {
       slot.recoil.reset();
     }
     this.switchCooldown = 0;
   }
 
   dispose(): void {
-    for (const slot of this.slots) {
+    for (const slot of this.weaponsById.values()) {
       slot.dispose();
     }
   }

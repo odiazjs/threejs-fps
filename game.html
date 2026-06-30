@@ -282,6 +282,130 @@
         background: linear-gradient(90deg, #00b8d4, #00e8ff);
         transition: width 50ms linear;
       }
+      #weapon-pickup-prompt {
+        position: fixed;
+        left: 50%;
+        top: 58%;
+        transform: translateX(-50%);
+        max-width: min(90vw, 360px);
+        padding: 0.55rem 1rem;
+        border-radius: 6px;
+        background: rgba(8, 12, 16, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+        z-index: 6;
+      }
+      #weapon-pickup-prompt[hidden] {
+        display: none !important;
+      }
+      #weapon-pickup-progress {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.55rem;
+        pointer-events: none;
+        z-index: 6;
+      }
+      #weapon-pickup-progress[hidden] {
+        display: none !important;
+      }
+      .weapon-pickup-spinner {
+        width: 4.5rem;
+        height: 4.5rem;
+        transform: rotate(-90deg);
+      }
+      .weapon-pickup-ring-bg {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.12);
+        stroke-width: 5;
+      }
+      .weapon-pickup-ring-fill {
+        fill: none;
+        stroke: #8fd4a8;
+        stroke-width: 5;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 50ms linear;
+      }
+      .weapon-pickup-timer {
+        color: #8fd4a8;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #shield-pickup-prompt {
+        position: fixed;
+        left: 50%;
+        top: 58%;
+        transform: translateX(-50%);
+        max-width: min(90vw, 360px);
+        padding: 0.55rem 1rem;
+        border-radius: 6px;
+        background: rgba(8, 12, 16, 0.72);
+        border: 1px solid rgba(0, 232, 255, 0.25);
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+        pointer-events: none;
+        z-index: 6;
+      }
+      #shield-pickup-prompt[hidden] {
+        display: none !important;
+      }
+      #shield-pickup-progress {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.55rem;
+        pointer-events: none;
+        z-index: 6;
+      }
+      #shield-pickup-progress[hidden] {
+        display: none !important;
+      }
+      .shield-pickup-spinner {
+        width: 4.5rem;
+        height: 4.5rem;
+        transform: rotate(-90deg);
+      }
+      .shield-pickup-ring-bg {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.12);
+        stroke-width: 5;
+      }
+      .shield-pickup-ring-fill {
+        fill: none;
+        stroke: #00e8ff;
+        stroke-width: 5;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 50ms linear;
+      }
+      .shield-pickup-timer {
+        color: #00e8ff;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-align: center;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
       #message-hud {
         position: fixed;
         top: 58%;
@@ -650,6 +774,63 @@
         border-color: rgba(0, 230, 255, 0.72);
         box-shadow: 0 0 22px rgba(0, 220, 255, 0.22);
       }
+      .inventory-weapon-slot.empty {
+        border-color: rgba(255, 255, 255, 0.08);
+        opacity: 0.55;
+      }
+      .inventory-weapon-slot.empty .inventory-weapon-name {
+        color: rgba(255, 255, 255, 0.45);
+        font-style: italic;
+      }
+      .inventory-weapon-slot.droppable {
+        cursor: pointer;
+      }
+      .inventory-weapon-slot.dropping {
+        border-color: rgba(229, 160, 136, 0.75);
+        box-shadow: 0 0 22px rgba(229, 160, 136, 0.25);
+      }
+      .inventory-drop-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.55rem;
+        border-radius: 12px;
+        background: rgba(8, 12, 16, 0.82);
+        pointer-events: none;
+      }
+      .inventory-drop-overlay[hidden] {
+        display: none !important;
+      }
+      .inventory-weapon-slot {
+        position: relative;
+      }
+      .inventory-drop-spinner {
+        width: 4.5rem;
+        height: 4.5rem;
+        transform: rotate(-90deg);
+      }
+      .inventory-drop-ring-bg {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.12);
+        stroke-width: 5;
+      }
+      .inventory-drop-ring-fill {
+        fill: none;
+        stroke: #e5a088;
+        stroke-width: 5;
+        stroke-linecap: round;
+        transition: stroke-dashoffset 50ms linear;
+      }
+      .inventory-drop-timer {
+        color: #e5a088;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-align: center;
+      }
       .inventory-slot-key {
         align-self: flex-end;
         min-width: 1.55rem;
@@ -704,6 +885,7 @@
         line-height: 1.2;
       }
       .inventory-item-row {
+        position: relative;
         display: flex;
         align-items: center;
         gap: 1.25rem;
@@ -711,6 +893,13 @@
         border: 1px solid rgba(0, 220, 255, 0.2);
         border-radius: 12px;
         background: transparent;
+      }
+      .inventory-item-row.droppable {
+        cursor: pointer;
+      }
+      .inventory-item-row.dropping {
+        border-color: rgba(229, 160, 136, 0.75);
+        box-shadow: 0 0 22px rgba(229, 160, 136, 0.25);
       }
       .inventory-item-details {
         flex: 1;
@@ -814,6 +1003,26 @@
         <div class="shield-recharge-fill"></div>
       </div>
     </div>
+    <div id="weapon-pickup-prompt" hidden>
+      <div class="weapon-pickup-prompt-text"></div>
+    </div>
+    <div id="weapon-pickup-progress" hidden>
+      <svg class="weapon-pickup-spinner" viewBox="0 0 72 72" aria-hidden="true">
+        <circle class="weapon-pickup-ring-bg" cx="36" cy="36" r="34" />
+        <circle class="weapon-pickup-ring-fill" cx="36" cy="36" r="34" />
+      </svg>
+      <div class="weapon-pickup-timer">Picking up weapon</div>
+    </div>
+    <div id="shield-pickup-prompt" hidden>
+      <div class="shield-pickup-prompt-text"></div>
+    </div>
+    <div id="shield-pickup-progress" hidden>
+      <svg class="shield-pickup-spinner" viewBox="0 0 72 72" aria-hidden="true">
+        <circle class="shield-pickup-ring-bg" cx="36" cy="36" r="34" />
+        <circle class="shield-pickup-ring-fill" cx="36" cy="36" r="34" />
+      </svg>
+      <div class="shield-pickup-timer">Picking up shield charge</div>
+    </div>
     <div id="inventory-overlay" hidden>
       <div class="inventory-panel">
         <div class="inventory-title">INVENTORY</div>
@@ -823,7 +1032,7 @@
         </section>
         <section class="inventory-section">
           <div class="inventory-section-label">SHIELD RECHARGES</div>
-          <div class="inventory-item-row">
+          <div id="inventory-shield-row" class="inventory-item-row">
             <div class="inventory-icon-wrap inventory-item-icon-wrap">
               <img id="inventory-shield-icon" class="inventory-item-icon" alt="" />
             </div>
@@ -832,9 +1041,16 @@
               <div class="inventory-item-desc">Restores shield protection</div>
             </div>
             <div id="inventory-shield-count" class="inventory-item-count">0</div>
+            <div class="inventory-drop-overlay" hidden>
+              <svg class="inventory-drop-spinner" viewBox="0 0 80 80" aria-hidden="true">
+                <circle class="inventory-drop-ring-bg" cx="40" cy="40" r="34" />
+                <circle class="inventory-drop-ring-fill" cx="40" cy="40" r="34" />
+              </svg>
+              <div class="inventory-drop-timer">Dropping in 3.0s</div>
+            </div>
           </div>
         </section>
-        <div class="inventory-hint">TAB — CLOSE</div>
+        <div class="inventory-hint">HOLD WEAPON OR SHIELD TO DROP · TAB — CLOSE</div>
       </div>
     </div>
     <script type="module" src="/src/game/main.ts"></script>

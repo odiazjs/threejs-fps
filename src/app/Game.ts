@@ -8,7 +8,7 @@ import { NetworkManager } from '../network/NetworkManager';
 import type { LocalCombatState } from '../network/types';
 import { getShieldCapacity, canUseShieldCharge } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
-import { DEFAULT_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
+import { DEFAULT_SHIELD_CHARGES, MAX_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
@@ -24,12 +24,18 @@ import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import { InventoryHud } from '../ui/InventoryHud';
 import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
+import { ShieldPickupHud } from '../ui/ShieldPickupHud';
+import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
+import { getWeaponConfig } from '../content/weaponConfig';
+import { isWeaponId } from '../../shared/content/weaponIds';
 import { recordDeath, recordKill, getSession } from '../auth/playerSession';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
+import { WeaponDrops } from '../world/WeaponDrops';
+import { isValidDropSlot } from '../../shared/loadout/loadoutSlots';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -70,10 +76,13 @@ export class Game {
     })),
   );
   private shieldRechargeHud = new ShieldRechargeHud();
+  private weaponPickupHud = new WeaponPickupHud();
+  private shieldPickupHud = new ShieldPickupHud();
   private performanceHud = new PerformanceHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
   private shieldChargePickups!: ShieldChargePickups;
+  private weaponDrops!: WeaponDrops;
   private input = new KeyboardInput();
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
@@ -175,6 +184,7 @@ export class Game {
     this.projectiles = new ProjectileManager(this.scene);
     this.ammoPickups = new AmmoPickups(this.scene);
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
+    this.weaponDrops = new WeaponDrops(this.scene);
   }
 
   private initPlayer(): void {
@@ -191,11 +201,34 @@ export class Game {
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
+    this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
+    this.playerControls.setShieldPickupHud(this.shieldPickupHud);
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
     });
     this.player.setWeaponSoundService(this.weaponSounds);
     this.player.setFootstepSoundService(this.footstepSounds);
+
+    this.inventoryHud.setOnWeaponDropRequest((slotIndex) => {
+      if (!this.network) return;
+      const snapshot = this.network.getLocalSnapshot();
+      if (!snapshot) return;
+      if (!isValidDropSlot(snapshot, slotIndex)) {
+        this.messageHud.push('Cannot drop your last weapon');
+        return;
+      }
+      this.network.sendDropWeapon(slotIndex);
+    });
+
+    this.inventoryHud.setOnShieldDropRequest(() => {
+      if (!this.network) return;
+      const snapshot = this.network.getLocalSnapshot();
+      if (!snapshot || snapshot.shieldCharges <= 0) {
+        this.messageHud.push('No shield charges to drop');
+        return;
+      }
+      this.network.sendDropShieldCharge();
+    });
 
     document.addEventListener('keydown', this.onTabKeyDown);
   }
@@ -215,12 +248,17 @@ export class Game {
       this.projectiles,
       this.ammoPickups,
       this.shieldChargePickups,
+      this.weaponDrops,
       () => {
         this.player.addReserveClip();
         this.messageHud.push('Picked up some ammo');
       },
       () => {
+        this.shieldPickupHud.cancelHold();
         this.messageHud.push('Picked up shield charge');
+        if (this.inventoryOpen) {
+          this.refreshInventoryHud();
+        }
       },
       (state) => this.handleLocalCombatChange(state),
       (killerName, victimName) => {
@@ -235,6 +273,36 @@ export class Game {
         if (victimName === session.username) recordDeath(session.username);
       },
     );
+    this.network.onLocalLoadoutChange((snapshot) => {
+      const prevWeapons = this.player.getInventoryWeapons();
+      this.player.applyLoadoutFromSnapshot(snapshot);
+      if (
+        prevWeapons.some(
+          (weapon, index) => weapon.occupied && !this.player.getInventoryWeapons()[index]?.occupied,
+        )
+      ) {
+        this.messageHud.push('Weapon dropped');
+      }
+      if (this.inventoryOpen) {
+        this.refreshInventoryHud();
+      }
+    });
+    this.network.onWeaponPickupGranted((data) => {
+      this.weaponPickupHud.cancelHold();
+      if (isWeaponId(data.weaponId)) {
+        const name = getWeaponConfig(data.weaponId)?.name ?? data.weaponId;
+        this.messageHud.push(`Picked up ${name}`);
+      }
+      if (this.inventoryOpen) {
+        this.refreshInventoryHud();
+      }
+    });
+    this.network.onShieldChargeDropGranted(() => {
+      this.messageHud.push('Shield charge dropped');
+      if (this.inventoryOpen) {
+        this.refreshInventoryHud();
+      }
+    });
     this.network.bindShoot(this.player, () => {
       this.crosshairHud.onHit(this.player.getActiveWeaponId());
     });
@@ -322,6 +390,13 @@ export class Game {
     this.healthHud.update(state);
   }
 
+  private refreshInventoryHud(): void {
+    this.inventoryHud.update({
+      weapons: this.player.getInventoryWeapons(),
+      shieldCharges: this.player.getInventory().getShieldCharges(),
+    });
+  }
+
   private closeInventory(): void {
     if (!this.inventoryOpen) return;
     this.inventoryOpen = false;
@@ -341,10 +416,7 @@ export class Game {
     if (this.inventoryOpen) {
       this.playerControls.controls.unlockSoft();
       this.crosshairHud.setVisible(false);
-      this.inventoryHud.update({
-        weapons: this.player.getInventoryWeapons(),
-        shieldCharges: this.player.getInventory().getShieldCharges(),
-      });
+      this.refreshInventoryHud();
       return;
     }
 
@@ -431,11 +503,6 @@ export class Game {
         this.player.object.position.z,
         delta,
       );
-      this.shieldChargePickups.tryPickup(
-        this.player.object.position.x,
-        this.player.object.position.z,
-        delta,
-      );
 
       this.staminaHud.update(this.player.getSprintState());
       const ammo = this.player.getAmmoState();
@@ -458,6 +525,32 @@ export class Game {
       this.shieldChargeSounds.setActive(
         this.audioUnlocked && this.localCombat.alive && this.localCombat.shieldRecharging,
       );
+
+      if (canAct && camera) {
+        const weaponPickupHit = this.weaponDrops.raycastFromCamera(camera);
+        if (weaponPickupHit) {
+          this.shieldPickupHud.update(null, false, () => {});
+          this.weaponPickupHud.update(
+            { index: weaponPickupHit.index, weaponId: weaponPickupHit.weaponId },
+            this.input.isPressed('KeyF'),
+            (target) => this.network.sendPickupWeaponDrop(target.index),
+          );
+        } else {
+          this.weaponPickupHud.update(null, false, () => {});
+          const shieldPickupHit =
+            this.localCombat.shieldCharges < MAX_SHIELD_CHARGES
+              ? this.shieldChargePickups.raycastFromCamera(camera)
+              : null;
+          this.shieldPickupHud.update(
+            shieldPickupHit ? { index: shieldPickupHit.index } : null,
+            this.input.isPressed('KeyF'),
+            (target) => this.network.sendPickupShieldCharge(target.index),
+          );
+        }
+      } else {
+        this.weaponPickupHud.update(null, false, () => {});
+        this.shieldPickupHud.update(null, false, () => {});
+      }
 
       if (this.inventoryOpen) {
         this.inventoryHud.update({

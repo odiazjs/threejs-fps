@@ -7,16 +7,17 @@ import type { PlayerControls } from '../player/PlayerControls';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
-import { DEFAULT_SHIELD_CHARGES, MAX_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
+import { DEFAULT_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
-import type { LocalShieldPickupHandler } from '../world/ShieldChargePickups';
 import type { ShieldChargePickups } from '../world/ShieldChargePickups';
+import type { WeaponDrops } from '../world/WeaponDrops';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { LocalCombatState } from './types';
+import type { PlayerSnapshot } from './types';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import {
   readProjectileShooterWorldPos,
@@ -53,14 +54,16 @@ export class NetworkManager {
   };
   private readonly recentThreats: RecentThreat[] = [];
   private readonly recentLocalHits = new Map<string, number>();
+  private readonly onLocalLoadoutHandlers: Array<(snapshot: PlayerSnapshot) => void> = [];
 
   constructor(
     scene: THREE.Scene,
     private readonly projectiles: ProjectileManager,
     private readonly ammoPickups: AmmoPickups,
     private readonly shieldChargePickups: ShieldChargePickups,
+    private readonly weaponDrops: WeaponDrops,
     private readonly onLocalAmmoPickup: LocalPickupHandler,
-    private readonly onLocalShieldPickup: LocalShieldPickupHandler,
+    private readonly onLocalShieldPickup: () => void,
     private readonly onLocalPlayerChange: (state: LocalCombatState) => void,
     private readonly onKillFeed: (killerName: string, victimName: string) => void,
   ) {
@@ -69,7 +72,6 @@ export class NetworkManager {
       this.handleRemoteShieldBreak(sessionId);
     });
     this.ammoPickups.bindNetwork(null, this.onLocalAmmoPickup);
-    this.shieldChargePickups.bindNetwork(null, this.onLocalShieldPickup);
   }
 
   async connect(username: string, joinIntent?: GameJoinIntent | null): Promise<void> {
@@ -115,6 +117,9 @@ export class NetworkManager {
     this.roomClient.onShieldChargeChange((index, snapshot) => {
       this.shieldChargePickups.applySnapshot(index, snapshot);
     });
+    this.roomClient.onWeaponDropChange((index, snapshot) => {
+      this.weaponDrops.applySnapshot(index, snapshot);
+    });
     this.roomClient.onShieldChargePickupGranted(() => {
       const snapshot = this.roomClient.getLocalSnapshot();
       if (snapshot && snapshot.shieldCharges !== this.localCombat.shieldCharges) {
@@ -143,6 +148,7 @@ export class NetworkManager {
         teamId: snapshot.teamId,
         username: snapshot.username,
       };
+      this.onLocalLoadoutHandlers.forEach((handler) => handler(snapshot));
       this.onLocalPlayerChange(this.localCombat);
     });
 
@@ -150,12 +156,6 @@ export class NetworkManager {
     this.ammoPickups.bindNetwork(
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,
-    );
-    this.shieldChargePickups.bindNetwork(
-      (index, feetX, feetZ) =>
-        this.roomClient.sendPickupShieldCharge(index, feetX, feetZ),
-      this.onLocalShieldPickup,
-      () => this.localCombat.shieldCharges < MAX_SHIELD_CHARGES,
     );
     this.roomClient.bindState();
 
@@ -174,6 +174,7 @@ export class NetworkManager {
         teamId: snapshot.teamId,
         username: snapshot.username,
       };
+      this.onLocalLoadoutHandlers.forEach((handler) => handler(snapshot));
       this.onLocalPlayerChange(this.localCombat);
     }
 
@@ -228,11 +229,40 @@ export class NetworkManager {
     player.setEyePosition(snapshot.x, snapshot.y, snapshot.z);
     player.setProjectileSpawnOptions(snapshot.teamId, this.roomClient.sessionId);
     player.setFromSnapshot(snapshot, true);
+    player.applyLoadoutFromSnapshot(snapshot);
     player.refillAmmo();
   }
 
   sendStartShieldRecharge(): void {
     this.roomClient.sendStartShieldRecharge();
+  }
+
+  sendDropWeapon(slot: number): void {
+    this.roomClient.sendDropWeapon(slot);
+  }
+
+  sendDropShieldCharge(): void {
+    this.roomClient.sendDropShieldCharge();
+  }
+
+  sendPickupWeaponDrop(index: number): void {
+    this.roomClient.sendPickupWeaponDrop(index);
+  }
+
+  sendPickupShieldCharge(index: number): void {
+    this.roomClient.sendPickupShieldCharge(index);
+  }
+
+  onLocalLoadoutChange(handler: (snapshot: PlayerSnapshot) => void): void {
+    this.onLocalLoadoutHandlers.push(handler);
+  }
+
+  onWeaponPickupGranted(handler: (data: { index: number; weaponId: string }) => void): void {
+    this.roomClient.onWeaponPickupGranted(handler);
+  }
+
+  onShieldChargeDropGranted(handler: (data: { index: number }) => void): void {
+    this.roomClient.onShieldChargeDropGranted(handler);
   }
 
   getLocalSnapshot() {

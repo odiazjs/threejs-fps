@@ -7,6 +7,8 @@ import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
 import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
+import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
+import type { WeaponPickupHud } from '../ui/WeaponPickupHud';
 
 export class PlayerControls {
   readonly controls: PointerAimControls;
@@ -16,6 +18,8 @@ export class PlayerControls {
   private killFeedHud: KillFeedHud | null = null;
   private damageIndicatorHud: DamageIndicatorHud | null = null;
   private shieldRechargeHud: ShieldRechargeHud | null = null;
+  private weaponPickupHud: WeaponPickupHud | null = null;
+  private shieldPickupHud: ShieldPickupHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private hasLockedOnce = false;
@@ -61,6 +65,14 @@ export class PlayerControls {
 
   setShieldRechargeHud(hud: ShieldRechargeHud): void {
     this.shieldRechargeHud = hud;
+  }
+
+  setWeaponPickupHud(hud: WeaponPickupHud): void {
+    this.weaponPickupHud = hud;
+  }
+
+  setShieldPickupHud(hud: ShieldPickupHud): void {
+    this.shieldPickupHud = hud;
   }
 
   setLeaveHandler(handler: () => void): void {
@@ -112,6 +124,8 @@ export class PlayerControls {
       this.ammoHud?.setVisible(true);
       this.healthHud?.setVisible(true);
       this.shieldRechargeHud?.setVisible(true);
+      this.weaponPickupHud?.setVisible(true);
+      this.shieldPickupHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
       this.damageIndicatorHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
@@ -125,6 +139,8 @@ export class PlayerControls {
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);
       this.shieldRechargeHud?.setVisible(false);
+      this.weaponPickupHud?.setVisible(false);
+      this.shieldPickupHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);
       this.damageIndicatorHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);

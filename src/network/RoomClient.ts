@@ -1,6 +1,9 @@
 import { Client, Callbacks, type Room } from '@colyseus/sdk';
 import type { KillFeedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
+import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
+import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
+import type { ShieldChargeSpawnMessage } from '../../shared/network/shieldDrop';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
 import {
@@ -8,6 +11,7 @@ import {
   type AmmoBoxState,
   type PlayerState,
   type ShieldChargeState,
+  type WeaponDropState,
 } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
 import type { WeaponId } from '../../shared/content/weaponIds';
@@ -24,8 +28,12 @@ import type {
   PlayerSnapshot,
   ProjectileSpawnHandler,
   ShieldChargeChangeHandler,
+  ShieldChargeDropGrantedHandler,
   ShieldChargePickupGrantedHandler,
   ShieldChargeSnapshot,
+  WeaponDropChangeHandler,
+  WeaponDropSnapshot,
+  WeaponPickupGrantedHandler,
 } from './types';
 
 function toSnapshot(player: PlayerState): PlayerSnapshot {
@@ -47,6 +55,9 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     reloading: player.reloading,
     reloadEndAt: player.reloadEndAt,
     activeWeaponId: player.activeWeaponId,
+    weaponSlot0: player.weaponSlot0,
+    weaponSlot1: player.weaponSlot1,
+    weaponSlot2: player.weaponSlot2,
     sprinting: player.sprinting,
     walking: player.walking,
     jumping: player.jumping,
@@ -69,10 +80,21 @@ function toShieldChargeSnapshot(charge: ShieldChargeState): ShieldChargeSnapshot
   };
 }
 
+function toWeaponDropSnapshot(drop: WeaponDropState): WeaponDropSnapshot {
+  return {
+    x: drop.x,
+    z: drop.z,
+    yaw: drop.yaw,
+    weaponId: drop.weaponId,
+    collected: drop.collected,
+  };
+}
+
 export class RoomClient {
   private room: Room | null = null;
   private readonly boundAmmoBoxes = new Set<number>();
   private readonly boundShieldCharges = new Set<number>();
+  private readonly boundWeaponDrops = new Set<number>();
   private readonly boundPlayers = new Set<string>();
   private syncedWorldTime = 0;
   private worldTimeSyncAt = 0;
@@ -86,6 +108,9 @@ export class RoomClient {
   private onAmmoPickupGrantedHandlers: AmmoPickupGrantedHandler[] = [];
   private onShieldChargeChangeHandlers: ShieldChargeChangeHandler[] = [];
   private onShieldChargePickupGrantedHandlers: ShieldChargePickupGrantedHandler[] = [];
+  private onShieldChargeDropGrantedHandlers: ShieldChargeDropGrantedHandler[] = [];
+  private onWeaponDropChangeHandlers: WeaponDropChangeHandler[] = [];
+  private onWeaponPickupGrantedHandlers: WeaponPickupGrantedHandler[] = [];
   private onKillFeedHandlers: KillFeedHandler[] = [];
 
   get sessionId(): string | null {
@@ -119,6 +144,7 @@ export class RoomClient {
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
     this.bindShieldChargePickupMessages();
+    this.bindWeaponDropMessages();
     this.bindKillMessages();
   }
 
@@ -183,6 +209,18 @@ export class RoomClient {
     this.onShieldChargePickupGrantedHandlers.push(handler);
   }
 
+  onShieldChargeDropGranted(handler: ShieldChargeDropGrantedHandler): void {
+    this.onShieldChargeDropGrantedHandlers.push(handler);
+  }
+
+  onWeaponDropChange(handler: WeaponDropChangeHandler): void {
+    this.onWeaponDropChangeHandlers.push(handler);
+  }
+
+  onWeaponPickupGranted(handler: WeaponPickupGrantedHandler): void {
+    this.onWeaponPickupGrantedHandlers.push(handler);
+  }
+
   onKillFeed(handler: KillFeedHandler): void {
     this.onKillFeedHandlers.push(handler);
   }
@@ -233,12 +271,24 @@ export class RoomClient {
     this.room?.send('pickupAmmo', { index, x: feetX, z: feetZ });
   }
 
-  sendPickupShieldCharge(index: number, feetX: number, feetZ: number): void {
-    this.room?.send('pickupShieldCharge', { index, x: feetX, z: feetZ });
+  sendPickupShieldCharge(index: number): void {
+    this.room?.send('pickupShieldCharge', { index });
   }
 
   sendStartShieldRecharge(): void {
     this.room?.send('startShieldRecharge', {});
+  }
+
+  sendDropWeapon(slot: number): void {
+    this.room?.send('dropWeapon', { slot });
+  }
+
+  sendDropShieldCharge(): void {
+    this.room?.send('dropShieldCharge', {});
+  }
+
+  sendPickupWeaponDrop(index: number): void {
+    this.room?.send('pickupWeaponDrop', { index });
   }
 
   sendHit(targetId: string, weaponId: WeaponId): void {
@@ -261,6 +311,7 @@ export class RoomClient {
     this.boundPlayers.clear();
     this.boundAmmoBoxes.clear();
     this.boundShieldCharges.clear();
+    this.boundWeaponDrops.clear();
 
     try {
       await Promise.race([
@@ -295,6 +346,38 @@ export class RoomClient {
   private bindShieldChargePickupMessages(): void {
     this.room?.onMessage('shieldChargePickupGranted', () => {
       this.onShieldChargePickupGrantedHandlers.forEach((handler) => handler());
+    });
+
+    this.room?.onMessage('shieldChargeDropGranted', (data: { index: number }) => {
+      this.onShieldChargeDropGrantedHandlers.forEach((handler) => handler(data));
+    });
+
+    this.room?.onMessage('shieldChargeSpawn', (data: ShieldChargeSpawnMessage) => {
+      this.onShieldChargeChangeHandlers.forEach((handler) =>
+        handler(data.index, {
+          x: data.x,
+          z: data.z,
+          collected: false,
+        }),
+      );
+    });
+  }
+
+  private bindWeaponDropMessages(): void {
+    this.room?.onMessage('weaponDrop', (data: WeaponDropSpawnMessage) => {
+      this.onWeaponDropChangeHandlers.forEach((handler) =>
+        handler(data.index, {
+          x: data.x,
+          z: data.z,
+          yaw: data.yaw,
+          weaponId: data.weaponId,
+          collected: false,
+        }),
+      );
+    });
+
+    this.room?.onMessage('weaponPickupGranted', (data: WeaponPickupGrantedMessage) => {
+      this.onWeaponPickupGrantedHandlers.forEach((handler) => handler(data));
     });
   }
 
@@ -362,6 +445,22 @@ export class RoomClient {
         callbacks,
         index as number,
         charge as ShieldChargeState,
+      );
+    });
+
+    callbacks.onAdd('weaponDrops', (drop, index) => {
+      this.bindWeaponDropCallbacks(
+        callbacks,
+        index as number,
+        drop as WeaponDropState,
+      );
+    });
+
+    state.weaponDrops?.forEach((drop, index) => {
+      this.bindWeaponDropCallbacks(
+        callbacks,
+        index as number,
+        drop as WeaponDropState,
       );
     });
   }
@@ -436,6 +535,25 @@ export class RoomClient {
     callbacks.onChange(charge, () => {
       this.onShieldChargeChangeHandlers.forEach((handler) =>
         handler(index, toShieldChargeSnapshot(charge)),
+      );
+    });
+  }
+
+  private bindWeaponDropCallbacks(
+    callbacks: ReturnType<typeof Callbacks.get>,
+    index: number,
+    drop: WeaponDropState,
+  ): void {
+    if (this.boundWeaponDrops.has(index)) return;
+    this.boundWeaponDrops.add(index);
+
+    this.onWeaponDropChangeHandlers.forEach((handler) =>
+      handler(index, toWeaponDropSnapshot(drop)),
+    );
+
+    callbacks.onChange(drop, () => {
+      this.onWeaponDropChangeHandlers.forEach((handler) =>
+        handler(index, toWeaponDropSnapshot(drop)),
       );
     });
   }

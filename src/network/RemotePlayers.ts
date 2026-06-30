@@ -120,6 +120,7 @@ export class RemotePlayers {
       player.updateRemoteWeapon(delta, worldTime);
       player.updateRemoteHealthBar(camera);
       player.updateDamageNumbers(delta, camera);
+      player.updateRemoteShieldRecharge(delta, worldTime, camera);
 
       if (!footsteps) continue;
 

@@ -23,6 +23,9 @@ export class PlayerState extends Schema {
   /** Server world time when the reload finishes (0 when idle). */
   @type('number') reloadEndAt = 0;
   @type('string') activeWeaponId = 'pistol';
+  @type('string') weaponSlot0 = 'pistol';
+  @type('string') weaponSlot1 = 'plasma_rifle';
+  @type('string') weaponSlot2 = 'sniper_rifle';
   @type('boolean') sprinting = false;
   @type('boolean') walking = false;
   @type('boolean') jumping = false;
@@ -40,9 +43,18 @@ export class ShieldChargeState extends Schema {
   @type('boolean') collected = false;
 }
 
+export class WeaponDropState extends Schema {
+  @type('number') x = 0;
+  @type('number') z = 0;
+  @type('number') yaw = 0;
+  @type('string') weaponId = 'pistol';
+  @type('boolean') collected = false;
+}
+
 export class FpsState extends Schema {
   @type('number') worldTime = 0;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type([AmmoBoxState]) ammoBoxes = new ArraySchema<AmmoBoxState>();
   @type([ShieldChargeState]) shieldCharges = new ArraySchema<ShieldChargeState>();
+  @type([WeaponDropState]) weaponDrops = new ArraySchema<WeaponDropState>();
 }
