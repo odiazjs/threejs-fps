@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import type { PartyMember } from '../../shared/network/party';
 import {
   createCharacterInstance,
   loadLobbyCharacterTemplate,
@@ -14,11 +16,16 @@ import { addEdgeLines, updateEdgeLinesForCamera, updateLineResolution } from '..
 import { GrassField } from '../world/GrassField';
 import { createDroneVisual } from '../world/DroneField';
 import { PerformanceHud } from '../ui/PerformanceHud';
+import { LobbyPartyAvatar, partyMemberOffsets } from './LobbyPartyAvatar';
+
+const BASE_CAMERA_Z = 3.2;
+const CAMERA_ZOOM_PER_MEMBER = 0.2;
 
 export class LobbyScene {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly renderer: THREE.WebGLRenderer;
+  private readonly labelRenderer: CSS2DRenderer;
   private readonly avatar = new THREE.Group();
   private characterInstance: CharacterInstance | null = null;
   private weaponMesh: THREE.Group | null = null;
@@ -27,22 +34,40 @@ export class LobbyScene {
   private readonly dronePropellers: THREE.Group[];
   private readonly clock = new THREE.Clock();
   private readonly performanceHud = new PerformanceHud();
+  private readonly localUserId: string;
+  private readonly remoteAvatars = new Map<string, LobbyPartyAvatar>();
+  private characterTemplate: CharacterTemplate | null = null;
+  private partyMembers: PartyMember[] = [];
   private animationId = 0;
+  private readonly readyPromise: Promise<void>;
+  private resolveReady!: () => void;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, localUserId: string) {
+    this.localUserId = localUserId;
+    this.readyPromise = new Promise((resolve) => {
+      this.resolveReady = resolve;
+    });
+
     this.camera = new THREE.PerspectiveCamera(
       42,
       container.clientWidth / container.clientHeight,
       0.1,
       100,
     );
-    this.camera.position.set(0, 1.45, 3.2);
+    this.camera.position.set(0, 1.45, BASE_CAMERA_Z);
     this.camera.lookAt(0, 1.1, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
+
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(container.clientWidth, container.clientHeight);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.inset = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none';
+    container.appendChild(this.labelRenderer.domElement);
 
     this.scene.background = createSkyboxTexture();
 
@@ -90,12 +115,16 @@ export class LobbyScene {
     this.avatar.add(bodyRoot);
     void Promise.all([loadLobbyCharacterTemplate(), preloadWeaponMeshes()])
       .then(([template]) => {
+        this.characterTemplate = template;
         this.characterInstance = createCharacterInstance(template);
         bodyRoot.add(this.characterInstance.root);
         this.attachLobbyWeapon(template);
+        this.syncRemoteAvatars();
+        this.scheduleReadyAfterRender();
       })
       .catch((error) => {
         console.warn('[LobbyScene] Failed to load lobby assets', error);
+        this.scheduleReadyAfterRender();
       });
 
     this.scene.add(this.avatar);
@@ -105,12 +134,75 @@ export class LobbyScene {
     this.loop();
   }
 
+  whenReady(): Promise<void> {
+    return this.readyPromise;
+  }
+
+  private scheduleReadyAfterRender(): void {
+    requestAnimationFrame(() => {
+      this.renderer.render(this.scene, this.camera);
+      this.labelRenderer.render(this.scene, this.camera);
+      requestAnimationFrame(() => {
+        this.resolveReady();
+      });
+    });
+  }
+
+  setPartyMembers(members: PartyMember[]): void {
+    this.partyMembers = members;
+    this.updateCamera(members.length);
+    this.syncRemoteAvatars();
+  }
+
+  private syncRemoteAvatars(): void {
+    const remoteMembers = this.partyMembers.filter(
+      (member) => member.userId !== this.localUserId,
+    );
+    const remoteIds = new Set(remoteMembers.map((member) => member.userId));
+
+    for (const [userId, avatar] of this.remoteAvatars) {
+      if (!remoteIds.has(userId)) {
+        avatar.dispose();
+        this.remoteAvatars.delete(userId);
+      }
+    }
+
+    if (!this.characterTemplate) return;
+
+    const offsets = partyMemberOffsets(remoteMembers.length);
+    remoteMembers.forEach((member, index) => {
+      let avatar = this.remoteAvatars.get(member.userId);
+      if (!avatar) {
+        avatar = new LobbyPartyAvatar(
+          member.username,
+          this.characterTemplate!,
+          index * 1.7,
+        );
+        this.scene.add(avatar.root);
+        this.remoteAvatars.set(member.userId, avatar);
+      }
+      avatar.setPositionX(offsets[index] ?? 0);
+    });
+
+    this.avatar.position.x = 0;
+  }
+
+  private updateCamera(memberCount: number): void {
+    const zoom = 1 + CAMERA_ZOOM_PER_MEMBER * Math.max(0, memberCount - 1);
+    this.camera.position.z = BASE_CAMERA_Z * zoom;
+  }
+
   private loop = (): void => {
     this.animationId = requestAnimationFrame(this.loop);
     const delta = this.clock.getDelta();
     const t = this.clock.getElapsedTime();
     this.avatar.rotation.y = Math.sin(t * 0.55) * 0.35;
     this.characterInstance?.update(delta);
+
+    for (const avatar of this.remoteAvatars.values()) {
+      avatar.update(delta, t);
+    }
+
     this.grassField.update(t, { cameraPos: this.camera.position });
 
     const orbitAngle = t * 0.72;
@@ -129,6 +221,7 @@ export class LobbyScene {
 
     updateEdgeLinesForCamera(this.camera);
     this.renderer.render(this.scene, this.camera);
+    this.labelRenderer.render(this.scene, this.camera);
     this.performanceHud.update(delta, this.renderer);
   };
 
@@ -166,12 +259,17 @@ export class LobbyScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    this.labelRenderer.setSize(w, h);
     updateLineResolution(w, h);
   };
 
   dispose(): void {
     cancelAnimationFrame(this.animationId);
     window.removeEventListener('resize', this.onResize);
+    for (const avatar of this.remoteAvatars.values()) {
+      avatar.dispose();
+    }
+    this.remoteAvatars.clear();
     this.characterInstance?.dispose();
     this.characterInstance = null;
     this.weaponMesh?.traverse((child) => {
@@ -184,6 +282,7 @@ export class LobbyScene {
     this.weaponMesh = null;
     this.grassField.dispose();
     this.performanceHud.dispose();
+    this.labelRenderer.domElement.remove();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

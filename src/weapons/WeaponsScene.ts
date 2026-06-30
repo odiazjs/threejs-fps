@@ -1,0 +1,226 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { WeaponId } from '../../shared/content/weaponIds';
+import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
+import { createSkyboxTexture } from '../world/SkyboxBuilder';
+import { disposeObject3D } from './disposeMesh';
+
+const SHOWCASE_WEAPON_IDS: WeaponId[] = ['pistol', 'plasma_rifle', 'sniper_rifle'];
+const SHOWCASE_TARGET_SIZE = 2.75;
+const DEFAULT_CAMERA_Z = 4.2 * 1.25;
+const DEFAULT_CAMERA_Y = 0.55;
+
+export class WeaponsScene {
+  private readonly scene = new THREE.Scene();
+  private readonly camera: THREE.PerspectiveCamera;
+  private readonly renderer: THREE.WebGLRenderer;
+  private readonly controls: OrbitControls;
+  private readonly weaponPivot = new THREE.Group();
+  private readonly pickerButtons: HTMLButtonElement[];
+  private currentWeapon: THREE.Group | null = null;
+  private currentWeaponId: WeaponId = 'pistol';
+  private animationId = 0;
+  private disposed = false;
+  private readonly readyPromise: Promise<void>;
+  private resolveReady!: () => void;
+  private readyResolved = false;
+
+  constructor(
+    private readonly container: HTMLElement,
+    pickerRoot: HTMLElement,
+  ) {
+    this.readyPromise = new Promise((resolve) => {
+      this.resolveReady = resolve;
+    });
+    this.camera = new THREE.PerspectiveCamera(
+      38,
+      container.clientWidth / container.clientHeight,
+      0.05,
+      100,
+    );
+    this.camera.position.set(0, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(this.renderer.domElement);
+
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08;
+    this.controls.enablePan = true;
+    this.controls.screenSpacePanning = true;
+    this.controls.minDistance = 1.4;
+    this.controls.maxDistance = 9;
+    this.controls.target.set(0, 0, 0);
+
+    this.scene.background = createSkyboxTexture();
+
+    const hemi = new THREE.HemisphereLight(0xb8d4e8, 0x2a3038, 1.05);
+    const key = new THREE.DirectionalLight(0xffffff, 1.45);
+    key.position.set(2.5, 4, 3);
+    const fill = new THREE.DirectionalLight(0x82dbdb, 0.55);
+    fill.position.set(-2.5, 1.5, -2);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    rim.position.set(0, 2, -4);
+    this.scene.add(hemi, key, fill, rim);
+
+    const pedestal = new THREE.Mesh(
+      new THREE.CircleGeometry(1.15, 48),
+      new THREE.MeshStandardMaterial({
+        color: 0x1a2228,
+        metalness: 0.35,
+        roughness: 0.82,
+      }),
+    );
+    pedestal.rotation.x = -Math.PI / 2;
+    pedestal.position.y = -0.55 * 1.5;
+    this.scene.add(pedestal);
+
+    this.scene.add(this.weaponPivot);
+
+    this.pickerButtons = [...pickerRoot.querySelectorAll<HTMLButtonElement>('.weapons-picker-btn')];
+    for (const button of this.pickerButtons) {
+      button.addEventListener('click', () => {
+        const weaponId = button.dataset.weaponId;
+        if (!weaponId || button.classList.contains('active')) return;
+        void this.selectWeapon(weaponId as WeaponId, button);
+      });
+    }
+
+    window.addEventListener('resize', this.onResize);
+    this.onResize();
+
+    void preloadWeaponMeshes()
+      .then(() => {
+        this.mountWeapon('pistol');
+        this.scheduleReadyAfterRender();
+      })
+      .catch((error) => {
+        console.warn('[WeaponsScene] Failed to load weapon models', error);
+        this.scheduleReadyAfterRender();
+      });
+
+    this.loop();
+  }
+
+  whenReady(): Promise<void> {
+    return this.readyPromise;
+  }
+
+  private scheduleReadyAfterRender(): void {
+    if (this.readyResolved || this.disposed) return;
+
+    requestAnimationFrame(() => {
+      if (this.disposed) return;
+      this.controls.update();
+      this.renderer.render(this.scene, this.camera);
+      requestAnimationFrame(() => {
+        if (this.readyResolved || this.disposed) return;
+        this.readyResolved = true;
+        this.resolveReady();
+      });
+    });
+  }
+
+  private async selectWeapon(weaponId: WeaponId, button: HTMLButtonElement): Promise<void> {
+    if (!SHOWCASE_WEAPON_IDS.includes(weaponId) || weaponId === this.currentWeaponId) return;
+
+    for (const entry of this.pickerButtons) {
+      entry.classList.toggle('active', entry === button);
+      entry.disabled = true;
+    }
+
+    try {
+      await preloadWeaponMeshes();
+      this.mountWeapon(weaponId);
+    } finally {
+      for (const entry of this.pickerButtons) {
+        entry.disabled = false;
+      }
+    }
+  }
+
+  private mountWeapon(weaponId: WeaponId): void {
+    if (this.currentWeapon) {
+      disposeObject3D(this.currentWeapon);
+      this.currentWeapon = null;
+    }
+
+    const weapon = createWeaponMesh(weaponId);
+    this.fitWeaponForShowcase(weapon);
+    this.weaponPivot.add(weapon);
+    this.currentWeapon = weapon;
+    this.currentWeaponId = weaponId;
+    this.resetOrbit();
+  }
+
+  private fitWeaponForShowcase(weapon: THREE.Group): void {
+    weapon.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(weapon);
+    const size = bounds.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+    weapon.scale.setScalar(SHOWCASE_TARGET_SIZE / maxDim);
+
+    weapon.updateMatrixWorld(true);
+    const fitted = new THREE.Box3().setFromObject(weapon);
+    const center = fitted.getCenter(new THREE.Vector3());
+    weapon.position.set(-center.x, -center.y, -center.z);
+  }
+
+  private resetOrbit(): void {
+    this.controls.target.set(0, 0, 0);
+    this.camera.position.set(0, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
+    this.controls.update();
+  }
+
+  private loop = (): void => {
+    if (this.disposed) return;
+    this.animationId = requestAnimationFrame(this.loop);
+    this.controls.update();
+    this.renderer.render(this.scene, this.camera);
+  };
+
+  private onResize = (): void => {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h);
+  };
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+
+    cancelAnimationFrame(this.animationId);
+    window.removeEventListener('resize', this.onResize);
+
+    if (this.currentWeapon) {
+      disposeObject3D(this.currentWeapon);
+      this.currentWeapon = null;
+    }
+
+    this.scene.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      child.geometry.dispose();
+      const { material } = child;
+      if (Array.isArray(material)) {
+        for (const entry of material) entry.dispose();
+      } else {
+        material.dispose();
+      }
+    });
+
+    this.controls.dispose();
+
+    const background = this.scene.background;
+    if (background instanceof THREE.Texture) {
+      background.dispose();
+    }
+
+    this.scene.clear();
+    this.renderer.dispose();
+    this.renderer.domElement.remove();
+  }
+}

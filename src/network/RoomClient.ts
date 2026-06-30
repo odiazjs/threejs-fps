@@ -127,6 +127,11 @@ export class RoomClient {
     return this.syncedWorldTime + (performance.now() - this.worldTimeSyncAt) / 1000;
   }
 
+  getFriendlyFire(): boolean {
+    if (!this.room) return false;
+    return (this.room.state as FpsState).friendlyFire === true;
+  }
+
   async connect(
     credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,

@@ -26,8 +26,13 @@ export class ProjectileManager {
   private readonly meta = new WeakMap<Projectile, ProjectileMeta>();
   private getHitTargets: (() => ProjectileHitTarget[]) | null = null;
   private onPlayerHit: ((targetId: string, point: Vector3) => void) | null = null;
+  private friendlyFire = false;
 
   constructor(private readonly scene: Scene) {}
+
+  setFriendlyFire(enabled: boolean): void {
+    this.friendlyFire = enabled;
+  }
 
   setPlayerHitHandlers(
     getHitTargets: () => ProjectileHitTarget[],
@@ -139,6 +144,7 @@ export class ProjectileManager {
         continue;
       }
       if (
+        !this.friendlyFire &&
         target.teamId === info.ownerTeamId &&
         !isTrainingBotSessionId(target.sessionId)
       ) {

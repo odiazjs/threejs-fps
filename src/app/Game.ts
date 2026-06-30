@@ -58,6 +58,7 @@ import {
 import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
+import { LoadingOverlay } from '../ui/LoadingOverlay';
 
 export class Game {
   private scene!: THREE.Scene;
@@ -154,6 +155,7 @@ export class Game {
     if (this.leaving) return;
     this.leaving = true;
     this.running = false;
+    LoadingOverlay.shared().show('Leaving game...');
     this.environmentSounds.stop();
     this.droneProximitySounds.stop();
     this.shieldChargeSounds.stop();

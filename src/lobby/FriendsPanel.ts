@@ -1,5 +1,9 @@
 import type { FriendSummary } from '../../shared/api/friends';
 import type {
+  FriendPresenceStatus,
+  FriendPresenceUpdate,
+} from '../../shared/network/friendPresence';
+import type {
   FriendRequestMessage,
   FriendRequestResultMessage,
 } from '../../shared/network/friends';
@@ -7,20 +11,29 @@ import type {
   GameInviteMessage,
   GameInviteSentMessage,
 } from '../../shared/network/gameInvite';
+import { MAX_PARTY_SIZE, type PartySnapshotMessage } from '../../shared/network/party';
 import {
   apiListFriends,
   apiRespondFriendRequest,
   apiSendFriendRequest,
 } from '../auth/friendsApi';
 import { setGameJoinIntent } from '../auth/gameJoin';
+import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
 
-interface ActiveInvite {
-  inviteId: string;
-  roomId: string;
-  friendUserId: string;
-  friendDisplayName: string;
-  accepted: boolean;
+const ACTION_TIMEOUT_MS = 12_000;
+
+interface PartySnapshotWaiter {
+  predicate: (snapshot: PartySnapshotMessage) => boolean;
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+interface InviteSendWaiter {
+  resolve: () => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
 }
 
 export class FriendsPanel {
@@ -30,12 +43,20 @@ export class FriendsPanel {
   private readonly status: HTMLElement;
   private readonly toastRoot: HTMLElement;
   private readonly startBtn: HTMLButtonElement;
+  private readonly leaveBtn: HTMLButtonElement;
+  private readonly friendlyFireToggle: HTMLLabelElement;
+  private readonly friendlyFireCheckbox: HTMLInputElement;
+  private readonly loading = LoadingOverlay.shared();
   private readonly pending = new Map<string, FriendRequestMessage>();
   private readonly pendingGameInvites = new Map<string, GameInviteMessage>();
   private friends: FriendSummary[] = [];
-  private activeInvite: ActiveInvite | null = null;
+  private readonly presenceByUserId = new Map<string, FriendPresenceStatus>();
+  private party: PartySnapshotMessage | null = null;
   private launching = false;
   private launchTimeout: ReturnType<typeof setTimeout> | null = null;
+  private onPartySnapshotHandler: ((data: PartySnapshotMessage) => void) | null = null;
+  private inviteSendWaiter: InviteSendWaiter | null = null;
+  private partySnapshotWaiters: PartySnapshotWaiter[] = [];
 
   constructor(private readonly lobby: LobbyClient) {
     this.list = document.getElementById('friends-list')!;
@@ -44,6 +65,9 @@ export class FriendsPanel {
     this.status = document.getElementById('friends-status')!;
     this.toastRoot = document.getElementById('friend-toasts')!;
     this.startBtn = document.getElementById('game-start-btn') as HTMLButtonElement;
+    this.leaveBtn = document.getElementById('party-leave-btn') as HTMLButtonElement;
+    this.friendlyFireToggle = document.getElementById('friendly-fire-toggle') as HTMLLabelElement;
+    this.friendlyFireCheckbox = document.getElementById('friendly-fire-checkbox') as HTMLInputElement;
 
     this.addBtn.addEventListener('click', () => {
       void this.sendRequest();
@@ -54,21 +78,30 @@ export class FriendsPanel {
     this.startBtn.addEventListener('click', () => {
       void this.startHostedGame();
     });
+    this.leaveBtn.addEventListener('click', () => {
+      void this.leaveParty();
+    });
 
     this.lobby.onFriendRequest((data) => this.showRequestToast(data));
     this.lobby.onFriendRequestResult((data) => {
       void this.handleResult(data);
     });
-    this.lobby.onFriendRequestError((data) => this.handleError(data.message));
+    this.lobby.onFriendRequestError((data) => {
+      if (this.inviteSendWaiter) {
+        this.rejectInviteSendWait(new Error(data.message));
+        this.setStatus(data.message);
+        return;
+      }
+      this.handleActionError(data.message);
+    });
 
     this.lobby.onGameInvite((data) => this.showGameInviteToast(data));
     this.lobby.onGameInviteSent((data) => this.handleInviteSent(data));
-    this.lobby.onGameInviteAccepted((data) => this.handleInviteAccepted(data));
+    this.lobby.onGameInviteAccepted((data) => {
+      this.setStatus(`${data.username} joined your party`);
+    });
     this.lobby.onGameInviteDeclined((data) => {
-      if (this.activeInvite?.inviteId === data.inviteId) {
-        this.clearActiveInvite();
-        this.setStatus(`${data.username} declined your invite`);
-      }
+      this.setStatus(`${data.username} declined your invite`);
     });
     this.lobby.onGameInviteCancelled((data) => {
       this.removeGameInviteToast(data.inviteId);
@@ -78,6 +111,28 @@ export class FriendsPanel {
     this.lobby.onGameLaunch((data) => {
       this.launchGame(data.roomId, data.teamId);
     });
+
+    this.lobby.onPartySnapshot((data) => {
+      this.party = data;
+      this.resolvePartySnapshotWaiters(data);
+      this.updatePartyButtons();
+      this.renderFriends();
+      this.onPartySnapshotHandler?.(data);
+    });
+
+    this.lobby.onFriendPresenceSnapshot((data) => {
+      for (const entry of data.friends) {
+        this.presenceByUserId.set(entry.userId, entry.presence);
+      }
+      this.renderFriends();
+    });
+    this.lobby.onFriendPresence((data) => {
+      this.applyPresenceUpdate(data);
+    });
+  }
+
+  onPartySnapshot(handler: (data: PartySnapshotMessage) => void): void {
+    this.onPartySnapshotHandler = handler;
   }
 
   async init(): Promise<void> {
@@ -88,6 +143,10 @@ export class FriendsPanel {
     try {
       const data = await apiListFriends();
       this.friends = data.friends;
+      this.presenceByUserId.clear();
+      for (const friend of data.friends) {
+        this.presenceByUserId.set(friend.userId, friend.presence);
+      }
 
       for (const request of data.incoming) {
         if (this.pending.has(request.id)) continue;
@@ -100,7 +159,7 @@ export class FriendsPanel {
 
       this.renderFriends();
     } catch (error) {
-      this.handleError(error instanceof Error ? error.message : 'Could not load friends');
+      this.handleActionError(error instanceof Error ? error.message : 'Could not load friends');
     }
   }
 
@@ -108,7 +167,13 @@ export class FriendsPanel {
     return this.friends.some((friend) => friend.userId === userId);
   }
 
+  private isBusy(): boolean {
+    return this.loading.active;
+  }
+
   private async sendRequest(): Promise<void> {
+    if (this.isBusy()) return;
+
     const email = this.input.value.trim().toLowerCase();
     if (!email) {
       this.setStatus('Enter an email address');
@@ -125,63 +190,87 @@ export class FriendsPanel {
       return;
     }
 
-    this.addBtn.disabled = true;
     try {
-      const result = await apiSendFriendRequest(email);
+      const result = await this.loading.run(
+        () => apiSendFriendRequest(email),
+        'Adding friend...',
+      );
       this.input.value = '';
       this.setStatus(`Friend request sent to ${result.request.toDisplayName}`);
     } catch (error) {
-      this.handleError(error instanceof Error ? error.message : 'Could not send request');
-    } finally {
-      this.addBtn.disabled = false;
+      this.handleActionError(error instanceof Error ? error.message : 'Could not send request');
     }
   }
 
-  private sendGameInvite(friend: FriendSummary): void {
-    if (this.activeInvite) {
-      this.setStatus('Finish your current invite first');
+  private async sendGameInvite(friend: FriendSummary): Promise<void> {
+    if (this.isBusy()) return;
+
+    if (!this.party?.isHost) {
+      this.setStatus('Only the party host can invite friends');
       return;
     }
 
+    if (this.getPartySize() >= MAX_PARTY_SIZE) {
+      this.setStatus('Party is full');
+      return;
+    }
+
+    if (this.getFriendPresence(friend.userId) !== 'lobby') {
+      this.setStatus(`${friend.displayName} is not in the lobby`);
+      return;
+    }
+
+    const waitForSend = this.beginInviteSendWait();
     this.lobby.sendGameInvite(friend.userId);
+
+    try {
+      await waitForSend;
+      this.setStatus(`Invite sent to ${friend.displayName}`);
+    } catch {
+      // Status is set by rejectInviteSendWait or the lobby error handler.
+    }
   }
 
   private handleInviteSent(data: GameInviteSentMessage): void {
-    const friend = this.friends.find(
-      (entry) => entry.displayName.toLowerCase() === data.toUsername.toLowerCase(),
-    );
-
-    this.activeInvite = {
-      inviteId: data.inviteId,
-      roomId: data.roomId,
-      friendUserId: friend?.userId ?? '',
-      friendDisplayName: data.toUsername,
-      accepted: false,
-    };
-    this.updateStartButton();
+    this.resolveInviteSendWait();
     this.renderFriends();
-    this.setStatus(`Invite sent to ${data.toUsername} — Room ${data.roomId}`);
+    this.setStatus(`Invite sent to ${data.toUsername} — Party ${data.roomId}`);
   }
 
-  private handleInviteAccepted(data: { inviteId: string; username: string }): void {
-    if (!this.activeInvite || this.activeInvite.inviteId !== data.inviteId) return;
+  private async startHostedGame(): Promise<void> {
+    if (!this.party?.isHost || this.getPartySize() < 2 || this.launching || this.isBusy()) {
+      return;
+    }
 
-    this.activeInvite.accepted = true;
-    this.updateStartButton();
-    this.setStatus(`${data.username} accepted — start when ready`);
-  }
-
-  private startHostedGame(): void {
-    if (!this.activeInvite?.accepted || this.launching) return;
     this.launching = true;
     this.startBtn.disabled = true;
     this.startBtn.textContent = 'STARTING...';
+    this.friendlyFireCheckbox.disabled = true;
+    this.loading.show('Starting game...');
     this.startLaunchTimeout();
-    this.lobby.startGameInvite(this.activeInvite.inviteId);
+    this.lobby.startGameInvite(this.party.partyId, this.friendlyFireCheckbox.checked);
+  }
+
+  private async leaveParty(): Promise<void> {
+    if (!this.party || this.getPartySize() <= 1 || this.isBusy()) return;
+
+    const partyId = this.party.partyId;
+    this.lobby.leaveParty(partyId);
+
+    try {
+      await this.waitForPartySnapshot(
+        (snapshot) => snapshot.partyId !== partyId || (snapshot.isHost && snapshot.members.length === 1),
+        'Leaving party...',
+      );
+      this.setStatus('Left the party');
+    } catch (error) {
+      this.handleActionError(error instanceof Error ? error.message : 'Could not leave party');
+    }
   }
 
   private launchGame(roomId: string, teamId: number): void {
     this.clearLaunchTimeout();
+    this.loading.show('Joining game...');
     setGameJoinIntent({ roomId, teamId, mode: 'join' });
     void this.lobby.disconnect();
     window.location.assign('/game.html');
@@ -191,8 +280,8 @@ export class FriendsPanel {
     this.clearLaunchTimeout();
     this.launchTimeout = setTimeout(() => {
       if (!this.launching) return;
-      this.handleError('Game start timed out — try again');
-    }, 12_000);
+      this.handleActionError('Game start timed out — try again');
+    }, ACTION_TIMEOUT_MS);
   }
 
   private clearLaunchTimeout(): void {
@@ -246,8 +335,13 @@ export class FriendsPanel {
     accepted: boolean,
     toast: HTMLElement,
   ): Promise<void> {
+    if (this.isBusy()) return;
+
     try {
-      await apiRespondFriendRequest(data.requestId, accepted);
+      await this.loading.run(
+        () => apiRespondFriendRequest(data.requestId, accepted),
+        accepted ? 'Accepting request...' : 'Declining request...',
+      );
       this.pending.delete(data.requestId);
       toast.remove();
 
@@ -258,7 +352,7 @@ export class FriendsPanel {
         this.setStatus(`Declined ${data.fromUsername}`);
       }
     } catch (error) {
-      this.handleError(error instanceof Error ? error.message : 'Could not respond');
+      this.handleActionError(error instanceof Error ? error.message : 'Could not respond');
     }
   }
 
@@ -273,11 +367,11 @@ export class FriendsPanel {
 
     const text = document.createElement('p');
     text.className = 'friend-toast-text';
-    text.textContent = `${data.fromUsername} invited you to play`;
+    text.textContent = `${data.fromUsername} invited you to their party`;
 
     const room = document.createElement('p');
     room.className = 'friend-toast-room';
-    room.textContent = `Room ${data.roomId}`;
+    room.textContent = `Party ${data.roomId}`;
 
     const actions = document.createElement('div');
     actions.className = 'friend-toast-actions';
@@ -293,22 +387,55 @@ export class FriendsPanel {
     decline.textContent = 'DECLINE';
 
     accept.addEventListener('click', () => {
-      this.lobby.respondGameInvite(data.inviteId, data.fromUsername, true);
-      this.pendingGameInvites.delete(data.inviteId);
-      toast.remove();
-      this.setStatus(`Accepted invite from ${data.fromUsername} — waiting for host`);
+      void this.respondToGameInvite(data, true, toast);
     });
 
     decline.addEventListener('click', () => {
-      this.lobby.respondGameInvite(data.inviteId, data.fromUsername, false);
-      this.pendingGameInvites.delete(data.inviteId);
-      toast.remove();
-      this.setStatus(`Declined invite from ${data.fromUsername}`);
+      void this.respondToGameInvite(data, false, toast);
     });
 
     actions.append(accept, decline);
     toast.append(text, room, actions);
     this.toastRoot.appendChild(toast);
+  }
+
+  private async respondToGameInvite(
+    data: GameInviteMessage,
+    accepted: boolean,
+    toast: HTMLElement,
+  ): Promise<void> {
+    if (this.isBusy()) return;
+
+    if (accepted) {
+      this.lobby.respondGameInvite(data.inviteId, data.fromUsername, true);
+      this.pendingGameInvites.delete(data.inviteId);
+      toast.remove();
+
+      try {
+        await this.waitForPartySnapshot(
+          (snapshot) => !snapshot.isHost && snapshot.members.length > 1,
+          'Joining party...',
+        );
+        this.setStatus(`Joined ${data.fromUsername}'s party`);
+      } catch (error) {
+        this.handleActionError(error instanceof Error ? error.message : 'Could not join party');
+      }
+      return;
+    }
+
+    try {
+      await this.loading.run(async () => {
+        this.lobby.respondGameInvite(data.inviteId, data.fromUsername, false);
+        this.pendingGameInvites.delete(data.inviteId);
+        toast.remove();
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 250);
+        });
+      }, 'Declining invite...');
+      this.setStatus(`Declined invite from ${data.fromUsername}`);
+    } catch (error) {
+      this.handleActionError(error instanceof Error ? error.message : 'Could not decline invite');
+    }
   }
 
   private removeGameInviteToast(inviteId: string): void {
@@ -333,23 +460,70 @@ export class FriendsPanel {
     this.setStatus(`You are now friends with ${data.username}`);
   }
 
-  private clearActiveInvite(): void {
-    this.clearLaunchTimeout();
-    this.activeInvite = null;
-    this.launching = false;
-    this.updateStartButton();
+  private getPartySize(): number {
+    return this.party?.members.length ?? 1;
+  }
+
+  private isPartyMember(userId: string): boolean {
+    return this.party?.members.some((member) => member.userId === userId) ?? false;
+  }
+
+  private isPendingInvite(userId: string): boolean {
+    return this.party?.pendingInviteUserIds.includes(userId) ?? false;
+  }
+
+  private updatePartyButtons(): void {
+    const partySize = this.getPartySize();
+    const isHost = this.party?.isHost ?? false;
+    const canStart = isHost && partySize >= 2 && !this.launching && !this.isBusy();
+    const canLeave = partySize > 1 && !isHost;
+    const showHostControls = isHost && partySize >= 2;
+    const blockInputs = this.isBusy() || this.launching;
+
+    this.friendlyFireToggle.hidden = !showHostControls;
+    this.friendlyFireCheckbox.disabled = blockInputs;
+    this.addBtn.disabled = blockInputs;
+    this.input.disabled = blockInputs;
+
+    this.startBtn.hidden = !canStart && !this.launching;
+    this.startBtn.disabled = !canStart;
+    this.startBtn.textContent = this.launching ? 'STARTING...' : 'START GAME';
+
+    this.leaveBtn.hidden = !canLeave;
+    this.leaveBtn.disabled = blockInputs || !canLeave;
+  }
+
+  private applyPresenceUpdate(update: FriendPresenceUpdate): void {
+    if (!this.friends.some((friend) => friend.userId === update.userId)) return;
+    this.presenceByUserId.set(update.userId, update.presence);
+
+    const friend = this.friends.find((entry) => entry.userId === update.userId);
+    if (friend) {
+      friend.online = update.online;
+      friend.presence = update.presence;
+    }
+
     this.renderFriends();
   }
 
-  private updateStartButton(): void {
-    const canStart = Boolean(this.activeInvite?.accepted) && !this.launching;
-    this.startBtn.hidden = !canStart;
-    this.startBtn.disabled = !canStart;
-    this.startBtn.textContent = 'START GAME';
+  private getFriendPresence(userId: string): FriendPresenceStatus {
+    return this.presenceByUserId.get(userId) ?? 'offline';
+  }
+
+  private presenceLabel(presence: FriendPresenceStatus): string {
+    switch (presence) {
+      case 'lobby':
+        return 'IN LOBBY';
+      case 'game':
+        return 'IN GAME';
+      default:
+        return 'OFFLINE';
+    }
   }
 
   private renderFriends(): void {
     this.list.replaceChildren();
+    const blockInvites = this.isBusy() || this.launching;
 
     if (this.friends.length === 0) {
       const empty = document.createElement('li');
@@ -359,43 +533,168 @@ export class FriendsPanel {
       return;
     }
 
+    const isHost = this.party?.isHost ?? false;
+    const partyFull = this.getPartySize() >= MAX_PARTY_SIZE;
+
     for (const friend of this.friends) {
       const item = document.createElement('li');
       item.className = 'friends-item';
+
+      const identity = document.createElement('div');
+      identity.className = 'friends-item-identity';
+
+      const presence = this.getFriendPresence(friend.userId);
+
+      const dot = document.createElement('span');
+      dot.className = `friends-presence-dot friends-presence-dot--${presence}`;
+      dot.setAttribute('aria-hidden', 'true');
+
+      const status = document.createElement('span');
+      status.className = `friends-presence-status friends-presence-status--${presence}`;
+      status.textContent = this.presenceLabel(presence);
 
       const name = document.createElement('span');
       name.className = 'friends-item-name';
       name.textContent = friend.displayName;
       name.title = friend.email;
 
+      identity.append(dot, status, name);
+
       const inviteBtn = document.createElement('button');
       inviteBtn.type = 'button';
       inviteBtn.className = 'friend-invite-btn';
 
-      const isActiveFriend = this.activeInvite?.friendUserId === friend.userId;
+      const inParty = this.isPartyMember(friend.userId);
+      const pending = this.isPendingInvite(friend.userId);
+      const canInvite =
+        !blockInvites &&
+        isHost &&
+        !partyFull &&
+        presence === 'lobby' &&
+        !inParty &&
+        !pending;
 
-      if (isActiveFriend && this.activeInvite) {
-        inviteBtn.textContent = this.activeInvite.roomId;
-        inviteBtn.title = this.activeInvite.accepted
-          ? 'Friend accepted — start the game'
-          : 'Waiting for friend to accept';
+      if (inParty) {
+        inviteBtn.textContent = 'IN PARTY';
         inviteBtn.disabled = true;
+        inviteBtn.title = 'Friend is in your party';
+      } else if (pending) {
+        inviteBtn.textContent = 'PENDING';
+        inviteBtn.disabled = true;
+        inviteBtn.title = 'Waiting for friend to accept';
+      } else if (!isHost) {
+        inviteBtn.textContent = 'INVITE';
+        inviteBtn.disabled = true;
+        inviteBtn.title = 'Only the party host can invite';
       } else {
         inviteBtn.textContent = 'INVITE';
-        inviteBtn.disabled = Boolean(this.activeInvite);
-        inviteBtn.addEventListener('click', () => this.sendGameInvite(friend));
+        inviteBtn.disabled = !canInvite;
+        if (!canInvite && blockInvites) {
+          inviteBtn.title = 'Please wait for the current action to finish';
+        } else if (!canInvite && presence === 'game') {
+          inviteBtn.title = 'Friend is in a match';
+        } else if (!canInvite && presence === 'offline') {
+          inviteBtn.title = 'Friend is offline';
+        } else if (!canInvite && partyFull) {
+          inviteBtn.title = 'Party is full';
+        }
+        if (canInvite) {
+          inviteBtn.addEventListener('click', () => {
+            void this.sendGameInvite(friend);
+          });
+        }
       }
 
-      item.append(name, inviteBtn);
+      item.append(identity, inviteBtn);
       this.list.appendChild(item);
     }
   }
 
-  private handleError(message: string): void {
+  private beginInviteSendWait(): Promise<void> {
+    this.rejectInviteSendWait(new Error('Invite replaced'));
+    this.loading.show('Sending invite...');
+
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        this.rejectInviteSendWait(new Error('Invite timed out'));
+      }, ACTION_TIMEOUT_MS);
+
+      this.inviteSendWaiter = { resolve, reject, timeout };
+    });
+  }
+
+  private resolveInviteSendWait(): void {
+    if (!this.inviteSendWaiter) return;
+    window.clearTimeout(this.inviteSendWaiter.timeout);
+    this.inviteSendWaiter.resolve();
+    this.inviteSendWaiter = null;
+    this.loading.hide();
+  }
+
+  private rejectInviteSendWait(error: Error): void {
+    if (!this.inviteSendWaiter) return;
+    window.clearTimeout(this.inviteSendWaiter.timeout);
+    this.inviteSendWaiter.reject(error);
+    this.inviteSendWaiter = null;
+    this.loading.hide();
+  }
+
+  private waitForPartySnapshot(
+    predicate: (snapshot: PartySnapshotMessage) => boolean,
+    message: string,
+    timeoutMs = ACTION_TIMEOUT_MS,
+  ): Promise<void> {
+    if (this.party && predicate(this.party)) {
+      return Promise.resolve();
+    }
+
+    this.loading.show(message);
+
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        this.removePartySnapshotWaiter(waiter);
+        this.loading.hide();
+        reject(new Error('Request timed out'));
+      }, timeoutMs);
+
+      const waiter: PartySnapshotWaiter = {
+        predicate,
+        resolve: () => {
+          this.removePartySnapshotWaiter(waiter);
+          this.loading.hide();
+          resolve();
+        },
+        reject: (error) => {
+          this.removePartySnapshotWaiter(waiter);
+          this.loading.hide();
+          reject(error);
+        },
+        timeout,
+      };
+
+      this.partySnapshotWaiters.push(waiter);
+    });
+  }
+
+  private resolvePartySnapshotWaiters(snapshot: PartySnapshotMessage): void {
+    for (const waiter of [...this.partySnapshotWaiters]) {
+      if (!waiter.predicate(snapshot)) continue;
+      window.clearTimeout(waiter.timeout);
+      waiter.resolve();
+    }
+  }
+
+  private removePartySnapshotWaiter(target: PartySnapshotWaiter): void {
+    this.partySnapshotWaiters = this.partySnapshotWaiters.filter((waiter) => waiter !== target);
+  }
+
+  private handleActionError(message: string): void {
+    this.rejectInviteSendWait(new Error(message));
     this.clearLaunchTimeout();
     if (this.launching) {
       this.launching = false;
-      this.updateStartButton();
+      this.loading.hide();
+      this.updatePartyButtons();
     }
     this.setStatus(message);
   }

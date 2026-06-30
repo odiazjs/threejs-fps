@@ -4,6 +4,7 @@ import { defineServer, defineRoom } from 'colyseus';
 import { applyApiCors } from './api/cors.js';
 import { registerAuthRoutes } from './auth/routes.js';
 import { registerFriendsRoutes } from './friends/routes.js';
+import { registerLeaderboardRoutes } from './leaderboard/routes.js';
 import { registerMeRoutes } from './me/routes.js';
 import { FpsRoom } from './rooms/FpsRoom.js';
 import { LobbyRoom } from './rooms/LobbyRoom.js';
@@ -19,6 +20,7 @@ export const server = defineServer({
     registerAuthRoutes(app);
     registerMeRoutes(app);
     registerFriendsRoutes(app);
+    registerLeaderboardRoutes(app);
   },
 });
 

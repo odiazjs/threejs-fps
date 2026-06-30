@@ -38,6 +38,11 @@ body {
   box-shadow: 0 0 0 2px rgba(130, 219, 219, 0.25);
 }
 
+.text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .primary-btn {
   padding: 0.75rem 1.25rem;
   border: none;
@@ -281,8 +286,60 @@ body {
   position: fixed;
   right: 1.5rem;
   bottom: 1.5rem;
+  z-index: 2;
   pointer-events: auto;
-  min-width: 160px;
+  min-width: 240px;
+  padding: 1.05rem 2rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.14em;
+}
+
+#lobby-menu {
+  position: fixed;
+  top: 8.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  width: auto;
+  max-width: min(92vw, 720px);
+  pointer-events: auto;
+}
+
+#lobby-menu .lobby-menu-item,
+.lobby-logout-btn,
+.weapons-back-btn,
+.leaderboard-back-btn {
+  background: #0e1114;
+  border: 1px solid rgba(130, 219, 219, 0.38);
+  color: #fff;
+}
+
+#lobby-menu .lobby-menu-item:hover:not(:disabled),
+.lobby-logout-btn:hover:not(:disabled),
+.weapons-back-btn:hover:not(:disabled),
+.leaderboard-back-btn:hover:not(:disabled) {
+  background: #1a2026;
+  border-color: rgba(130, 219, 219, 0.55);
+}
+
+#lobby-menu .lobby-menu-item {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.62rem 1.15rem;
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+#lobby-menu .lobby-menu-item:disabled {
+  background: #101418;
+  color: rgba(255, 255, 255, 0.45);
+  opacity: 1;
 }
 
 .lobby-logout-btn {
@@ -295,7 +352,7 @@ body {
   position: fixed;
   left: 1.5rem;
   bottom: 1.5rem;
-  width: min(280px, 42vw);
+  width: min(380px, 52vw);
   padding: 1rem;
   pointer-events: auto;
 }
@@ -331,7 +388,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  max-height: 140px;
+  max-height: 180px;
   overflow-y: auto;
 }
 
@@ -346,6 +403,56 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
   font-size: 0.82rem;
   font-weight: 600;
+}
+
+.friends-item-identity {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.friends-presence-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.friends-presence-dot--lobby {
+  background: #3dd68c;
+  color: rgba(61, 214, 140, 0.55);
+}
+
+.friends-presence-dot--game {
+  background: #e8c547;
+  color: rgba(232, 197, 71, 0.55);
+}
+
+.friends-presence-dot--offline {
+  background: #e85d5d;
+  color: rgba(232, 93, 93, 0.45);
+}
+
+.friends-presence-status {
+  flex-shrink: 0;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.friends-presence-status--lobby {
+  color: #9ef0c8;
+}
+
+.friends-presence-status--game {
+  color: #f0d878;
+}
+
+.friends-presence-status--offline {
+  color: #c98f8f;
 }
 
 .friends-item-name {
@@ -384,8 +491,61 @@ body {
   font-size: 0.72rem;
 }
 
+.friendly-fire-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 0.55rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(130, 219, 219, 0.22);
+  background: rgba(8, 12, 18, 0.45);
+  color: #d8ecec;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.friendly-fire-toggle[hidden] {
+  display: none;
+}
+
+.friendly-fire-toggle input {
+  accent-color: #82dbdb;
+  cursor: pointer;
+}
+
 .game-start-btn[hidden] {
   display: none;
+}
+
+.party-leave-btn {
+  width: 100%;
+  margin-bottom: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.68rem;
+}
+
+.party-leave-btn[hidden] {
+  display: none;
+}
+
+.lobby-party-name {
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  background: rgba(8, 12, 18, 0.72);
+  border: 1px solid rgba(130, 219, 219, 0.35);
+  color: #e8f4f4;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
 }
 
 .friends-empty {
@@ -450,4 +610,173 @@ body {
 
 .friend-toast-decline:hover {
   background: rgba(229, 160, 136, 0.12);
+}
+
+/* Weapons */
+.weapons-page {
+  min-height: 100vh;
+  background: #0e1114;
+}
+
+#weapons-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.weapons-ui {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  pointer-events: none;
+}
+
+.weapons-picker {
+  position: fixed;
+  top: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  pointer-events: auto;
+  width: min(720px, 92vw);
+}
+
+.weapons-picker-btn {
+  padding: 0.55rem 0.9rem;
+  border: 1px solid rgba(130, 219, 219, 0.35);
+  border-radius: 4px;
+  background: rgba(8, 12, 16, 0.55);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background 120ms linear, border-color 120ms linear, color 120ms linear;
+}
+
+.weapons-picker-btn:hover:not(:disabled) {
+  background: rgba(130, 219, 219, 0.12);
+}
+
+.weapons-picker-btn.active {
+  border-color: rgba(130, 219, 219, 0.85);
+  background: rgba(130, 219, 219, 0.18);
+  color: #fff;
+  box-shadow: 0 0 18px rgba(130, 219, 219, 0.18);
+}
+
+.weapons-picker-btn:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.weapons-back-btn {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  pointer-events: auto;
+  min-width: 180px;
+}
+
+/* Leaderboard */
+.leaderboard-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(94, 184, 196, 0.1), transparent 42%),
+    #0e1114;
+}
+
+.leaderboard-shell {
+  width: min(960px, 92vw);
+  margin: 6.5rem auto 5.5rem;
+  padding: 1.35rem 1.5rem 1.5rem;
+  background: #14181c;
+}
+
+.leaderboard-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #82dbdb;
+  margin-bottom: 0.45rem;
+}
+
+.leaderboard-status {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 1rem;
+}
+
+.leaderboard-table-wrap {
+  overflow-x: auto;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.leaderboard-table thead th {
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(130, 219, 219, 0.28);
+}
+
+.leaderboard-table tbody td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.leaderboard-table tbody tr:hover {
+  background: rgba(130, 219, 219, 0.06);
+}
+
+.leaderboard-rank {
+  width: 3rem;
+  color: #82dbdb;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard-player {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.leaderboard-email {
+  color: rgba(255, 255, 255, 0.72);
+  word-break: break-all;
+}
+
+.leaderboard-kills,
+.leaderboard-kd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.leaderboard-kills {
+  color: #82dbdb;
+}
+
+.leaderboard-kd {
+  color: #fff;
+}
+
+.leaderboard-back-btn {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  pointer-events: auto;
+  min-width: 180px;
 }

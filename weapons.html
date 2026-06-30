@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js FPS — Weapons</title>
+    <style>
+      html {
+        background: #0e1114;
+        color-scheme: dark;
+      }
+
+      body:not(.app-ready) .weapons-ui,
+      body:not(.app-ready) #weapons-canvas {
+        visibility: hidden;
+      }
+
+      #page-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0e1114;
+      }
+
+      #page-boot-splash .page-boot-spinner {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        border: 3px solid rgba(130, 219, 219, 0.2);
+        border-top-color: #82dbdb;
+        animation: page-boot-spin 0.75s linear infinite;
+      }
+
+      @keyframes page-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="/src/styles/pages.css" />
+  </head>
+  <body class="weapons-page">
+    <div id="page-boot-splash" aria-live="polite" aria-busy="true">
+      <div class="page-boot-spinner" aria-hidden="true"></div>
+    </div>
+    <div id="weapons-canvas"></div>
+    <div class="weapons-ui">
+      <nav id="weapons-picker" class="weapons-picker panel" aria-label="Weapon selection">
+        <button
+          type="button"
+          class="weapons-picker-btn active"
+          data-weapon-id="pistol"
+        >
+          Pistol
+        </button>
+        <button
+          type="button"
+          class="weapons-picker-btn"
+          data-weapon-id="plasma_rifle"
+        >
+          Assault Rifle
+        </button>
+        <button
+          type="button"
+          class="weapons-picker-btn"
+          data-weapon-id="sniper_rifle"
+        >
+          Sniper Rifle
+        </button>
+      </nav>
+      <button id="weapons-back-btn" class="secondary-btn weapons-back-btn" type="button">
+        BACK TO LOBBY
+      </button>
+    </div>
+    <script type="module" src="/src/weapons/main.ts"></script>
+  </body>
+</html>

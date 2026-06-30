@@ -1,4 +1,3 @@
-import '../styles/pages.css';
 import { apiLogin, apiSignUp } from './authApi';
 import {
   passwordPolicyHint,

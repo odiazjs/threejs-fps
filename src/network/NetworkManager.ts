@@ -159,6 +159,7 @@ export class NetworkManager {
       this.onLocalAmmoPickup,
     );
     this.roomClient.bindState();
+    this.projectiles.setFriendlyFire(this.roomClient.getFriendlyFire());
 
     const snapshot = this.roomClient.getLocalSnapshot();
     if (snapshot) {

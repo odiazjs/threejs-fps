@@ -6,7 +6,7 @@ import type {
   FriendsListResponse,
 } from '../../../shared/api/friends.js';
 import type { FriendRequestMessage, FriendRequestResultMessage } from '../../../shared/network/friends.js';
-import { notifyLobbyUser } from '../lobby/presence.js';
+import { buildPresenceUpdate, notifyLobbyUser } from '../lobby/presence.js';
 import { ensureUser, findUserByEmail, findUserById } from '../db/users.js';
 import type { AuthContext } from '../auth/middleware.js';
 import { getDb } from '../db/index.js';
@@ -21,10 +21,13 @@ function toFriendSummary(row: {
   displayName: string;
   email: string;
 }): FriendSummary {
+  const presence = buildPresenceUpdate(row.id);
   return {
     userId: row.id,
     displayName: row.displayName,
     email: row.email,
+    online: presence.online,
+    presence: presence.presence,
   };
 }
 

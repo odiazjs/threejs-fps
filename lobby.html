@@ -4,8 +4,48 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Three.js FPS — Lobby</title>
+    <style>
+      html {
+        background: #0e1114;
+        color-scheme: dark;
+      }
+
+      body:not(.app-ready) .lobby-ui,
+      body:not(.app-ready) #lobby-canvas {
+        visibility: hidden;
+      }
+
+      #page-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0e1114;
+      }
+
+      #page-boot-splash .page-boot-spinner {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        border: 3px solid rgba(130, 219, 219, 0.2);
+        border-top-color: #82dbdb;
+        animation: page-boot-spin 0.75s linear infinite;
+      }
+
+      @keyframes page-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="/src/styles/pages.css" />
   </head>
   <body class="lobby-page">
+    <div id="page-boot-splash" aria-live="polite" aria-busy="true">
+      <div class="page-boot-spinner" aria-hidden="true"></div>
+    </div>
     <div id="lobby-canvas"></div>
     <div class="lobby-ui">
       <div class="lobby-top-bar">
@@ -44,15 +84,35 @@
           <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
         </div>
         <div id="friends-status" class="friends-status"></div>
+        <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
+          <input id="friendly-fire-checkbox" type="checkbox" />
+          <span>Friendly fire</span>
+        </label>
         <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
           START GAME
+        </button>
+        <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
+          LEAVE PARTY
         </button>
         <ul id="friends-list" class="friends-list"></ul>
       </aside>
 
       <div id="friend-toasts" class="friend-toasts"></div>
 
-      <button id="lobby-join-btn" class="primary-btn" type="button">JOIN GAME</button>
+      <nav id="lobby-menu" aria-label="Lobby menu">
+        <button
+          id="lobby-leaderboard-btn"
+          class="lobby-menu-item secondary-btn"
+          type="button"
+        >
+          LEADERBOARD
+        </button>
+        <button id="lobby-weapons-btn" class="lobby-menu-item secondary-btn" type="button">
+          WEAPONS
+        </button>
+      </nav>
+
+      <button id="lobby-join-btn" class="primary-btn" type="button">QUICK MATCH</button>
     </div>
     <script type="module" src="/src/lobby/main.ts"></script>
   </body>

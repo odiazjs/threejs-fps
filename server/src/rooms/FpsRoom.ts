@@ -63,6 +63,7 @@ import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
+import { registerGameUser, unregisterUser } from '../lobby/presence.js';
 
 interface MoveMessage {
   x: number;
@@ -80,6 +81,8 @@ interface JoinOptions {
   userId?: string;
   teamId?: number;
   inviteMatch?: boolean;
+  maxPartySize?: number;
+  friendlyFire?: boolean;
 }
 
 export class FpsRoom extends Room<{ state: FpsState }> {
@@ -95,7 +98,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   onCreate(options: JoinOptions = {}): void {
     this.inviteMatch = options.inviteMatch === true;
     this.autoDispose = !this.inviteMatch;
-    this.maxClients = this.inviteMatch ? 2 : 8;
+    const partySize = Math.min(
+      8,
+      Math.max(2, Math.floor(options.maxPartySize ?? 2)),
+    );
+    this.maxClients = this.inviteMatch ? partySize : 8;
+    this.state.friendlyFire = options.friendlyFire === true;
     this.patchRate = 50;
 
     for (const pos of AMMO_BOX_POSITIONS) {
@@ -508,6 +516,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!shooter?.alive || !target?.alive) return;
       if (data.targetId === client.sessionId) return;
       if (
+        !this.state.friendlyFire &&
         shooter.teamId === target.teamId &&
         !isTrainingBotSessionId(data.targetId)
       ) {
@@ -559,6 +568,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const userId = this.normalizeUserId(options.userId);
     if (userId) {
       this.userIdBySession.set(client.sessionId, userId);
+      registerGameUser(userId);
     }
     player.teamId = this.resolveTeamId(options.teamId);
     player.hp = PLAYER_MAX_HP;
@@ -573,8 +583,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   onLeave(client: Client): void {
+    const userId = this.userIdBySession.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.userIdBySession.delete(client.sessionId);
+    if (userId) {
+      unregisterUser(userId);
+    }
 
     if (!this.inviteMatch || this.clients.length > 0) return;
 

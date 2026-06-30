@@ -41,5 +41,7 @@ export interface RespondGameInviteMessage {
 }
 
 export interface StartGameInviteMessage {
-  inviteId: string;
+  inviteId?: string;
+  partyId?: string;
+  friendlyFire?: boolean;
 }

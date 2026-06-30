@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { configureColyseusCors } from './api/cors.js';
+import { initPresenceNotifications } from './lobby/presenceNotify.js';
 import { closeDb, connectDb } from './db/index.js';
 import server from './app.config.js';
 
@@ -22,6 +23,7 @@ async function maybeRunMigrations(): Promise<void> {
 
 async function main(): Promise<void> {
   configureColyseusCors();
+  initPresenceNotifications();
 
   await connectDb();
   console.log('[db] connected');

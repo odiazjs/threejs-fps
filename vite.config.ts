@@ -17,6 +17,8 @@ export default defineConfig({
         verify: 'verify.html',
         lobby: 'lobby.html',
         game: 'game.html',
+        weapons: 'weapons.html',
+        leaderboard: 'leaderboard.html',
       },
     },
   },

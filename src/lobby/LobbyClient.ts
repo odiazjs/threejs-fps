@@ -1,5 +1,9 @@
 import { Client, type Room } from '@colyseus/sdk';
 import type {
+  FriendPresenceSnapshotMessage,
+  FriendPresenceUpdate,
+} from '../../shared/network/friendPresence';
+import type {
   FriendRequestErrorMessage,
   FriendRequestMessage,
   FriendRequestResultMessage,
@@ -12,6 +16,7 @@ import type {
   GameInviteSentMessage,
   GameLaunchMessage,
 } from '../../shared/network/gameInvite';
+import type { PartySnapshotMessage } from '../../shared/network/party';
 import { LobbyState } from '../../shared/schema/LobbyState';
 import { SERVER_URL } from '../config/serverUrl';
 
@@ -55,8 +60,12 @@ export class LobbyClient {
     this.room?.send('respondGameInvite', { inviteId, fromUsername, accepted });
   }
 
-  startGameInvite(inviteId: string): void {
-    this.room?.send('startGameInvite', { inviteId });
+  startGameInvite(partyId: string, friendlyFire: boolean): void {
+    this.room?.send('startGameInvite', { partyId, friendlyFire });
+  }
+
+  leaveParty(partyId: string): void {
+    this.room?.send('leaveParty', { partyId });
   }
 
   onFriendRequest(handler: (data: FriendRequestMessage) => void): void {
@@ -69,6 +78,10 @@ export class LobbyClient {
 
   onFriendRequestError(handler: (data: FriendRequestErrorMessage) => void): void {
     this.friendRequestErrorHandler = handler;
+  }
+
+  onPartySnapshot(handler: (data: PartySnapshotMessage) => void): void {
+    this.partySnapshotHandler = handler;
   }
 
   onGameInvite(handler: (data: GameInviteMessage) => void): void {
@@ -95,6 +108,14 @@ export class LobbyClient {
     this.gameLaunchHandler = handler;
   }
 
+  onFriendPresenceSnapshot(handler: (data: FriendPresenceSnapshotMessage) => void): void {
+    this.friendPresenceSnapshotHandler = handler;
+  }
+
+  onFriendPresence(handler: (data: FriendPresenceUpdate) => void): void {
+    this.friendPresenceHandler = handler;
+  }
+
   private friendRequestHandler: ((data: FriendRequestMessage) => void) | null = null;
   private friendRequestResultHandler: ((data: FriendRequestResultMessage) => void) | null = null;
   private friendRequestErrorHandler: ((data: FriendRequestErrorMessage) => void) | null = null;
@@ -104,6 +125,9 @@ export class LobbyClient {
   private gameInviteDeclinedHandler: ((data: GameInviteDeclinedMessage) => void) | null = null;
   private gameInviteCancelledHandler: ((data: GameInviteCancelledMessage) => void) | null = null;
   private gameLaunchHandler: ((data: GameLaunchMessage) => void) | null = null;
+  private friendPresenceSnapshotHandler: ((data: FriendPresenceSnapshotMessage) => void) | null = null;
+  private friendPresenceHandler: ((data: FriendPresenceUpdate) => void) | null = null;
+  private partySnapshotHandler: ((data: PartySnapshotMessage) => void) | null = null;
 
   private bindMessages(): void {
     this.room?.onMessage('friendRequest', (data: FriendRequestMessage) => {
@@ -132,6 +156,15 @@ export class LobbyClient {
     });
     this.room?.onMessage('gameLaunch', (data: GameLaunchMessage) => {
       this.gameLaunchHandler?.(data);
+    });
+    this.room?.onMessage('friendPresenceSnapshot', (data: FriendPresenceSnapshotMessage) => {
+      this.friendPresenceSnapshotHandler?.(data);
+    });
+    this.room?.onMessage('friendPresence', (data: FriendPresenceUpdate) => {
+      this.friendPresenceHandler?.(data);
+    });
+    this.room?.onMessage('partySnapshot', (data: PartySnapshotMessage) => {
+      this.partySnapshotHandler?.(data);
     });
   }
 }

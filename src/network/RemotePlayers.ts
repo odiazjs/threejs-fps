@@ -58,12 +58,13 @@ export class RemotePlayers {
 
   getEnemyHitTargets(localTeamId: number, localSessionId: string): ProjectileHitTarget[] {
     const targets: ProjectileHitTarget[] = [];
+    const friendlyFire = this.roomClient.getFriendlyFire();
 
     for (const [sessionId, player] of this.players) {
       if (sessionId === localSessionId) continue;
       if (!player.isAlive()) continue;
       const isBot = isTrainingBotSessionId(sessionId);
-      if (!isBot && player.getTeamId() === localTeamId) continue;
+      if (!friendlyFire && !isBot && player.getTeamId() === localTeamId) continue;
 
       const feet = player.getFeetPosition();
       targets.push({

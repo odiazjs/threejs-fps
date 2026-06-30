@@ -1,7 +1,11 @@
+import type { FriendPresenceStatus } from '../network/friendPresence';
+
 export interface FriendSummary {
   userId: string;
   displayName: string;
   email: string;
+  online: boolean;
+  presence: FriendPresenceStatus;
 }
 
 export interface FriendRequestSummary {

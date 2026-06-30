@@ -53,6 +53,7 @@ export class WeaponDropState extends Schema {
 
 export class FpsState extends Schema {
   @type('number') worldTime = 0;
+  @type('boolean') friendlyFire = false;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type([AmmoBoxState]) ammoBoxes = new ArraySchema<AmmoBoxState>();
   @type([ShieldChargeState]) shieldCharges = new ArraySchema<ShieldChargeState>();

@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js FPS — Leaderboard</title>
+    <style>
+      html {
+        background: #0e1114;
+        color-scheme: dark;
+      }
+
+      body:not(.app-ready) .leaderboard-shell,
+      body:not(.app-ready) .leaderboard-back-btn {
+        visibility: hidden;
+      }
+
+      #page-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 10001;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0e1114;
+      }
+
+      #page-boot-splash .page-boot-spinner {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 50%;
+        border: 3px solid rgba(130, 219, 219, 0.2);
+        border-top-color: #82dbdb;
+        animation: page-boot-spin 0.75s linear infinite;
+      }
+
+      @keyframes page-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="/src/styles/pages.css" />
+  </head>
+  <body class="leaderboard-page">
+    <div id="page-boot-splash" aria-live="polite" aria-busy="true">
+      <div class="page-boot-spinner" aria-hidden="true"></div>
+    </div>
+    <main class="leaderboard-shell panel">
+      <h1 class="leaderboard-title">LEADERBOARD</h1>
+      <p id="leaderboard-status" class="leaderboard-status">Loading...</p>
+      <div class="leaderboard-table-wrap">
+        <table class="leaderboard-table" aria-label="Global player rankings">
+          <thead>
+            <tr>
+              <th scope="col">#</th>
+              <th scope="col">Player</th>
+              <th scope="col">Email</th>
+              <th scope="col">Kills</th>
+              <th scope="col">K/D</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body"></tbody>
+        </table>
+      </div>
+    </main>
+    <button id="leaderboard-back-btn" class="secondary-btn leaderboard-back-btn" type="button">
+      BACK TO LOBBY
+    </button>
+    <script type="module" src="/src/leaderboard/main.ts"></script>
+  </body>
+</html>
