@@ -8,19 +8,68 @@
   <body class="auth-page" hidden>
     <div class="auth-panel panel">
       <h1>Three.js FPS</h1>
-      <p>Choose a username to play. Your session is saved in this browser.</p>
-      <form id="auth-form">
+      <p class="auth-subtitle">Sign in or create an account to play.</p>
+
+      <div class="auth-tabs" role="tablist">
+        <button id="auth-tab-login" class="auth-tab active" type="button" role="tab">
+          Sign In
+        </button>
+        <button id="auth-tab-signup" class="auth-tab" type="button" role="tab">
+          Sign Up
+        </button>
+      </div>
+
+      <form id="login-form" class="auth-form">
         <input
-          id="auth-username"
+          id="login-email"
           class="text-input"
-          type="text"
-          placeholder="Username"
-          maxlength="16"
-          autocomplete="username"
+          type="email"
+          placeholder="Email"
+          autocomplete="email"
           required
         />
-        <button id="auth-submit" class="primary-btn" type="submit">CONTINUE</button>
-        <div id="auth-error" class="error-text"></div>
+        <input
+          id="login-password"
+          class="text-input"
+          type="password"
+          placeholder="Password"
+          autocomplete="current-password"
+          required
+        />
+        <button id="login-submit" class="primary-btn" type="submit">SIGN IN</button>
+        <div id="login-error" class="error-text"></div>
+      </form>
+
+      <form id="signup-form" class="auth-form" hidden>
+        <input
+          id="signup-email"
+          class="text-input"
+          type="email"
+          placeholder="Email"
+          autocomplete="email"
+          required
+        />
+        <input
+          id="signup-password"
+          class="text-input"
+          type="password"
+          placeholder="Password"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+        <p id="signup-policy-hint" class="auth-policy-hint"></p>
+        <input
+          id="signup-confirm-password"
+          class="text-input"
+          type="password"
+          placeholder="Confirm password"
+          autocomplete="new-password"
+          minlength="8"
+          required
+        />
+        <button id="signup-submit" class="primary-btn" type="submit">CREATE ACCOUNT</button>
+        <div id="signup-error" class="error-text"></div>
       </form>
     </div>
     <script type="module" src="/src/auth/main.ts"></script>

@@ -14,8 +14,9 @@ import {
   type WeaponDropState,
 } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
-import type { WeaponId } from '../../shared/content/weaponIds';
+import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
+import type { WeaponId } from '../../shared/content/weaponIds';
 import type {
   AmmoBoxChangeHandler,
   AmmoBoxSnapshot,
@@ -127,19 +128,23 @@ export class RoomClient {
   }
 
   async connect(
-    username: string,
+    credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,
     url = SERVER_URL,
   ): Promise<void> {
     const client = new Client(url);
+    const joinOptions = {
+      userId: credentials.userId,
+      username: credentials.username,
+    };
     if (joinIntent?.mode === 'join' && joinIntent.roomId) {
       this.room = await this.joinByIdWithRetry(
         client,
         joinIntent.roomId,
-        { username, teamId: joinIntent.teamId },
+        { ...joinOptions, teamId: joinIntent.teamId },
       );
     } else {
-      this.room = await client.joinOrCreate('fps', { username }, FpsState);
+      this.room = await client.joinOrCreate('fps', joinOptions, FpsState);
     }
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
@@ -151,7 +156,7 @@ export class RoomClient {
   private async joinByIdWithRetry(
     client: Client,
     roomId: string,
-    options: { username: string; teamId: number },
+    options: { userId: string; username: string; teamId: number },
     attempts = 10,
   ): Promise<Room> {
     let lastError: unknown;

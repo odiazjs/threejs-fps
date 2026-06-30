@@ -30,7 +30,8 @@ export interface GameLaunchMessage {
 }
 
 export interface SendGameInviteMessage {
-  targetUsername: string;
+  targetUsername?: string;
+  targetUserId?: string;
 }
 
 export interface RespondGameInviteMessage {

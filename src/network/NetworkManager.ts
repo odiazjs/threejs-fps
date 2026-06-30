@@ -19,6 +19,7 @@ import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { LocalCombatState } from './types';
 import type { PlayerSnapshot } from './types';
 import type { GameJoinIntent } from '../auth/gameJoin';
+import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import {
   readProjectileShooterWorldPos,
   resolveDamageHit,
@@ -74,7 +75,7 @@ export class NetworkManager {
     this.ammoPickups.bindNetwork(null, this.onLocalAmmoPickup);
   }
 
-  async connect(username: string, joinIntent?: GameJoinIntent | null): Promise<void> {
+  async connect(credentials: FpsJoinCredentials, joinIntent?: GameJoinIntent | null): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
       _direction.set(spawn.dirX, spawn.dirY, spawn.dirZ).normalize();
@@ -152,7 +153,7 @@ export class NetworkManager {
       this.onLocalPlayerChange(this.localCombat);
     });
 
-    await this.roomClient.connect(username, joinIntent);
+    await this.roomClient.connect(credentials, joinIntent);
     this.ammoPickups.bindNetwork(
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,

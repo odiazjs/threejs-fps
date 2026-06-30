@@ -1,5 +1,6 @@
 export interface FriendRequestMessage {
   requestId: string;
+  fromUserId: string;
   fromUsername: string;
 }
 

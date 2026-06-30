@@ -62,6 +62,7 @@ import {
 import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
+import { incrementDeaths, incrementKills } from '../stats/service.js';
 
 interface MoveMessage {
   x: number;
@@ -76,6 +77,7 @@ interface MoveMessage {
 
 interface JoinOptions {
   username?: string;
+  userId?: string;
   teamId?: number;
   inviteMatch?: boolean;
 }
@@ -88,6 +90,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly botSpawns = new Map<string, { x: number; z: number; yaw: number }>();
   private readonly botPhysics = new Map<string, PlayerPhysicsState>();
   private readonly botMoveState = new Map<string, TrainingBotMoveState>();
+  private readonly userIdBySession = new Map<string, string>();
 
   onCreate(options: JoinOptions = {}): void {
     this.inviteMatch = options.inviteMatch === true;
@@ -533,6 +536,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       };
       this.broadcast('kill', killFeed);
 
+      this.persistKillStats(client.sessionId, data.targetId);
+
       const targetId = data.targetId;
       this.clock.setTimeout(() => {
         this.respawnPlayer(targetId);
@@ -551,6 +556,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const username = this.sanitizeUsername(options.username);
 
     player.username = username;
+    const userId = this.normalizeUserId(options.userId);
+    if (userId) {
+      this.userIdBySession.set(client.sessionId, userId);
+    }
     player.teamId = this.resolveTeamId(options.teamId);
     player.hp = PLAYER_MAX_HP;
     const shield = resetPlayerShield();
@@ -565,6 +574,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   onLeave(client: Client): void {
     this.state.players.delete(client.sessionId);
+    this.userIdBySession.delete(client.sessionId);
 
     if (!this.inviteMatch || this.clients.length > 0) return;
 
@@ -608,6 +618,31 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private sanitizeUsername(raw?: string): string {
     const trimmed = raw?.trim().slice(0, 16);
     return trimmed && trimmed.length > 0 ? trimmed : 'Player';
+  }
+
+  private normalizeUserId(raw?: string): string | null {
+    const trimmed = raw?.trim();
+    return trimmed && trimmed.length > 0 ? trimmed : null;
+  }
+
+  private persistKillStats(killerSessionId: string, victimSessionId: string): void {
+    if (!isTrainingBotSessionId(killerSessionId)) {
+      const killerUserId = this.userIdBySession.get(killerSessionId);
+      if (killerUserId) {
+        void incrementKills(killerUserId).catch((error) => {
+          console.error('[stats] failed to increment kills', error);
+        });
+      }
+    }
+
+    if (!isTrainingBotSessionId(victimSessionId)) {
+      const victimUserId = this.userIdBySession.get(victimSessionId);
+      if (victimUserId) {
+        void incrementDeaths(victimUserId).catch((error) => {
+          console.error('[stats] failed to increment deaths', error);
+        });
+      }
+    }
   }
 
   private resolveTeamId(requested?: number): number {

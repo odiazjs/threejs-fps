@@ -1,81 +1,200 @@
-const SESSION_KEY = 'fps_player_session';
+import { apiLogout, apiRefresh, type AuthTokens } from './authApi';
+import { displayNameFromEmail } from '../../shared/auth/displayName';
+import { userIdFromIdToken } from './jwt';
+
+export { displayNameFromEmail };
+
+const SESSION_KEY = 'fps_auth_session';
+const PENDING_AUTH_KEY = 'fps_pending_auth';
+
+/** Refresh tokens ~60s before expiry. */
+const EXPIRY_BUFFER_MS = 60_000;
 
 export interface PlayerProfile {
+  userId: string;
+  email: string;
   username: string;
-  kills: number;
-  deaths: number;
+  accessToken: string;
+  idToken: string;
+  refreshToken: string;
+  expiresAt: number;
 }
 
-export function encodeSession(profile: PlayerProfile): string {
-  return btoa(JSON.stringify(profile));
+export interface PendingAuth {
+  email: string;
+  password: string;
+  cognitoUsername: string;
 }
 
-export function decodeSession(token: string): PlayerProfile | null {
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function savePendingAuth(
+  email: string,
+  password: string,
+  cognitoUsername: string,
+): void {
+  sessionStorage.setItem(
+    PENDING_AUTH_KEY,
+    JSON.stringify({
+      email: normalizeEmail(email),
+      password,
+      cognitoUsername,
+    } satisfies PendingAuth),
+  );
+}
+
+export function getPendingAuth(): PendingAuth | null {
+  const raw = sessionStorage.getItem(PENDING_AUTH_KEY);
+  if (!raw) return null;
+
   try {
-    const data = JSON.parse(atob(token)) as Partial<PlayerProfile>;
-    const username = data.username?.trim().slice(0, 16);
-    if (!username) return null;
-
+    const data = JSON.parse(raw) as Partial<PendingAuth>;
+    if (!data.email || !data.password || !data.cognitoUsername) return null;
     return {
-      username,
-      kills: Math.max(0, Number(data.kills) || 0),
-      deaths: Math.max(0, Number(data.deaths) || 0),
+      email: normalizeEmail(data.email),
+      password: data.password,
+      cognitoUsername: data.cognitoUsername,
     };
   } catch {
     return null;
   }
 }
 
-export function getSession(): PlayerProfile | null {
-  const token = localStorage.getItem(SESSION_KEY);
-  if (!token) return null;
-  return decodeSession(token);
+export function clearPendingAuth(): void {
+  sessionStorage.removeItem(PENDING_AUTH_KEY);
+}
+
+export function createSession(
+  email: string,
+  tokens: AuthTokens,
+  _existing?: PlayerProfile | null,
+): PlayerProfile {
+  const normalizedEmail = normalizeEmail(email);
+
+  return {
+    userId: userIdFromIdToken(tokens.idToken),
+    email: normalizedEmail,
+    username: displayNameFromEmail(normalizedEmail),
+    accessToken: tokens.accessToken,
+    idToken: tokens.idToken,
+    refreshToken: tokens.refreshToken,
+    expiresAt: Date.now() + tokens.expiresIn * 1000,
+  };
 }
 
 export function saveSession(profile: PlayerProfile): void {
-  localStorage.setItem(SESSION_KEY, encodeSession(profile));
+  localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
+}
+
+export function getSession(): PlayerProfile | null {
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+
+  try {
+    const data = JSON.parse(raw) as Partial<PlayerProfile>;
+    if (
+      !data.email ||
+      !data.accessToken ||
+      !data.idToken ||
+      !data.refreshToken ||
+      typeof data.expiresAt !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      userId: data.userId || userIdFromIdToken(data.idToken) || '',
+      email: normalizeEmail(data.email),
+      username: displayNameFromEmail(data.email),
+      accessToken: data.accessToken,
+      idToken: data.idToken,
+      refreshToken: data.refreshToken,
+      expiresAt: data.expiresAt,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
 }
 
-export function registerUsername(username: string): PlayerProfile {
-  const trimmed = username.trim().slice(0, 16);
-  const existing = getSession();
-  const profile: PlayerProfile = {
-    username: trimmed,
-    kills: existing?.username === trimmed ? existing.kills : 0,
-    deaths: existing?.username === trimmed ? existing.deaths : 0,
-  };
-  saveSession(profile);
-  return profile;
+export function isSessionExpired(session: PlayerProfile): boolean {
+  return Date.now() >= session.expiresAt - EXPIRY_BUFFER_MS;
 }
 
-export function recordKill(username: string): void {
-  const session = getSession();
-  if (!session || session.username !== username) return;
-  saveSession({ ...session, kills: session.kills + 1 });
-}
-
-export function recordDeath(username: string): void {
-  const session = getSession();
-  if (!session || session.username !== username) return;
-  saveSession({ ...session, deaths: session.deaths + 1 });
-}
-
-export function getKdRatio(profile: PlayerProfile): string {
-  if (profile.deaths === 0) {
-    return profile.kills > 0 ? profile.kills.toFixed(2) : '0.00';
+export async function refreshSessionTokens(
+  session: PlayerProfile,
+): Promise<PlayerProfile | null> {
+  try {
+    const tokens = await apiRefresh(session.refreshToken);
+    const refreshed = createSession(session.email, tokens, session);
+    saveSession(refreshed);
+    return refreshed;
+  } catch {
+    clearSession();
+    return null;
   }
-  return (profile.kills / profile.deaths).toFixed(2);
+}
+
+export async function ensureSession(): Promise<PlayerProfile> {
+  let session = getSession();
+  if (!session) {
+    redirectToSignIn();
+    throw new Error('Not authenticated');
+  }
+
+  if (isSessionExpired(session)) {
+    session = await refreshSessionTokens(session);
+    if (!session) {
+      redirectToSignIn();
+      throw new Error('Session expired');
+    }
+  }
+
+  if (!session.userId && session.idToken) {
+    session = { ...session, userId: userIdFromIdToken(session.idToken) };
+    saveSession(session);
+  }
+
+  return session;
 }
 
 export function requireSession(): PlayerProfile {
   const session = getSession();
   if (!session) {
-    window.location.href = '/';
+    redirectToSignIn();
     throw new Error('Not authenticated');
   }
   return session;
+}
+
+export async function logout(): Promise<void> {
+  const session = getSession();
+  clearSession();
+  clearPendingAuth();
+
+  if (session?.accessToken) {
+    try {
+      await apiLogout(session.accessToken);
+    } catch {
+      // Local session is already cleared.
+    }
+  }
+
+  window.location.href = '/';
+}
+
+function redirectToSignIn(): void {
+  window.location.href = '/';
+}
+
+export function getKdRatio(stats: { kills: number; deaths: number }): string {
+  if (stats.deaths === 0) {
+    return stats.kills > 0 ? stats.kills.toFixed(2) : '0.00';
+  }
+  return (stats.kills / stats.deaths).toFixed(2);
 }

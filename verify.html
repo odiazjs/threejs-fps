@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Three.js FPS — Verify Email</title>
+  </head>
+  <body class="auth-page" hidden>
+    <div class="auth-panel panel">
+      <h1>Verify Email</h1>
+      <p class="auth-subtitle">
+        Enter the verification code sent to
+        <span id="verify-email" class="verify-email"></span>.
+      </p>
+      <form id="verify-form">
+        <input
+          id="verify-code"
+          class="text-input"
+          type="text"
+          inputmode="numeric"
+          placeholder="Verification code"
+          autocomplete="one-time-code"
+          required
+        />
+        <button id="verify-submit" class="primary-btn" type="submit">VERIFY &amp; PLAY</button>
+        <button id="verify-resend" class="secondary-btn" type="button">RESEND CODE</button>
+        <div id="verify-error" class="error-text"></div>
+        <div id="verify-status" class="auth-status"></div>
+      </form>
+    </div>
+    <script type="module" src="/src/auth/verify.ts"></script>
+  </body>
+</html>

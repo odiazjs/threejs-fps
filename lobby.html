@@ -8,28 +8,38 @@
   <body class="lobby-page">
     <div id="lobby-canvas"></div>
     <div class="lobby-ui">
-      <div class="lobby-stats">
-        <div class="lobby-stat">
-          <span class="lobby-stat-label">KILLS</span>
-          <span class="lobby-stat-value" id="stat-kills">0</span>
+      <div class="lobby-top-bar">
+        <div class="lobby-account-bar">
+          <div class="lobby-account panel">
+            <div class="lobby-account-label">SIGNED IN</div>
+            <div class="lobby-username" id="lobby-username">Player</div>
+            <div class="lobby-email" id="lobby-email">player@example.com</div>
+          </div>
+          <button id="lobby-logout-btn" class="secondary-btn lobby-logout-btn" type="button">
+            LOG OUT
+          </button>
         </div>
-        <div class="lobby-stat">
-          <span class="lobby-stat-label">K/D</span>
-          <span class="lobby-stat-value" id="stat-kd">0.00</span>
+        <div class="lobby-stats">
+          <div class="lobby-stat">
+            <span class="lobby-stat-label">KILLS</span>
+            <span class="lobby-stat-value" id="stat-kills">0</span>
+          </div>
+          <div class="lobby-stat">
+            <span class="lobby-stat-label">K/D</span>
+            <span class="lobby-stat-value" id="stat-kd">0.00</span>
+          </div>
         </div>
       </div>
-      <div class="lobby-username" id="lobby-username">Player</div>
 
       <aside id="friends-panel" class="friends-panel panel">
         <h2 class="friends-title">FRIENDS</h2>
         <div class="friends-add-row">
           <input
-            id="friend-username-input"
+            id="friend-email-input"
             class="text-input"
-            type="text"
-            placeholder="Username"
-            maxlength="16"
-            autocomplete="off"
+            type="email"
+            placeholder="Friend email"
+            autocomplete="email"
           />
           <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
         </div>

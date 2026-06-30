@@ -3,7 +3,6 @@ import type {
   FriendRequestErrorMessage,
   FriendRequestMessage,
   FriendRequestResultMessage,
-  FriendRequestSentMessage,
 } from '../../shared/network/friends';
 import type {
   GameInviteAcceptedMessage,
@@ -16,6 +15,11 @@ import type {
 import { LobbyState } from '../../shared/schema/LobbyState';
 import { SERVER_URL } from '../config/serverUrl';
 
+interface LobbyJoinOptions {
+  userId: string;
+  username: string;
+}
+
 export class LobbyClient {
   private room: Room | null = null;
 
@@ -23,9 +27,9 @@ export class LobbyClient {
     return this.room !== null;
   }
 
-  async connect(username: string, url = SERVER_URL): Promise<void> {
+  async connect(options: LobbyJoinOptions, url = SERVER_URL): Promise<void> {
     const client = new Client(url);
-    this.room = await client.joinOrCreate('lobby', { username }, LobbyState);
+    this.room = await client.joinOrCreate('lobby', options, LobbyState);
     this.bindMessages();
   }
 
@@ -39,20 +43,8 @@ export class LobbyClient {
     ]);
   }
 
-  sendFriendRequest(targetUsername: string): void {
-    this.room?.send('sendFriendRequest', { targetUsername });
-  }
-
-  respondFriendRequest(
-    requestId: string,
-    fromUsername: string,
-    accepted: boolean,
-  ): void {
-    this.room?.send('respondFriendRequest', { requestId, fromUsername, accepted });
-  }
-
-  sendGameInvite(targetUsername: string): void {
-    this.room?.send('sendGameInvite', { targetUsername });
+  sendGameInvite(targetUserId: string): void {
+    this.room?.send('sendGameInvite', { targetUserId });
   }
 
   respondGameInvite(
@@ -69,10 +61,6 @@ export class LobbyClient {
 
   onFriendRequest(handler: (data: FriendRequestMessage) => void): void {
     this.friendRequestHandler = handler;
-  }
-
-  onFriendRequestSent(handler: (data: FriendRequestSentMessage) => void): void {
-    this.friendRequestSentHandler = handler;
   }
 
   onFriendRequestResult(handler: (data: FriendRequestResultMessage) => void): void {
@@ -108,7 +96,6 @@ export class LobbyClient {
   }
 
   private friendRequestHandler: ((data: FriendRequestMessage) => void) | null = null;
-  private friendRequestSentHandler: ((data: FriendRequestSentMessage) => void) | null = null;
   private friendRequestResultHandler: ((data: FriendRequestResultMessage) => void) | null = null;
   private friendRequestErrorHandler: ((data: FriendRequestErrorMessage) => void) | null = null;
   private gameInviteHandler: ((data: GameInviteMessage) => void) | null = null;
@@ -121,9 +108,6 @@ export class LobbyClient {
   private bindMessages(): void {
     this.room?.onMessage('friendRequest', (data: FriendRequestMessage) => {
       this.friendRequestHandler?.(data);
-    });
-    this.room?.onMessage('friendRequestSent', (data: FriendRequestSentMessage) => {
-      this.friendRequestSentHandler?.(data);
     });
     this.room?.onMessage('friendRequestResult', (data: FriendRequestResultMessage) => {
       this.friendRequestResultHandler?.(data);

@@ -1,3 +1,4 @@
+import type { FriendSummary } from '../../shared/api/friends';
 import type {
   FriendRequestMessage,
   FriendRequestResultMessage,
@@ -6,19 +7,23 @@ import type {
   GameInviteMessage,
   GameInviteSentMessage,
 } from '../../shared/network/gameInvite';
+import {
+  apiListFriends,
+  apiRespondFriendRequest,
+  apiSendFriendRequest,
+} from '../auth/friendsApi';
 import { setGameJoinIntent } from '../auth/gameJoin';
-import { addFriend, getFriends, isFriend } from '../auth/friendsStorage';
 import type { LobbyClient } from './LobbyClient';
 
 interface ActiveInvite {
   inviteId: string;
   roomId: string;
-  friendUsername: string;
+  friendUserId: string;
+  friendDisplayName: string;
   accepted: boolean;
 }
 
 export class FriendsPanel {
-  private readonly root: HTMLElement;
   private readonly list: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly addBtn: HTMLButtonElement;
@@ -27,32 +32,33 @@ export class FriendsPanel {
   private readonly startBtn: HTMLButtonElement;
   private readonly pending = new Map<string, FriendRequestMessage>();
   private readonly pendingGameInvites = new Map<string, GameInviteMessage>();
+  private friends: FriendSummary[] = [];
   private activeInvite: ActiveInvite | null = null;
   private launching = false;
   private launchTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly lobby: LobbyClient) {
-    this.root = document.getElementById('friends-panel')!;
     this.list = document.getElementById('friends-list')!;
-    this.input = document.getElementById('friend-username-input') as HTMLInputElement;
+    this.input = document.getElementById('friend-email-input') as HTMLInputElement;
     this.addBtn = document.getElementById('friend-add-btn') as HTMLButtonElement;
     this.status = document.getElementById('friends-status')!;
     this.toastRoot = document.getElementById('friend-toasts')!;
     this.startBtn = document.getElementById('game-start-btn') as HTMLButtonElement;
 
-    this.addBtn.addEventListener('click', () => this.sendRequest());
+    this.addBtn.addEventListener('click', () => {
+      void this.sendRequest();
+    });
     this.input.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter') this.sendRequest();
+      if (event.key === 'Enter') void this.sendRequest();
     });
     this.startBtn.addEventListener('click', () => {
       void this.startHostedGame();
     });
 
     this.lobby.onFriendRequest((data) => this.showRequestToast(data));
-    this.lobby.onFriendRequestSent((data) => {
-      this.setStatus(`Friend request sent to ${data.toUsername}`);
+    this.lobby.onFriendRequestResult((data) => {
+      void this.handleResult(data);
     });
-    this.lobby.onFriendRequestResult((data) => this.handleResult(data));
     this.lobby.onFriendRequestError((data) => this.handleError(data.message));
 
     this.lobby.onGameInvite((data) => this.showGameInviteToast(data));
@@ -72,40 +78,84 @@ export class FriendsPanel {
     this.lobby.onGameLaunch((data) => {
       this.launchGame(data.roomId, data.teamId);
     });
-
-    this.renderFriends();
   }
 
-  private sendRequest(): void {
-    const username = this.input.value.trim();
-    if (!username) {
-      this.setStatus('Enter a username');
+  async init(): Promise<void> {
+    await this.loadFriends();
+  }
+
+  private async loadFriends(): Promise<void> {
+    try {
+      const data = await apiListFriends();
+      this.friends = data.friends;
+
+      for (const request of data.incoming) {
+        if (this.pending.has(request.id)) continue;
+        this.showRequestToast({
+          requestId: request.id,
+          fromUserId: request.fromUserId,
+          fromUsername: request.fromDisplayName,
+        });
+      }
+
+      this.renderFriends();
+    } catch (error) {
+      this.handleError(error instanceof Error ? error.message : 'Could not load friends');
+    }
+  }
+
+  private isFriendUserId(userId: string): boolean {
+    return this.friends.some((friend) => friend.userId === userId);
+  }
+
+  private async sendRequest(): Promise<void> {
+    const email = this.input.value.trim().toLowerCase();
+    if (!email) {
+      this.setStatus('Enter an email address');
       return;
     }
 
-    if (isFriend(username)) {
+    if (!email.includes('@')) {
+      this.setStatus('Enter a valid email address');
+      return;
+    }
+
+    if (this.friends.some((friend) => friend.email === email)) {
       this.setStatus('Already friends');
       return;
     }
 
-    this.lobby.sendFriendRequest(username);
-    this.input.value = '';
+    this.addBtn.disabled = true;
+    try {
+      const result = await apiSendFriendRequest(email);
+      this.input.value = '';
+      this.setStatus(`Friend request sent to ${result.request.toDisplayName}`);
+    } catch (error) {
+      this.handleError(error instanceof Error ? error.message : 'Could not send request');
+    } finally {
+      this.addBtn.disabled = false;
+    }
   }
 
-  private sendGameInvite(friendUsername: string): void {
+  private sendGameInvite(friend: FriendSummary): void {
     if (this.activeInvite) {
       this.setStatus('Finish your current invite first');
       return;
     }
 
-    this.lobby.sendGameInvite(friendUsername);
+    this.lobby.sendGameInvite(friend.userId);
   }
 
   private handleInviteSent(data: GameInviteSentMessage): void {
+    const friend = this.friends.find(
+      (entry) => entry.displayName.toLowerCase() === data.toUsername.toLowerCase(),
+    );
+
     this.activeInvite = {
       inviteId: data.inviteId,
       roomId: data.roomId,
-      friendUsername: data.toUsername,
+      friendUserId: friend?.userId ?? '',
+      friendDisplayName: data.toUsername,
       accepted: false,
     };
     this.updateStartButton();
@@ -152,7 +202,7 @@ export class FriendsPanel {
   }
 
   private showRequestToast(data: FriendRequestMessage): void {
-    if (isFriend(data.fromUsername)) return;
+    if (this.isFriendUserId(data.fromUserId)) return;
     if (this.pending.has(data.requestId)) return;
 
     this.pending.set(data.requestId, data);
@@ -179,24 +229,37 @@ export class FriendsPanel {
     decline.textContent = 'DECLINE';
 
     accept.addEventListener('click', () => {
-      this.lobby.respondFriendRequest(data.requestId, data.fromUsername, true);
-      addFriend(data.fromUsername);
-      this.pending.delete(data.requestId);
-      toast.remove();
-      this.renderFriends();
-      this.setStatus(`You are now friends with ${data.fromUsername}`);
+      void this.respondToRequest(data, true, toast);
     });
 
     decline.addEventListener('click', () => {
-      this.lobby.respondFriendRequest(data.requestId, data.fromUsername, false);
-      this.pending.delete(data.requestId);
-      toast.remove();
-      this.setStatus(`Declined ${data.fromUsername}`);
+      void this.respondToRequest(data, false, toast);
     });
 
     actions.append(accept, decline);
     toast.append(text, actions);
     this.toastRoot.appendChild(toast);
+  }
+
+  private async respondToRequest(
+    data: FriendRequestMessage,
+    accepted: boolean,
+    toast: HTMLElement,
+  ): Promise<void> {
+    try {
+      await apiRespondFriendRequest(data.requestId, accepted);
+      this.pending.delete(data.requestId);
+      toast.remove();
+
+      if (accepted) {
+        await this.loadFriends();
+        this.setStatus(`You are now friends with ${data.fromUsername}`);
+      } else {
+        this.setStatus(`Declined ${data.fromUsername}`);
+      }
+    } catch (error) {
+      this.handleError(error instanceof Error ? error.message : 'Could not respond');
+    }
   }
 
   private showGameInviteToast(data: GameInviteMessage): void {
@@ -254,7 +317,7 @@ export class FriendsPanel {
       ?.remove();
   }
 
-  private handleResult(data: FriendRequestResultMessage): void {
+  private async handleResult(data: FriendRequestResultMessage): Promise<void> {
     const toast = this.toastRoot.querySelector<HTMLElement>(
       `[data-request-id="${data.requestId}"]`,
     );
@@ -266,8 +329,7 @@ export class FriendsPanel {
       return;
     }
 
-    addFriend(data.username);
-    this.renderFriends();
+    await this.loadFriends();
     this.setStatus(`You are now friends with ${data.username}`);
   }
 
@@ -287,10 +349,9 @@ export class FriendsPanel {
   }
 
   private renderFriends(): void {
-    const friends = getFriends();
     this.list.replaceChildren();
 
-    if (friends.length === 0) {
+    if (this.friends.length === 0) {
       const empty = document.createElement('li');
       empty.className = 'friends-empty';
       empty.textContent = 'No friends yet';
@@ -298,20 +359,20 @@ export class FriendsPanel {
       return;
     }
 
-    for (const friend of friends) {
+    for (const friend of this.friends) {
       const item = document.createElement('li');
       item.className = 'friends-item';
 
       const name = document.createElement('span');
       name.className = 'friends-item-name';
-      name.textContent = friend;
+      name.textContent = friend.displayName;
+      name.title = friend.email;
 
       const inviteBtn = document.createElement('button');
       inviteBtn.type = 'button';
       inviteBtn.className = 'friend-invite-btn';
 
-      const isActiveFriend =
-        this.activeInvite?.friendUsername.toLowerCase() === friend.toLowerCase();
+      const isActiveFriend = this.activeInvite?.friendUserId === friend.userId;
 
       if (isActiveFriend && this.activeInvite) {
         inviteBtn.textContent = this.activeInvite.roomId;

@@ -29,7 +29,8 @@ import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { isWeaponId } from '../../shared/content/weaponIds';
-import { recordDeath, recordKill, getSession } from '../auth/playerSession';
+import { getSession } from '../auth/playerSession';
+import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
@@ -117,7 +118,7 @@ export class Game {
   };
 
   async start(
-    username: string,
+    credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,
     onConnected?: () => void,
   ): Promise<void> {
@@ -142,7 +143,7 @@ export class Game {
     ]);
     this.initPlayer();
     this.initResize();
-    await this.initNetwork(username, joinIntent);
+    await this.initNetwork(credentials, joinIntent);
     onConnected?.();
     document.getElementById('blocker')!.hidden = false;
     this.running = true;
@@ -240,7 +241,7 @@ export class Game {
   };
 
   private async initNetwork(
-    username: string,
+    credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,
   ): Promise<void> {
     this.network = new NetworkManager(
@@ -266,11 +267,9 @@ export class Game {
         const session = getSession();
         if (!session) return;
         if (killerName === session.username) {
-          recordKill(session.username);
           this.messageHud.pushKill(victimName);
           this.impactSounds.playKillConfirm();
         }
-        if (victimName === session.username) recordDeath(session.username);
       },
     );
     this.network.onLocalLoadoutChange((snapshot) => {
@@ -320,7 +319,7 @@ export class Game {
       }
       this.network.sendStartShieldRecharge();
     });
-    await this.network.connect(username, joinIntent);
+    await this.network.connect(credentials, joinIntent);
     this.network.setFootstepSoundService(this.footstepSounds);
     this.network.setImpactSoundService(this.impactSounds);
     this.network.applyLocalSpawn(this.player);

@@ -1,11 +1,7 @@
 import { Client, Room, matchMaker } from 'colyseus';
 import type {
   FriendRequestErrorMessage,
-  FriendRequestMessage,
   FriendRequestResultMessage,
-  FriendRequestSentMessage,
-  RespondFriendRequestMessage,
-  SendFriendRequestMessage,
 } from '../../../shared/network/friends.js';
 import type {
   GameInviteAcceptedMessage,
@@ -19,15 +15,19 @@ import type {
   StartGameInviteMessage,
 } from '../../../shared/network/gameInvite.js';
 import { LobbyPlayerState, LobbyState } from '../../../shared/schema/LobbyState.js';
+import { registerLobbyUser, unregisterLobbyUser } from '../lobby/presence.js';
 
 interface JoinOptions {
+  userId?: string;
   username?: string;
 }
 
 interface PendingGameInvite {
   inviteId: string;
   hostClient: Client;
+  hostUserId: string;
   hostUsername: string;
+  guestUserId: string;
   guestUsername: string;
   guestClient: Client | null;
   accepted: boolean;
@@ -35,6 +35,11 @@ interface PendingGameInvite {
 
 function normalizeUsername(raw?: string): string | null {
   const trimmed = raw?.trim().slice(0, 16);
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeUserId(raw?: string): string | null {
+  const trimmed = raw?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : null;
 }
 
@@ -55,90 +60,48 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
   state = new LobbyState();
   maxClients = 64;
   private readonly clientsByUsername = new Map<string, Client>();
+  private readonly clientsByUserId = new Map<string, Client>();
+  private readonly userIdByClient = new Map<string, string>();
   private readonly invitesById = new Map<string, PendingGameInvite>();
   private readonly inviteIdByHost = new Map<string, string>();
 
   messages = {
-    sendFriendRequest: (client: Client, data: SendFriendRequestMessage) => {
-      const fromUsername = this.getUsername(client);
-      if (!fromUsername) return;
-
-      const targetUsername = normalizeUsername(data.targetUsername);
-      if (!targetUsername) {
-        this.sendError(client, 'Enter a valid username');
-        return;
-      }
-
-      if (usernameKey(fromUsername) === usernameKey(targetUsername)) {
-        this.sendError(client, 'You cannot add yourself');
-        return;
-      }
-
-      const targetClient = this.clientsByUsername.get(usernameKey(targetUsername));
-      if (!targetClient) {
-        this.sendError(client, 'Player is not online in the lobby');
-        return;
-      }
-
-      const requestId = `${usernameKey(fromUsername)}:${usernameKey(targetUsername)}:${Date.now()}`;
-      const payload: FriendRequestMessage = { requestId, fromUsername };
-
-      targetClient.send('friendRequest', payload);
-
-      const sent: FriendRequestSentMessage = { toUsername: targetUsername };
-      client.send('friendRequestSent', sent);
-    },
-
-    respondFriendRequest: (client: Client, data: RespondFriendRequestMessage) => {
-      const fromUsername = normalizeUsername(data.fromUsername);
-      if (!fromUsername) return;
-
-      const fromClient = this.clientsByUsername.get(usernameKey(fromUsername));
-      if (!fromClient) return;
-
-      const toUsername = this.getUsername(client);
-      if (!toUsername) return;
-
-      const result: FriendRequestResultMessage = {
-        requestId: data.requestId,
-        username: toUsername,
-        accepted: data.accepted,
-      };
-
-      fromClient.send('friendRequestResult', result);
-
-      if (data.accepted) {
-        const mutual: FriendRequestResultMessage = {
-          requestId: data.requestId,
-          username: fromUsername,
-          accepted: true,
-        };
-        client.send('friendRequestResult', mutual);
-      }
-    },
-
     sendGameInvite: (client: Client, data: SendGameInviteMessage) => {
+      const hostUserId = this.getUserId(client);
       const hostUsername = this.getUsername(client);
-      if (!hostUsername) return;
+      if (!hostUserId || !hostUsername) return;
 
+      const guestUserId = data.targetUserId?.trim();
       const guestUsername = normalizeUsername(data.targetUsername);
-      if (!guestUsername) {
-        this.sendError(client, 'Enter a valid username');
+      if (!guestUserId && !guestUsername) {
+        this.sendError(client, 'Enter a valid friend');
         return;
       }
 
-      if (usernameKey(hostUsername) === usernameKey(guestUsername)) {
-        this.sendError(client, 'You cannot invite yourself');
-        return;
-      }
+      const guestClient = guestUserId
+        ? this.clientsByUserId.get(guestUserId)
+        : guestUsername
+          ? this.clientsByUsername.get(usernameKey(guestUsername))
+          : undefined;
 
-      const guestClient = this.clientsByUsername.get(usernameKey(guestUsername));
       if (!guestClient) {
         this.sendError(client, 'Friend is not online in the lobby');
         return;
       }
 
-      const existingInviteId = this.inviteIdByHost.get(usernameKey(hostUsername));
+      const resolvedGuestUserId = this.getUserId(guestClient);
+      const resolvedGuestUsername = this.getUsername(guestClient);
+      if (!resolvedGuestUserId || !resolvedGuestUsername) {
+        this.sendError(client, 'Friend is not online in the lobby');
+        return;
+      }
+
+      if (hostUserId === resolvedGuestUserId) {
+        this.sendError(client, 'You cannot invite yourself');
+        return;
+      }
+
+      const existingInviteId = this.inviteIdByHost.get(hostUserId);
       if (existingInviteId) {
         this.sendError(client, 'You already have an active invite');
         return;
@@ -148,14 +111,16 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       const invite: PendingGameInvite = {
         inviteId,
         hostClient: client,
+        hostUserId,
         hostUsername,
-        guestUsername,
+        guestUserId: resolvedGuestUserId,
+        guestUsername: resolvedGuestUsername,
         guestClient,
         accepted: false,
       };
 
       this.invitesById.set(inviteId, invite);
-      this.inviteIdByHost.set(usernameKey(hostUsername), inviteId);
+      this.inviteIdByHost.set(hostUserId, inviteId);
 
       const payload: GameInviteMessage = {
         inviteId,
@@ -165,7 +130,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       guestClient.send('gameInvite', payload);
 
       const sent: GameInviteSentMessage = {
-        toUsername: guestUsername,
+        toUsername: resolvedGuestUsername,
         roomId: inviteId,
         inviteId,
       };
@@ -176,9 +141,10 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       const invite = this.invitesById.get(data.inviteId);
       if (!invite) return;
 
+      const responderUserId = this.getUserId(client);
       const responderUsername = this.getUsername(client);
-      if (!responderUsername) return;
-      if (usernameKey(responderUsername) !== usernameKey(invite.guestUsername)) return;
+      if (!responderUserId || !responderUsername) return;
+      if (responderUserId !== invite.guestUserId) return;
 
       if (!data.accepted) {
         const declined: GameInviteDeclinedMessage = {
@@ -218,7 +184,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       }
 
       const guestClient =
-        this.clientsByUsername.get(usernameKey(invite.guestUsername)) ?? invite.guestClient;
+        this.clientsByUserId.get(invite.guestUserId) ?? invite.guestClient;
       if (!guestClient) {
         this.sendError(client, 'Your friend left the lobby');
         return;
@@ -245,27 +211,46 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
   };
 
   onJoin(client: Client, options: JoinOptions): void {
+    const userId = normalizeUserId(options.userId);
     const username = normalizeUsername(options.username);
-    if (!username) {
+    if (!userId || !username) {
       client.leave();
       return;
     }
 
     const key = usernameKey(username);
-    const existing = this.clientsByUsername.get(key);
-    if (existing && existing.sessionId !== client.sessionId) {
-      existing.leave(4000);
+    const existingByName = this.clientsByUsername.get(key);
+    if (existingByName && existingByName.sessionId !== client.sessionId) {
+      existingByName.leave(4000);
+    }
+
+    const existingById = this.clientsByUserId.get(userId);
+    if (existingById && existingById.sessionId !== client.sessionId) {
+      existingById.leave(4000);
     }
 
     const player = new LobbyPlayerState();
     player.username = username;
     this.state.players.set(client.sessionId, player);
     this.clientsByUsername.set(key, client);
+    this.clientsByUserId.set(userId, client);
+    this.userIdByClient.set(client.sessionId, userId);
+    registerLobbyUser(userId, client);
   }
 
   onLeave(client: Client): void {
     const username = this.getUsername(client);
+    const userId = this.getUserId(client);
     this.state.players.delete(client.sessionId);
+    this.userIdByClient.delete(client.sessionId);
+
+    if (userId) {
+      if (this.clientsByUserId.get(userId)?.sessionId === client.sessionId) {
+        this.clientsByUserId.delete(userId);
+      }
+      unregisterLobbyUser(userId);
+    }
+
     if (!username) return;
 
     const key = usernameKey(username);
@@ -273,7 +258,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       this.clientsByUsername.delete(key);
     }
 
-    const hostInviteId = this.inviteIdByHost.get(key);
+    const hostInviteId = userId ? this.inviteIdByHost.get(userId) : undefined;
     if (hostInviteId) {
       this.cancelInvite(hostInviteId);
       return;
@@ -282,7 +267,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
     for (const invite of this.invitesById.values()) {
       if (
         invite.guestClient?.sessionId === client.sessionId &&
-        usernameKey(invite.guestUsername) === key
+        invite.guestUserId === userId
       ) {
         const declined: GameInviteDeclinedMessage = {
           inviteId: invite.inviteId,
@@ -299,6 +284,10 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
     return this.state.players.get(client.sessionId)?.username;
   }
 
+  private getUserId(client: Client): string | undefined {
+    return this.userIdByClient.get(client.sessionId);
+  }
+
   private cancelInvite(inviteId: string): void {
     const invite = this.invitesById.get(inviteId);
     if (!invite) return;
@@ -313,7 +302,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
     if (!invite) return;
 
     this.invitesById.delete(inviteId);
-    this.inviteIdByHost.delete(usernameKey(invite.hostUsername));
+    this.inviteIdByHost.delete(invite.hostUserId);
   }
 
   private sendError(client: Client, message: string): void {
