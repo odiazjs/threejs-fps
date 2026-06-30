@@ -6,6 +6,16 @@ services:
     buildCommand: npm install && npm install --prefix ..
     startCommand: npm start
     plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MIGRATE_ON_START
+        value: "true"
+      - key: CORS_ORIGIN
+        fromService:
+          type: web
+          name: threejs-fps-client
+          envVarKey: RENDER_EXTERNAL_URL
 
   - type: web
     name: threejs-fps-client
