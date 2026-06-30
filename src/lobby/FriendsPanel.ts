@@ -505,7 +505,7 @@ export class FriendsPanel {
     this.friendlyFireToggle.hidden = !showHostControls;
     this.friendlyFireCheckbox.disabled = blockInputs;
     this.addBtn.disabled = blockInputs;
-    this.input.disabled = blockInputs;
+    this.input.disabled = false;
 
     this.startBtn.hidden = !canStart && !this.launching;
     this.startBtn.disabled = !canStart;
