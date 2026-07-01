@@ -22,6 +22,10 @@ export class PlayerState extends Schema {
   @type('boolean') reloading = false;
   /** Server world time when the reload finishes (0 when idle). */
   @type('number') reloadEndAt = 0;
+  /** Server world time when the weapon equip animation finishes (0 when idle). */
+  @type('number') weaponSwitchEndAt = 0;
+  /** Server world time when the melee attack animation finishes (0 when idle). */
+  @type('number') meleeAttackEndAt = 0;
   @type('string') activeWeaponId = 'pistol';
   @type('string') weaponSlot0 = 'pistol';
   @type('string') weaponSlot1 = 'plasma_rifle';

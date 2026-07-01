@@ -18,6 +18,8 @@ export interface PlayerSnapshot {
   alive: boolean;
   reloading: boolean;
   reloadEndAt: number;
+  weaponSwitchEndAt: number;
+  meleeAttackEndAt: number;
   activeWeaponId: string;
   weaponSlot0: string;
   weaponSlot1: string;

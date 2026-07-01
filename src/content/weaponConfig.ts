@@ -165,6 +165,52 @@ export const PISTOL_CONFIG: WeaponConfig = {
   },
 };
 
+export const KATANA_CONFIG: WeaponConfig = {
+  id: 'katana',
+  name: 'Katana',
+  clipSize: 1,
+  reloadSec: 0,
+  reserveClips: 0,
+  fireRate: 2,
+  fireMode: 'melee',
+  damage: WEAPON_DAMAGE.katana,
+  projectileSpeed: 0,
+  moveSpeedMultiplier: 1.15,
+  meleeRange: 1.8,
+  view: {
+    hip: { x: 0.12, y: -0.13, z: -0.3 },
+    ads: { x: 0.12, y: -0.2, z: -0.3 },
+    localMeshEuler: { x: 2.2, y: 1.2, z: 5.2 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: -2.2, y: -1.2, z: -5.2 },
+  },
+  recoil: {
+    pattern: [{ pitch: 0, yaw: 0 }],
+    recoverySpeed: 20,
+    aimSmoothSpeed: 24,
+    adsMultiplier: 1,
+    visualKick: 10,
+    visualRecoverySpeed: 18,
+    adsVisualMultiplier: 1,
+  },
+  muzzleFlash: {
+    coreScale: 0,
+    duration: 0,
+    particleCount: 0,
+    particleSpeed: 0,
+    particleSpread: 0,
+    colors: [0xffffff, 0xffffff, 0xffffff],
+    lightIntensity: 0,
+    lightDistance: 0,
+    glowLayers: 0,
+  },
+  sway: { intensity: 1.35 },
+  sounds: {
+    singleShot: '/sounds/katana_melee_sound_1.wav',
+    volume: 0.35,
+  },
+};
+
 export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   id: 'sniper_rifle',
   name: 'Sniper Rifle',
@@ -229,6 +275,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   plasma_rifle: PLASMA_RIFLE_CONFIG,
   pistol: PISTOL_CONFIG,
   sniper_rifle: SNIPER_RIFLE_CONFIG,
+  katana: KATANA_CONFIG,
 };
 
 export const DEFAULT_LOADOUT_CONFIGS = [

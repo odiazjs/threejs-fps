@@ -56,6 +56,8 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     alive: player.alive,
     reloading: player.reloading,
     reloadEndAt: player.reloadEndAt,
+    weaponSwitchEndAt: player.weaponSwitchEndAt,
+    meleeAttackEndAt: player.meleeAttackEndAt,
     activeWeaponId: player.activeWeaponId,
     weaponSlot0: player.weaponSlot0,
     weaponSlot1: player.weaponSlot1,
@@ -328,6 +330,14 @@ export class RoomClient {
 
   sendSwitchWeapon(slot: number): void {
     this.room?.send('switchWeapon', { slot });
+  }
+
+  sendEquipMelee(equipped: boolean): void {
+    this.room?.send('equipMelee', { equipped });
+  }
+
+  sendMeleeAttack(): void {
+    this.room?.send('meleeAttack', {});
   }
 
   async disconnect(): Promise<void> {

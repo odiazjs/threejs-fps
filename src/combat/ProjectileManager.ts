@@ -7,7 +7,7 @@ import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
 import { HitSplash } from './HitSplash';
 import { MuzzleFlash } from './MuzzleFlash';
 import { Projectile } from './Projectile';
-import { PROJECTILE_SPEED } from './projectileConfig';
+import { tryMeleeHit as raycastMeleeHit } from './meleeAttack';
 
 export interface ProjectileHitTarget extends PlayerHitTarget {
   sessionId: string;
@@ -48,6 +48,26 @@ export class ProjectileManager {
   ): void {
     this.getHitTargets = getHitTargets;
     this.onPlayerHit = onPlayerHit;
+  }
+
+  tryMeleeHit(
+    camera: THREE.Camera,
+    range: number,
+    ownerSessionId: string,
+  ): boolean {
+    if (!this.getHitTargets || !this.onPlayerHit) return false;
+
+    const hit = raycastMeleeHit(
+      camera,
+      range,
+      this.getHitTargets,
+      ownerSessionId,
+    );
+    if (!hit) return false;
+
+    this.spawnSplash(hit.point);
+    this.onPlayerHit(hit.sessionId, hit.point);
+    return true;
   }
 
   spawn(

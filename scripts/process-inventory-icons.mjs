@@ -10,6 +10,7 @@ const ICON_FILES = [
   'pistol_icon_1.png',
   'rifle_icon_1.png',
   'sniper_icon_1.png',
+  'katana_melee_icon_1.png',
   'shield_charge_icon_1.png',
 ];
 

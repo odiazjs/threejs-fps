@@ -5,7 +5,7 @@ import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from './disposeMesh';
 
-const SHOWCASE_WEAPON_IDS: WeaponId[] = ['pistol', 'plasma_rifle', 'sniper_rifle'];
+const SHOWCASE_WEAPON_IDS: WeaponId[] = ['pistol', 'plasma_rifle', 'sniper_rifle', 'katana'];
 const SHOWCASE_TARGET_SIZE = 2.75;
 const DEFAULT_CAMERA_Z = 4.2 * 1.25;
 const DEFAULT_CAMERA_Y = 0.55;

@@ -960,6 +960,22 @@
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1.35rem;
       }
+      .inventory-melee-slot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.7rem;
+        max-width: 9.5rem;
+        padding: 1.15rem 0.85rem 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 12px;
+        background: transparent;
+        transition: border-color 120ms linear, box-shadow 120ms linear;
+      }
+      .inventory-melee-slot.active {
+        border-color: rgba(0, 230, 255, 0.72);
+        box-shadow: 0 0 22px rgba(0, 220, 255, 0.22);
+      }
       .inventory-weapon-slot {
         display: flex;
         flex-direction: column;
@@ -1239,6 +1255,16 @@
         <section class="inventory-section">
           <div class="inventory-section-label">LOADOUT</div>
           <div id="inventory-loadout"></div>
+        </section>
+        <section class="inventory-section">
+          <div class="inventory-section-label">MELEE</div>
+          <div id="inventory-melee-row" class="inventory-melee-slot">
+            <div class="inventory-slot-key">X</div>
+            <div class="inventory-icon-wrap">
+              <img id="inventory-melee-icon" class="inventory-weapon-icon" alt="" />
+            </div>
+            <div id="inventory-melee-name" class="inventory-weapon-name">Katana</div>
+          </div>
         </section>
         <section class="inventory-section">
           <div class="inventory-section-label">SHIELD RECHARGES</div>

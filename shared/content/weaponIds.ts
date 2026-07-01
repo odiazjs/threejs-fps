@@ -1,4 +1,6 @@
-export type WeaponId = 'plasma_rifle' | 'pistol' | 'sniper_rifle';
+export type WeaponId = 'plasma_rifle' | 'pistol' | 'sniper_rifle' | 'katana';
+
+export const MELEE_WEAPON_ID = 'katana' as const satisfies WeaponId;
 
 export const LOADOUT_SIZE = 3;
 
@@ -6,7 +8,12 @@ export const LOADOUT_SIZE = 3;
 export const LOADOUT_WEAPON_IDS = ['pistol', 'plasma_rifle', 'sniper_rifle'] as const satisfies readonly WeaponId[];
 
 export function isWeaponId(value: string): value is WeaponId {
-  return value === 'plasma_rifle' || value === 'pistol' || value === 'sniper_rifle';
+  return (
+    value === 'plasma_rifle' ||
+    value === 'pistol' ||
+    value === 'sniper_rifle' ||
+    value === 'katana'
+  );
 }
 
 export function loadoutSlotFromKey(code: string): number | null {

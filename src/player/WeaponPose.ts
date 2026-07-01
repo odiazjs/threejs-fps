@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { WeaponViewConfig } from '../../shared/content/weaponConfig';
+import { KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
 
 const HIP_FOV = 75;
 const DEFAULT_ADS_FOV = 68;
@@ -72,6 +73,22 @@ function sampleReloadOffsets(progress: number): PoseOffsets {
   };
 }
 
+/** Horizontal slash — katana sweeps right to left across the view. */
+function sampleSlashOffsets(progress: number): PoseOffsets {
+  const t = clamp01(progress);
+  const ease = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const arc = Math.sin(t * Math.PI);
+
+  return {
+    x: THREE.MathUtils.lerp(0.48, -0.62, ease),
+    y: -0.05 + arc * 0.12,
+    z: THREE.MathUtils.lerp(-0.02, -0.14, ease),
+    rx: THREE.MathUtils.lerp(-0.35, 0.42, ease) + arc * 0.18,
+    ry: THREE.MathUtils.lerp(2.45, -3.05, ease),
+    rz: THREE.MathUtils.lerp(-0.55, 0.72, ease),
+  };
+}
+
 /** Quick draw-from-hip when equipping a new weapon. */
 function sampleSwitchOffsets(progress: number): PoseOffsets {
   const t = easeOutCubic(clamp01(progress));
@@ -114,6 +131,8 @@ export class WeaponPose {
   private reloadProgress = 0;
   private switchDuration = WEAPON_SWITCH_SEC;
   private switchTimeLeft = 0;
+  private slashDuration = KATANA_SLASH_DURATION_SEC;
+  private slashTimeLeft = 0;
   private adsFov = DEFAULT_ADS_FOV;
   private view: WeaponViewConfig | null = null;
 
@@ -134,9 +153,23 @@ export class WeaponPose {
     return this.switchTimeLeft > 0;
   }
 
+  isSlashing(): boolean {
+    return this.slashTimeLeft > 0;
+  }
+
   getSwitchProgress(): number {
     if (this.switchDuration <= 0 || this.switchTimeLeft <= 0) return 1;
     return 1 - this.switchTimeLeft / this.switchDuration;
+  }
+
+  getSlashProgress(): number {
+    if (this.slashDuration <= 0 || this.slashTimeLeft <= 0) return 1;
+    return 1 - this.slashTimeLeft / this.slashDuration;
+  }
+
+  startSlash(duration = KATANA_SLASH_DURATION_SEC): void {
+    this.slashDuration = duration;
+    this.slashTimeLeft = duration;
   }
 
   startSwitch(duration = WEAPON_SWITCH_SEC): void {
@@ -153,22 +186,37 @@ export class WeaponPose {
     this.blend = 0;
     this.reloadProgress = 0;
     this.switchTimeLeft = 0;
+    this.slashTimeLeft = 0;
   }
 
-  update(delta: number, ads: boolean, reloading: boolean, reloadProgress: number): void {
+  update(
+    delta: number,
+    ads: boolean,
+    reloading: boolean,
+    reloadProgress: number,
+    options?: { ignoreAds?: boolean },
+  ): void {
     this.reloadProgress = reloading ? reloadProgress : 0;
 
     if (this.switchTimeLeft > 0) {
       this.switchTimeLeft = Math.max(0, this.switchTimeLeft - delta);
     }
 
-    const canAim = !reloading && !this.isSwitching();
-    const targetAds = ads && canAim ? 1 : 0;
+    if (this.slashTimeLeft > 0) {
+      this.slashTimeLeft = Math.max(0, this.slashTimeLeft - delta);
+    }
+
+    const canAim = !reloading && !this.isSwitching() && !this.isSlashing();
+    const ignoreAds = options?.ignoreAds ?? false;
+    const targetAds = !ignoreAds && ads && canAim ? 1 : 0;
     const blendSpeed = reloading || this.isSwitching() ? RELOAD_ADS_BLEND_SPEED : BLEND_SPEED;
     this.blend += (targetAds - this.blend) * (1 - Math.exp(-blendSpeed * delta));
   }
 
   private getActivePoseOffsets(): PoseOffsets | null {
+    if (this.slashTimeLeft > 0) {
+      return sampleSlashOffsets(this.getSlashProgress());
+    }
     if (this.reloadProgress > 0) {
       return sampleReloadOffsets(this.reloadProgress);
     }
@@ -198,7 +246,11 @@ export class WeaponPose {
     basePosition: THREE.Vector3,
     baseRotation: THREE.Euler,
   ): void {
-    const pose = this.isSwitching() ? sampleSwitchOffsets(this.getSwitchProgress()) : null;
+    const pose = this.isSlashing()
+      ? sampleSlashOffsets(this.getSlashProgress())
+      : this.isSwitching()
+        ? sampleSwitchOffsets(this.getSwitchProgress())
+        : null;
 
     if (pose) {
       applyPoseOffsets(weapon.position, basePosition, pose);

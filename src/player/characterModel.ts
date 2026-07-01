@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { WeaponId } from '../../shared/content/weaponIds';
+import { MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 
 const ASSET_BASE = '/3d/';
 const TARGET_HEIGHT = 1.65;
@@ -21,11 +22,16 @@ export const CHARACTER_MODEL_FILES = {
   reloadIdle: 'Reload Idle.fbx',
   reloadWalk: 'Reload Walk.fbx',
   reloadSprint: 'Reload Sprint.fbx',
+  meleeIdle: 'Standing Idle Melee.fbx',
+  meleeAttack: 'Standing Melee Attack Horizontal 100.fbx',
+  weaponEquip: 'Unarmed Equip Over Shoulder.fbx',
 } as const;
 
 const ONE_SHOT_MODEL_FILES = new Set<string>([
   CHARACTER_MODEL_FILES.rifleJump,
   CHARACTER_MODEL_FILES.pistolJump,
+  CHARACTER_MODEL_FILES.meleeAttack,
+  CHARACTER_MODEL_FILES.weaponEquip,
 ]);
 
 const ROOT_MOTION_STRIP_MODEL_FILES = new Set<string>([
@@ -39,6 +45,8 @@ export interface RemoteCharacterPose {
   walking: boolean;
   jumping: boolean;
   reloading: boolean;
+  switchingWeapon: boolean;
+  meleeAttacking: boolean;
 }
 
 const DEFAULT_BONES: CharacterBoneNames = {
@@ -54,7 +62,7 @@ function assetUrl(file: string): string {
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
   return (
-    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload/i.test(clip.name)) ??
+    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload|melee|attack|equip|shoulder/i.test(clip.name)) ??
     animations[0] ??
     null
   );
@@ -184,6 +192,8 @@ export interface CharacterTemplate {
   modelFile: string;
   scene: THREE.Group;
   clip: THREE.AnimationClip | null;
+  /** Clip length in seconds (0 when no clip). */
+  clipDurationSec: number;
   bones: CharacterBoneNames;
   /** Uniform scale applied to fit the FBX to TARGET_HEIGHT. */
   fitScale: number;
@@ -193,6 +203,8 @@ export interface CharacterTemplate {
 export interface CharacterInstance {
   root: THREE.Group;
   update(delta: number): void;
+  /** True once a one-shot clip has reached its final frame. */
+  readonly isOneShotFinished: boolean;
   dispose(): void;
 }
 
@@ -247,6 +259,7 @@ async function loadCharacterTemplateByFile(modelFile: string): Promise<Character
       modelFile,
       scene,
       clip,
+      clipDurationSec: clip?.duration ?? 0,
       bones,
       fitScale,
       oneShot,
@@ -271,6 +284,14 @@ export function gameModelFileForWeapon(
       : CHARACTER_MODEL_FILES.rifleJump;
   }
 
+  if (pose.meleeAttacking && weaponId === MELEE_WEAPON_ID) {
+    return CHARACTER_MODEL_FILES.meleeAttack;
+  }
+
+  if (pose.switchingWeapon) {
+    return CHARACTER_MODEL_FILES.weaponEquip;
+  }
+
   if (pose.reloading) {
     if (pose.sprinting) return CHARACTER_MODEL_FILES.reloadSprint;
     if (pose.walking) return CHARACTER_MODEL_FILES.reloadWalk;
@@ -289,6 +310,10 @@ export function gameModelFileForWeapon(
       : CHARACTER_MODEL_FILES.rifleWalking;
   }
 
+  if (weaponId === MELEE_WEAPON_ID) {
+    return CHARACTER_MODEL_FILES.meleeIdle;
+  }
+
   return weaponId === 'pistol'
     ? CHARACTER_MODEL_FILES.pistolIdle
     : CHARACTER_MODEL_FILES.rifleAimingIdle;
@@ -301,6 +326,8 @@ export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
     walking: false,
     jumping: false,
     reloading: false,
+    switchingWeapon: false,
+    meleeAttacking: false,
   });
 }
 
@@ -322,6 +349,8 @@ export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<Chara
     walking: false,
     jumping: false,
     reloading: false,
+    switchingWeapon: false,
+    meleeAttacking: false,
   });
 }
 
@@ -338,6 +367,9 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadIdle),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadWalk),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadSprint),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeIdle),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeAttack),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.weaponEquip),
   ]);
 }
 
@@ -350,6 +382,7 @@ export function createCharacterInstance(template: CharacterTemplate): CharacterI
   const root = cloneSkeleton(template.scene) as THREE.Group;
 
   let mixer: THREE.AnimationMixer | null = null;
+  let oneShotFinished = false;
 
   if (template.clip) {
     mixer = new THREE.AnimationMixer(root);
@@ -358,6 +391,11 @@ export function createCharacterInstance(template: CharacterTemplate): CharacterI
     if (template.oneShot) {
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
+      action.zeroSlopeAtStart = true;
+      action.zeroSlopeAtEnd = true;
+      mixer.addEventListener('finished', (event) => {
+        if (event.action === action) oneShotFinished = true;
+      });
     } else {
       action.setLoop(THREE.LoopRepeat, Infinity);
     }
@@ -368,6 +406,9 @@ export function createCharacterInstance(template: CharacterTemplate): CharacterI
 
   return {
     root,
+    get isOneShotFinished() {
+      return oneShotFinished;
+    },
     update(delta: number) {
       mixer?.update(delta);
     },

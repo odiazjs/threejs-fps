@@ -67,16 +67,19 @@ export class WeaponAmmo {
   }
 
   canShoot(): boolean {
+    if (this.config.fireMode === 'melee') return true;
     return !this.reloading && this.clip > 0;
   }
 
   tryShoot(): boolean {
+    if (this.config.fireMode === 'melee') return true;
     if (!this.canShoot()) return false;
     this.clip -= 1;
     return true;
   }
 
   canReload(): boolean {
+    if (this.config.fireMode === 'melee') return false;
     if (this.reloading) return false;
     if (this.clip >= this.config.clipSize) return false;
     return this.reserveRounds > 0;

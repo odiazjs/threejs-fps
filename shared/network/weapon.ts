@@ -2,3 +2,8 @@
 export interface SwitchWeaponMessage {
   readonly slot: number;
 }
+
+/** Client equips or unequips the melee weapon (katana). */
+export interface EquipMeleeMessage {
+  readonly equipped: boolean;
+}

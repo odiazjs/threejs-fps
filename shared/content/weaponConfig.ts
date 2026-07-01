@@ -67,7 +67,7 @@ export interface VisualRecoilStyle {
   readonly kickUp?: number;
 }
 
-export type WeaponFireMode = 'auto' | 'semi';
+export type WeaponFireMode = 'auto' | 'semi' | 'melee';
 
 /** Brief muzzle burst — three additive plasma tones plus particle spray. */
 export interface MuzzleFlashConfig {
@@ -134,4 +134,8 @@ export interface WeaponConfig {
   readonly sway?: WeaponSwayConfig;
   /** Optional weapon fire SFX (client only). */
   readonly sounds?: WeaponSoundsConfig;
+  /** Locomotion speed multiplier while this weapon is active (melee). */
+  readonly moveSpeedMultiplier?: number;
+  /** Melee hit range in world units. */
+  readonly meleeRange?: number;
 }

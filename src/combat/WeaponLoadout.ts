@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { WeaponConfig } from '../../shared/content/weaponConfig';
 import type { WeaponId } from '../../shared/content/weaponIds';
-import { isWeaponId, LOADOUT_SIZE } from '../../shared/content/weaponIds';
+import { isWeaponId, LOADOUT_SIZE, MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import type { LoadoutSlotSnapshot } from '../../shared/loadout/loadoutSlots';
 import { WeaponAmmo, type AmmoState } from './WeaponAmmo';
 import { WeaponRecoil } from './WeaponRecoil';
@@ -18,6 +18,25 @@ const REMOTE_WEAPON_SCALE_FACTOR = 1.6;
 
 export function remoteWeaponMeshScale(characterFitScale: number): number {
   return (WEAPON_MESH_BASE_SCALE / characterFitScale) * REMOTE_WEAPON_SCALE_FACTOR;
+}
+
+/** Gun-style attach — barrel points down -Z in view space. */
+export const LOCAL_GUN_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
+
+/** Katana idle — vertical blade, slight forward lean (chudan-style ready). */
+export const LOCAL_KATANA_WEAPON_ROTATION = new THREE.Euler(0.1, 0.22, 0.04);
+
+export const REMOTE_KATANA_WEAPON_ROTATION = new THREE.Euler(-0.1, -0.22, -0.04);
+
+export function getLocalWeaponBaseRotation(config: WeaponConfig): THREE.Euler {
+  return config.fireMode === 'melee' ? LOCAL_KATANA_WEAPON_ROTATION : LOCAL_GUN_WEAPON_ROTATION;
+}
+
+export function getRemoteWeaponBaseRotation(
+  config: WeaponConfig,
+  fallback: THREE.Euler,
+): THREE.Euler {
+  return config.fireMode === 'melee' ? REMOTE_KATANA_WEAPON_ROTATION : fallback;
 }
 
 function applyMeshContextScale(mesh: THREE.Object3D, context: WeaponMeshContext, characterFitScale?: number): void {
@@ -74,6 +93,7 @@ function parseSlotWeaponId(raw: string): WeaponId | null {
 export interface LoadoutAmmoState extends AmmoState {
   weaponName: string;
   slotIndex: number;
+  meleeEquipped?: boolean;
 }
 
 export class WeaponSlot {
@@ -108,16 +128,22 @@ export class WeaponSlot {
 export class WeaponLoadout {
   private readonly weaponsById: Map<WeaponId, WeaponSlot>;
   private readonly slotAssignments: (WeaponId | null)[];
+  private readonly meleeSlot: WeaponSlot | null;
   private activeIndex = 0;
+  private meleeEquipped = false;
   private switchCooldown = 0;
   private meshesForcedHidden = false;
 
-  constructor(configs: readonly WeaponConfig[]) {
+  constructor(configs: readonly WeaponConfig[], meleeConfig?: WeaponConfig) {
     if (configs.length !== LOADOUT_SIZE) {
       throw new Error(`Loadout requires exactly ${LOADOUT_SIZE} weapons`);
     }
     this.weaponsById = new Map(configs.map((config) => [config.id, new WeaponSlot(config)]));
     this.slotAssignments = configs.map((config) => config.id);
+    this.meleeSlot =
+      meleeConfig && meleeConfig.id === MELEE_WEAPON_ID
+        ? new WeaponSlot(meleeConfig)
+        : null;
     this.syncMeshVisibility();
   }
 
@@ -127,7 +153,7 @@ export class WeaponLoadout {
     context: WeaponMeshContext,
     characterFitScale?: number,
   ): void {
-    for (const slot of this.weaponsById.values()) {
+    for (const slot of this.allWeaponSlots()) {
       parent.add(slot.mesh);
       applyMeshContextScale(slot.mesh, context, characterFitScale);
       const offset = getAttachOffset(slot.config.view, context);
@@ -144,7 +170,7 @@ export class WeaponLoadout {
     characterFitScale?: number,
     basePosition?: THREE.Vector3,
   ): void {
-    for (const slot of this.weaponsById.values()) {
+    for (const slot of this.allWeaponSlots()) {
       slot.mesh.removeFromParent();
       parent.add(slot.mesh);
       applyMeshContextScale(slot.mesh, context, characterFitScale);
@@ -163,7 +189,15 @@ export class WeaponLoadout {
     return this.slotAssignments[index] ?? null;
   }
 
+  isMeleeEquipped(): boolean {
+    return this.meleeEquipped;
+  }
+
   getActive(): WeaponSlot {
+    if (this.meleeEquipped && this.meleeSlot) {
+      return this.meleeSlot;
+    }
+
     const weaponId = this.slotAssignments[this.activeIndex];
     if (!weaponId) {
       const fallback = this.slotAssignments.find((id) => id !== null);
@@ -197,15 +231,20 @@ export class WeaponLoadout {
     this.slotAssignments[2] = parseSlotWeaponId(snapshot.weaponSlot2);
 
     const activeWeapon = isWeaponId(activeWeaponId) ? activeWeaponId : null;
-    const activeSlot = activeWeapon
-      ? this.slotAssignments.indexOf(activeWeapon)
-      : -1;
-
-    if (activeSlot >= 0) {
-      this.activeIndex = activeSlot;
+    if (activeWeapon === MELEE_WEAPON_ID) {
+      this.meleeEquipped = true;
     } else {
-      const fallback = this.slotAssignments.findIndex((id) => id !== null);
-      if (fallback >= 0) this.activeIndex = fallback;
+      this.meleeEquipped = false;
+      const activeSlot = activeWeapon
+        ? this.slotAssignments.indexOf(activeWeapon)
+        : -1;
+
+      if (activeSlot >= 0) {
+        this.activeIndex = activeSlot;
+      } else {
+        const fallback = this.slotAssignments.findIndex((id) => id !== null);
+        if (fallback >= 0) this.activeIndex = fallback;
+      }
     }
 
     this.syncMeshVisibility();
@@ -213,6 +252,15 @@ export class WeaponLoadout {
 
   getAmmoState(): LoadoutAmmoState {
     const active = this.getActive();
+    if (this.meleeEquipped) {
+      return {
+        ...active.ammo.getState(),
+        weaponName: active.config.name,
+        slotIndex: this.activeIndex,
+        meleeEquipped: true,
+      };
+    }
+
     return {
       ...active.ammo.getState(),
       weaponName: active.config.name,
@@ -233,17 +281,38 @@ export class WeaponLoadout {
       this.switchCooldown = Math.max(0, this.switchCooldown - delta);
     }
 
-    for (const slot of this.weaponsById.values()) {
+    for (const slot of this.allWeaponSlots()) {
       slot.ammo.update(delta);
     }
+  }
+
+  tryEquipMelee(equip: boolean): boolean {
+    if (!this.meleeSlot) return false;
+    if (equip === this.meleeEquipped) return false;
+    if (this.switchCooldown > 0) return false;
+
+    if (!equip) {
+      this.meleeEquipped = false;
+    } else {
+      if (!this.meleeEquipped) {
+        this.getActive().ammo.cancelReload();
+      }
+      this.meleeEquipped = true;
+      this.meleeSlot.recoil.reset();
+    }
+
+    this.syncMeshVisibility();
+    this.switchCooldown = SWITCH_READY_SEC;
+    return true;
   }
 
   trySwitch(slotIndex: number): boolean {
     if (slotIndex < 0 || slotIndex >= LOADOUT_SIZE) return false;
     if (!this.slotAssignments[slotIndex]) return false;
-    if (slotIndex === this.activeIndex) return false;
+    if (!this.meleeEquipped && slotIndex === this.activeIndex) return false;
     if (this.switchCooldown > 0) return false;
 
+    this.meleeEquipped = false;
     this.getActive().ammo.cancelReload();
     this.activeIndex = slotIndex;
     this.syncMeshVisibility();
@@ -268,9 +337,16 @@ export class WeaponLoadout {
   }
 
   setRemoteActiveWeapon(weaponId: WeaponId): void {
+    if (weaponId === MELEE_WEAPON_ID) {
+      this.meleeEquipped = true;
+      this.syncMeshVisibility();
+      return;
+    }
+
     const index = this.slotAssignments.indexOf(weaponId);
     if (index < 0) return;
 
+    this.meleeEquipped = false;
     this.activeIndex = index;
     this.syncMeshVisibility();
   }
@@ -280,27 +356,32 @@ export class WeaponLoadout {
     this.syncMeshVisibility();
   }
 
+  private allWeaponSlots(): WeaponSlot[] {
+    const slots = [...this.weaponsById.values()];
+    if (this.meleeSlot) slots.push(this.meleeSlot);
+    return slots;
+  }
+
   private syncMeshVisibility(): void {
-    for (const slot of this.weaponsById.values()) {
+    for (const slot of this.allWeaponSlots()) {
       slot.mesh.visible = false;
     }
 
-    const activeId = this.slotAssignments[this.activeIndex];
-    if (!activeId || this.meshesForcedHidden) return;
+    if (this.meshesForcedHidden) return;
 
-    const active = this.weaponsById.get(activeId);
-    if (active) active.mesh.visible = true;
+    this.getActive().mesh.visible = true;
   }
 
   reset(): void {
-    for (const slot of this.weaponsById.values()) {
+    for (const slot of this.allWeaponSlots()) {
       slot.recoil.reset();
     }
+    this.meleeEquipped = false;
     this.switchCooldown = 0;
   }
 
   dispose(): void {
-    for (const slot of this.weaponsById.values()) {
+    for (const slot of this.allWeaponSlots()) {
       slot.dispose();
     }
   }

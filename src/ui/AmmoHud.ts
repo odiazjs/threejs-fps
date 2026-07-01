@@ -27,6 +27,15 @@ export class AmmoHud {
   }
 
   update(state: LoadoutAmmoState): void {
+    if (state.meleeEquipped) {
+      this.weaponEl.textContent = `${state.weaponName} [X]`;
+      this.clipEl.textContent = '—';
+      this.root.classList.remove('reloading', 'empty');
+      this.reloadRoot.hidden = true;
+      this.statusEl.hidden = true;
+      return;
+    }
+
     this.weaponEl.textContent = `${state.weaponName} [${state.slotIndex + 1}]`;
     this.clipEl.textContent = `${state.clip} / ${state.reserveRounds}`;
 

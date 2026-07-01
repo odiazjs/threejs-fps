@@ -27,19 +27,29 @@ import {
   type TrainingBotMoveState,
 } from '../../../shared/combat/trainingBotMovement.js';
 import {
+  MELEE_ATTACK_ANIM_SEC,
+  WEAPON_SWITCH_ANIM_SEC,
+} from '../../../shared/combat/characterAnim.js';
+import {
   getWeaponDamage,
   getWeaponMaxHitDistance,
   getWeaponReloadSec,
 } from '../../../shared/content/weaponStats.js';
+import {
+  feetYFromEyeY,
+  isMeleeHitValid,
+} from '../../../shared/combat/meleeHit.js';
 import { applyDamageWithShield, applyShieldChargeRecharge, canUseShieldCharge, getShieldCapacity, resetPlayerShield } from '../../../shared/combat/shield.js';
 import { SHIELD_CHARGE_TIME_SEC } from '../../../shared/combat/shieldRecharge.js';
 import {
   isWeaponId,
   LOADOUT_WEAPON_IDS,
+  MELEE_WEAPON_ID,
 } from '../../../shared/content/weaponIds.js';
 import type { KillFeedMessage, PlayerDamagedMessage, PlayerHitMessage } from '../../../shared/network/damage.js';
 import type { ReloadMessage } from '../../../shared/network/reload.js';
-import type { SwitchWeaponMessage } from '../../../shared/network/weapon.js';
+import type { SwitchWeaponMessage, EquipMeleeMessage } from '../../../shared/network/weapon.js';
+import type { MeleeAttackMessage } from '../../../shared/network/meleeAttack.js';
 import {
   PICKUP_MAX_DESYNC,
   type PickupAmmoMessage,
@@ -186,6 +196,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     if (!player.shieldRecharging) return;
     player.shieldRecharging = false;
     player.shieldRechargeEndAt = 0;
+  }
+
+  private startWeaponSwitchAnim(player: PlayerState): void {
+    player.reloading = false;
+    player.reloadEndAt = 0;
+    player.meleeAttackEndAt = 0;
+    player.weaponSwitchEndAt = this.state.worldTime + WEAPON_SWITCH_ANIM_SEC;
   }
 
   private cancelShieldDome(player: PlayerState): void {
@@ -386,6 +403,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive || player.reloading) return;
       if (!isWeaponId(data.weaponId)) return;
+      if (data.weaponId === MELEE_WEAPON_ID) return;
 
       let hasWeapon = false;
       for (let i = 0; i < LOADOUT_WEAPON_IDS.length; i++) {
@@ -409,10 +427,38 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (slot < 0 || slot >= LOADOUT_WEAPON_IDS.length) return;
       if (!getLoadoutSlotWeapon(player, slot)) return;
 
-      player.reloading = false;
-      player.reloadEndAt = 0;
-      player.activeWeaponId = getLoadoutSlotWeapon(player, slot)!;
+      const nextWeapon = getLoadoutSlotWeapon(player, slot)!;
+      if (player.activeWeaponId === nextWeapon) return;
+
+      player.activeWeaponId = nextWeapon;
+      this.startWeaponSwitchAnim(player);
       this.cancelShieldRecharge(player);
+    },
+
+    equipMelee: (client: Client, data: EquipMeleeMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+
+      if (data.equipped) {
+        if (player.activeWeaponId === MELEE_WEAPON_ID) return;
+        player.activeWeaponId = MELEE_WEAPON_ID;
+      } else {
+        if (player.activeWeaponId !== MELEE_WEAPON_ID) return;
+        const nextSlot = findLowestOccupiedLoadoutSlot(player);
+        if (nextSlot < 0) return;
+        player.activeWeaponId = getLoadoutSlotWeapon(player, nextSlot)!;
+      }
+
+      this.startWeaponSwitchAnim(player);
+      this.cancelShieldRecharge(player);
+    },
+
+    meleeAttack: (client: Client, _data: MeleeAttackMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (player.activeWeaponId !== MELEE_WEAPON_ID) return;
+
+      player.meleeAttackEndAt = this.state.worldTime + MELEE_ATTACK_ANIM_SEC;
     },
 
     dropWeapon: (client: Client, data: DropWeaponMessage) => {
@@ -432,6 +478,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         const nextSlot = findLowestOccupiedLoadoutSlot(player);
         if (nextSlot >= 0) {
           player.activeWeaponId = getLoadoutSlotWeapon(player, nextSlot)!;
+          this.startWeaponSwitchAnim(player);
         }
       }
 
@@ -475,6 +522,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       drop.collected = true;
       setLoadoutSlotWeapon(player, resolution.targetSlot, drop.weaponId);
       player.activeWeaponId = drop.weaponId;
+      this.startWeaponSwitchAnim(player);
 
       if (
         resolution.replacedWeaponId &&
@@ -588,6 +636,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const target = this.state.players.get(data.targetId);
       if (!shooter?.alive || !target?.alive) return;
       if (data.targetId === client.sessionId) return;
+      if (!isWeaponId(data.weaponId)) return;
+      if (shooter.activeWeaponId !== data.weaponId) return;
       if (
         !this.state.friendlyFire &&
         shooter.teamId === target.teamId &&
@@ -597,8 +647,27 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       }
 
       const distance = Math.hypot(shooter.x - target.x, shooter.z - target.z);
-      if (!isWeaponId(data.weaponId)) return;
-      if (distance > getWeaponMaxHitDistance(data.weaponId)) return;
+      const maxDistance = getWeaponMaxHitDistance(data.weaponId);
+      if (distance > maxDistance) return;
+
+      if (data.weaponId === MELEE_WEAPON_ID) {
+        const targetFeetY = feetYFromEyeY(target.y);
+        if (
+          !isMeleeHitValid(
+            shooter.x,
+            shooter.y,
+            shooter.z,
+            shooter.yaw,
+            shooter.pitch,
+            target.x,
+            targetFeetY,
+            target.z,
+            maxDistance,
+          )
+        ) {
+          return;
+        }
+      }
 
       const damage = getWeaponDamage(data.weaponId);
       const prevShieldPoints = target.shieldPoints;
@@ -628,6 +697,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       target.alive = false;
       target.reloading = false;
       target.reloadEndAt = 0;
+      target.weaponSwitchEndAt = 0;
+      target.meleeAttackEndAt = 0;
       this.cancelShieldRecharge(target);
       this.cancelShieldDome(target);
 
@@ -788,6 +859,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.pitch = 0;
       player.reloading = false;
       player.reloadEndAt = 0;
+      player.weaponSwitchEndAt = 0;
+      player.meleeAttackEndAt = 0;
       player.sprinting = false;
       player.walking = false;
       this.placeTrainingBot(sessionId, player, spawn);
@@ -810,6 +883,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.pitch = 0;
     player.reloading = false;
     player.reloadEndAt = 0;
+    player.weaponSwitchEndAt = 0;
+    player.meleeAttackEndAt = 0;
     player.sprinting = false;
     player.walking = false;
     player.jumping = false;

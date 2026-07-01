@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../shared/level/collision';
-import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
+import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import {
   isWeaponId,
   LOADOUT_SIZE,
   LOADOUT_WEAPON_IDS,
+  MELEE_WEAPON_ID,
   type WeaponId,
 } from '../../shared/content/weaponIds';
+import type { WeaponFireMode } from '../../shared/content/weaponConfig';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { ShieldDomeAbility } from '../combat/ShieldDomeAbility';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
-import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation } from '../combat/WeaponLoadout';
+import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
 import { readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
@@ -20,6 +22,7 @@ import { HeadBob } from './HeadBob';
 import {
   createCharacterInstance,
   computeTopOffsetAboveFeet,
+  CHARACTER_MODEL_FILES,
   gameModelFileForWeapon,
   loadGameCharacterTemplate,
   preloadGameCharacterModels,
@@ -33,20 +36,26 @@ import { RemoteHealthBar } from './RemoteHealthBar';
 import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { ShieldBreakFx } from '../effects/ShieldBreakFx';
+import { MeleeHitFx } from '../effects/MeleeHitFx';
 import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
 import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
 import { WeaponSway } from './WeaponSway';
+import { KatanaSlashTrailFx, KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
 import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled } from '../combat/HitCapsuleDebugMesh';
 import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import { getReloadState } from '../../shared/combat/reload';
+import {
+  getMeleeAttackAnimState,
+  getWeaponSwitchAnimState,
+} from '../../shared/combat/characterAnim';
 import { getDefaultShieldPoints, SHIELD_DEFAULT_LEVEL } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import { PlayerInventory } from '../inventory/PlayerInventory';
-import type { InventoryWeaponEntry } from '../ui/InventoryHud';
+import type { InventoryWeaponEntry, InventoryMeleeEntry } from '../ui/InventoryHud';
 const MOVE_SPEED = 3;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
@@ -62,6 +71,8 @@ function lerpAngle(from: number, to: number, t: number): number {
 
 export type ShootCallback = (origin: THREE.Vector3, direction: THREE.Vector3) => void;
 export type WeaponSwitchCallback = (slot: number, weaponId: WeaponId) => void;
+export type MeleeEquipCallback = (equipped: boolean) => void;
+export type MeleeAttackNetworkCallback = () => void;
 export type ReloadNetworkCallback = (weaponId: WeaponId) => void;
 export type ShieldRechargeNetworkCallback = () => void;
 
@@ -100,23 +111,31 @@ export class Player {
   private lookRigFollowsHead = false;
   private characterInstance: CharacterInstance | null = null;
   private displayedCharacterModelFile: string | null = null;
+  private meleeAttackAnimConsumed = false;
+  private weaponSwitchAnimConsumed = false;
   private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
   private damageNumberStack: DamageNumberStack | null = null;
   private shieldBreakFx: ShieldBreakFx | null = null;
+  private meleeHitFx: MeleeHitFx | null = null;
   private shieldRechargeAuraFx: ShieldRechargeAuraFx | null = null;
   private onShieldBreakListener: (() => void) | null = null;
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSway | null = null;
+  private katanaSlashFx: KatanaSlashTrailFx | null = null;
   private onShoot: ShootCallback | null = null;
   private onReloadNetwork: ReloadNetworkCallback | null = null;
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
+  private onMeleeEquipNetwork: MeleeEquipCallback | null = null;
+  private onMeleeAttackNetwork: MeleeAttackNetworkCallback | null = null;
   private onShieldRechargeNetwork: ShieldRechargeNetworkCallback | null = null;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
   private shieldDomeWorldTime: (() => number) | null = null;
   private targetReloadEndAt = 0;
+  private targetWeaponSwitchEndAt = 0;
+  private targetMeleeAttackEndAt = 0;
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private targetSprinting = false;
   private targetWalking = false;
@@ -145,7 +164,7 @@ export class Player {
   private hitCapsuleDebug: THREE.Group | null = null;
 
   private constructor(local: boolean) {
-    this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS);
+    this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG);
 
     if (local) {
       this.headRig = new THREE.Group();
@@ -171,6 +190,8 @@ export class Player {
       this.weaponPose = new WeaponPose();
       this.weaponPose.setViewConfig(this.loadout.getActive().config.view);
       this.weaponSway = new WeaponSway();
+      this.katanaSlashFx = new KatanaSlashTrailFx();
+      this.katanaSlashFx.attachToCamera(this.camera);
       this.loadout.attach(this.camera, LOCAL_WEAPON_ROTATION, 'local');
     } else {
       this.camera = null;
@@ -197,6 +218,9 @@ export class Player {
 
       this.shieldBreakFx = new ShieldBreakFx();
       this.object.add(this.shieldBreakFx.object);
+
+      this.meleeHitFx = new MeleeHitFx();
+      this.object.add(this.meleeHitFx.object);
 
       this.shieldRechargeAuraFx = new ShieldRechargeAuraFx();
       this.object.add(this.shieldRechargeAuraFx.object);
@@ -238,11 +262,32 @@ export class Player {
       worldTime,
       this.targetActiveWeaponId,
     );
+    const weaponSwitch = getWeaponSwitchAnimState(this.targetWeaponSwitchEndAt, worldTime);
+    const meleeAttack = getMeleeAttackAnimState(this.targetMeleeAttackEndAt, worldTime);
+
+    if (
+      this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.meleeAttack &&
+      (this.characterInstance?.isOneShotFinished ?? false)
+    ) {
+      this.meleeAttackAnimConsumed = true;
+    }
+    if (
+      this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.weaponEquip &&
+      (this.characterInstance?.isOneShotFinished ?? false)
+    ) {
+      this.weaponSwitchAnimConsumed = true;
+    }
+
     return {
       sprinting: this.targetSprinting,
       walking: this.targetWalking,
       jumping: this.targetJumping,
       reloading,
+      switchingWeapon: weaponSwitch.active && !this.weaponSwitchAnimConsumed,
+      meleeAttacking:
+        meleeAttack.active &&
+        this.targetActiveWeaponId === MELEE_WEAPON_ID &&
+        !this.meleeAttackAnimConsumed,
     };
   }
 
@@ -352,6 +397,7 @@ export class Player {
     if (!this.loadout) return [];
 
     const activeIndex = this.loadout.getActiveIndex();
+    const meleeEquipped = this.loadout.isMeleeEquipped();
     return Array.from({ length: LOADOUT_SIZE }, (_, slotIndex) => {
       const weaponId = this.loadout!.getSlotWeaponId(slotIndex);
       const occupied = weaponId !== null;
@@ -359,10 +405,17 @@ export class Player {
         slotIndex,
         weaponId,
         name: occupied ? (getWeaponConfig(weaponId)!.name) : 'Empty',
-        active: occupied && slotIndex === activeIndex,
+        active: occupied && !meleeEquipped && slotIndex === activeIndex,
         occupied,
       };
     });
+  }
+
+  getInventoryMelee(): InventoryMeleeEntry {
+    return {
+      name: KATANA_CONFIG.name,
+      active: this.loadout?.isMeleeEquipped() ?? false,
+    };
   }
 
   applyLoadoutFromSnapshot(snapshot: PlayerSnapshot): void {
@@ -414,6 +467,14 @@ export class Player {
 
   setWeaponSwitchNetworkCallback(callback: WeaponSwitchCallback | null): void {
     this.onWeaponSwitchNetwork = callback;
+  }
+
+  setMeleeEquipNetworkCallback(callback: MeleeEquipCallback | null): void {
+    this.onMeleeEquipNetwork = callback;
+  }
+
+  setMeleeAttackNetworkCallback(callback: MeleeAttackNetworkCallback | null): void {
+    this.onMeleeAttackNetwork = callback;
   }
 
   setShieldRechargeNetworkCallback(callback: ShieldRechargeNetworkCallback | null): void {
@@ -555,6 +616,14 @@ export class Player {
     this.targetYaw = snapshot.yaw;
     this.targetPitch = snapshot.pitch;
     this.targetReloadEndAt = snapshot.reloadEndAt;
+    if (snapshot.weaponSwitchEndAt !== this.targetWeaponSwitchEndAt) {
+      this.weaponSwitchAnimConsumed = false;
+    }
+    if (snapshot.meleeAttackEndAt !== this.targetMeleeAttackEndAt) {
+      this.meleeAttackAnimConsumed = false;
+    }
+    this.targetWeaponSwitchEndAt = snapshot.weaponSwitchEndAt;
+    this.targetMeleeAttackEndAt = snapshot.meleeAttackEndAt;
     if (isWeaponId(snapshot.activeWeaponId)) {
       this.targetActiveWeaponId = snapshot.activeWeaponId;
       this.loadout?.setRemoteActiveWeapon(snapshot.activeWeaponId);
@@ -646,6 +715,13 @@ export class Player {
     this.damageNumberStack?.push(amount);
   }
 
+  playMeleeHitFx(worldPoint: THREE.Vector3): void {
+    if (!this.meleeHitFx || this.camera) return;
+
+    const local = this.object.worldToLocal(worldPoint.clone());
+    this.meleeHitFx.play(local);
+  }
+
   setShieldBreakListener(listener: (() => void) | null): void {
     this.onShieldBreakListener = listener;
   }
@@ -653,6 +729,7 @@ export class Player {
   updateDamageNumbers(delta: number, camera: THREE.Camera): void {
     this.damageNumberStack?.update(delta, camera);
     this.shieldBreakFx?.update(delta, camera);
+    this.meleeHitFx?.update(delta, camera);
   }
 
   updateRemoteShieldRecharge(delta: number, worldTime: number, camera: THREE.Camera): void {
@@ -673,6 +750,9 @@ export class Player {
   updateRemoteWeapon(delta: number, worldTime: number): void {
     if (this.camera || !this.weaponPose || !this.loadout) return;
 
+    const pose = this.getRemotePose(worldTime);
+    this.loadout.setMeshesVisible(!pose.switchingWeapon);
+
     const weaponChanged = this.targetActiveWeaponId !== this.remoteDisplayedWeaponId;
     if (weaponChanged) {
       this.loadout.setRemoteActiveWeapon(this.targetActiveWeaponId);
@@ -688,13 +768,17 @@ export class Player {
 
     const active = this.loadout.getActive();
     this.remoteWeaponBasePosition.copy(this.remoteWeaponMount.weaponPosition);
-    resolveWeaponMeshRotation(
+    const remoteBaseRotation = getRemoteWeaponBaseRotation(
+      active.config,
       this.remoteWeaponMount.weaponRotation,
+    );
+    resolveWeaponMeshRotation(
+      remoteBaseRotation,
       active.config.view,
       'remote',
       this.remoteWeaponBaseRotation,
     );
-    this.loadout.applyActiveRotation(this.remoteWeaponMount.weaponRotation, 'remote');
+    this.loadout.applyActiveRotation(remoteBaseRotation, 'remote');
     this.weaponPose.update(delta, false, false, 0);
     this.weaponPose.applyRemoteReload(
       active.mesh,
@@ -712,6 +796,8 @@ export class Player {
   ): void {
     if (!this.camera || !this.loadout) return;
 
+    this.katanaSlashFx?.update(delta);
+
     if (!canAct) {
       this.weaponSounds?.stopAutoFire();
       this.headBob.update(delta, false, false);
@@ -721,10 +807,11 @@ export class Player {
     }
 
     this.trySwitchWeapon(input);
-    this.tryStartShieldRecharge(input);
+    this.tryToggleMeleeEquip(input);
 
     if (input.isJustPressed('KeyR')) {
       if (
+        !this.loadout.isMeleeEquipped() &&
         this.loadout.isWeaponReady() &&
         !this.weaponPose?.isSwitching() &&
         this.loadout.getActive().ammo.tryReload()
@@ -734,13 +821,19 @@ export class Player {
       }
     }
 
-    const ads = pointer.isPressed(POINTER_ADS);
+    this.tryStartShieldRecharge(input);
+
+    const meleeEquipped = this.loadout.isMeleeEquipped();
+    const ads = !meleeEquipped && pointer.isPressed(POINTER_ADS);
     const active = this.loadout.getActive();
     const ammoState = active.ammo.getState();
     if (ammoState.reloading) {
       this.weaponSounds?.stopAutoFire();
     }
-    const shooting = this.isFiring(pointer, active.config.fireMode);
+    const shooting =
+      active.config.fireMode === 'melee'
+        ? this.weaponPose?.isSlashing() ?? false
+        : this.isFiring(pointer, active.config.fireMode);
 
     const wantsSprint =
       input.isPressed('ShiftLeft') &&
@@ -764,10 +857,11 @@ export class Player {
       ads,
       ammoState.reloading,
       ammoState.reloadProgress,
+      { ignoreAds: meleeEquipped },
     );
     if (this.aimControls) {
       const adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;
-      const adsBlend = this.weaponPose?.adsBlend ?? 0;
+      const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
       this.aimControls.pointerSpeed = THREE.MathUtils.lerp(1, adsLookSensitivity, adsBlend);
     }
     this.weaponSway?.update(
@@ -776,7 +870,7 @@ export class Player {
       isSprinting,
       shooting,
       this.physics.grounded,
-      this.weaponPose?.adsBlend ?? 0,
+      meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0),
       active.config.sway,
     );
     active.recoil.update(delta, shooting, ads);
@@ -800,8 +894,12 @@ export class Player {
     );
 
     this.updateFire(delta, pointer, projectiles);
+    this.updateMeleeAttack(delta, input, pointer, projectiles);
 
-    const speed = MOVE_SPEED * delta;
+    const moveMultiplier = meleeEquipped
+      ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
+      : 1;
+    const speed = MOVE_SPEED * moveMultiplier * delta;
 
     this.camera.getWorldDirection(this.forward);
     this.forward.y = 0;
@@ -883,6 +981,8 @@ export class Player {
     this.damageNumberStack = null;
     this.shieldBreakFx?.dispose();
     this.shieldBreakFx = null;
+    this.meleeHitFx?.dispose();
+    this.meleeHitFx = null;
     this.shieldRechargeAuraFx?.dispose();
     this.shieldRechargeAuraFx = null;
     this.characterInstance?.dispose();
@@ -894,6 +994,8 @@ export class Player {
     this.lookRigFollowsHead = false;
     this.loadout?.dispose();
     this.loadout = null;
+    this.katanaSlashFx?.dispose();
+    this.katanaSlashFx = null;
     this.hitCapsuleDebug = null;
     this.object.traverse((child) => {
       if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
@@ -902,6 +1004,19 @@ export class Player {
       }
     });
     this.object.removeFromParent();
+  }
+
+  private tryToggleMeleeEquip(input: KeyboardInput): void {
+    if (!this.loadout || !input.isJustPressed('KeyX')) return;
+
+    const equip = !this.loadout.isMeleeEquipped();
+    if (!this.loadout.tryEquipMelee(equip)) return;
+
+    this.weaponSounds?.stopAutoFire();
+    this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
+    this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
+    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(this.loadout.getActive().config), 'local');
+    this.onMeleeEquipNetwork?.(equip);
   }
 
   private trySwitchWeapon(input: KeyboardInput): void {
@@ -915,8 +1030,8 @@ export class Player {
       this.weaponSounds?.stopAutoFire();
       this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
       this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
-      this.loadout.applyActiveRotation(LOCAL_WEAPON_ROTATION, 'local');
-      this.onWeaponSwitchNetwork?.(slot, this.loadout.getActiveWeaponId());
+    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(this.loadout.getActive().config), 'local');
+    this.onWeaponSwitchNetwork?.(slot, this.loadout.getActiveWeaponId());
       break;
     }
   }
@@ -946,10 +1061,46 @@ export class Player {
     );
   }
 
-  private isFiring(pointer: PointerInput, fireMode: 'auto' | 'semi'): boolean {
+  private isFiring(pointer: PointerInput, fireMode: WeaponFireMode): boolean {
+    if (fireMode === 'melee') return false;
     return fireMode === 'semi'
       ? pointer.isJustPressed(POINTER_SHOOT)
       : pointer.isPressed(POINTER_SHOOT);
+  }
+
+  private updateMeleeAttack(
+    delta: number,
+    input: KeyboardInput,
+    pointer: PointerInput,
+    projectiles: ProjectileManager | null,
+  ): void {
+    if (!this.loadout?.isMeleeEquipped() || !this.camera) return;
+
+    this.fireCooldown = Math.max(0, this.fireCooldown - delta);
+
+    const wantsAttack =
+      pointer.isJustPressed(POINTER_SHOOT) || input.isJustPressed('KeyV');
+    if (!wantsAttack) return;
+
+    if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
+    if (this.fireCooldown > 0 || this.weaponPose?.isSlashing()) return;
+
+    const active = this.loadout.getActive();
+    if (!active.ammo.tryShoot()) return;
+
+    this.weaponSounds?.playSingleShot(active.config.sounds);
+    this.weaponPose?.startSlash(KATANA_SLASH_DURATION_SEC);
+    this.katanaSlashFx?.play(active.mesh);
+    this.fireCooldown += active.fireInterval;
+    this.onMeleeAttackNetwork?.();
+
+    if (projectiles) {
+      projectiles.tryMeleeHit(
+        this.camera,
+        active.config.meleeRange ?? 2.8,
+        this.projectileSpawnOptions.ownerSessionId,
+      );
+    }
   }
 
   private updateFire(
@@ -959,13 +1110,15 @@ export class Player {
   ): void {
     if (!this.loadout) return;
 
+    const active = this.loadout.getActive();
+    if (active.config.fireMode === 'melee') return;
+
     if (!pointer.isPressed(POINTER_SHOOT)) {
       this.weaponSounds?.stopAutoFire();
     }
 
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
 
-    const active = this.loadout.getActive();
     const wantsFire = this.isFiring(pointer, active.config.fireMode);
     if (!wantsFire) return;
 
@@ -1066,7 +1219,7 @@ export class Player {
   private getActiveMeshBaseRotation(): THREE.Euler {
     const active = this.loadout!.getActive();
     return resolveWeaponMeshRotation(
-      LOCAL_WEAPON_ROTATION,
+      getLocalWeaponBaseRotation(active.config),
       active.config.view,
       'local',
       this.activeMeshBaseRotation,
@@ -1087,6 +1240,9 @@ export class Player {
   /** Pitch on the spine (waist up) so legs stay grounded in the idle pose. */
   private applyRemoteSpinePitch(): void {
     if (!this.spineBone) return;
+    // One-shot clips clamp on the last frame; the mixer may stop driving the spine
+    // bone while this pose is still displayed — skip pitch to avoid quaternion drift.
+    if (this.characterInstance?.isOneShotFinished) return;
 
     _spinePitchQuat.setFromAxisAngle(_spinePitchAxis, -this.currentPitch);
     this.spineBone.quaternion.multiply(_spinePitchQuat);

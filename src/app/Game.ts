@@ -62,7 +62,7 @@ import {
   GAME_SHIELD_CHARGE_AUDIO,
   GAME_SHIELD_CHARGE_END_AUDIO,
 } from '../content/audioConfig';
-import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
+import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
@@ -145,7 +145,10 @@ export class Game {
     await Promise.all([
       preloadWeaponMeshes(),
       Player.preloadGameCharacterModels(),
-      this.weaponSounds.preload(collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS)),
+      this.weaponSounds.preload([
+        ...collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS),
+        ...collectWeaponSoundUrls([KATANA_CONFIG]),
+      ]),
       this.weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),
       this.environmentSounds.preload(GAME_ENVIRONMENT_AUDIO.src),
       this.droneProximitySounds.preload(GAME_DRONE_PROXIMITY_AUDIO.src),
@@ -431,6 +434,7 @@ export class Game {
   private refreshInventoryHud(): void {
     this.inventoryHud.update({
       weapons: this.player.getInventoryWeapons(),
+      melee: this.player.getInventoryMelee(),
       shieldCharges: this.player.getInventory().getShieldCharges(),
     });
   }
@@ -613,6 +617,7 @@ export class Game {
       if (this.inventoryOpen) {
         this.inventoryHud.update({
           weapons: this.player.getInventoryWeapons(),
+          melee: this.player.getInventoryMelee(),
           shieldCharges: this.player.getInventory().getShieldCharges(),
         });
       }

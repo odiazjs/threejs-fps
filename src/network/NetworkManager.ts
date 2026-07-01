@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { getWeaponConfig } from '../content/weaponConfig';
-import { isWeaponId } from '../../shared/content/weaponIds';
+import { isWeaponId, MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
@@ -195,10 +195,13 @@ export class NetworkManager {
           this.localCombat.teamId,
           this.roomClient.sessionId ?? '',
         ),
-      (targetId, _point) => {
+      (targetId, point) => {
         this.impactSounds?.playEnemyHit();
         this.recordLocalHit(targetId);
         const weaponId = player.getActiveWeaponId();
+        if (weaponId === MELEE_WEAPON_ID) {
+          this.remotePlayers.getPlayer(targetId)?.playMeleeHitFx(point);
+        }
         this.roomClient.sendHit(targetId, weaponId);
         onLocalHit?.();
       },
@@ -227,6 +230,14 @@ export class NetworkManager {
     player.setWeaponSwitchNetworkCallback((slot) => {
       if (!this.roomClient.connected) return;
       this.roomClient.sendSwitchWeapon(slot);
+    });
+    player.setMeleeEquipNetworkCallback((equipped) => {
+      if (!this.roomClient.connected) return;
+      this.roomClient.sendEquipMelee(equipped);
+    });
+    player.setMeleeAttackNetworkCallback(() => {
+      if (!this.roomClient.connected) return;
+      this.roomClient.sendMeleeAttack();
     });
   }
 
