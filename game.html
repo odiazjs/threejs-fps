@@ -218,6 +218,135 @@
       #ammo-hud.empty .ammo-status {
         color: #e5a088;
       }
+      #team-hud {
+        position: fixed;
+        right: 1.5rem;
+        bottom: calc(1.5rem + 7.25rem);
+        width: min(260px, 44vw);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.6rem;
+        pointer-events: none;
+        z-index: 5;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+      }
+      #team-hud[hidden] {
+        display: none !important;
+      }
+      .team-hud-list {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.6rem;
+        width: 100%;
+      }
+      .team-hud-entry {
+        width: 100%;
+        padding: 0.5rem 0.65rem;
+        border-radius: 10px;
+        background: rgba(12, 16, 20, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      }
+      .team-hud-name {
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-align: right;
+        margin-bottom: 0.3rem;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .team-hud-entry.dead .team-hud-name {
+        opacity: 0.55;
+      }
+      .team-hud-shield {
+        margin-bottom: 0.3rem;
+      }
+      .team-hud-shield-levels {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.24rem;
+        margin-bottom: 0.22rem;
+      }
+      .team-hud-shield-level {
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        transition: background 120ms linear, box-shadow 120ms linear;
+      }
+      .team-hud-shield-level.active {
+        background: rgba(0, 210, 255, 0.24);
+        border-color: rgba(0, 240, 255, 0.4);
+        box-shadow: 0 0 6px rgba(0, 240, 255, 0.28);
+      }
+      .team-hud-shield-level.broken {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 120, 120, 0.45);
+        box-shadow: 0 0 6px rgba(255, 70, 70, 0.35);
+      }
+      .team-hud-shield-track {
+        position: relative;
+        height: 9px;
+        border-radius: 999px;
+        background: rgba(8, 24, 32, 0.62);
+        border: 2px solid rgba(0, 220, 255, 0.35);
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+      }
+      .team-hud-shield-fill {
+        position: relative;
+        z-index: 1;
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #00c8ff, #6ef5ff);
+        box-shadow: 0 0 8px rgba(0, 240, 255, 0.45);
+        transition: width 80ms linear;
+      }
+      .team-hud-shield-recharge {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(120, 245, 255, 0.35), rgba(180, 255, 255, 0.55));
+        box-shadow: 0 0 10px rgba(120, 245, 255, 0.35);
+        transition: width 80ms linear;
+        pointer-events: none;
+      }
+      .team-hud-shield.depleted .team-hud-shield-track {
+        border-color: rgba(255, 110, 110, 0.45);
+      }
+      .team-hud-shield.depleted .team-hud-shield-fill {
+        background: linear-gradient(90deg, #7a8a90, #9aa8ad);
+        box-shadow: none;
+      }
+      .team-hud-entry.dead .team-hud-shield {
+        opacity: 0.45;
+      }
+      .team-hud-track {
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(20, 24, 28, 0.62);
+        border: 2px solid rgba(255, 255, 255, 0.22);
+        overflow: hidden;
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+      }
+      .team-hud-entry.dead .team-hud-track {
+        border-color: rgba(229, 160, 136, 0.35);
+      }
+      .team-hud-fill {
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        transition: width 80ms linear;
+      }
       #reload-hud {
         position: fixed;
         left: 50%;
@@ -985,6 +1114,9 @@
         <div class="stamina-fill"></div>
         <div class="stamina-cooldown"></div>
       </div>
+    </div>
+    <div id="team-hud" hidden>
+      <div class="team-hud-list"></div>
     </div>
     <div id="ammo-hud" hidden>
       <div class="ammo-weapon-name">Pistol [1]</div>

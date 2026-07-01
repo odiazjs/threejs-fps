@@ -40,7 +40,7 @@ import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import { getReloadState } from '../../shared/combat/reload';
-import { getDefaultShieldPoints } from '../../shared/combat/shield';
+import { getDefaultShieldPoints, SHIELD_DEFAULT_LEVEL } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import { PlayerInventory } from '../inventory/PlayerInventory';
 import type { InventoryWeaponEntry } from '../ui/InventoryHud';
@@ -135,6 +135,7 @@ export class Player {
   private alive = true;
   private username = 'Player';
   private hp = 100;
+  private shieldLevel = SHIELD_DEFAULT_LEVEL;
   private shieldPoints = getDefaultShieldPoints();
   private hitCapsuleDebug: THREE.Group | null = null;
 
@@ -438,6 +439,22 @@ export class Player {
     return this.hp;
   }
 
+  getShieldLevel(): number {
+    return this.shieldLevel;
+  }
+
+  getShieldPoints(): number {
+    return this.shieldPoints;
+  }
+
+  getShieldRecharging(): boolean {
+    return this.targetShieldRecharging;
+  }
+
+  getShieldRechargeEndAt(): number {
+    return this.targetShieldRechargeEndAt;
+  }
+
   updateCrosshairAim(hud: CrosshairHud, width: number, height: number): void {
     if (!this.camera || !this.loadout) {
       hud.setAimOffset(0, 0);
@@ -559,6 +576,7 @@ export class Player {
     }
 
     this.hp = snapshot.hp;
+    this.shieldLevel = snapshot.shieldLevel;
     this.shieldPoints = snapshot.shieldPoints;
     if (this.camera) {
       this.inventory.setShieldCharges(snapshot.shieldCharges);

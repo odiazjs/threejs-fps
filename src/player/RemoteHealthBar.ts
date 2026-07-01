@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
+import { TEAM_COLORS } from '../../shared/combat/teams';
 
 const FALLBACK_TOP_OFFSET = 1.84;
 const REF_DISTANCE = 12;
@@ -13,8 +14,6 @@ const FAR_WORLD_LIFT_START = 10;
 const FAR_WORLD_LIFT_RANGE = 36;
 /** Extra screen-space lift so the bar clears small distant silhouettes. */
 const FAR_SCREEN_LIFT_MAX = 42;
-
-const TEAM_COLORS = ['#6a9fd4', '#e5a088'] as const;
 
 const _anchor = new THREE.Vector3();
 

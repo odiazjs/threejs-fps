@@ -7,6 +7,7 @@ import type { PlayerControls } from '../player/PlayerControls';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
+import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import { DEFAULT_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
@@ -16,7 +17,7 @@ import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import type { ImpactSoundService } from '../audio/ImpactSoundService';
-import type { LocalCombatState } from './types';
+import type { TeammateHudEntry } from '../ui/TeamHud';
 import type { PlayerSnapshot } from './types';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
@@ -159,7 +160,6 @@ export class NetworkManager {
       this.onLocalAmmoPickup,
     );
     this.roomClient.bindState();
-    this.projectiles.setFriendlyFire(this.roomClient.getFriendlyFire());
 
     const snapshot = this.roomClient.getLocalSnapshot();
     if (snapshot) {
@@ -285,6 +285,41 @@ export class NetworkManager {
 
   getSessionId(): string {
     return this.roomClient.sessionId;
+  }
+
+  getTeammateHudEntries(): TeammateHudEntry[] {
+    const localTeamId = this.localCombat.teamId;
+    const localSessionId = this.roomClient.sessionId;
+    const worldTime = this.getWorldTime();
+    const entries: TeammateHudEntry[] = [];
+
+    for (const [sessionId, player] of this.remotePlayers.getAllPlayers()) {
+      if (sessionId === localSessionId) continue;
+      if (player.getTeamId() !== localTeamId) continue;
+
+      const shieldLevel = player.getShieldLevel();
+      const recharge = getShieldRechargeState(
+        player.getShieldRecharging(),
+        player.getShieldRechargeEndAt(),
+        worldTime,
+      );
+
+      entries.push({
+        id: sessionId,
+        username: player.getUsername(),
+        hp: player.getHp(),
+        maxHp: PLAYER_MAX_HP,
+        alive: player.isAlive(),
+        teamId: player.getTeamId(),
+        shieldLevel,
+        shieldPoints: player.getShieldPoints(),
+        shieldCapacity: getShieldCapacity(shieldLevel),
+        shieldRecharging: recharge.recharging,
+        shieldRechargeProgress: recharge.progress,
+      });
+    }
+
+    return entries.sort((a, b) => a.username.localeCompare(b.username));
   }
 
   resolveDamageHit(player: Player) {

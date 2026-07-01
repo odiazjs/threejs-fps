@@ -4,7 +4,7 @@ export class WeaponsView {
   private scene: WeaponsScene | null = null;
 
   async mount(): Promise<void> {
-    if (this.scene) return;
+    this.unmount();
 
     const canvasHost = document.getElementById('weapons-canvas')!;
     const picker = document.getElementById('weapons-picker')!;

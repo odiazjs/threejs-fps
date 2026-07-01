@@ -1,9 +1,11 @@
 import type { AppPresenceView } from '../../shared/network/appView';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
+import { waitForPaint } from '../ui/waitForPaint';
 import type { LobbyClient } from '../lobby/LobbyClient';
 import type { LobbyScene } from '../lobby/LobbyScene';
 import type { FriendsPanel } from '../lobby/FriendsPanel';
 import { LeaderboardView } from '../lobby/views/LeaderboardView';
+import { refreshLobbyProfileStats } from '../lobby/lobbyProfileStats';
 import { WeaponsView } from '../lobby/views/WeaponsView';
 
 export type ShellView = 'lobby' | 'weapons' | 'leaderboard';
@@ -75,6 +77,7 @@ export class AppShell {
     const loadingMessage = LOADING_MESSAGE_BY_VIEW[view];
     if (loadingMessage) {
       this.loading.show(loadingMessage);
+      await waitForPaint();
     }
 
     try {
@@ -88,6 +91,9 @@ export class AppShell {
       }
       this.syncUrl(view);
       document.title = TITLE_BY_VIEW[view];
+      if (loadingMessage) {
+        await waitForPaint();
+      }
     } finally {
       if (loadingMessage) {
         this.loading.hide();
@@ -139,14 +145,26 @@ export class AppShell {
   }
 
   private async activateView(view: ShellView): Promise<void> {
-    document.getElementById(`app-view-${view}`)!.hidden = false;
+    const viewEl = document.getElementById(`app-view-${view}`)!;
+    viewEl.hidden = false;
 
     if (view === 'lobby') {
       this.lobbyScene.setActive(true);
-    } else if (view === 'weapons') {
-      await this.weaponsView.mount();
-    } else {
-      await this.leaderboardView.mount();
+      void refreshLobbyProfileStats();
+      return;
+    }
+
+    viewEl.classList.add('app-view--loading');
+    await waitForPaint();
+
+    try {
+      if (view === 'weapons') {
+        await this.weaponsView.mount();
+      } else {
+        await this.leaderboardView.mount();
+      }
+    } finally {
+      viewEl.classList.remove('app-view--loading');
     }
   }
 }

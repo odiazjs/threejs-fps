@@ -8,7 +8,7 @@ import type { KillFeedHud } from '../ui/KillFeedHud';
 import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
-import type { WeaponPickupHud } from '../ui/WeaponPickupHud';
+import type { TeamHud } from '../ui/TeamHud';
 
 export class PlayerControls {
   readonly controls: PointerAimControls;
@@ -20,6 +20,7 @@ export class PlayerControls {
   private shieldRechargeHud: ShieldRechargeHud | null = null;
   private weaponPickupHud: WeaponPickupHud | null = null;
   private shieldPickupHud: ShieldPickupHud | null = null;
+  private teamHud: TeamHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private hasLockedOnce = false;
@@ -75,6 +76,10 @@ export class PlayerControls {
     this.shieldPickupHud = hud;
   }
 
+  setTeamHud(hud: TeamHud): void {
+    this.teamHud = hud;
+  }
+
   setLeaveHandler(handler: () => void): void {
     this.onLeave = handler;
   }
@@ -128,6 +133,7 @@ export class PlayerControls {
       this.shieldPickupHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
       this.damageIndicatorHud?.setVisible(true);
+      this.teamHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
@@ -143,6 +149,7 @@ export class PlayerControls {
       this.shieldPickupHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);
       this.damageIndicatorHud?.setVisible(false);
+      this.teamHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
 
       if (this.hasLockedOnce) {

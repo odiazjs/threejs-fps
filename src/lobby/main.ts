@@ -1,10 +1,11 @@
 import { handoffPageBoot } from '../app/pageBoot';
 import { AppShell, parseShellViewFromUrl } from '../app/AppShell';
-import { getAppProfile, initAppSession } from '../app/bootstrap';
-import { getKdRatio, logout } from '../auth/playerSession';
+import { initAppSession } from '../app/bootstrap';
+import { logout } from '../auth/playerSession';
 import { FriendsPanel } from './FriendsPanel';
 import { LobbyClient } from './LobbyClient';
 import { LobbyScene } from './LobbyScene';
+import { refreshLobbyProfileStats } from './lobbyProfileStats';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { AppPresenceView } from '../../shared/network/appView';
 
@@ -31,19 +32,14 @@ async function startLobby(): Promise<void> {
     });
     appShell = new AppShell(lobbyClient, scene, friendsPanel);
 
-    const me = await Promise.all([
-      getAppProfile(),
+    await Promise.all([
+      refreshLobbyProfileStats(),
       scene.whenReady(),
       lobbyClient.connect({ userId: session.userId, username: session.username }).then(async () => {
         lobbyClient.setAppView(shellPresenceView(initialView));
         await friendsPanel.init();
       }),
-    ]).then(([profile]) => profile);
-
-    document.getElementById('lobby-username')!.textContent = me.displayName;
-    document.getElementById('lobby-email')!.textContent = me.email;
-    document.getElementById('stat-kills')!.textContent = String(me.stats.kills);
-    document.getElementById('stat-kd')!.textContent = getKdRatio(me.stats);
+    ]);
 
     appShell.bindNavigation();
     if (initialView !== 'lobby') {

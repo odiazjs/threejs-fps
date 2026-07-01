@@ -1,6 +1,5 @@
 import type { Scene, Vector3 } from 'three';
 import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
-import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import { rayHitsPlayer } from '../../shared/combat/playerHitbox';
 import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
 import { HitSplash } from './HitSplash';
@@ -26,13 +25,8 @@ export class ProjectileManager {
   private readonly meta = new WeakMap<Projectile, ProjectileMeta>();
   private getHitTargets: (() => ProjectileHitTarget[]) | null = null;
   private onPlayerHit: ((targetId: string, point: Vector3) => void) | null = null;
-  private friendlyFire = false;
 
   constructor(private readonly scene: Scene) {}
-
-  setFriendlyFire(enabled: boolean): void {
-    this.friendlyFire = enabled;
-  }
 
   setPlayerHitHandlers(
     getHitTargets: () => ProjectileHitTarget[],
@@ -141,13 +135,6 @@ export class ProjectileManager {
 
     for (const target of this.getHitTargets()) {
       if (info.ownerSessionId && target.sessionId === info.ownerSessionId) {
-        continue;
-      }
-      if (
-        !this.friendlyFire &&
-        target.teamId === info.ownerTeamId &&
-        !isTrainingBotSessionId(target.sessionId)
-      ) {
         continue;
       }
       if (

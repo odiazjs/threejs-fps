@@ -19,6 +19,7 @@ import { StaminaHud } from '../ui/StaminaHud';
 import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
+import { TeamHud } from '../ui/TeamHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
 import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
@@ -29,9 +30,9 @@ import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { isWeaponId } from '../../shared/content/weaponIds';
-import { getSession } from '../auth/playerSession';
-import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
+import type { FpsJoinCredentials } from '../auth/joinCredentials';
+import { getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
@@ -68,6 +69,7 @@ export class Game {
   private staminaHud = new StaminaHud();
   private ammoHud = new AmmoHud();
   private healthHud = new HealthHud();
+  private teamHud = new TeamHud();
   private killFeedHud = new KillFeedHud();
   private crosshairHud = new CrosshairHud();
   private damageIndicatorHud = new DamageIndicatorHud();
@@ -200,6 +202,7 @@ export class Game {
     this.playerControls.setStaminaHud(this.staminaHud);
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
+    this.playerControls.setTeamHud(this.teamHud);
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
@@ -516,6 +519,7 @@ export class Game {
       );
       this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
+      this.teamHud.update(this.network.getTeammateHudEntries());
       this.shieldRechargeHud.update(
         getShieldRechargeState(
           this.localCombat.shieldRecharging,

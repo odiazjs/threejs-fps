@@ -176,7 +176,6 @@ export async function logout(): Promise<void> {
   const session = getSession();
   clearSession();
   clearPendingAuth();
-  clearAppProfileCache();
 
   if (session?.accessToken) {
     try {

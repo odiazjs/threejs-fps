@@ -626,6 +626,13 @@ body {
   display: none !important;
 }
 
+.app-view--loading #weapons-canvas,
+.app-view--loading .weapons-ui,
+.app-view--loading .leaderboard-shell,
+.app-view--loading .leaderboard-back-btn {
+  visibility: hidden;
+}
+
 /* Weapons */
 .weapons-page {
   min-height: 100vh;
