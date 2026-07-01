@@ -244,18 +244,25 @@ body {
 }
 
 .lobby-account-bar {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.55rem;
   width: min(15rem, 38vw);
   pointer-events: none;
 }
 
 .lobby-account {
-  padding: 0.7rem 0.9rem;
+  padding: 0.7rem 0.75rem 0.7rem 0.9rem;
   text-align: left;
   pointer-events: none;
+}
+
+.lobby-account-body {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.lobby-account-details {
+  flex: 1;
+  min-width: 0;
 }
 
 .lobby-account-label {
@@ -311,18 +318,18 @@ body {
 }
 
 #lobby-menu .lobby-menu-item,
-.lobby-logout-btn,
 .weapons-back-btn,
-.leaderboard-back-btn {
+.leaderboard-back-btn,
+.settings-back-btn {
   background: #0e1114;
   border: 1px solid rgba(130, 219, 219, 0.38);
   color: #fff;
 }
 
 #lobby-menu .lobby-menu-item:hover:not(:disabled),
-.lobby-logout-btn:hover:not(:disabled),
 .weapons-back-btn:hover:not(:disabled),
-.leaderboard-back-btn:hover:not(:disabled) {
+.leaderboard-back-btn:hover:not(:disabled),
+.settings-back-btn:hover:not(:disabled) {
   background: #1a2026;
   border-color: rgba(130, 219, 219, 0.55);
 }
@@ -343,9 +350,40 @@ body {
 }
 
 .lobby-logout-btn {
-  width: 100%;
-  margin-top: 0;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  margin: 0;
+  padding: 0;
+  border-radius: 0.45rem;
+  background: #0e1114;
+  border: 1px solid rgba(130, 219, 219, 0.38);
+  color: #82dbdb;
+  cursor: pointer;
   pointer-events: auto;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.lobby-logout-btn:hover:not(:disabled) {
+  background: #1a2026;
+  border-color: rgba(130, 219, 219, 0.55);
+  color: #fff;
+}
+
+.lobby-logout-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.lobby-logout-icon {
+  width: 1.15rem;
+  height: 1.15rem;
 }
 
 .friends-panel {
@@ -795,6 +833,93 @@ body {
 }
 
 .leaderboard-back-btn {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 1.5rem;
+  pointer-events: auto;
+  min-width: 180px;
+}
+
+/* Settings */
+.settings-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(94, 184, 196, 0.1), transparent 42%),
+    #0e1114;
+}
+
+.settings-shell {
+  width: min(520px, 92vw);
+  margin: 6.5rem auto 5.5rem;
+  padding: 1.35rem 1.5rem 1.5rem;
+  background: #14181c;
+}
+
+.settings-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  color: #82dbdb;
+  margin-bottom: 1.25rem;
+}
+
+.settings-option + .settings-option {
+  margin-top: 1.25rem;
+}
+
+.settings-option-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.settings-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.settings-value {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #82dbdb;
+  min-width: 3rem;
+  text-align: right;
+}
+
+.settings-slider {
+  width: 100%;
+  height: 0.35rem;
+  appearance: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid #82dbdb;
+  background: #0e1114;
+  box-shadow: 0 0 0 2px rgba(130, 219, 219, 0.15);
+}
+
+.settings-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2px solid #82dbdb;
+  background: #0e1114;
+  box-shadow: 0 0 0 2px rgba(130, 219, 219, 0.15);
+}
+
+.settings-back-btn {
   position: fixed;
   left: 1.5rem;
   bottom: 1.5rem;

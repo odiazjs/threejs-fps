@@ -33,6 +33,7 @@ const fragmentShader = /* glsl */ `
   uniform float uTime;
   uniform float uBreak;
   uniform float uAlpha;
+  uniform float uIntensity;
   uniform vec3 uColor;
   uniform vec3 uColorBright;
   uniform vec3 uCameraPos;
@@ -84,11 +85,11 @@ const fragmentShader = /* glsl */ `
     float dissolve = smoothstep(0.0, 1.0, uBreak - cell * 0.65);
     float shardFlash = smoothstep(0.02, 0.0, abs(uBreak - cell * 0.65 - 0.04)) * 2.5;
 
-    float glow = line * (1.8 + fresnel * 1.4) + cellFill + shardFlash;
+    float glow = (line * (1.8 + fresnel * 1.4) + cellFill + shardFlash) * uIntensity;
     vec3 col = mix(uColor, uColorBright, line * 0.85 + shardFlash * 0.4);
     col *= glow;
 
-    float alpha = (line * 0.95 + cellFill * 0.65 + fresnel * 0.25) * uAlpha;
+    float alpha = (line * 0.95 + cellFill * 0.65 + fresnel * 0.25) * uAlpha * uIntensity;
     alpha *= 1.0 - dissolve * 0.92;
     alpha += shardFlash * 0.35 * uAlpha;
 
@@ -103,17 +104,26 @@ export interface HexShieldUniforms {
   uBreak: { value: number };
   uExpand: { value: number };
   uAlpha: { value: number };
+  uIntensity: { value: number };
   uColor: { value: THREE.Color };
   uColorBright: { value: THREE.Color };
 }
 
-export function createHexShieldMaterial(): THREE.ShaderMaterial {
+export interface HexShieldMaterialOptions {
+  /** Multiplier for line glow and opacity — use >1 for large domes. */
+  intensity?: number;
+}
+
+export function createHexShieldMaterial(
+  options: HexShieldMaterialOptions = {},
+): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
       uBreak: { value: 0 },
       uExpand: { value: 0 },
       uAlpha: { value: 1 },
+      uIntensity: { value: options.intensity ?? 1 },
       uColor: { value: new THREE.Color(0x00c8ff) },
       uColorBright: { value: new THREE.Color(0x8afbff) },
       uCameraPos: { value: new THREE.Vector3() },

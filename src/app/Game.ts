@@ -4,10 +4,15 @@ import { pickSpawnPoint } from '../../shared/level/kiloSectorColliders';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { PointerInput } from '../input/PointerInput';
 import { ProjectileManager } from '../combat/ProjectileManager';
+import { ShieldDomeAbility } from '../combat/ShieldDomeAbility';
+import { ShieldDomeManager } from '../combat/ShieldDomeManager';
+import { ShieldDomeChargeManager } from '../combat/ShieldDomeChargeManager';
 import { NetworkManager } from '../network/NetworkManager';
 import type { LocalCombatState } from '../network/types';
+import type { PlayerDamagedMessage } from '../../shared/network/damage';
 import { getShieldCapacity, canUseShieldCharge } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
+import { getShieldDomeHudState } from '../../shared/combat/shieldDomeAbility';
 import { DEFAULT_SHIELD_CHARGES, MAX_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
@@ -25,6 +30,7 @@ import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import { InventoryHud } from '../ui/InventoryHud';
 import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
+import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
@@ -80,6 +86,7 @@ export class Game {
     })),
   );
   private shieldRechargeHud = new ShieldRechargeHud();
+  private shieldDomeHud = new ShieldDomeHud();
   private weaponPickupHud = new WeaponPickupHud();
   private shieldPickupHud = new ShieldPickupHud();
   private performanceHud = new PerformanceHud();
@@ -90,6 +97,9 @@ export class Game {
   private input = new KeyboardInput();
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
+  private shieldDomeManager!: ShieldDomeManager;
+  private shieldDomeChargeManager!: ShieldDomeChargeManager;
+  private shieldDomeAbility: ShieldDomeAbility | null = null;
   private renderContext = new RenderContext();
   private terrain: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
@@ -115,6 +125,9 @@ export class Game {
     shieldCharges: DEFAULT_SHIELD_CHARGES,
     shieldRecharging: false,
     shieldRechargeEndAt: 0,
+    shieldDomeChargeEndAt: 0,
+    shieldDomeEndAt: 0,
+    shieldDomeCooldownEndAt: 0,
     alive: true,
     teamId: 0,
     username: 'Player',
@@ -187,6 +200,9 @@ export class Game {
     this.lightBeams = world.getLightBeams();
     this.scene = world.getScene();
     this.projectiles = new ProjectileManager(this.scene);
+    this.shieldDomeManager = new ShieldDomeManager(this.scene);
+    this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
+    this.projectiles.setShieldDomeManager(this.shieldDomeManager);
     this.ammoPickups = new AmmoPickups(this.scene);
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
@@ -207,6 +223,7 @@ export class Game {
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
+    this.playerControls.setShieldDomeHud(this.shieldDomeHud);
     this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
     this.playerControls.setShieldPickupHud(this.shieldPickupHud);
     this.playerControls.setLeaveHandler(() => {
@@ -277,6 +294,7 @@ export class Game {
         }
       },
     );
+    this.network.onLocalDamaged((damage) => this.handleLocalDamaged(damage));
     this.network.onLocalLoadoutChange((snapshot) => {
       const prevWeapons = this.player.getInventoryWeapons();
       this.player.applyLoadoutFromSnapshot(snapshot);
@@ -328,6 +346,14 @@ export class Game {
     this.network.setFootstepSoundService(this.footstepSounds);
     this.network.setImpactSoundService(this.impactSounds);
     this.network.applyLocalSpawn(this.player);
+
+    this.shieldDomeAbility = new ShieldDomeAbility();
+    this.shieldDomeAbility.setStartChargeCallback(() =>
+      this.network.sendStartShieldDomeCharge(),
+    );
+    this.player.setShieldDomeAbility(this.shieldDomeAbility);
+    this.player.setShieldDomeWorldTimeProvider(() => this.network.getWorldTime());
+    this.projectiles.setWorldTimeProvider(() => this.network.getWorldTime());
   }
 
   private handleLocalCombatChange(state: LocalCombatState): void {
@@ -342,38 +368,9 @@ export class Game {
     }
 
     if (state.alive) {
-      const shieldDamage = Math.max(0, prev.shieldPoints - state.shieldPoints);
-      const healthDamage = Math.max(0, prev.hp - state.hp);
       const shieldBroken = prev.shieldPoints > 0 && state.shieldPoints <= 0;
-
-      if (shieldDamage > 0 || healthDamage > 0 || shieldBroken) {
-        this.player.object.updateMatrixWorld(true);
-        const hit = this.network.resolveDamageHit(this.player);
-        const shooterWorldPos = hit?.shooterWorldPos ?? null;
-        const camera = this.player.camera;
-
-        if (shieldDamage > 0) {
-          this.damageIndicatorHud.onDamage(
-            shieldDamage,
-            shooterWorldPos,
-            camera,
-            'shield',
-          );
-        }
-
-        if (shieldBroken) {
-          this.damageIndicatorHud.onShieldBroken(shooterWorldPos, camera);
-          this.network.playLocalShieldBreak();
-        }
-
-        if (healthDamage > 0) {
-          this.damageIndicatorHud.onDamage(
-            healthDamage,
-            shooterWorldPos,
-            camera,
-            'health',
-          );
-        }
+      if (shieldBroken) {
+        this.network.playLocalShieldBreak();
       }
     }
 
@@ -389,9 +386,46 @@ export class Game {
 
     this.wasAlive = state.alive;
     this.localCombat = state;
+    this.shieldDomeAbility?.setServerState(
+      state.shieldDomeEndAt,
+      state.shieldDomeCooldownEndAt,
+      state.shieldDomeChargeEndAt,
+    );
     this.player.getInventory().setShieldCharges(state.shieldCharges);
     this.player.setProjectileSpawnOptions(state.teamId, this.network?.getSessionId() ?? '');
     this.healthHud.update(state);
+  }
+
+  private handleLocalDamaged(damage: PlayerDamagedMessage): void {
+    this.player.object.updateMatrixWorld(true);
+    const shooterWorldPos = new THREE.Vector3(
+      damage.shooterWorldX,
+      damage.shooterWorldY,
+      damage.shooterWorldZ,
+    );
+    const camera = this.player.camera;
+
+    if (damage.absorbedByShield > 0) {
+      this.damageIndicatorHud.onDamage(
+        damage.absorbedByShield,
+        shooterWorldPos,
+        camera,
+        'shield',
+      );
+    }
+
+    if (damage.shieldBroken) {
+      this.damageIndicatorHud.onShieldBroken(shooterWorldPos, camera);
+    }
+
+    if (damage.dealtToHealth > 0) {
+      this.damageIndicatorHud.onDamage(
+        damage.dealtToHealth,
+        shooterWorldPos,
+        camera,
+        'health',
+      );
+    }
   }
 
   private refreshInventoryHud(): void {
@@ -476,8 +510,17 @@ export class Game {
       canAct,
       this.projectiles,
     );
+    this.player.object.updateMatrixWorld(true);
+    const worldTime = this.network?.getWorldTime() ?? 0;
+    this.network?.syncShieldDomeCharges(
+      this.shieldDomeChargeManager,
+      delta,
+      this.player.camera ?? null,
+    );
+    this.network?.syncShieldDomes(this.shieldDomeManager);
     this.network?.interpolateRemotes(delta, this.player.camera!);
-    this.projectiles.update(delta);
+    this.shieldDomeManager.update(delta, this.player.camera ?? null, worldTime);
+    this.projectiles.update(delta, worldTime);
     this.network?.update(delta, this.player, this.playerControls);
     const camera = this.player.camera;
     this.player.object.updateMatrixWorld(true);
@@ -527,6 +570,16 @@ export class Game {
           this.network.getWorldTime(),
         ),
       );
+      if (this.shieldDomeAbility) {
+        this.shieldDomeHud.update(
+          getShieldDomeHudState(
+            this.network.getWorldTime(),
+            this.localCombat.shieldDomeEndAt,
+            this.localCombat.shieldDomeCooldownEndAt,
+            this.localCombat.shieldDomeChargeEndAt,
+          ),
+        );
+      }
       this.shieldChargeSounds.setActive(
         this.audioUnlocked && this.localCombat.alive && this.localCombat.shieldRecharging,
       );

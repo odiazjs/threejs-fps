@@ -7,6 +7,7 @@ import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
 import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
+import type { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import type { TeamHud } from '../ui/TeamHud';
 
@@ -18,6 +19,7 @@ export class PlayerControls {
   private killFeedHud: KillFeedHud | null = null;
   private damageIndicatorHud: DamageIndicatorHud | null = null;
   private shieldRechargeHud: ShieldRechargeHud | null = null;
+  private shieldDomeHud: ShieldDomeHud | null = null;
   private weaponPickupHud: WeaponPickupHud | null = null;
   private shieldPickupHud: ShieldPickupHud | null = null;
   private teamHud: TeamHud | null = null;
@@ -66,6 +68,10 @@ export class PlayerControls {
 
   setShieldRechargeHud(hud: ShieldRechargeHud): void {
     this.shieldRechargeHud = hud;
+  }
+
+  setShieldDomeHud(hud: ShieldDomeHud): void {
+    this.shieldDomeHud = hud;
   }
 
   setWeaponPickupHud(hud: WeaponPickupHud): void {
@@ -129,6 +135,7 @@ export class PlayerControls {
       this.ammoHud?.setVisible(true);
       this.healthHud?.setVisible(true);
       this.shieldRechargeHud?.setVisible(true);
+      this.shieldDomeHud?.setVisible(true);
       this.weaponPickupHud?.setVisible(true);
       this.shieldPickupHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
@@ -145,6 +152,7 @@ export class PlayerControls {
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);
       this.shieldRechargeHud?.setVisible(false);
+      this.shieldDomeHud?.setVisible(false);
       this.weaponPickupHud?.setVisible(false);
       this.shieldPickupHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);

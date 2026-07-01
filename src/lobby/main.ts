@@ -7,6 +7,7 @@ import { LobbyClient } from './LobbyClient';
 import { LobbyScene } from './LobbyScene';
 import { refreshLobbyProfileStats } from './lobbyProfileStats';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
+import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
 import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
@@ -33,11 +34,13 @@ async function startLobby(): Promise<void> {
     appShell = new AppShell(lobbyClient, scene, friendsPanel);
 
     await Promise.all([
+      initUiSounds(),
+      initLobbyMusic(),
       refreshLobbyProfileStats(),
       scene.whenReady(),
       lobbyClient.connect({ userId: session.userId, username: session.username }).then(async () => {
         lobbyClient.setAppView(shellPresenceView(initialView));
-        await friendsPanel.init();
+        await friendsPanel?.init();
       }),
     ]);
 

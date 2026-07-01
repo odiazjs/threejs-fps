@@ -8,6 +8,8 @@ import {
   type WeaponId,
 } from '../../shared/content/weaponIds';
 import type { ProjectileManager } from '../combat/ProjectileManager';
+import { ShieldDomeAbility } from '../combat/ShieldDomeAbility';
+import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation } from '../combat/WeaponLoadout';
 import { readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
@@ -28,6 +30,7 @@ import {
 } from './characterModel';
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
+import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { ShieldBreakFx } from '../effects/ShieldBreakFx';
 import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
@@ -111,6 +114,8 @@ export class Player {
   private onReloadNetwork: ReloadNetworkCallback | null = null;
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
   private onShieldRechargeNetwork: ShieldRechargeNetworkCallback | null = null;
+  private shieldDomeAbility: ShieldDomeAbility | null = null;
+  private shieldDomeWorldTime: (() => number) | null = null;
   private targetReloadEndAt = 0;
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private targetSprinting = false;
@@ -415,6 +420,14 @@ export class Player {
     this.onShieldRechargeNetwork = callback;
   }
 
+  setShieldDomeAbility(ability: ShieldDomeAbility | null): void {
+    this.shieldDomeAbility = ability;
+  }
+
+  setShieldDomeWorldTimeProvider(provider: (() => number) | null): void {
+    this.shieldDomeWorldTime = provider;
+  }
+
   setProjectileSpawnOptions(ownerTeamId: number, ownerSessionId = ''): void {
     this.projectileSpawnOptions = {
       canHitPlayers: true,
@@ -608,8 +621,12 @@ export class Player {
     this.applyRemoteSpinePitch();
   }
 
-  updateRemoteHealthBar(camera: THREE.Camera): void {
+  updateRemoteHealthBar(
+    camera: THREE.Camera,
+    visibility: RemotePlayerUiVisibilityState,
+  ): void {
     this.syncRemoteUiHeight();
+    this.remoteHealthBar?.setVisibility(visibility);
     this.remoteHealthBar?.updateLayout(camera);
   }
 
@@ -837,6 +854,15 @@ export class Player {
       this.locomotionJumping = false;
     }
 
+    this.tryDeployShieldDome(input, {
+      isSprinting,
+      isJumping: this.locomotionJumping,
+      grounded: this.physics.grounded,
+      shooting,
+      reloading: ammoState.reloading,
+      ads,
+    });
+
     const groundedMoving = isMoving && this.physics.grounded;
     this.footstepSounds?.update(delta, groundedMoving, isSprinting);
 
@@ -898,6 +924,26 @@ export class Player {
   private tryStartShieldRecharge(input: KeyboardInput): void {
     if (!input.isJustPressed('Digit4')) return;
     this.onShieldRechargeNetwork?.();
+  }
+
+  private tryDeployShieldDome(
+    input: KeyboardInput,
+    context: {
+      isSprinting: boolean;
+      isJumping: boolean;
+      grounded: boolean;
+      shooting: boolean;
+      reloading: boolean;
+      ads: boolean;
+    },
+  ): void {
+    if (!this.shieldDomeAbility) return;
+
+    this.shieldDomeAbility.tryActivate(
+      input.isJustPressed(ShieldDomeAbility.activateKey),
+      context,
+      this.shieldDomeWorldTime?.() ?? 0,
+    );
   }
 
   private isFiring(pointer: PointerInput, fireMode: 'auto' | 'semi'): boolean {
@@ -964,8 +1010,15 @@ export class Player {
       this.muzzleOrigin,
       this.aimDirection,
     );
+    const feet = this.object.position;
     projectiles.spawn(this.muzzleOrigin, this.aimDirection, {
       ...this.projectileSpawnOptions,
+      shooterId: this.projectileSpawnOptions.ownerSessionId || undefined,
+      shooterWorldPos: new THREE.Vector3(
+        feet.x,
+        feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
+        feet.z,
+      ),
       muzzleFlash: active.config.muzzleFlash,
       speed: active.config.projectileSpeed,
     });

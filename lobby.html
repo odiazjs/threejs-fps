@@ -52,13 +52,49 @@
         <div class="lobby-top-bar">
           <div class="lobby-account-bar">
             <div class="lobby-account panel">
-              <div class="lobby-account-label">SIGNED IN</div>
-              <div class="lobby-username" id="lobby-username">Player</div>
-              <div class="lobby-email" id="lobby-email">player@example.com</div>
+              <div class="lobby-account-body">
+                <div class="lobby-account-details">
+                  <div class="lobby-account-label">SIGNED IN</div>
+                  <div class="lobby-username" id="lobby-username">Player</div>
+                  <div class="lobby-email" id="lobby-email">player@example.com</div>
+                </div>
+                <button
+                  id="lobby-logout-btn"
+                  class="lobby-logout-btn"
+                  type="button"
+                  title="Log out"
+                  aria-label="Log out"
+                >
+                  <svg class="lobby-logout-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <polyline
+                      points="16 17 21 12 16 7"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <line
+                      x1="21"
+                      y1="12"
+                      x2="9"
+                      y2="12"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
-            <button id="lobby-logout-btn" class="secondary-btn lobby-logout-btn" type="button">
-              LOG OUT
-            </button>
           </div>
           <div class="lobby-stats">
             <div class="lobby-stat">
@@ -108,6 +144,9 @@
           </button>
           <button id="lobby-weapons-btn" class="lobby-menu-item secondary-btn" type="button">
             WEAPONS
+          </button>
+          <button id="lobby-settings-btn" class="lobby-menu-item secondary-btn" type="button">
+            SETTINGS
           </button>
         </nav>
 
@@ -169,6 +208,30 @@
         </div>
       </main>
       <button id="leaderboard-back-btn" class="secondary-btn leaderboard-back-btn" type="button">
+        BACK TO LOBBY
+      </button>
+    </section>
+
+    <section id="app-view-settings" class="app-view" data-view="settings" hidden>
+      <main class="settings-shell panel">
+        <h1 class="settings-title">SETTINGS</h1>
+        <div class="settings-option">
+          <div class="settings-option-header">
+            <label for="lobby-music-volume" class="settings-label">Lobby music volume</label>
+            <span id="lobby-music-volume-value" class="settings-value">14%</span>
+          </div>
+          <input
+            id="lobby-music-volume"
+            class="settings-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="14"
+          />
+        </div>
+      </main>
+      <button id="settings-back-btn" class="secondary-btn settings-back-btn" type="button">
         BACK TO LOBBY
       </button>
     </section>

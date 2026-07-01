@@ -1,7 +1,9 @@
 import type { Scene, Vector3 } from 'three';
+import * as THREE from 'three';
 import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
 import { rayHitsPlayer } from '../../shared/combat/playerHitbox';
 import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
+import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
 import { HitSplash } from './HitSplash';
 import { MuzzleFlash } from './MuzzleFlash';
 import { Projectile } from './Projectile';
@@ -16,6 +18,8 @@ interface ProjectileMeta {
   canHitPlayers: boolean;
   ownerTeamId: number;
   ownerSessionId: string;
+  shooterId?: string;
+  shooterWorldPos?: THREE.Vector3;
 }
 
 export class ProjectileManager {
@@ -25,8 +29,18 @@ export class ProjectileManager {
   private readonly meta = new WeakMap<Projectile, ProjectileMeta>();
   private getHitTargets: (() => ProjectileHitTarget[]) | null = null;
   private onPlayerHit: ((targetId: string, point: Vector3) => void) | null = null;
+  private shieldDomeManager: ShieldDomeManager | null = null;
+  private getWorldTime: (() => number) | null = null;
 
   constructor(private readonly scene: Scene) {}
+
+  setShieldDomeManager(manager: ShieldDomeManager): void {
+    this.shieldDomeManager = manager;
+  }
+
+  setWorldTimeProvider(provider: () => number): void {
+    this.getWorldTime = provider;
+  }
 
   setPlayerHitHandlers(
     getHitTargets: () => ProjectileHitTarget[],
@@ -43,6 +57,8 @@ export class ProjectileManager {
       canHitPlayers?: boolean;
       ownerTeamId?: number;
       ownerSessionId?: string;
+      shooterId?: string;
+      shooterWorldPos?: Vector3;
       muzzleFlash?: MuzzleFlashConfig;
       speed?: number;
     },
@@ -64,15 +80,23 @@ export class ProjectileManager {
       canHitPlayers: options?.canHitPlayers ?? false,
       ownerTeamId: options?.ownerTeamId ?? -1,
       ownerSessionId: options?.ownerSessionId ?? '',
+      shooterId: options?.shooterId,
+      shooterWorldPos: options?.shooterWorldPos?.clone(),
     });
   }
 
-  update(delta: number): void {
+  update(delta: number, worldTime = 0): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
       let playerHitPoint: Vector3 | null = null;
 
       const result = projectile.update(delta, (from, to) => {
+        const domeHit = this.tryShieldDomeHit(projectile, from, to, worldTime);
+        if (domeHit) {
+          playerHitPoint = domeHit;
+          return true;
+        }
+
         const hitPoint = this.tryPlayerHitSegment(projectile, from, to);
         if (!hitPoint) return false;
         playerHitPoint = hitPoint;
@@ -111,6 +135,25 @@ export class ProjectileManager {
       flash.dispose();
       this.muzzleFlashes.splice(i, 1);
     }
+  }
+
+  private tryShieldDomeHit(
+    projectile: Projectile,
+    from: Vector3,
+    to: Vector3,
+    worldTime: number,
+  ): Vector3 | null {
+    if (!this.shieldDomeManager) return null;
+
+    const info = this.meta.get(projectile);
+    const ownerSessionId = info?.ownerSessionId ?? '';
+    const time = this.getWorldTime?.() ?? worldTime;
+    return this.shieldDomeManager.testProjectileSegment(
+      from,
+      to,
+      ownerSessionId,
+      time,
+    );
   }
 
   private tryPlayerHitSegment(

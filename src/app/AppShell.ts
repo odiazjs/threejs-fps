@@ -6,20 +6,23 @@ import type { LobbyScene } from '../lobby/LobbyScene';
 import type { FriendsPanel } from '../lobby/FriendsPanel';
 import { LeaderboardView } from '../lobby/views/LeaderboardView';
 import { refreshLobbyProfileStats } from '../lobby/lobbyProfileStats';
+import { SettingsView } from '../lobby/views/SettingsView';
 import { WeaponsView } from '../lobby/views/WeaponsView';
 
-export type ShellView = 'lobby' | 'weapons' | 'leaderboard';
+export type ShellView = 'lobby' | 'weapons' | 'leaderboard' | 'settings';
 
 const PAGE_CLASS_BY_VIEW: Record<ShellView, string> = {
   lobby: 'lobby-page',
   weapons: 'weapons-page',
   leaderboard: 'leaderboard-page',
+  settings: 'settings-page',
 };
 
 const TITLE_BY_VIEW: Record<ShellView, string> = {
   lobby: 'Three.js FPS — Lobby',
   weapons: 'Three.js FPS — Weapons',
   leaderboard: 'Three.js FPS — Leaderboard',
+  settings: 'Three.js FPS — Settings',
 };
 
 const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
@@ -29,7 +32,7 @@ const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
 
 export function parseShellViewFromUrl(): ShellView {
   const view = new URLSearchParams(window.location.search).get('view');
-  if (view === 'weapons' || view === 'leaderboard') return view;
+  if (view === 'weapons' || view === 'leaderboard' || view === 'settings') return view;
   return 'lobby';
 }
 
@@ -37,6 +40,7 @@ export class AppShell {
   private currentView: ShellView = 'lobby';
   private readonly weaponsView = new WeaponsView();
   private readonly leaderboardView = new LeaderboardView();
+  private readonly settingsView = new SettingsView();
   private readonly loading = LoadingOverlay.shared();
   private navigating = false;
 
@@ -55,10 +59,16 @@ export class AppShell {
     document.getElementById('lobby-leaderboard-btn')!.addEventListener('click', () => {
       void this.showView('leaderboard');
     });
+    document.getElementById('lobby-settings-btn')!.addEventListener('click', () => {
+      void this.showView('settings');
+    });
     document.getElementById('weapons-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
     });
     document.getElementById('leaderboard-back-btn')!.addEventListener('click', () => {
+      void this.showView('lobby');
+    });
+    document.getElementById('settings-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
     });
   }
@@ -107,6 +117,7 @@ export class AppShell {
     window.removeEventListener('popstate', this.onPopState);
     this.weaponsView.unmount();
     this.leaderboardView.unmount();
+    this.settingsView.unmount();
     this.lobbyScene.dispose();
     void this.lobbyClient.disconnect();
   }
@@ -128,7 +139,7 @@ export class AppShell {
   }
 
   private applyBodyClass(view: ShellView): void {
-    document.body.classList.remove('lobby-page', 'weapons-page', 'leaderboard-page');
+    document.body.classList.remove('lobby-page', 'weapons-page', 'leaderboard-page', 'settings-page');
     document.body.classList.add(PAGE_CLASS_BY_VIEW[view]);
   }
 
@@ -139,8 +150,10 @@ export class AppShell {
       this.lobbyScene.setActive(false);
     } else if (view === 'weapons') {
       this.weaponsView.unmount();
-    } else {
+    } else if (view === 'leaderboard') {
       this.leaderboardView.unmount();
+    } else {
+      this.settingsView.unmount();
     }
   }
 
@@ -151,6 +164,11 @@ export class AppShell {
     if (view === 'lobby') {
       this.lobbyScene.setActive(true);
       void refreshLobbyProfileStats();
+      return;
+    }
+
+    if (view === 'settings') {
+      this.settingsView.mount();
       return;
     }
 

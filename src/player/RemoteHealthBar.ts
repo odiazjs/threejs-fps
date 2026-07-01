@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { TEAM_COLORS } from '../../shared/combat/teams';
+import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
 
 const FALLBACK_TOP_OFFSET = 1.84;
 const REF_DISTANCE = 12;
@@ -21,8 +22,12 @@ export class RemoteHealthBar {
   readonly object: CSS2DObject;
   private readonly root: HTMLDivElement;
   private readonly name: HTMLDivElement;
+  private readonly track: HTMLDivElement;
   private readonly fill: HTMLDivElement;
   private topOffset = FALLBACK_TOP_OFFSET;
+  private alive = false;
+  private nameVisible = false;
+  private healthBarVisible = false;
 
   constructor() {
     this.root = document.createElement('div');
@@ -31,16 +36,18 @@ export class RemoteHealthBar {
     this.name = document.createElement('div');
     this.name.className = 'remote-health-bar-name';
 
-    const track = document.createElement('div');
-    track.className = 'remote-health-bar-track';
+    this.track = document.createElement('div');
+    this.track.className = 'remote-health-bar-track';
 
     this.fill = document.createElement('div');
     this.fill.className = 'remote-health-bar-fill';
-    track.appendChild(this.fill);
-    this.root.append(this.name, track);
+    this.track.appendChild(this.fill);
+    this.root.append(this.name, this.track);
 
     this.object = new CSS2DObject(this.root);
     this.object.position.y = this.topOffset;
+    this.object.visible = false;
+    this.applyVisibility();
   }
 
   setHeadTopOffset(offset: number): void {
@@ -49,7 +56,7 @@ export class RemoteHealthBar {
   }
 
   update(hp: number, alive: boolean, teamId: number, username: string): void {
-    this.object.visible = alive;
+    this.alive = alive;
 
     const ratio = Math.max(0, Math.min(1, hp / PLAYER_MAX_HP));
     this.fill.style.width = `${ratio * 100}%`;
@@ -58,6 +65,22 @@ export class RemoteHealthBar {
     this.fill.style.background = `linear-gradient(90deg, ${color}, ${color}cc)`;
     this.name.textContent = username;
     this.name.style.color = color;
+    this.applyVisibility();
+  }
+
+  setVisibility(visibility: RemotePlayerUiVisibilityState): void {
+    this.nameVisible = visibility.nameVisible;
+    this.healthBarVisible = visibility.healthBarVisible;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    const show = this.alive && (this.nameVisible || this.healthBarVisible);
+    this.object.visible = show;
+    this.name.hidden = !this.nameVisible;
+    this.track.hidden = !this.healthBarVisible;
+    this.root.classList.toggle('name-only', this.nameVisible && !this.healthBarVisible);
+    this.root.classList.toggle('health-only', this.healthBarVisible && !this.nameVisible);
   }
 
   updateLayout(camera: THREE.Camera): void {

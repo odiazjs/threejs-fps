@@ -5,6 +5,7 @@ import {
 } from '../../../shared/level/shieldChargeSpawns.js';
 import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
+import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
 import { pickSpawnPoint, HUMAN_RESPAWN_POINT } from '../../../shared/level/kiloSectorColliders.js';
 import {
   PLAYER_MAX_HP,
@@ -36,7 +37,7 @@ import {
   isWeaponId,
   LOADOUT_WEAPON_IDS,
 } from '../../../shared/content/weaponIds.js';
-import type { KillFeedMessage, PlayerHitMessage } from '../../../shared/network/damage.js';
+import type { KillFeedMessage, PlayerDamagedMessage, PlayerHitMessage } from '../../../shared/network/damage.js';
 import type { ReloadMessage } from '../../../shared/network/reload.js';
 import type { SwitchWeaponMessage } from '../../../shared/network/weapon.js';
 import {
@@ -46,7 +47,14 @@ import {
 import type { PickupShieldChargeMessage } from '../../../shared/network/shieldPickup.js';
 import { SHIELD_PICKUP_MAX_DISTANCE } from '../../../shared/network/shieldPickup.js';
 import type { DropShieldChargeMessage } from '../../../shared/network/shieldDrop.js';
+import type { StartShieldDomeChargeMessage } from '../../../shared/network/shieldDome.js';
 import type { StartShieldRechargeMessage } from '../../../shared/network/shieldRecharge.js';
+import {
+  SHIELD_DOME_CHARGE_SEC,
+  SHIELD_DOME_COOLDOWN_SEC,
+  SHIELD_DOME_DURATION_SEC,
+  shieldDomeCenterYFromFeet,
+} from '../../../shared/combat/shieldDomeAbility.js';
 import type { DropWeaponMessage } from '../../../shared/network/weaponDrop.js';
 import type { PickupWeaponDropMessage } from '../../../shared/network/weaponPickup.js';
 import { WEAPON_PICKUP_MAX_DISTANCE } from '../../../shared/network/weaponPickup.js';
@@ -85,6 +93,13 @@ interface JoinOptions {
   friendlyFire?: boolean;
 }
 
+interface LastShotOrigin {
+  x: number;
+  y: number;
+  z: number;
+  time: number;
+}
+
 export class FpsRoom extends Room<{ state: FpsState }> {
   state = new FpsState();
   maxClients = 8;
@@ -94,6 +109,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly botPhysics = new Map<string, PlayerPhysicsState>();
   private readonly botMoveState = new Map<string, TrainingBotMoveState>();
   private readonly userIdBySession = new Map<string, string>();
+  private readonly lastShotOriginBySession = new Map<string, LastShotOrigin>();
 
   onCreate(options: JoinOptions = {}): void {
     this.inviteMatch = options.inviteMatch === true;
@@ -127,6 +143,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.state.worldTime += deltaSec;
       this.tickReloads();
       this.tickShieldRecharges();
+      this.tickShieldDomeCharges();
       this.tickTrainingBots(deltaSec);
     });
   }
@@ -169,6 +186,47 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     if (!player.shieldRecharging) return;
     player.shieldRecharging = false;
     player.shieldRechargeEndAt = 0;
+  }
+
+  private cancelShieldDome(player: PlayerState): void {
+    player.shieldDomeChargeEndAt = 0;
+    player.shieldDomeEndAt = 0;
+    player.shieldDomeCenterX = 0;
+    player.shieldDomeCenterY = 0;
+    player.shieldDomeCenterZ = 0;
+  }
+
+  private tryStartShieldDomeCharge(player: PlayerState): boolean {
+    const now = this.state.worldTime;
+    if (!player.alive) return false;
+    if (now < player.shieldDomeCooldownEndAt) return false;
+    if (now < player.shieldDomeEndAt) return false;
+    if (now < player.shieldDomeChargeEndAt) return false;
+    if (player.sprinting || player.jumping) return false;
+    if (player.reloading) return false;
+
+    const feetY = player.y - EYE_HEIGHT;
+    player.shieldDomeCenterX = player.x;
+    player.shieldDomeCenterY = shieldDomeCenterYFromFeet(feetY);
+    player.shieldDomeCenterZ = player.z;
+    player.shieldDomeChargeEndAt = now + SHIELD_DOME_CHARGE_SEC;
+    return true;
+  }
+
+  private completeShieldDomeDeploy(player: PlayerState): void {
+    const now = this.state.worldTime;
+    player.shieldDomeChargeEndAt = 0;
+    player.shieldDomeEndAt = now + SHIELD_DOME_DURATION_SEC;
+    player.shieldDomeCooldownEndAt = now + SHIELD_DOME_COOLDOWN_SEC;
+  }
+
+  private tickShieldDomeCharges(): void {
+    const now = this.state.worldTime;
+    for (const player of this.state.players.values()) {
+      if (player.shieldDomeChargeEndAt <= 0) continue;
+      if (now < player.shieldDomeChargeEndAt) continue;
+      this.completeShieldDomeDeploy(player);
+    }
   }
 
   private tryStartShieldRecharge(player: PlayerState): boolean {
@@ -443,6 +501,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
       this.cancelShieldRecharge(player);
+
+      const chestY = player.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5;
+      this.lastShotOriginBySession.set(client.sessionId, {
+        x: data.shooterWorldX ?? player.x,
+        y: data.shooterWorldY ?? chestY,
+        z: data.shooterWorldZ ?? player.z,
+        time: this.state.worldTime,
+      });
+
       this.broadcast('projectile', { ...data, shooterId: client.sessionId }, { except: client });
     },
 
@@ -450,6 +517,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       this.tryStartShieldRecharge(player);
+    },
+
+    startShieldDomeCharge: (client: Client, _data: StartShieldDomeChargeMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      this.tryStartShieldDomeCharge(player);
     },
 
     pickupAmmo: (client: Client, data: PickupAmmoMessage) => {
@@ -528,9 +601,27 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (distance > getWeaponMaxHitDistance(data.weaponId)) return;
 
       const damage = getWeaponDamage(data.weaponId);
+      const prevShieldPoints = target.shieldPoints;
       const result = applyDamageWithShield(target.hp, target.shieldPoints, damage);
       target.shieldPoints = result.shieldPoints;
       target.hp = result.hp;
+
+      if (result.absorbedByShield > 0 || result.dealtToHealth > 0) {
+        const lastShot = this.lastShotOriginBySession.get(client.sessionId);
+        const victimClient = this.clients.find((c) => c.sessionId === data.targetId);
+        if (victimClient && lastShot) {
+          victimClient.send('damaged', {
+            shooterId: client.sessionId,
+            shooterWorldX: lastShot.x,
+            shooterWorldY: lastShot.y,
+            shooterWorldZ: lastShot.z,
+            absorbedByShield: result.absorbedByShield,
+            dealtToHealth: result.dealtToHealth,
+            shieldBroken: prevShieldPoints > 0 && result.shieldPoints <= 0,
+          } satisfies PlayerDamagedMessage);
+        }
+      }
+
       if (target.hp > 0) return;
 
       target.hp = 0;
@@ -538,6 +629,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       target.reloading = false;
       target.reloadEndAt = 0;
       this.cancelShieldRecharge(target);
+      this.cancelShieldDome(target);
 
       const killFeed: KillFeedMessage = {
         killerName: shooter.username,
@@ -708,6 +800,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.shieldLevel = shield.shieldLevel;
     player.shieldPoints = shield.shieldPoints;
     this.cancelShieldRecharge(player);
+    this.cancelShieldDome(player);
+    player.shieldDomeCooldownEndAt = 0;
     player.alive = true;
     player.x = spawn.x;
     player.y = EYE_HEIGHT;

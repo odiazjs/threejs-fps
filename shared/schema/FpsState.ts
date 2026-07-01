@@ -29,6 +29,15 @@ export class PlayerState extends Schema {
   @type('boolean') sprinting = false;
   @type('boolean') walking = false;
   @type('boolean') jumping = false;
+  /** Server world time when the shield dome charge completes (0 when idle). */
+  @type('number') shieldDomeChargeEndAt = 0;
+  /** Server world time when the shield dome expires (0 when inactive). */
+  @type('number') shieldDomeEndAt = 0;
+  /** Server world time when the shield dome ability is ready again. */
+  @type('number') shieldDomeCooldownEndAt = 0;
+  @type('number') shieldDomeCenterX = 0;
+  @type('number') shieldDomeCenterY = 0;
+  @type('number') shieldDomeCenterZ = 0;
 }
 
 export class AmmoBoxState extends Schema {

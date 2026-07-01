@@ -106,3 +106,18 @@ export const GAME_SHIELD_CHARGE_END_AUDIO: GlobalAudioConfig = {
   src: '/sounds/shield_charge_end_1.wav',
   volume: 0.28,
 };
+
+export const LOBBY_MUSIC_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/lobby_music_1.wav',
+  volume: 0.14,
+};
+
+export const UI_HOVER_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/ui_hover.wav',
+  volume: 0.16,
+};
+
+export const UI_CLICK_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/ui_click.wav',
+  volume: 0.22,
+};

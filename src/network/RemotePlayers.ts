@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { ProjectileHitTarget } from '../combat/ProjectileManager';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import { Player } from '../player/Player';
+import { RemotePlayerUiVisibility } from '../player/remotePlayerUiVisibility';
 import { preloadGameCharacterModels } from '../player/characterModel';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -18,6 +19,7 @@ export class RemotePlayers {
   constructor(
     private scene: THREE.Scene,
     private roomClient: RoomClient,
+    private readonly uiVisibility: RemotePlayerUiVisibility,
   ) {
     void Promise.all([preloadGameCharacterModels(), preloadWeaponMeshes()]);
   }
@@ -109,6 +111,8 @@ export class RemotePlayers {
 
   interpolate(delta: number, camera: THREE.Camera): void {
     const worldTime = this.roomClient.getWorldTime();
+    const nowSec = performance.now() / 1000;
+    this.uiVisibility.prune(nowSec);
     const footsteps = this.footsteps;
     if (footsteps) {
       footsteps.updateListener(camera);
@@ -119,7 +123,15 @@ export class RemotePlayers {
       player.interpolateRemote(delta);
       void player.syncRemoteCharacterModel(worldTime);
       player.updateRemoteWeapon(delta, worldTime);
-      player.updateRemoteHealthBar(camera);
+      const feet = player.getFeetPosition();
+      const visibility = this.uiVisibility.resolve(
+        sessionId,
+        camera,
+        feet,
+        player.isAlive(),
+        nowSec,
+      );
+      player.updateRemoteHealthBar(camera, visibility);
       player.updateDamageNumbers(delta, camera);
       player.updateRemoteShieldRecharge(delta, worldTime, camera);
 
@@ -147,6 +159,7 @@ export class RemotePlayers {
     if (!player) return;
     player.dispose();
     this.footsteps?.removeRemote(sessionId);
+    this.uiVisibility.clearSession(sessionId);
     this.players.delete(sessionId);
   }
 }

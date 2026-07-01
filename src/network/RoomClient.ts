@@ -1,5 +1,5 @@
 import { Client, Callbacks, type Room } from '@colyseus/sdk';
-import type { KillFeedMessage } from '../../shared/network/damage';
+import type { KillFeedMessage, PlayerDamagedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
@@ -22,6 +22,7 @@ import type {
   AmmoBoxSnapshot,
   AmmoPickupGrantedHandler,
   KillFeedHandler,
+  LocalDamagedHandler,
   LocalPlayerChangeHandler,
   PlayerAddHandler,
   PlayerChangeHandler,
@@ -62,6 +63,12 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     sprinting: player.sprinting,
     walking: player.walking,
     jumping: player.jumping,
+    shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
+    shieldDomeEndAt: player.shieldDomeEndAt,
+    shieldDomeCooldownEndAt: player.shieldDomeCooldownEndAt,
+    shieldDomeCenterX: player.shieldDomeCenterX,
+    shieldDomeCenterY: player.shieldDomeCenterY,
+    shieldDomeCenterZ: player.shieldDomeCenterZ,
   };
 }
 
@@ -113,6 +120,7 @@ export class RoomClient {
   private onWeaponDropChangeHandlers: WeaponDropChangeHandler[] = [];
   private onWeaponPickupGrantedHandlers: WeaponPickupGrantedHandler[] = [];
   private onKillFeedHandlers: KillFeedHandler[] = [];
+  private onLocalDamagedHandlers: LocalDamagedHandler[] = [];
 
   get sessionId(): string | null {
     return this.room?.sessionId ?? null;
@@ -156,6 +164,7 @@ export class RoomClient {
     this.bindShieldChargePickupMessages();
     this.bindWeaponDropMessages();
     this.bindKillMessages();
+    this.bindDamagedMessages();
   }
 
   private async joinByIdWithRetry(
@@ -235,6 +244,10 @@ export class RoomClient {
     this.onKillFeedHandlers.push(handler);
   }
 
+  onLocalDamaged(handler: LocalDamagedHandler): void {
+    this.onLocalDamagedHandlers.push(handler);
+  }
+
   getLocalSnapshot(): PlayerSnapshot | null {
     if (!this.room) return null;
 
@@ -287,6 +300,10 @@ export class RoomClient {
 
   sendStartShieldRecharge(): void {
     this.room?.send('startShieldRecharge', {});
+  }
+
+  sendStartShieldDomeCharge(): void {
+    this.room?.send('startShieldDomeCharge', {});
   }
 
   sendDropWeapon(slot: number): void {
@@ -396,6 +413,12 @@ export class RoomClient {
       this.onKillFeedHandlers.forEach((handler) =>
         handler(data.killerName, data.victimName),
       );
+    });
+  }
+
+  private bindDamagedMessages(): void {
+    this.room?.onMessage('damaged', (data: PlayerDamagedMessage) => {
+      this.onLocalDamagedHandlers.forEach((handler) => handler(data));
     });
   }
 

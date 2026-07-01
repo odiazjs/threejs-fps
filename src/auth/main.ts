@@ -1,4 +1,5 @@
 import { apiLogin, apiSignUp } from './authApi';
+import { initUiSounds } from '../audio/initMenuAudio';
 import {
   passwordPolicyHint,
   validatePasswordAgainstPolicy,
@@ -66,6 +67,7 @@ async function bootstrap(): Promise<void> {
   }
 
   document.body.hidden = false;
+  void initUiSounds();
 }
 
 void bootstrap();

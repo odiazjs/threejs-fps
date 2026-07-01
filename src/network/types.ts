@@ -1,3 +1,4 @@
+import type { PlayerDamagedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 
 export interface PlayerSnapshot {
@@ -24,6 +25,12 @@ export interface PlayerSnapshot {
   sprinting: boolean;
   walking: boolean;
   jumping: boolean;
+  shieldDomeChargeEndAt: number;
+  shieldDomeEndAt: number;
+  shieldDomeCooldownEndAt: number;
+  shieldDomeCenterX: number;
+  shieldDomeCenterY: number;
+  shieldDomeCenterZ: number;
 }
 
 export type { ProjectileSpawnMessage };
@@ -60,6 +67,9 @@ export interface LocalCombatState {
   alive: boolean;
   teamId: number;
   username: string;
+  shieldDomeChargeEndAt: number;
+  shieldDomeEndAt: number;
+  shieldDomeCooldownEndAt: number;
 }
 
 export type PlayerAddHandler = (sessionId: string, player: PlayerSnapshot) => void;
@@ -78,3 +88,4 @@ export type WeaponPickupGrantedHandler = (data: {
   weaponId: string;
 }) => void;
 export type KillFeedHandler = (killerName: string, victimName: string) => void;
+export type LocalDamagedHandler = (damage: PlayerDamagedMessage) => void;
