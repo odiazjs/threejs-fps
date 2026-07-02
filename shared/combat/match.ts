@@ -13,6 +13,11 @@ export function defaultGameModeForMap(mapId: MapId): GameMode {
   return mapId === 'killhouse_small' ? 'tdm' : 'ffa';
 }
 
+/** Humans required before a TDM match leaves the lobby. */
+export function defaultTdmExpectedPlayers(mapId: MapId): number {
+  return mapId === 'killhouse_small' ? 4 : 2;
+}
+
 /** Team layout for TDM based on how many humans are in the match. */
 export function resolveTdmTeamCount(playerCount: number): number {
   if (playerCount <= 1) return 1;

@@ -4,6 +4,7 @@ import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type Player
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
 import { getMapDef, normalizeMapId, type MapCollisionDef } from '../../../shared/level/maps.js';
+import type { SpawnPickContext } from '../../../shared/level/spawnPick.js';
 import {
   PLAYER_MAX_HP,
   RESPAWN_DELAY_SEC,
@@ -11,6 +12,7 @@ import {
 import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
 import {
   defaultGameModeForMap,
+  defaultTdmExpectedPlayers,
   resolveTdmTeamCount,
   TDM_COUNTDOWN_SEC,
   TDM_KILL_POINTS,
@@ -155,7 +157,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.state.friendlyFire = false;
       this.state.matchPhase = 'waiting';
       this.state.matchDurationSec = TDM_MATCH_DURATION_SEC;
-      this.state.expectedPlayers = this.expectedPlayers > 0 ? this.expectedPlayers : 2;
+      this.state.expectedPlayers = this.expectedPlayers > 0
+        ? this.expectedPlayers
+        : defaultTdmExpectedPlayers(mapId);
       this.expectedPlayers = this.state.expectedPlayers;
       this.state.teamCount = resolveTdmTeamCount(this.expectedPlayers);
     }
@@ -249,6 +253,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     if (this.state.matchPhase === 'countdown') {
       if (now >= this.state.matchCountdownEndAt) {
+        this.assignTdmTeams();
+        this.teleportHumansToTeamSpawns();
         this.state.matchPhase = 'playing';
         this.state.matchStartAt = now;
         this.state.matchEndAt = now + this.state.matchDurationSec;
@@ -264,6 +270,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private assignTdmTeams(): void {
     const humans = [...this.state.players.entries()]
       .filter(([sessionId]) => !isTrainingBotSessionId(sessionId))
+      .sort(([sessionIdA], [sessionIdB]) => sessionIdA.localeCompare(sessionIdB))
       .map(([, player]) => player);
     const count = humans.length;
     const teamCount = resolveTdmTeamCount(count);
@@ -299,36 +306,104 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     return count;
   }
 
+  private usesTeamSpawns(): boolean {
+    return this.isTdm() && typeof this.mapDef.pickTeamSpawnPoint === 'function';
+  }
+
+  private getOccupiedSpawnPositions(excludeSessionId?: string): Array<{ x: number; z: number }> {
+    const positions: Array<{ x: number; z: number }> = [];
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      if (excludeSessionId && sessionId === excludeSessionId) continue;
+      if (!player.alive) continue;
+      // Ignore unset default origin — it breaks separation checks near map center.
+      if (Math.abs(player.x) < 0.05 && Math.abs(player.z) < 0.05) continue;
+      positions.push({ x: player.x, z: player.z });
+    }
+    return positions;
+  }
+
+  private createSpawnContext(
+    occupied: Array<{ x: number; z: number }>,
+    playersOnTeam?: number,
+  ): SpawnPickContext {
+    return {
+      occupied,
+      playersOnTeam,
+      teamCount: this.state.teamCount,
+      colliders: this.mapDef.getLevelColliders(),
+    };
+  }
+
   private pickTeamSpawn(
     teamId: number,
     indexOnTeam: number,
+    occupied: Array<{ x: number; z: number }> = [],
+    playersOnTeam?: number,
   ): { x: number; z: number } {
+    const context = this.createSpawnContext(occupied, playersOnTeam ?? indexOnTeam + 1);
     if (this.mapDef.pickTeamSpawnPoint) {
-      return this.mapDef.pickTeamSpawnPoint(teamId, indexOnTeam);
+      return this.mapDef.pickTeamSpawnPoint(teamId, indexOnTeam, context);
     }
-    return this.mapDef.pickSpawnPoint(indexOnTeam);
+
+    const spawnsPerTeam = 8;
+    return this.mapDef.pickSpawnPoint(teamId * spawnsPerTeam + indexOnTeam, context);
   }
 
   private pickSpawnForJoiningPlayer(player: PlayerState): { x: number; z: number } {
-    if (this.mapDef.pickTeamSpawnPoint) {
+    const occupied = this.getOccupiedSpawnPositions();
+    if (this.usesTeamSpawns()) {
       const indexOnTeam = this.countPlayersOnTeam(player.teamId);
-      return this.pickTeamSpawn(player.teamId, indexOnTeam);
+      const playersOnTeam = indexOnTeam + 1;
+      return this.pickTeamSpawn(player.teamId, indexOnTeam, occupied, playersOnTeam);
     }
-    return this.mapDef.pickSpawnPoint(this.countHumanPlayers());
+    return this.mapDef.pickSpawnPoint(this.countHumanPlayers(), this.createSpawnContext(occupied));
   }
 
   private teleportHumansToTeamSpawns(): void {
-    const teamIndices = new Map<number, number>();
-    for (const [sessionId, player] of this.state.players.entries()) {
-      if (isTrainingBotSessionId(sessionId)) continue;
-      const indexOnTeam = teamIndices.get(player.teamId) ?? 0;
-      teamIndices.set(player.teamId, indexOnTeam + 1);
-      const spawn = this.mapDef.pickTeamSpawnPoint
-        ? this.pickTeamSpawn(player.teamId, indexOnTeam)
-        : this.mapDef.pickSpawnPoint(indexOnTeam);
-      player.x = spawn.x;
-      player.z = spawn.z;
-      player.y = EYE_HEIGHT;
+    const humans = [...this.state.players.entries()]
+      .filter(([sessionId]) => !isTrainingBotSessionId(sessionId))
+      .sort(([sessionIdA], [sessionIdB]) => sessionIdA.localeCompare(sessionIdB));
+
+    if (!this.usesTeamSpawns()) {
+      const occupied: Array<{ x: number; z: number }> = [];
+      for (const [, player] of humans) {
+        const spawn = this.mapDef.pickSpawnPoint(occupied.length, this.createSpawnContext(occupied));
+        player.x = spawn.x;
+        player.z = spawn.z;
+        player.y = EYE_HEIGHT;
+        occupied.push(spawn);
+      }
+      return;
+    }
+
+    const humansByTeam = new Map<number, PlayerState[]>();
+    for (const [, player] of humans) {
+      const teamPlayers = humansByTeam.get(player.teamId) ?? [];
+      teamPlayers.push(player);
+      humansByTeam.set(player.teamId, teamPlayers);
+    }
+
+    const globalOccupied: Array<{ x: number; z: number }> = [];
+    const teamIds = [...humansByTeam.keys()].sort((a, b) => a - b);
+
+    for (const teamId of teamIds) {
+      const teamPlayers = humansByTeam.get(teamId)!;
+      const context = this.createSpawnContext(globalOccupied, teamPlayers.length);
+      const spawns = this.mapDef.pickTeamSpawnBatch
+        ? this.mapDef.pickTeamSpawnBatch(teamId, teamPlayers.length, context)
+        : teamPlayers.map((_, indexOnTeam) =>
+            this.pickTeamSpawn(teamId, indexOnTeam, globalOccupied, teamPlayers.length),
+          );
+
+      for (let i = 0; i < teamPlayers.length; i++) {
+        const spawn = spawns[i]!;
+        const player = teamPlayers[i]!;
+        player.x = spawn.x;
+        player.z = spawn.z;
+        player.y = EYE_HEIGHT;
+        globalOccupied.push(spawn);
+      }
     }
   }
 
@@ -575,7 +650,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     move: (client: Client, data: MoveMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
-      if (this.isTdm() && this.state.matchPhase === 'countdown') return;
+      if (this.isTdm() && this.state.matchPhase !== 'playing') return;
 
       const clientFeetY = data.y - EYE_HEIGHT;
       const feetYForMove = resolveMoveFeetY(data.x, data.z, clientFeetY, this.mapDef);
@@ -1194,9 +1269,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
 
     const deathPosition = { x: player.x, z: player.z };
+    const occupied = this.getOccupiedSpawnPositions(sessionId);
+    const spawnContext = this.createSpawnContext(
+      occupied,
+      this.countPlayersOnTeam(player.teamId),
+    );
     const spawn =
       this.mapDef.pickTeamRespawnPoint
-        ? this.mapDef.pickTeamRespawnPoint(player.teamId, deathPosition)
+        ? this.mapDef.pickTeamRespawnPoint(player.teamId, deathPosition, spawnContext)
         : this.mapDef.humanRespawnPoint;
     player.hp = PLAYER_MAX_HP;
     const shield = resetPlayerShield();

@@ -70,11 +70,12 @@ export class MatchHud {
   }
 }
 
-export function createTdmMatchFallback(): MatchSnapshot {
+export function createTdmMatchFallback(worldMapId: MapId = 'kilo_sector'): MatchSnapshot {
+  const expectedPlayers = worldMapId === 'killhouse_small' ? 4 : 2;
   return {
     gameMode: 'tdm',
     phase: 'waiting',
-    expectedPlayers: 2,
+    expectedPlayers,
     teamCount: 2,
     teamScores: [0, 0, 0, 0],
     matchCountdownEndAt: 0,
@@ -92,7 +93,7 @@ export function resolveMatchSnapshot(
   if (server?.gameMode === 'tdm') return server;
   if (worldMapId !== 'killhouse_small') return server ?? null;
 
-  const fallback = createTdmMatchFallback();
+  const fallback = createTdmMatchFallback(worldMapId);
   if (!server) return fallback;
 
   return {

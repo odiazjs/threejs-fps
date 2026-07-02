@@ -36,6 +36,7 @@ import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
+import type { MatchPhase } from '../../shared/combat/match';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
@@ -127,6 +128,7 @@ export class Game {
   private audioUnlocked = false;
   private inventoryOpen = false;
   private matchEndHandled = false;
+  private prevMatchPhase: MatchPhase | null = null;
   private pendingKillerId: string | null = null;
   private lastCombatShooterId: string | null = null;
   /** Collision + visuals map; never overwritten by server schema defaults after load. */
@@ -155,6 +157,7 @@ export class Game {
   ): Promise<void> {
     const initialMapId = normalizeMapId(joinIntent?.mapId ?? getSelectedMapId());
     this.worldMapId = initialMapId;
+    this.prevMatchPhase = null;
     this.initWorld(initialMapId);
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
@@ -248,8 +251,11 @@ export class Game {
 
   private initPlayer(mapId: MapId): void {
     this.player = Player.createLocal();
-    const spawn = getMapDef(mapId).pickSpawnPoint(0);
-    this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
+    const mapDef = getMapDef(mapId);
+    if (!mapDef.pickTeamSpawnPoint) {
+      const spawn = mapDef.pickSpawnPoint(0);
+      this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
+    }
     this.player.attachToScene(this.scene);
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
     this.player.bindAimControls(this.playerControls.controls);
@@ -587,6 +593,16 @@ export class Game {
     this.matchCountdownOverlay.update(match, worldTime, this.worldMapId);
     this.matchResultsOverlay.update(match, this.localCombat.teamId);
 
+    const matchPhase = match?.phase ?? null;
+    if (
+      matchPhase &&
+      this.prevMatchPhase !== matchPhase &&
+      (matchPhase === 'countdown' || matchPhase === 'playing')
+    ) {
+      this.network?.applyLocalSpawn(this.player);
+    }
+    this.prevMatchPhase = matchPhase;
+
     if (match?.gameMode === 'tdm' && match.phase === 'ended' && !this.matchEndHandled) {
       this.matchEndHandled = true;
       this.closeInventory();
@@ -594,8 +610,7 @@ export class Game {
     }
 
     const tdmBlocksInput =
-      match?.gameMode === 'tdm' &&
-      (match.phase === 'countdown' || match.phase === 'ended');
+      match?.gameMode === 'tdm' && match.phase !== 'playing';
 
     const canAct =
       !tdmBlocksInput &&

@@ -1,4 +1,5 @@
 import type { Aabb } from './levelData.js';
+import type { SpawnPickContext } from './spawnPick.js';
 import { AMMO_BOX_POSITIONS } from './ammoBoxSpawns.js';
 import { SHIELD_CHARGE_POSITIONS } from './shieldChargeSpawns.js';
 import {
@@ -7,6 +8,7 @@ import {
   getLevelColliders as getKiloColliders,
   pickSpawnPoint as pickKiloSpawnPoint,
   pickTeamSpawnPoint as pickKiloTeamSpawnPoint,
+  pickTeamSpawnBatch as pickKiloTeamSpawnBatch,
   pickTeamRespawnPoint as pickKiloTeamRespawnPoint,
   HUMAN_RESPAWN_POINT as KILO_RESPAWN_POINT,
 } from './kiloSectorColliders.js';
@@ -18,6 +20,7 @@ import {
   getLevelColliders as getKillhouseColliders,
   pickSpawnPoint as pickKillhouseSpawnPoint,
   pickTeamSpawnPoint as pickKillhouseTeamSpawnPoint,
+  pickTeamSpawnBatch as pickKillhouseTeamSpawnBatch,
   pickTeamRespawnPoint as pickKillhouseTeamRespawnPoint,
   HUMAN_RESPAWN_POINT as KILLHOUSE_RESPAWN_POINT,
   sampleGroundHeight as killhouseGroundHeight,
@@ -61,11 +64,21 @@ export interface MapCollisionDef {
   outdoor: boolean;
   getLevelColliders: () => Aabb[];
   sampleGroundHeight: (x: number, z: number) => number;
-  pickSpawnPoint: (playerIndex: number) => { x: number; z: number };
-  pickTeamSpawnPoint?: (teamId: number, indexOnTeam: number) => { x: number; z: number };
+  pickSpawnPoint: (playerIndex: number, context?: SpawnPickContext) => { x: number; z: number };
+  pickTeamSpawnPoint?: (
+    teamId: number,
+    indexOnTeam: number,
+    context?: SpawnPickContext,
+  ) => { x: number; z: number };
+  pickTeamSpawnBatch?: (
+    teamId: number,
+    count: number,
+    context?: SpawnPickContext,
+  ) => Array<{ x: number; z: number }>;
   pickTeamRespawnPoint?: (
     teamId: number,
     deathPosition: { x: number; z: number },
+    context?: SpawnPickContext,
   ) => { x: number; z: number };
   humanRespawnPoint: { x: number; z: number };
   ammoPositions: ReadonlyArray<{ x: number; z: number }>;
@@ -87,6 +100,7 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     sampleGroundHeight: kiloGroundHeight,
     pickSpawnPoint: pickKiloSpawnPoint,
     pickTeamSpawnPoint: pickKiloTeamSpawnPoint,
+    pickTeamSpawnBatch: pickKiloTeamSpawnBatch,
     pickTeamRespawnPoint: pickKiloTeamRespawnPoint,
     humanRespawnPoint: KILO_RESPAWN_POINT,
     ammoPositions: AMMO_BOX_POSITIONS,
@@ -106,6 +120,7 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     sampleGroundHeight: killhouseGroundHeight,
     pickSpawnPoint: pickKillhouseSpawnPoint,
     pickTeamSpawnPoint: pickKillhouseTeamSpawnPoint,
+    pickTeamSpawnBatch: pickKillhouseTeamSpawnBatch,
     pickTeamRespawnPoint: pickKillhouseTeamRespawnPoint,
     humanRespawnPoint: KILLHOUSE_RESPAWN_POINT,
     ammoPositions: KILLHOUSE_AMMO_POSITIONS,

@@ -1,5 +1,10 @@
 import type { Aabb } from './levelData.js';
-import { pickFarthestSpawn } from './spawnPick.js';
+import type { SpawnPickContext, SpawnZone } from './spawnPick.js';
+import {
+  pickBatchTeamSpawns,
+  pickRandomTeamRespawn,
+  pickRandomTeamSpawn,
+} from './spawnPick.js';
 
 /** Chrono-Bowl 2v2 arena — compact rectangular killhouse. */
 export const KILLHOUSE_WIDTH = 50;
@@ -165,89 +170,94 @@ export const LAB_PROPS: readonly BoxProp[] = [
   { x: 12.8, z: 0.2, w: 1.2, h: 0.9, d: 0.5, minY: 3.2 },
 ] as const;
 
-const BLUE_SPAWNS = [
-  { x: -21, z: -12 },
-  { x: -22, z: -9 },
-  { x: -20, z: -5 },
-  { x: -23, z: -1 },
-  { x: -21, z: 3 },
-  { x: -22, z: 7 },
-  { x: -19, z: 10 },
-  { x: -23, z: 13 },
-] as const;
+/** Chrono-Bowl spawn pools — B1–B6 (west) and R1–R6 (east) per arena layout. */
+const BLUE_SPAWN_POOL: readonly SpawnZone[] = [
+  { x: -22.5, z: -12.5, spreadX: 2.4, spreadZ: 2.2 }, // B1 top-left corner
+  { x: -12.5, z: -0.5, spreadX: 2.8, spreadZ: 2.6 }, // B2 mid-left lane
+  { x: -20.8, z: 3.8, spreadX: 2.2, spreadZ: 3.0 }, // B3 west lab corridor
+  { x: -17.2, z: 7.2, spreadX: 2.6, spreadZ: 2.4 }, // B4 lab interior / stairs
+  { x: -20.5, z: 12.8, spreadX: 2.8, spreadZ: 2.2 }, // B5 bottom-left exterior
+  { x: -2.5, z: 1.2, spreadX: 2.6, spreadZ: 2.8 }, // B6 center-left behind container
+];
 
-const RED_SPAWNS = [
-  { x: 21, z: 12 },
-  { x: 22, z: 9 },
-  { x: 20, z: 5 },
-  { x: 23, z: 1 },
-  { x: 21, z: -3 },
-  { x: 22, z: -7 },
-  { x: 19, z: -10 },
-  { x: 23, z: -13 },
-] as const;
+const RED_SPAWN_POOL: readonly SpawnZone[] = [
+  { x: 22.5, z: 12.5, spreadX: 2.4, spreadZ: 2.2 }, // R1 top-right corner
+  { x: 12.5, z: 0.5, spreadX: 2.8, spreadZ: 2.6 }, // R2 mid-right lane
+  { x: 17.5, z: 9.8, spreadX: 2.8, spreadZ: 2.6 }, // R3 center-right crate stack
+  { x: 17.2, z: -2.8, spreadX: 2.6, spreadZ: 3.0 }, // R4 east lab interior
+  { x: 3.5, z: 1.0, spreadX: 2.6, spreadZ: 2.8 }, // R5 center-top container lane
+  { x: 20.5, z: -12.8, spreadX: 2.8, spreadZ: 2.2 }, // R6 bottom-right exterior
+];
 
-const GREEN_SPAWNS = [
-  { x: -18, z: 12 },
-  { x: -14, z: 14 },
-  { x: -22, z: 10 },
-  { x: -12, z: 11 },
-  { x: -20, z: 14 },
-  { x: -15, z: 8 },
-  { x: -23, z: 13 },
-  { x: -10, z: 13 },
-] as const;
+/** Extra pools for 3–4 team layouts on the same map. */
+const GREEN_SPAWN_POOL: readonly SpawnZone[] = [
+  { x: -18.5, z: 13.5, spreadX: 2.6, spreadZ: 2.4 },
+  { x: -14.0, z: 14.2, spreadX: 2.4, spreadZ: 2.2 },
+  { x: -22.0, z: 10.5, spreadX: 2.2, spreadZ: 2.6 },
+  { x: -11.5, z: 11.8, spreadX: 2.8, spreadZ: 2.4 },
+  { x: -20.0, z: 14.5, spreadX: 2.4, spreadZ: 2.0 },
+  { x: -15.5, z: 8.5, spreadX: 2.6, spreadZ: 2.4 },
+];
 
-const PURPLE_SPAWNS = [
-  { x: 18, z: -12 },
-  { x: 14, z: -14 },
-  { x: 22, z: -10 },
-  { x: 12, z: -11 },
-  { x: 20, z: -14 },
-  { x: 15, z: -8 },
-  { x: 23, z: -13 },
-  { x: 10, z: -13 },
-] as const;
+const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [
+  { x: 18.5, z: -13.5, spreadX: 2.6, spreadZ: 2.4 },
+  { x: 14.0, z: -14.2, spreadX: 2.4, spreadZ: 2.2 },
+  { x: 22.0, z: -10.5, spreadX: 2.2, spreadZ: 2.6 },
+  { x: 11.5, z: -11.8, spreadX: 2.8, spreadZ: 2.4 },
+  { x: 20.0, z: -14.5, spreadX: 2.4, spreadZ: 2.0 },
+  { x: 15.5, z: -8.5, spreadX: 2.6, spreadZ: 2.4 },
+];
 
-const SPAWN_POINTS = [...BLUE_SPAWNS, ...RED_SPAWNS] as const;
+const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
+  BLUE_SPAWN_POOL,
+  RED_SPAWN_POOL,
+  GREEN_SPAWN_POOL,
+  PURPLE_SPAWN_POOL,
+];
 
-const TEAM_SPAWNS: ReadonlyArray<ReadonlyArray<{ x: number; z: number }>> = [
-  BLUE_SPAWNS,
-  RED_SPAWNS,
-  GREEN_SPAWNS,
-  PURPLE_SPAWNS,
+const FFA_SPAWN_POOL: readonly SpawnZone[] = [
+  ...BLUE_SPAWN_POOL,
+  ...RED_SPAWN_POOL,
 ];
 
 export const HUMAN_RESPAWN_POINT = { x: -19, z: -12 } as const;
 
-function jitterSpawn(spawn: { x: number; z: number }): { x: number; z: number } {
-  return {
-    x: spawn.x + (Math.random() - 0.5) * 1.5,
-    z: spawn.z + (Math.random() - 0.5) * 1.5,
-  };
+function teamPool(teamId: number): readonly SpawnZone[] {
+  return TEAM_SPAWN_POOLS[teamId % TEAM_SPAWN_POOLS.length] ?? BLUE_SPAWN_POOL;
 }
 
 export function pickTeamSpawnPoint(
   teamId: number,
   indexOnTeam: number,
+  context: SpawnPickContext = {},
 ): { x: number; z: number } {
-  const spawns = TEAM_SPAWNS[teamId % TEAM_SPAWNS.length] ?? BLUE_SPAWNS;
-  const spawn = spawns[indexOnTeam % spawns.length] ?? spawns[0]!;
-  return jitterSpawn(spawn);
+  const pool = teamPool(teamId);
+  const playersOnTeam = context.playersOnTeam ?? indexOnTeam + 1;
+  return pickRandomTeamSpawn(pool, { ...context, playersOnTeam });
+}
+
+export function pickTeamSpawnBatch(
+  teamId: number,
+  count: number,
+  context: SpawnPickContext = {},
+): Array<{ x: number; z: number }> {
+  return pickBatchTeamSpawns(teamPool(teamId), count, context);
 }
 
 export function pickTeamRespawnPoint(
   teamId: number,
   deathPosition: { x: number; z: number },
+  context: SpawnPickContext = {},
 ): { x: number; z: number } {
-  const spawns = TEAM_SPAWNS[teamId % TEAM_SPAWNS.length] ?? BLUE_SPAWNS;
-  const spawn = pickFarthestSpawn(spawns, deathPosition.x, deathPosition.z);
-  return jitterSpawn(spawn);
+  return pickRandomTeamRespawn(teamPool(teamId), deathPosition, context);
 }
 
-export function pickSpawnPoint(playerIndex: number): { x: number; z: number } {
-  const spawn = SPAWN_POINTS[playerIndex % SPAWN_POINTS.length];
-  return jitterSpawn(spawn);
+export function pickSpawnPoint(
+  playerIndex: number,
+  context: SpawnPickContext = {},
+): { x: number; z: number } {
+  void playerIndex;
+  return pickRandomTeamSpawn(FFA_SPAWN_POOL, context);
 }
 
 export function sampleGroundHeight(_x: number, _z: number): number {
