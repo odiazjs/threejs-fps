@@ -105,6 +105,10 @@ export class RemotePlayers {
     const player = this.players.get(sessionId);
     if (!player) return;
 
+    if (snapshot.alive && !player.isAlive()) {
+      this.uiVisibility.clearSession(sessionId);
+    }
+
     player.setFromSnapshot(snapshot);
     void player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
   }

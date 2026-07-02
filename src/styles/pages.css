@@ -301,6 +301,41 @@ body {
   letter-spacing: 0.14em;
 }
 
+.lobby-map-select {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 5.35rem;
+  z-index: 2;
+  width: min(280px, calc(100vw - 3rem));
+  padding: 0.65rem 0.75rem;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.lobby-map-select-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #9ec9c9;
+}
+
+.lobby-map-select-input {
+  width: 100%;
+  padding: 0.5rem 0.55rem;
+  font-size: 0.72rem;
+  color: #e8f4f4;
+  background: rgba(8, 12, 18, 0.82);
+  border: 1px solid rgba(130, 219, 219, 0.28);
+  border-radius: 6px;
+}
+
+.lobby-map-select-input:focus {
+  outline: none;
+  border-color: rgba(130, 219, 219, 0.55);
+}
+
 #lobby-menu {
   position: fixed;
   top: 8.75rem;

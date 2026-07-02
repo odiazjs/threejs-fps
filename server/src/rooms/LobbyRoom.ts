@@ -44,6 +44,8 @@ import type { SetAppViewMessage } from '../../../shared/network/appView.js';
 
 import { LobbyPlayerState, LobbyState } from '../../../shared/schema/LobbyState.js';
 
+import { normalizeMapId } from '../../../shared/level/maps.js';
+
 import { registerLobbyUser, setLobbyAppView, unregisterUser } from '../lobby/presence.js';
 
 import { sendFriendPresenceSnapshot } from '../lobby/presenceNotify.js';
@@ -549,6 +551,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
       const friendlyFire = data.friendlyFire === true;
+      const mapId = normalizeMapId(data.mapId);
 
       try {
 
@@ -559,6 +562,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
           maxPartySize: launchMembers.length,
 
           friendlyFire,
+
+          mapId,
 
         });
 
@@ -572,14 +577,9 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-        const teamId = 0;
-
         for (const member of launchMembers) {
-
-          const launch: GameLaunchMessage = { roomId, teamId };
-
+          const launch: GameLaunchMessage = { roomId, mapId };
           member.client.send('gameLaunch', launch);
-
         }
 
 

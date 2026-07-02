@@ -15,6 +15,7 @@ export interface PlayerDamagedMessage {
 }
 
 export interface KillFeedMessage {
+  killerId: string;
   killerName: string;
   victimName: string;
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
-import { pickSpawnPoint } from '../../shared/level/kiloSectorColliders';
+import { DEFAULT_MAP_ID, getMapDef, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
+import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { PointerInput } from '../input/PointerInput';
 import { ProjectileManager } from '../combat/ProjectileManager';
@@ -17,6 +18,7 @@ import { DEFAULT_SHIELD_CHARGES, MAX_SHIELD_CHARGES } from '../../shared/invento
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
+import { KillCam } from '../render/KillCam';
 import { resolveGrassQuality } from '../render/grassQuality';
 import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
 import type { LightBeams } from '../world/LightBeams';
@@ -34,6 +36,9 @@ import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
+import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
+import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
+import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { isWeaponId } from '../../shared/content/weaponIds';
 import type { GameJoinIntent } from '../auth/gameJoin';
@@ -90,6 +95,9 @@ export class Game {
   private weaponPickupHud = new WeaponPickupHud();
   private shieldPickupHud = new ShieldPickupHud();
   private performanceHud = new PerformanceHud();
+  private matchHud = new MatchHud();
+  private matchCountdownOverlay = new MatchCountdownOverlay();
+  private matchResultsOverlay = new MatchResultsOverlay();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
   private shieldChargePickups!: ShieldChargePickups;
@@ -101,6 +109,7 @@ export class Game {
   private shieldDomeChargeManager!: ShieldDomeChargeManager;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
   private renderContext = new RenderContext();
+  private readonly killCam = new KillCam();
   private terrain: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
@@ -116,6 +125,11 @@ export class Game {
   private readonly impactSounds = new ImpactSoundService();
   private audioUnlocked = false;
   private inventoryOpen = false;
+  private matchEndHandled = false;
+  private pendingKillerId: string | null = null;
+  private lastCombatShooterId: string | null = null;
+  /** Collision + visuals map; never overwritten by server schema defaults after load. */
+  private worldMapId: MapId = DEFAULT_MAP_ID;
   private localCombat: LocalCombatState = {
     hp: 100,
     maxHp: 100,
@@ -138,7 +152,9 @@ export class Game {
     joinIntent?: GameJoinIntent | null,
     onConnected?: () => void,
   ): Promise<void> {
-    this.initWorld();
+    const initialMapId = normalizeMapId(joinIntent?.mapId ?? getSelectedMapId());
+    this.worldMapId = initialMapId;
+    this.initWorld(initialMapId);
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
     this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
@@ -160,9 +176,15 @@ export class Game {
       this.impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
       this.impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
     ]);
-    this.initPlayer();
+    this.initPlayer(initialMapId);
+    this.applyActiveMap();
     this.initResize();
     await this.initNetwork(credentials, joinIntent);
+    const isTdm =
+      this.worldMapId === 'killhouse_small' ||
+      this.network.getMatchState()?.gameMode === 'tdm';
+    this.playerControls.setMatchHud(this.matchHud, isTdm);
+    this.applyActiveMap();
     onConnected?.();
     document.getElementById('blocker')!.hidden = false;
     this.running = true;
@@ -189,9 +211,20 @@ export class Game {
     }
   }
 
-  private initWorld(): void {
+  private applyActiveMap(): void {
+    const mapDef = getMapDef(this.worldMapId);
+    setClientMapDef(this.worldMapId);
+    this.player?.setMapCollisionDef(mapDef);
+    this.killCam.configureForMap(mapDef);
+  }
+
+  private getActiveCamera(): THREE.PerspectiveCamera {
+    return this.killCam.isActive() ? this.killCam.camera : this.player.camera!;
+  }
+
+  private initWorld(mapId: MapId): void {
     const grassQuality = resolveGrassQuality(this.renderContext.renderer);
-    const world = new WorldBuilder()
+    const world = new WorldBuilder(mapId)
       .build()
       .withLighting()
       .withTerrain(grassQuality)
@@ -206,14 +239,14 @@ export class Game {
     this.shieldDomeManager = new ShieldDomeManager(this.scene);
     this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
     this.projectiles.setShieldDomeManager(this.shieldDomeManager);
-    this.ammoPickups = new AmmoPickups(this.scene);
+    this.ammoPickups = new AmmoPickups(this.scene, getMapDef(mapId).ammoPositions);
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
   }
 
-  private initPlayer(): void {
+  private initPlayer(mapId: MapId): void {
     this.player = Player.createLocal();
-    const spawn = pickSpawnPoint(0);
+    const spawn = getMapDef(mapId).pickSpawnPoint(0);
     this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
     this.player.attachToScene(this.scene);
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
@@ -222,6 +255,7 @@ export class Game {
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setTeamHud(this.teamHud);
+    this.playerControls.setMatchHud(this.matchHud, mapId === 'killhouse_small');
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
@@ -230,6 +264,9 @@ export class Game {
     this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
     this.playerControls.setShieldPickupHud(this.shieldPickupHud);
     this.playerControls.setLeaveHandler(() => {
+      void this.leaveGame();
+    });
+    this.matchResultsOverlay.setLeaveHandler(() => {
       void this.leaveGame();
     });
     this.player.setWeaponSoundService(this.weaponSounds);
@@ -287,10 +324,13 @@ export class Game {
         }
       },
       (state) => this.handleLocalCombatChange(state),
-      (killerName, victimName) => {
+      (killerId, killerName, victimName) => {
         this.killFeedHud.addKill(killerName, victimName);
         const session = getSession();
         if (!session) return;
+        if (victimName === session.username) {
+          this.pendingKillerId = killerId;
+        }
         if (killerName === session.username) {
           this.messageHud.pushKill(victimName);
           this.impactSounds.playKillConfirm();
@@ -381,9 +421,15 @@ export class Game {
       this.messageHud.push('You died');
       this.closeInventory();
       this.playerControls.controls.unlock();
+      this.crosshairHud.setVisible(false);
+      const killerId = this.pendingKillerId ?? this.lastCombatShooterId;
+      this.killCam.activate(killerId);
+      this.pendingKillerId = null;
     }
 
     if (state.alive && !this.wasAlive) {
+      this.killCam.deactivate();
+      this.lastCombatShooterId = null;
       this.network.applyLocalSpawn(this.player);
     }
 
@@ -399,7 +445,43 @@ export class Game {
     this.healthHud.update(state);
   }
 
+  private updateKillCam(delta: number): void {
+    if (!this.killCam.isActive()) return;
+
+    const killerId = this.killCam.getTargetId();
+    if (!killerId || !this.network) {
+      this.killCam.useMapFallback();
+      this.killCam.configureForMap(getMapDef(this.worldMapId));
+      return;
+    }
+
+    const killer = this.network.getRemotePlayer(killerId);
+    if (killer) {
+      const feet = killer.getFeetPosition();
+      this.killCam.updateFollow(feet.x, feet.y, feet.z, killer.getAimYaw(), delta);
+      return;
+    }
+
+    const snapshot = this.network.getPlayerSnapshot(killerId);
+    if (snapshot) {
+      this.killCam.updateFollow(
+        snapshot.x,
+        snapshot.y - EYE_HEIGHT,
+        snapshot.z,
+        snapshot.yaw,
+        delta,
+      );
+      return;
+    }
+
+    this.killCam.useMapFallback();
+    this.killCam.configureForMap(getMapDef(this.worldMapId));
+  }
+
   private handleLocalDamaged(damage: PlayerDamagedMessage): void {
+    if (damage.shooterId) {
+      this.lastCombatShooterId = damage.shooterId;
+    }
     this.player.object.updateMatrixWorld(true);
     const shooterWorldPos = new THREE.Vector3(
       damage.shooterWorldX,
@@ -471,6 +553,7 @@ export class Game {
   private initResize(): void {
     window.addEventListener('resize', () => {
       this.player.resize();
+      this.killCam.resize();
       this.renderContext.resize();
     });
   }
@@ -493,8 +576,29 @@ export class Game {
       this.toggleInventory();
     }
 
+    const match = resolveMatchSnapshot(
+      this.network?.getMatchState() ?? null,
+      this.worldMapId,
+    );
+    const worldTime = this.network?.getWorldTime() ?? 0;
+    this.matchCountdownOverlay.update(match, worldTime, this.worldMapId);
+    this.matchResultsOverlay.update(match, this.localCombat.teamId);
+
+    if (match?.gameMode === 'tdm' && match.phase === 'ended' && !this.matchEndHandled) {
+      this.matchEndHandled = true;
+      this.closeInventory();
+      this.playerControls.controls.unlockSoft();
+    }
+
+    const tdmBlocksInput =
+      match?.gameMode === 'tdm' &&
+      (match.phase === 'countdown' || match.phase === 'ended');
+
     const canAct =
-      this.playerControls.isLocked && this.localCombat.alive && !this.inventoryOpen;
+      !tdmBlocksInput &&
+      this.playerControls.isLocked &&
+      this.localCombat.alive &&
+      !this.inventoryOpen;
 
     if (this.playerControls.isPlaying && !this.audioUnlocked) {
       this.weaponSounds.unlock();
@@ -515,18 +619,21 @@ export class Game {
       this.projectiles,
     );
     this.player.object.updateMatrixWorld(true);
-    const worldTime = this.network?.getWorldTime() ?? 0;
+    let camera = this.getActiveCamera();
     this.network?.syncShieldDomeCharges(
       this.shieldDomeChargeManager,
       delta,
-      this.player.camera ?? null,
+      camera,
     );
     this.network?.syncShieldDomes(this.shieldDomeManager);
-    this.network?.interpolateRemotes(delta, this.player.camera!);
-    this.shieldDomeManager.update(delta, this.player.camera ?? null, worldTime);
+    this.network?.interpolateRemotes(delta, camera);
+    this.updateKillCam(delta);
+    if (this.killCam.isActive()) {
+      camera = this.getActiveCamera();
+    }
+    this.shieldDomeManager.update(delta, camera, worldTime);
     this.projectiles.update(delta, worldTime);
     this.network?.update(delta, this.player, this.playerControls);
-    const camera = this.player.camera;
     this.player.object.updateMatrixWorld(true);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
@@ -567,6 +674,7 @@ export class Game {
       this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
       this.teamHud.update(this.network.getTeammateHudEntries());
+      this.matchHud.update(match, worldTime);
       this.shieldRechargeHud.update(
         getShieldRechargeState(
           this.localCombat.shieldRecharging,
@@ -623,8 +731,8 @@ export class Game {
       }
     }
 
-    updateEdgeLinesForCamera(this.player.camera!);
-    this.renderContext.render(this.scene, this.player.camera!);
+    updateEdgeLinesForCamera(camera);
+    this.renderContext.render(this.scene, camera);
     this.performanceHud.update(delta, this.renderContext.renderer);
     this.input.endFrame();
     this.pointer.endFrame();

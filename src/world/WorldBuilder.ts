@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import { MAP_HALF } from '../../shared/level/kiloSectorColliders';
+import { getMapDef, normalizeMapId, type MapId } from '../../shared/level/maps';
 import { SceneBuilder } from '../sceneBuilder';
 import { LevelBuilder } from './LevelBuilder';
 import { LightingBuilder } from './LightingBuilder';
@@ -16,12 +16,18 @@ export class WorldBuilder {
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
   private platformParticles: PlatformLiftParticles | null = null;
+  private readonly mapDef;
+
+  constructor(mapId: MapId = 'kilo_sector') {
+    this.mapDef = getMapDef(normalizeMapId(mapId));
+  }
 
   build(): this {
+    const fogColor = this.mapDef.outdoor ? 0x88d4f0 : 0x1a2228;
     this.sceneBuilder
       .build()
       .addBackground(createSkyboxTexture())
-      .addFog(0x88d4f0, MAP_HALF * 0.5, MAP_HALF * 2.2);
+      .addFog(fogColor, this.mapDef.mapHalf * 0.5, this.mapDef.mapHalf * 2.2);
     return this;
   }
 
@@ -32,25 +38,28 @@ export class WorldBuilder {
   }
 
   withTerrain(quality?: GrassQualityProfile): this {
+    if (!this.mapDef.outdoor) return this;
     this.terrainBuilder = new TerrainBuilder(quality);
     this.sceneBuilder.addObject(this.terrainBuilder.build());
     return this;
   }
 
   withLevel(): this {
-    for (const object of new LevelBuilder().build()) {
+    for (const object of new LevelBuilder().build(this.mapDef.id)) {
       this.sceneBuilder.addObject(object);
     }
     return this;
   }
 
   withDrones(): this {
+    if (!this.mapDef.outdoor) return this;
     this.droneField = new DroneField();
     this.sceneBuilder.addObject(this.droneField.group);
     return this;
   }
 
   withLightBeams(): this {
+    if (!this.mapDef.outdoor) return this;
     this.lightBeams = new LightBeams();
     this.sceneBuilder.addObject(this.lightBeams.group);
     return this;
@@ -60,6 +69,10 @@ export class WorldBuilder {
     this.platformParticles = new PlatformLiftParticles();
     this.sceneBuilder.addObject(this.platformParticles.group);
     return this;
+  }
+
+  getMapDef() {
+    return this.mapDef;
   }
 
   getTerrain(): TerrainBuilder | null {

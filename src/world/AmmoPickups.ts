@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import {
-  AMMO_BOX_POSITIONS,
+  AMMO_BOX_HALF_SIZE,
   sweptOverlapsAmmoBox,
 } from '../../shared/level/ammoBoxSpawns';
 import { PLAYER_HALF_WIDTH } from '../../shared/level/levelData';
+import { getClientMapDef } from '../../shared/level/maps';
 import type { AmmoBoxSnapshot } from '../network/types';
 import { createAmmoBox } from './ammoBoxVisual';
 
@@ -14,6 +15,7 @@ const PICKUP_RETRY_SEC = 0.15;
 
 export class AmmoPickups {
   private readonly boxes: THREE.Group[] = [];
+  private readonly positions: Array<{ x: number; z: number }> = [];
   private readonly collected = new Set<number>();
   private readonly pickupRetryAt = new Map<number, number>();
   private sendPickup: SendPickup | null = null;
@@ -23,14 +25,17 @@ export class AmmoPickups {
   private hasLastFeet = false;
   private elapsed = 0;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, spawnPositions: ReadonlyArray<{ x: number; z: number }>) {
     const group = new THREE.Group();
     group.name = 'ammo-pickups';
+    const groundY = getClientMapDef().sampleGroundHeight;
 
-    for (const pos of AMMO_BOX_POSITIONS) {
+    for (const pos of spawnPositions) {
       const box = createAmmoBox();
-      box.position.set(pos.x, 0, pos.z);
+      const y = groundY(pos.x, pos.z);
+      box.position.set(pos.x, y, pos.z);
       this.boxes.push(box);
+      this.positions.push({ x: pos.x, z: pos.z });
       group.add(box);
     }
 
@@ -46,6 +51,17 @@ export class AmmoPickups {
   }
 
   applySnapshot(index: number, snapshot: AmmoBoxSnapshot): void {
+    const box = this.boxes[index];
+    if (box) {
+      const groundY = getClientMapDef().sampleGroundHeight(snapshot.x, snapshot.z);
+      box.position.set(snapshot.x, groundY, snapshot.z);
+      const stored = this.positions[index];
+      if (stored) {
+        stored.x = snapshot.x;
+        stored.z = snapshot.z;
+      }
+    }
+
     if (!snapshot.collected) return;
     this.markCollected(index);
     this.pickupRetryAt.delete(index);
@@ -95,10 +111,10 @@ export class AmmoPickups {
   ): void {
     let picked = 0;
 
-    for (let i = 0; i < AMMO_BOX_POSITIONS.length; i++) {
+    for (let i = 0; i < this.positions.length; i++) {
       if (this.collected.has(i)) continue;
 
-      const { x, z } = AMMO_BOX_POSITIONS[i];
+      const { x, z } = this.positions[i];
       if (!this.overlapsBox(prevFeetX, prevFeetZ, feetX, feetZ, x, z)) continue;
 
       this.markCollected(i);
@@ -116,8 +132,8 @@ export class AmmoPickups {
     feetX: number,
     feetZ: number,
   ): void {
-    for (let i = 0; i < AMMO_BOX_POSITIONS.length; i++) {
-      const { x, z } = AMMO_BOX_POSITIONS[i];
+    for (let i = 0; i < this.positions.length; i++) {
+      const { x, z } = this.positions[i];
       const overlapping = this.overlapsBox(prevFeetX, prevFeetZ, feetX, feetZ, x, z);
 
       if (!overlapping) {
@@ -142,3 +158,6 @@ export class AmmoPickups {
     this.boxes[index].visible = false;
   }
 }
+
+// Re-export for any callers that still reference the constant size.
+export { AMMO_BOX_HALF_SIZE };

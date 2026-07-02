@@ -7,8 +7,7 @@ import {
   PLAYER_HEIGHT,
   type Aabb,
 } from './levelData.js';
-import { getLevelColliders, MAP_HALF } from './kiloSectorColliders.js';
-import { sampleGroundHeight } from './terrainHeight.js';
+import { getClientMapDef, type MapCollisionDef } from './maps.js';
 
 export type { Aabb };
 
@@ -61,14 +60,22 @@ function overlapsXZ(feetX: number, feetZ: number, box: Aabb): boolean {
   );
 }
 
-export function getGroundHeight(feetX: number, feetZ: number, feetY: number): number {
-  let ground = sampleGroundHeight(feetX, feetZ);
+function isInBounds(x: number, z: number, map: MapCollisionDef): boolean {
+  return Math.abs(x) <= map.mapHalfX && Math.abs(z) <= map.mapHalfZ;
+}
 
-  for (const box of getLevelColliders()) {
+export function getGroundHeight(
+  feetX: number,
+  feetZ: number,
+  feetY: number,
+  map: MapCollisionDef = getClientMapDef(),
+): number {
+  let ground = map.sampleGroundHeight(feetX, feetZ);
+
+  for (const box of map.getLevelColliders()) {
     if (!overlapsXZ(feetX, feetZ, box)) continue;
 
     if (box.platform) {
-      // Latch onto the deck when feet rise into the platform volume from below.
       if (feetY + GROUND_SNAP >= box.minY) {
         ground = Math.max(ground, box.maxY);
       }
@@ -136,11 +143,12 @@ function raycastGround(
   dy: number,
   dz: number,
   maxDistance: number,
+  map: MapCollisionDef,
   minDistance = 0,
 ): number | null {
   if (dy >= -EPS) return null;
 
-  const startGround = sampleGroundHeight(ox, oz);
+  const startGround = map.sampleGroundHeight(ox, oz);
   if (oy <= startGround + GROUND_RAY_CLEARANCE) return null;
 
   let lo = minDistance;
@@ -149,8 +157,8 @@ function raycastGround(
   const endX = ox + dx * hi;
   const endZ = oz + dz * hi;
   const endY = oy + dy * hi;
-  if (Math.abs(endX) <= MAP_HALF && Math.abs(endZ) <= MAP_HALF) {
-    const endGround = sampleGroundHeight(endX, endZ);
+  if (isInBounds(endX, endZ, map)) {
+    const endGround = map.sampleGroundHeight(endX, endZ);
     if (endY > endGround + GROUND_RAY_CLEARANCE) return null;
   }
 
@@ -160,12 +168,12 @@ function raycastGround(
     const py = oy + dy * t;
     const pz = oz + dz * t;
 
-    if (Math.abs(px) > MAP_HALF || Math.abs(pz) > MAP_HALF) {
+    if (!isInBounds(px, pz, map)) {
       hi = t;
       continue;
     }
 
-    if (py > sampleGroundHeight(px, pz) + GROUND_RAY_CLEARANCE) lo = t;
+    if (py > map.sampleGroundHeight(px, pz) + GROUND_RAY_CLEARANCE) lo = t;
     else hi = t;
   }
 
@@ -174,7 +182,7 @@ function raycastGround(
 
   const hx = ox + dx * t;
   const hz = oz + dz * t;
-  if (Math.abs(hx) > MAP_HALF || Math.abs(hz) > MAP_HALF) return null;
+  if (!isInBounds(hx, hz, map)) return null;
 
   return t;
 }
@@ -189,16 +197,17 @@ export function raycastLevel(
   dz: number,
   maxDistance = DEFAULT_RAYCAST_DISTANCE,
   minDistance = 0,
+  map: MapCollisionDef = getClientMapDef(),
 ): RaycastHit | null {
   let closest: number | null = null;
 
-  for (const box of getLevelColliders()) {
+  for (const box of map.getLevelColliders()) {
     const t = rayAabbIntersect(ox, oy, oz, dx, dy, dz, box, maxDistance);
     if (t === null || t < minDistance) continue;
     if (closest === null || t < closest) closest = t;
   }
 
-  const groundT = raycastGround(ox, oy, oz, dx, dy, dz, maxDistance, minDistance);
+  const groundT = raycastGround(ox, oy, oz, dx, dy, dz, maxDistance, map, minDistance);
   if (groundT !== null && groundT >= minDistance && (closest === null || groundT < closest)) {
     closest = groundT;
   }
@@ -232,6 +241,8 @@ function resolveAxis(
       axis === 'z' ? value : feetZ,
     );
 
+    if (player.minY >= box.maxY - EPS) continue;
+    if (player.maxY <= box.minY + EPS) continue;
     if (!overlaps(player, box)) continue;
 
     value =
@@ -247,14 +258,20 @@ function resolveAxis(
   return value;
 }
 
-function resolveCeiling(feetX: number, feetY: number, feetZ: number, nextFeetY: number): number {
+function resolveCeiling(
+  feetX: number,
+  feetY: number,
+  feetZ: number,
+  nextFeetY: number,
+  map: MapCollisionDef,
+): number {
   const headDelta = nextFeetY - feetY;
   if (headDelta <= 0) return nextFeetY;
 
   let cappedFeetY = nextFeetY;
   const nextHeadY = nextFeetY + PLAYER_HEIGHT;
 
-  for (const box of getLevelColliders()) {
+  for (const box of map.getLevelColliders()) {
     const player = playerAabb(feetX, feetY, feetZ);
     if (!overlapsXZ(feetX, feetZ, box)) continue;
     if (box.minY <= player.maxY + EPS || box.minY > nextHeadY) continue;
@@ -265,11 +282,17 @@ function resolveCeiling(feetX: number, feetY: number, feetZ: number, nextFeetY: 
   return cappedFeetY;
 }
 
-function clampToMapBounds(x: number, z: number): { x: number; z: number } {
-  const limit = MAP_HALF - PLAYER_HALF_WIDTH - 0.5;
+function clampToMapBounds(
+  x: number,
+  z: number,
+  map: MapCollisionDef,
+): { x: number; z: number } {
+  const wallPad = map.wallThickness > 0 ? map.wallThickness : 0.5;
+  const limitX = map.mapHalfX - PLAYER_HALF_WIDTH - wallPad;
+  const limitZ = map.mapHalfZ - PLAYER_HALF_WIDTH - wallPad;
   return {
-    x: Math.max(-limit, Math.min(limit, x)),
-    z: Math.max(-limit, Math.min(limit, z)),
+    x: Math.max(-limitX, Math.min(limitX, x)),
+    z: Math.max(-limitZ, Math.min(limitZ, z)),
   };
 }
 
@@ -279,11 +302,12 @@ export function movePlayer(
   feetZ: number,
   deltaX: number,
   deltaZ: number,
+  map: MapCollisionDef = getClientMapDef(),
 ): { x: number; y: number; z: number } {
-  const colliders = getLevelColliders();
+  const colliders = map.getLevelColliders();
   const x = resolveAxis(feetX, feetY, feetZ, 'x', deltaX, colliders);
   const z = resolveAxis(x, feetY, feetZ, 'z', deltaZ, colliders);
-  const bounded = clampToMapBounds(x, z);
+  const bounded = clampToMapBounds(x, z, map);
 
   return { x: bounded.x, y: feetY, z: bounded.z };
 }
@@ -297,6 +321,7 @@ export function stepPlayerPhysics(
   deltaZ: number,
   jump: boolean,
   delta: number,
+  map: MapCollisionDef = getClientMapDef(),
 ): { x: number; y: number; z: number; state: PlayerPhysicsState } {
   let { verticalVelocity, grounded } = state;
 
@@ -307,9 +332,9 @@ export function stepPlayerPhysics(
 
   verticalVelocity -= GRAVITY * delta;
   let nextFeetY = feetY + verticalVelocity * delta;
-  nextFeetY = resolveCeiling(feetX, feetY, feetZ, nextFeetY);
+  nextFeetY = resolveCeiling(feetX, feetY, feetZ, nextFeetY, map);
 
-  const ground = getGroundHeight(feetX, feetZ, feetY);
+  const ground = getGroundHeight(feetX, feetZ, feetY, map);
   if (nextFeetY <= ground) {
     nextFeetY = ground;
     verticalVelocity = 0;
@@ -318,8 +343,8 @@ export function stepPlayerPhysics(
     grounded = false;
   }
 
-  const horizontal = movePlayer(feetX, nextFeetY, feetZ, deltaX, deltaZ);
-  const groundAfter = getGroundHeight(horizontal.x, horizontal.z, nextFeetY);
+  const horizontal = movePlayer(feetX, nextFeetY, feetZ, deltaX, deltaZ, map);
+  const groundAfter = getGroundHeight(horizontal.x, horizontal.z, nextFeetY, map);
 
   if (nextFeetY <= groundAfter + GROUND_SNAP && verticalVelocity <= 0) {
     nextFeetY = groundAfter;
@@ -335,17 +360,27 @@ export function stepPlayerPhysics(
   };
 }
 
-export function clampEyeY(feetX: number, feetZ: number, eyeY: number): number {
+export function clampEyeY(
+  feetX: number,
+  feetZ: number,
+  eyeY: number,
+  map: MapCollisionDef = getClientMapDef(),
+): number {
   const feetY = eyeY - EYE_HEIGHT;
-  const ground = getGroundHeight(feetX, feetZ, feetY);
+  const ground = getGroundHeight(feetX, feetZ, feetY, map);
   const minEyeY = ground + EYE_HEIGHT;
   const maxEyeY = ground + EYE_HEIGHT + MAX_JUMP_HEIGHT;
   return Math.max(minEyeY, Math.min(eyeY, maxEyeY));
 }
 
 /** Feet height used for server-side horizontal collision — matches client elevation on platforms. */
-export function resolveMoveFeetY(feetX: number, feetZ: number, clientFeetY: number): number {
-  const ground = getGroundHeight(feetX, feetZ, clientFeetY);
+export function resolveMoveFeetY(
+  feetX: number,
+  feetZ: number,
+  clientFeetY: number,
+  map: MapCollisionDef = getClientMapDef(),
+): number {
+  const ground = getGroundHeight(feetX, feetZ, clientFeetY, map);
   return Math.min(Math.max(clientFeetY, ground), ground + MAX_JUMP_HEIGHT);
 }
 

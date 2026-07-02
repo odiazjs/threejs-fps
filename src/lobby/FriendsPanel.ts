@@ -20,6 +20,7 @@ import {
 import { setGameJoinIntent } from '../auth/gameJoin';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
+import { getSelectedMapId } from './mapSelection';
 import { isInviteablePresence } from './friendPresenceUi';
 
 const ACTION_TIMEOUT_MS = 12_000;
@@ -110,7 +111,7 @@ export class FriendsPanel {
       this.setStatus('Game invite was cancelled');
     });
     this.lobby.onGameLaunch((data) => {
-      this.launchGame(data.roomId, data.teamId);
+      this.launchGame(data.roomId, data.mapId, data.teamId);
     });
 
     this.lobby.onPartySnapshot((data) => {
@@ -275,7 +276,11 @@ export class FriendsPanel {
     this.friendlyFireCheckbox.disabled = true;
     this.loading.show('Starting game...');
     this.startLaunchTimeout();
-    this.lobby.startGameInvite(this.party.partyId, this.friendlyFireCheckbox.checked);
+    this.lobby.startGameInvite(
+      this.party.partyId,
+      this.friendlyFireCheckbox.checked,
+      getSelectedMapId(),
+    );
   }
 
   private async leaveParty(): Promise<void> {
@@ -295,10 +300,15 @@ export class FriendsPanel {
     }
   }
 
-  private launchGame(roomId: string, teamId: number): void {
+  private launchGame(roomId: string, mapId?: string, teamId?: number): void {
     this.clearLaunchTimeout();
     this.loading.show('Joining game...');
-    setGameJoinIntent({ roomId, teamId, mode: 'join' });
+    setGameJoinIntent({
+      roomId,
+      mode: 'join',
+      mapId: mapId ?? getSelectedMapId(),
+      ...(typeof teamId === 'number' ? { teamId } : {}),
+    });
     void this.lobby.disconnect();
     window.location.assign('/game.html');
   }

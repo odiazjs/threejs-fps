@@ -32,6 +32,7 @@ export class PlayerState extends Schema {
   @type('string') weaponSlot2 = 'sniper_rifle';
   @type('boolean') sprinting = false;
   @type('boolean') walking = false;
+  @type('boolean') walkingBackward = false;
   @type('boolean') jumping = false;
   /** Server world time when the shield dome charge completes (0 when idle). */
   @type('number') shieldDomeChargeEndAt = 0;
@@ -67,6 +68,21 @@ export class WeaponDropState extends Schema {
 export class FpsState extends Schema {
   @type('number') worldTime = 0;
   @type('boolean') friendlyFire = false;
+  @type('string') mapId = 'kilo_sector';
+  @type('string') gameMode = 'ffa';
+  @type('string') matchPhase = 'waiting';
+  @type('number') expectedPlayers = 0;
+  @type('number') teamCount = 2;
+  @type('number') teamScore0 = 0;
+  @type('number') teamScore1 = 0;
+  @type('number') teamScore2 = 0;
+  @type('number') teamScore3 = 0;
+  @type('number') matchCountdownEndAt = 0;
+  @type('number') matchStartAt = 0;
+  @type('number') matchEndAt = 0;
+  @type('number') matchDurationSec = 120;
+  /** -1 = tie or not decided yet. */
+  @type('number') winningTeamId = -1;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type([AmmoBoxState]) ammoBoxes = new ArraySchema<AmmoBoxState>();
   @type([ShieldChargeState]) shieldCharges = new ArraySchema<ShieldChargeState>();

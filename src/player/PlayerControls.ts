@@ -1,6 +1,7 @@
 import type * as THREE from 'three';
 import { PointerAimControls } from './PointerAimControls';
 import type { CrosshairHud } from '../ui/CrosshairHud';
+import type { MatchHud } from '../ui/MatchHud';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
@@ -23,6 +24,8 @@ export class PlayerControls {
   private weaponPickupHud: WeaponPickupHud | null = null;
   private shieldPickupHud: ShieldPickupHud | null = null;
   private teamHud: TeamHud | null = null;
+  private matchHud: MatchHud | null = null;
+  private matchHudEnabled = false;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private hasLockedOnce = false;
@@ -86,6 +89,11 @@ export class PlayerControls {
     this.teamHud = hud;
   }
 
+  setMatchHud(hud: MatchHud, enabled: boolean): void {
+    this.matchHud = hud;
+    this.matchHudEnabled = enabled;
+  }
+
   setLeaveHandler(handler: () => void): void {
     this.onLeave = handler;
   }
@@ -141,6 +149,9 @@ export class PlayerControls {
       this.killFeedHud?.setVisible(true);
       this.damageIndicatorHud?.setVisible(true);
       this.teamHud?.setVisible(true);
+      if (this.matchHudEnabled) {
+        this.matchHud?.setVisible(true);
+      }
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
@@ -158,6 +169,7 @@ export class PlayerControls {
       this.killFeedHud?.setVisible(false);
       this.damageIndicatorHud?.setVisible(false);
       this.teamHud?.setVisible(false);
+      this.matchHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
 
       if (this.hasLockedOnce) {

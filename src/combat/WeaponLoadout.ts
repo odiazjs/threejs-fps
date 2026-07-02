@@ -15,9 +15,15 @@ export type WeaponMeshContext = 'local' | 'remote';
 
 /** Extra multiplier so third-person weapons read clearly on the character mesh. */
 const REMOTE_WEAPON_SCALE_FACTOR = 1.6;
+/** Katana reads small on the Mixamo hand — boost third-person size only. */
+const REMOTE_KATANA_SCALE_MULTIPLIER = 1.5;
 
-export function remoteWeaponMeshScale(characterFitScale: number): number {
-  return (WEAPON_MESH_BASE_SCALE / characterFitScale) * REMOTE_WEAPON_SCALE_FACTOR;
+export function remoteWeaponMeshScale(
+  characterFitScale: number,
+  weaponId?: WeaponId,
+): number {
+  const katanaBoost = weaponId === MELEE_WEAPON_ID ? REMOTE_KATANA_SCALE_MULTIPLIER : 1;
+  return (WEAPON_MESH_BASE_SCALE / characterFitScale) * REMOTE_WEAPON_SCALE_FACTOR * katanaBoost;
 }
 
 /** Gun-style attach — barrel points down -Z in view space. */
@@ -39,10 +45,15 @@ export function getRemoteWeaponBaseRotation(
   return config.fireMode === 'melee' ? REMOTE_KATANA_WEAPON_ROTATION : fallback;
 }
 
-function applyMeshContextScale(mesh: THREE.Object3D, context: WeaponMeshContext, characterFitScale?: number): void {
+function applyMeshContextScale(
+  mesh: THREE.Object3D,
+  context: WeaponMeshContext,
+  characterFitScale?: number,
+  weaponId?: WeaponId,
+): void {
   const scale =
     context === 'remote' && characterFitScale
-      ? remoteWeaponMeshScale(characterFitScale)
+      ? remoteWeaponMeshScale(characterFitScale, weaponId)
       : WEAPON_MESH_BASE_SCALE;
   mesh.scale.setScalar(scale);
   mesh.frustumCulled = false;
@@ -155,7 +166,7 @@ export class WeaponLoadout {
   ): void {
     for (const slot of this.allWeaponSlots()) {
       parent.add(slot.mesh);
-      applyMeshContextScale(slot.mesh, context, characterFitScale);
+      applyMeshContextScale(slot.mesh, context, characterFitScale, slot.config.id);
       const offset = getAttachOffset(slot.config.view, context);
       slot.mesh.position.set(offset.x, offset.y, offset.z);
       applyWeaponMeshRotation(slot.mesh, rotation, slot.config.view, context);
@@ -173,7 +184,7 @@ export class WeaponLoadout {
     for (const slot of this.allWeaponSlots()) {
       slot.mesh.removeFromParent();
       parent.add(slot.mesh);
-      applyMeshContextScale(slot.mesh, context, characterFitScale);
+      applyMeshContextScale(slot.mesh, context, characterFitScale, slot.config.id);
       const offset = basePosition ?? getAttachOffset(slot.config.view, context);
       slot.mesh.position.copy(offset);
       applyWeaponMeshRotation(slot.mesh, rotation, slot.config.view, context);
@@ -191,6 +202,10 @@ export class WeaponLoadout {
 
   isMeleeEquipped(): boolean {
     return this.meleeEquipped;
+  }
+
+  getMeleeWeaponMesh(): THREE.Group | null {
+    return this.meleeSlot?.mesh ?? null;
   }
 
   getActive(): WeaponSlot {

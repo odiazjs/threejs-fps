@@ -24,12 +24,17 @@ export const CHARACTER_MODEL_FILES = {
   reloadSprint: 'Reload Sprint.fbx',
   meleeIdle: 'Standing Idle Melee.fbx',
   meleeAttack: 'Standing Melee Attack Horizontal 100.fbx',
+  meleeWalkForward: 'Melee Standing Walk Forward.fbx',
+  meleeWalkBack: 'Melee Standing Walk Back.fbx',
+  meleeRun: 'Melee Run.fbx',
+  meleeJump: 'Melee Standing Jump 2.fbx',
   weaponEquip: 'Unarmed Equip Over Shoulder.fbx',
 } as const;
 
 const ONE_SHOT_MODEL_FILES = new Set<string>([
   CHARACTER_MODEL_FILES.rifleJump,
   CHARACTER_MODEL_FILES.pistolJump,
+  CHARACTER_MODEL_FILES.meleeJump,
   CHARACTER_MODEL_FILES.meleeAttack,
   CHARACTER_MODEL_FILES.weaponEquip,
 ]);
@@ -38,11 +43,15 @@ const ROOT_MOTION_STRIP_MODEL_FILES = new Set<string>([
   ...ONE_SHOT_MODEL_FILES,
   CHARACTER_MODEL_FILES.reloadWalk,
   CHARACTER_MODEL_FILES.reloadSprint,
+  CHARACTER_MODEL_FILES.meleeWalkForward,
+  CHARACTER_MODEL_FILES.meleeWalkBack,
+  CHARACTER_MODEL_FILES.meleeRun,
 ]);
 
 export interface RemoteCharacterPose {
   sprinting: boolean;
   walking: boolean;
+  walkingBackward: boolean;
   jumping: boolean;
   reloading: boolean;
   switchingWeapon: boolean;
@@ -279,6 +288,9 @@ export function gameModelFileForWeapon(
   pose: RemoteCharacterPose,
 ): string {
   if (pose.jumping) {
+    if (weaponId === MELEE_WEAPON_ID) {
+      return CHARACTER_MODEL_FILES.meleeJump;
+    }
     return weaponId === 'pistol'
       ? CHARACTER_MODEL_FILES.pistolJump
       : CHARACTER_MODEL_FILES.rifleJump;
@@ -299,12 +311,20 @@ export function gameModelFileForWeapon(
   }
 
   if (pose.sprinting) {
+    if (weaponId === MELEE_WEAPON_ID) {
+      return CHARACTER_MODEL_FILES.meleeRun;
+    }
     return weaponId === 'pistol'
       ? CHARACTER_MODEL_FILES.pistolRun
       : CHARACTER_MODEL_FILES.rifleRunShoot;
   }
 
   if (pose.walking) {
+    if (weaponId === MELEE_WEAPON_ID) {
+      return pose.walkingBackward
+        ? CHARACTER_MODEL_FILES.meleeWalkBack
+        : CHARACTER_MODEL_FILES.meleeWalkForward;
+    }
     return weaponId === 'pistol'
       ? CHARACTER_MODEL_FILES.pistolWalk
       : CHARACTER_MODEL_FILES.rifleWalking;
@@ -324,6 +344,7 @@ export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
   return gameModelFileForWeapon(weaponId, {
     sprinting: false,
     walking: false,
+    walkingBackward: false,
     jumping: false,
     reloading: false,
     switchingWeapon: false,
@@ -347,6 +368,7 @@ export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<Chara
   return loadGameCharacterTemplate(weaponId, {
     sprinting: false,
     walking: false,
+    walkingBackward: false,
     jumping: false,
     reloading: false,
     switchingWeapon: false,
@@ -369,6 +391,10 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.reloadSprint),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeIdle),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeAttack),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeWalkForward),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeWalkBack),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeRun),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeJump),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.weaponEquip),
   ]);
 }

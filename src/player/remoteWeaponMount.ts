@@ -58,27 +58,18 @@ const PISTOL_WALK_MOUNT: RemoteWeaponMount = {
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
-/** Standing Idle Melee — katana held upright at rest. */
+/** Standing Idle Melee — katana held upright at rest (also used during attack anim). */
 const MELEE_IDLE_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
-  handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(4, 22, 5),
-  weaponRotation: new THREE.Euler(0, 180, 89.5),
-};
-
-/** Standing Melee Attack Horizontal — slash pose. */
-const MELEE_ATTACK_MOUNT: RemoteWeaponMount = {
-  handPosition: new THREE.Vector3(0, 0, 0),
-  handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(6, 20, 8),
-  weaponRotation: new THREE.Euler(0, 180, 89.5),
+  handRotation: new THREE.Euler(0, -0.5, 0),
+  weaponPosition: new THREE.Vector3(10, -2.5, -45),
+  weaponRotation: new THREE.Euler(90, -180, 90),
 };
 
 const DEFAULT_MOUNT = RIFLE_AIMING_RIFLE_MOUNT;
 
 export function getRemoteWeaponMount(modelFile: string, weaponId: WeaponId): RemoteWeaponMount {
   if (weaponId === MELEE_WEAPON_ID) {
-    if (modelFile === CHARACTER_MODEL_FILES.meleeAttack) return MELEE_ATTACK_MOUNT;
     return MELEE_IDLE_MOUNT;
   }
 

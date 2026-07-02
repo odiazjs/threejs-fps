@@ -176,7 +176,7 @@ export const KATANA_CONFIG: WeaponConfig = {
   damage: WEAPON_DAMAGE.katana,
   projectileSpeed: 0,
   moveSpeedMultiplier: 1.15,
-  meleeRange: 1.8,
+  meleeRange: 2.25,
   view: {
     hip: { x: 0.12, y: -0.13, z: -0.3 },
     ads: { x: 0.12, y: -0.2, z: -0.3 },

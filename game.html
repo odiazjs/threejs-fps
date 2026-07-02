@@ -798,6 +798,156 @@
         z-index: 1000;
         will-change: transform, opacity;
       }
+      #match-hud {
+        position: fixed;
+        top: 1.25rem;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.45rem;
+        pointer-events: none;
+        z-index: 50;
+      }
+      #match-hud[hidden] {
+        display: none !important;
+      }
+      .match-hud-timer {
+        padding: 0.35rem 0.9rem;
+        border-radius: 6px;
+        background: rgba(12, 16, 22, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        font-size: 1.05rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        color: #f2f6fb;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      }
+      .match-hud-scores {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.4rem 0.85rem;
+        border-radius: 6px;
+        background: rgba(12, 16, 22, 0.78);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      .match-hud-score {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+      .match-hud-team {
+        letter-spacing: 0.04em;
+      }
+      .match-hud-points {
+        color: #fff;
+        font-size: 0.95rem;
+        font-weight: 800;
+      }
+      .match-hud-separator {
+        color: rgba(255, 255, 255, 0.35);
+        font-weight: 600;
+      }
+      #match-countdown-overlay,
+      #match-results-overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(6, 10, 16, 0.72);
+        z-index: 20;
+        pointer-events: auto;
+      }
+      #match-countdown-overlay[hidden],
+      #match-results-overlay[hidden] {
+        display: none !important;
+      }
+      .match-countdown-panel,
+      .match-results-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.65rem;
+        padding: 2rem 2.5rem;
+        border-radius: 12px;
+        background: rgba(14, 18, 26, 0.94);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+        min-width: 16rem;
+      }
+      .match-countdown-subtitle,
+      .match-results-subtitle {
+        font-size: 0.78rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.55);
+      }
+      .match-countdown-value {
+        font-size: 5rem;
+        font-weight: 900;
+        line-height: 1;
+        color: #f4f8ff;
+        text-shadow: 0 4px 24px rgba(106, 159, 212, 0.45);
+      }
+      .match-countdown-value.go {
+        font-size: 4rem;
+        color: #8fd4a0;
+        text-shadow: 0 4px 24px rgba(143, 212, 160, 0.5);
+      }
+      .match-results-title {
+        font-size: 2.4rem;
+        font-weight: 900;
+        letter-spacing: 0.08em;
+        color: #f4f8ff;
+      }
+      .match-results-scores {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        width: 100%;
+        margin-top: 0.35rem;
+      }
+      .match-results-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.45rem 0.65rem;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .match-results-row.winner {
+        background: rgba(106, 159, 212, 0.16);
+        border: 1px solid rgba(106, 159, 212, 0.35);
+      }
+      .match-results-team {
+        font-weight: 700;
+        letter-spacing: 0.04em;
+      }
+      .match-results-points {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #fff;
+      }
+      .match-results-leave {
+        margin-top: 1rem;
+        padding: 0.65rem 1.4rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        cursor: pointer;
+      }
+      .match-results-leave:hover {
+        background: rgba(255, 255, 255, 0.14);
+      }
       #kill-feed {
         position: fixed;
         top: 1.5rem;
@@ -1171,6 +1321,24 @@
       </div>
     </div>
     <div id="message-hud"></div>
+    <div id="match-hud" hidden>
+      <div class="match-hud-timer">2:00</div>
+      <div class="match-hud-scores"></div>
+    </div>
+    <div id="match-countdown-overlay" hidden>
+      <div class="match-countdown-panel">
+        <div class="match-countdown-subtitle">Match starts in</div>
+        <div class="match-countdown-value">5</div>
+      </div>
+    </div>
+    <div id="match-results-overlay" hidden>
+      <div class="match-results-panel">
+        <div class="match-results-subtitle">Match Over</div>
+        <div class="match-results-title">VICTORY</div>
+        <div class="match-results-scores"></div>
+        <button class="match-results-leave" type="button">LEAVE GAME</button>
+      </div>
+    </div>
     <div id="kill-feed" hidden></div>
     <div id="health-hud" hidden>
       <div class="shield-hud">

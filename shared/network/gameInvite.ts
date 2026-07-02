@@ -26,7 +26,8 @@ export interface GameInviteCancelledMessage {
 
 export interface GameLaunchMessage {
   roomId: string;
-  teamId: number;
+  teamId?: number;
+  mapId?: string;
 }
 
 export interface SendGameInviteMessage {
@@ -44,4 +45,5 @@ export interface StartGameInviteMessage {
   inviteId?: string;
   partyId?: string;
   friendlyFire?: boolean;
+  mapId?: string;
 }

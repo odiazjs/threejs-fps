@@ -92,7 +92,7 @@ export class ProjectileManager {
     const projectile = new Projectile(
       origin,
       direction,
-      options?.speed ?? PROJECTILE_SPEED,
+      options?.speed ?? 100,
     );
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);

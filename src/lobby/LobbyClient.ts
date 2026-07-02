@@ -61,8 +61,8 @@ export class LobbyClient {
     this.room?.send('respondGameInvite', { inviteId, fromUsername, accepted });
   }
 
-  startGameInvite(partyId: string, friendlyFire: boolean): void {
-    this.room?.send('startGameInvite', { partyId, friendlyFire });
+  startGameInvite(partyId: string, friendlyFire: boolean, mapId: string): void {
+    this.room?.send('startGameInvite', { partyId, friendlyFire, mapId });
   }
 
   leaveParty(partyId: string): void {

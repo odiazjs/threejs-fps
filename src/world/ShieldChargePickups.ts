@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { SHIELD_PICKUP_MAX_DISTANCE } from '../../shared/network/shieldPickup';
-import { sampleGroundHeight } from '../../shared/level/terrainHeight';
+import { getClientMapDef } from '../../shared/level/maps';
 import type { ShieldChargeSnapshot } from '../network/types';
 import { createShieldChargePickup } from './shieldChargeVisual';
 
@@ -38,7 +38,7 @@ export class ShieldChargePickups {
       this.root.add(pickup);
     }
 
-    const groundY = sampleGroundHeight(snapshot.x, snapshot.z);
+    const groundY = getClientMapDef().sampleGroundHeight(snapshot.x, snapshot.z);
     pickup.position.set(snapshot.x, groundY, snapshot.z);
     pickup.visible = true;
   }

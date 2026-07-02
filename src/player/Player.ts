@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../shared/level/collision';
+import { DEFAULT_MAP_ID, getMapDef, type MapCollisionDef } from '../../shared/level/maps';
 import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import {
   isWeaponId,
@@ -44,6 +45,10 @@ import { WeaponPose } from './WeaponPose';
 import { WeaponSway } from './WeaponSway';
 import { KatanaSlashTrailFx, KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
 import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled } from '../combat/HitCapsuleDebugMesh';
+import {
+  attachAxisDebugArrowsIfEnabled,
+  type AxisDebugArrows,
+} from '../debug/AxisDebugArrows';
 import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -96,6 +101,7 @@ export class Player {
   private currentYaw = 0;
   private currentPitch = 0;
   private physics: PlayerPhysicsState = { verticalVelocity: 0, grounded: true };
+  private mapCollisionDef: MapCollisionDef = getMapDef(DEFAULT_MAP_ID);
   private sprint = new SprintStamina();
   private headBob = new HeadBob();
   private footstepSounds: FootstepSoundService | null = null;
@@ -114,6 +120,7 @@ export class Player {
   private meleeAttackAnimConsumed = false;
   private weaponSwitchAnimConsumed = false;
   private remoteWeaponMount: RemoteWeaponMount | null = null;
+  private remoteKatanaAxisDebug: AxisDebugArrows | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
   private damageNumberStack: DamageNumberStack | null = null;
   private shieldBreakFx: ShieldBreakFx | null = null;
@@ -139,10 +146,12 @@ export class Player {
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private targetSprinting = false;
   private targetWalking = false;
+  private targetWalkingBackward = false;
   private targetJumping = false;
   private targetShieldRecharging = false;
   private targetShieldRechargeEndAt = 0;
   private locomotionWalking = false;
+  private locomotionWalkingBackward = false;
   private locomotionJumping = false;
   private remoteDisplayedWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private readonly remoteWeaponBasePosition = new THREE.Vector3();
@@ -233,6 +242,10 @@ export class Player {
     return player;
   }
 
+  setMapCollisionDef(map: MapCollisionDef): void {
+    this.mapCollisionDef = map;
+  }
+
   static createRemote(_color = 0x6a9fd4): Player {
     return new Player(false);
   }
@@ -281,6 +294,7 @@ export class Player {
     return {
       sprinting: this.targetSprinting,
       walking: this.targetWalking,
+      walkingBackward: this.targetWalkingBackward,
       jumping: this.targetJumping,
       reloading,
       switchingWeapon: weaponSwitch.active && !this.weaponSwitchAnimConsumed,
@@ -340,6 +354,21 @@ export class Player {
     this.lookRig.rotation.set(0, 0, 0);
     rig.head.add(this.lookRig);
     this.lookRigFollowsHead = true;
+
+    this.syncRemoteKatanaAxisDebug();
+  }
+
+  private syncRemoteKatanaAxisDebug(): void {
+    this.remoteKatanaAxisDebug?.dispose();
+    this.remoteKatanaAxisDebug = null;
+    if (this.camera || !this.loadout) return;
+
+    const katanaMesh = this.loadout.getMeleeWeaponMesh();
+    if (!katanaMesh) return;
+
+    this.remoteKatanaAxisDebug = attachAxisDebugArrowsIfEnabled(katanaMesh, {
+      length: 5,
+    });
   }
 
   private refreshRemoteWeaponMount(modelFile: string): void {
@@ -369,11 +398,17 @@ export class Player {
     return this.sprint.getState();
   }
 
-  getLocomotionState(): { isSprinting: boolean; isWalking: boolean; isJumping: boolean } {
+  getLocomotionState(): {
+    isSprinting: boolean;
+    isWalking: boolean;
+    isWalkingBackward: boolean;
+    isJumping: boolean;
+  } {
     if (this.camera) {
       return {
         isSprinting: this.sprint.getState().isSprinting,
         isWalking: this.locomotionWalking,
+        isWalkingBackward: this.locomotionWalkingBackward,
         isJumping: this.locomotionJumping,
       };
     }
@@ -381,6 +416,7 @@ export class Player {
     return {
       isSprinting: this.targetSprinting,
       isWalking: this.targetWalking,
+      isWalkingBackward: this.targetWalkingBackward,
       isJumping: this.targetJumping,
     };
   }
@@ -549,6 +585,10 @@ export class Player {
     return this.object.position;
   }
 
+  getAimYaw(): number {
+    return this.currentYaw;
+  }
+
   /** Third-person active weapon muzzle in world space (remote observers). */
   readActiveMuzzleWorldPosition(position: THREE.Vector3, weaponId?: WeaponId): boolean {
     if (!this.loadout || this.camera) return false;
@@ -630,6 +670,7 @@ export class Player {
     }
     this.targetSprinting = snapshot.sprinting;
     this.targetWalking = snapshot.walking;
+    this.targetWalkingBackward = snapshot.walkingBackward;
     this.targetJumping = snapshot.jumping;
     this.targetShieldRecharging = snapshot.shieldRecharging;
     this.targetShieldRechargeEndAt = snapshot.shieldRechargeEndAt;
@@ -847,7 +888,10 @@ export class Player {
         input.isPressed('KeyA') ||
         input.isPressed('KeyD'));
     const isWalking = isMoving && !isSprinting;
+    const isWalkingBackward =
+      isWalking && input.isPressed('KeyS') && !input.isPressed('KeyW');
     this.locomotionWalking = isWalking;
+    this.locomotionWalkingBackward = isWalkingBackward;
 
     this.loadout.update(delta);
 
@@ -896,9 +940,10 @@ export class Player {
     this.updateFire(delta, pointer, projectiles);
     this.updateMeleeAttack(delta, input, pointer, projectiles);
 
-    const moveMultiplier = meleeEquipped
-      ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
-      : 1;
+    const moveMultiplier =
+      meleeEquipped && isSprinting
+        ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
+        : 1;
     const speed = MOVE_SPEED * moveMultiplier * delta;
 
     this.camera.getWorldDirection(this.forward);
@@ -940,6 +985,7 @@ export class Player {
       deltaZ,
       jump,
       delta,
+      this.mapCollisionDef,
     );
 
     this.object.position.set(result.x, result.y, result.z);
@@ -989,6 +1035,8 @@ export class Player {
     this.characterInstance = null;
     this.displayedCharacterModelFile = null;
     this.remoteWeaponMount = null;
+    this.remoteKatanaAxisDebug?.dispose();
+    this.remoteKatanaAxisDebug = null;
     this.handRig = null;
     this.spineBone = null;
     this.lookRigFollowsHead = false;

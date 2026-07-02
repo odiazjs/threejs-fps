@@ -21,6 +21,7 @@ import type { LocalCombatState, LocalDamagedHandler, PlayerSnapshot } from './ty
 import type { TeammateHudEntry } from '../ui/TeamHud';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
+import type { MapId } from '../../shared/level/maps';
 import { readProjectileShooterWorldPos } from '../combat/damageIndicatorMath';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
@@ -70,7 +71,11 @@ export class NetworkManager {
     private readonly onLocalAmmoPickup: LocalPickupHandler,
     private readonly onLocalShieldPickup: () => void,
     private readonly onLocalPlayerChange: (state: LocalCombatState) => void,
-    private readonly onKillFeed: (killerName: string, victimName: string) => void,
+    private readonly onKillFeed: (
+      killerId: string,
+      killerName: string,
+      victimName: string,
+    ) => void,
   ) {
     this.remotePlayers = new RemotePlayers(scene, this.roomClient, this.remoteUiVisibility);
     this.remotePlayers.onShieldBreak((sessionId) => {
@@ -126,8 +131,8 @@ export class NetworkManager {
       }
       this.onLocalShieldPickup();
     });
-    this.roomClient.onKillFeed((killerName, victimName) => {
-      this.onKillFeed(killerName, victimName);
+    this.roomClient.onKillFeed((killerId, killerName, victimName) => {
+      this.onKillFeed(killerId, killerName, victimName);
     });
     this.roomClient.onLocalDamaged((damage) => {
       if (damage.shooterId) {
@@ -352,6 +357,16 @@ export class NetworkManager {
     return this.roomClient.sessionId ?? '';
   }
 
+  getRemotePlayer(sessionId: string): Player | undefined {
+    return this.remotePlayers.getPlayer(sessionId);
+  }
+
+  getPlayerSnapshot(sessionId: string): (PlayerSnapshot & { sessionId: string }) | null {
+    return (
+      this.roomClient.getAllPlayerSnapshots().find((p) => p.sessionId === sessionId) ?? null
+    );
+  }
+
   getTeammateHudEntries(): TeammateHudEntry[] {
     const localTeamId = this.localCombat.teamId;
     const localSessionId = this.roomClient.sessionId;
@@ -419,12 +434,29 @@ export class NetworkManager {
     this.impactSounds = service;
   }
 
+  getMapId(): MapId {
+    return this.roomClient.getMapId();
+  }
+
+  getMapIdIfSynced(): MapId | null {
+    return this.roomClient.getMapIdIfSynced();
+  }
+
+  getMatchState() {
+    return this.roomClient.getMatchState();
+  }
+
   async disconnect(): Promise<void> {
     await this.roomClient.disconnect();
   }
 
   update(delta: number, player: Player, controls: PlayerControls): void {
     if (!this.roomClient.connected || !controls.isPlaying || !this.localCombat.alive) {
+      return;
+    }
+
+    const match = this.roomClient.getMatchState();
+    if (match?.gameMode === 'tdm' && match.phase !== 'playing') {
       return;
     }
 
@@ -445,6 +477,7 @@ export class NetworkManager {
       pitch,
       locomotion.isSprinting,
       locomotion.isWalking,
+      locomotion.isWalkingBackward,
       locomotion.isJumping,
     );
   }

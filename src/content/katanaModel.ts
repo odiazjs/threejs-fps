@@ -6,6 +6,7 @@ import {
   FBX_WEAPON_ASSET_BASE,
   prepareFbxWeaponMesh,
 } from './fbxWeaponMesh';
+import { attachAxisDebugArrowsIfEnabled } from '../debug/AxisDebugArrows';
 
 const KATANA_MODEL_FILE = 'melee_katana.fbx';
 /** Blade length in mesh space before WeaponLoadout's 0.1 viewmodel scale (+75%, then +15%). */
@@ -30,6 +31,11 @@ function loadKatanaTemplate(): Promise<THREE.Group> {
     const loader = new FBXLoader();
     loader.setResourcePath(FBX_WEAPON_ASSET_BASE);
     const fbx = await loader.loadAsync(fbxWeaponAssetUrl(KATANA_MODEL_FILE));
+    
+    // Show axis debug arrows
+    const axes = attachAxisDebugArrowsIfEnabled(fbx as THREE.Group, { length: 0.4 });
+    axes?.setVisible(true);
+
     katanaTemplate = prepareFbxWeaponMesh(fbx as THREE.Group, KATANA_MESH_CONFIG);
     return katanaTemplate;
   })().finally(() => {

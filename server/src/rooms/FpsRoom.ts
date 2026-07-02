@@ -1,17 +1,22 @@
 import { Client, Room } from 'colyseus';
-import { AMMO_BOX_POSITIONS, overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
-import {
-  SHIELD_CHARGE_POSITIONS,
-} from '../../../shared/level/shieldChargeSpawns.js';
+import { overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
 import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
-import { pickSpawnPoint, HUMAN_RESPAWN_POINT } from '../../../shared/level/kiloSectorColliders.js';
+import { getMapDef, normalizeMapId, type MapCollisionDef } from '../../../shared/level/maps.js';
 import {
   PLAYER_MAX_HP,
   RESPAWN_DELAY_SEC,
 } from '../../../shared/combat/damage.js';
-import { isValidTeamId } from '../../../shared/combat/teams.js';
+import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
+import {
+  defaultGameModeForMap,
+  resolveTdmTeamCount,
+  TDM_COUNTDOWN_SEC,
+  TDM_KILL_POINTS,
+  TDM_MATCH_DURATION_SEC,
+  type GameMode,
+} from '../../../shared/combat/match.js';
 import {
   isTrainingBotSessionId,
   TRAINING_BOT_SPAWNS,
@@ -91,6 +96,7 @@ interface MoveMessage {
   pitch: number;
   sprinting?: boolean;
   walking?: boolean;
+  walkingBackward?: boolean;
   jumping?: boolean;
 }
 
@@ -101,6 +107,7 @@ interface JoinOptions {
   inviteMatch?: boolean;
   maxPartySize?: number;
   friendlyFire?: boolean;
+  mapId?: string;
 }
 
 interface LastShotOrigin {
@@ -114,6 +121,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   state = new FpsState();
   maxClients = 8;
   private inviteMatch = false;
+  private gameMode: GameMode = 'ffa';
+  private expectedPlayers = 0;
+  private mapDef!: MapCollisionDef;
   private emptyDisposeTimer?: ReturnType<Room['clock']['setTimeout']>;
   private readonly botSpawns = new Map<string, { x: number; z: number; yaw: number }>();
   private readonly botPhysics = new Map<string, PlayerPhysicsState>();
@@ -129,24 +139,41 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       Math.max(2, Math.floor(options.maxPartySize ?? 2)),
     );
     this.maxClients = this.inviteMatch ? partySize : 8;
+    this.expectedPlayers = this.inviteMatch ? partySize : 0;
     this.state.friendlyFire = options.friendlyFire === true;
+    const mapId = normalizeMapId(options.mapId);
+    this.state.mapId = mapId;
+    this.mapDef = getMapDef(mapId);
+    this.gameMode = defaultGameModeForMap(mapId);
+    this.state.gameMode = this.gameMode;
+
+    if (this.gameMode === 'tdm') {
+      this.state.friendlyFire = false;
+      this.state.matchPhase = 'waiting';
+      this.state.matchDurationSec = TDM_MATCH_DURATION_SEC;
+      this.state.expectedPlayers = this.expectedPlayers > 0 ? this.expectedPlayers : 2;
+      this.expectedPlayers = this.state.expectedPlayers;
+      this.state.teamCount = resolveTdmTeamCount(this.expectedPlayers);
+    }
     this.patchRate = 50;
 
-    for (const pos of AMMO_BOX_POSITIONS) {
+    for (const pos of this.mapDef.ammoPositions) {
       const box = new AmmoBoxState();
       box.x = pos.x;
       box.z = pos.z;
       this.state.ammoBoxes.push(box);
     }
 
-    for (const pos of SHIELD_CHARGE_POSITIONS) {
+    for (const pos of this.mapDef.shieldPositions) {
       const charge = new ShieldChargeState();
       charge.x = pos.x;
       charge.z = pos.z;
       this.state.shieldCharges.push(charge);
     }
 
-    this.spawnTrainingBots();
+    if (this.mapDef.spawnTrainingBots) {
+      this.spawnTrainingBots();
+    }
 
     this.setSimulationInterval((deltaTime) => {
       const deltaSec = deltaTime / 1000;
@@ -155,7 +182,172 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.tickShieldRecharges();
       this.tickShieldDomeCharges();
       this.tickTrainingBots(deltaSec);
+      this.tickMatchState();
     });
+  }
+
+  private isTdm(): boolean {
+    return this.gameMode === 'tdm';
+  }
+
+  private isMatchCombatAllowed(): boolean {
+    if (!this.isTdm()) return true;
+    if (this.state.matchPhase !== 'playing') return false;
+    return this.state.worldTime < this.state.matchEndAt;
+  }
+
+  private getTeamScore(teamId: number): number {
+    switch (teamId) {
+      case 0:
+        return this.state.teamScore0;
+      case 1:
+        return this.state.teamScore1;
+      case 2:
+        return this.state.teamScore2;
+      case 3:
+        return this.state.teamScore3;
+      default:
+        return 0;
+    }
+  }
+
+  private addTeamScore(teamId: number, points: number): void {
+    switch (teamId) {
+      case 0:
+        this.state.teamScore0 += points;
+        break;
+      case 1:
+        this.state.teamScore1 += points;
+        break;
+      case 2:
+        this.state.teamScore2 += points;
+        break;
+      case 3:
+        this.state.teamScore3 += points;
+        break;
+    }
+  }
+
+  private tickMatchState(): void {
+    if (!this.isTdm()) return;
+
+    const now = this.state.worldTime;
+
+    if (this.state.matchPhase === 'waiting') {
+      if (this.countHumanPlayers() >= this.expectedPlayers) {
+        this.assignTdmTeams();
+        this.teleportHumansToTeamSpawns();
+        this.state.matchPhase = 'countdown';
+        this.state.matchCountdownEndAt = now + TDM_COUNTDOWN_SEC;
+      }
+      return;
+    }
+
+    if (this.state.matchPhase === 'countdown') {
+      if (now >= this.state.matchCountdownEndAt) {
+        this.state.matchPhase = 'playing';
+        this.state.matchStartAt = now;
+        this.state.matchEndAt = now + this.state.matchDurationSec;
+      }
+      return;
+    }
+
+    if (this.state.matchPhase === 'playing' && now >= this.state.matchEndAt) {
+      this.endMatch();
+    }
+  }
+
+  private assignTdmTeams(): void {
+    const humans = [...this.state.players.entries()]
+      .filter(([sessionId]) => !isTrainingBotSessionId(sessionId))
+      .map(([, player]) => player);
+    const count = humans.length;
+    const teamCount = resolveTdmTeamCount(count);
+    this.state.teamCount = teamCount;
+
+    if (count === 2) {
+      humans[0]!.teamId = 0;
+      humans[1]!.teamId = 1;
+      return;
+    }
+
+    if (count === 3) {
+      humans[0]!.teamId = 0;
+      humans[1]!.teamId = 1;
+      humans[2]!.teamId = 2;
+      return;
+    }
+
+    if (count >= 4) {
+      humans[0]!.teamId = 0;
+      humans[1]!.teamId = 0;
+      humans[2]!.teamId = 1;
+      humans[3]!.teamId = 1;
+    }
+  }
+
+  private countPlayersOnTeam(teamId: number): number {
+    let count = 0;
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      if (player.teamId === teamId) count += 1;
+    }
+    return count;
+  }
+
+  private pickTeamSpawn(
+    teamId: number,
+    indexOnTeam: number,
+  ): { x: number; z: number } {
+    if (this.mapDef.pickTeamSpawnPoint) {
+      return this.mapDef.pickTeamSpawnPoint(teamId, indexOnTeam);
+    }
+    return this.mapDef.pickSpawnPoint(indexOnTeam);
+  }
+
+  private pickSpawnForJoiningPlayer(player: PlayerState): { x: number; z: number } {
+    if (this.mapDef.pickTeamSpawnPoint) {
+      const indexOnTeam = this.countPlayersOnTeam(player.teamId);
+      return this.pickTeamSpawn(player.teamId, indexOnTeam);
+    }
+    return this.mapDef.pickSpawnPoint(this.countHumanPlayers());
+  }
+
+  private teleportHumansToTeamSpawns(): void {
+    const teamIndices = new Map<number, number>();
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      const indexOnTeam = teamIndices.get(player.teamId) ?? 0;
+      teamIndices.set(player.teamId, indexOnTeam + 1);
+      const spawn = this.mapDef.pickTeamSpawnPoint
+        ? this.pickTeamSpawn(player.teamId, indexOnTeam)
+        : this.mapDef.pickSpawnPoint(indexOnTeam);
+      player.x = spawn.x;
+      player.z = spawn.z;
+      player.y = EYE_HEIGHT;
+    }
+  }
+
+  private endMatch(): void {
+    if (this.state.matchPhase === 'ended') return;
+    this.state.matchPhase = 'ended';
+
+    let winningTeam = -1;
+    let topScore = -1;
+    let tied = false;
+
+    for (let teamId = 0; teamId < this.state.teamCount; teamId++) {
+      const score = this.getTeamScore(teamId);
+      if (score > topScore) {
+        topScore = score;
+        winningTeam = teamId;
+        tied = false;
+      } else if (score === topScore && topScore >= 0) {
+        tied = true;
+      }
+    }
+
+    this.state.winningTeamId = tied ? -1 : winningTeam;
   }
 
   private tickReloads(): void {
@@ -338,6 +530,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         deltaZ,
         jump,
         deltaSec,
+        this.mapDef,
       );
 
       player.x = result.x;
@@ -378,21 +571,31 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     move: (client: Client, data: MoveMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (this.isTdm() && this.state.matchPhase === 'countdown') return;
 
       const clientFeetY = data.y - EYE_HEIGHT;
-      const feetYForMove = resolveMoveFeetY(data.x, data.z, clientFeetY);
+      const feetYForMove = resolveMoveFeetY(data.x, data.z, clientFeetY, this.mapDef);
       const deltaX = data.x - player.x;
       const deltaZ = data.z - player.z;
-      const resolved = movePlayer(player.x, feetYForMove, player.z, deltaX, deltaZ);
+      const resolved = movePlayer(
+        player.x,
+        feetYForMove,
+        player.z,
+        deltaX,
+        deltaZ,
+        this.mapDef,
+      );
 
       player.x = resolved.x;
       player.z = resolved.z;
-      player.y = clampEyeY(resolved.x, resolved.z, data.y);
+      player.y = clampEyeY(resolved.x, resolved.z, data.y, this.mapDef);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
       player.jumping = data.jumping === true;
       player.sprinting = data.sprinting === true && !player.jumping;
       player.walking = data.walking === true && !player.sprinting && !player.jumping;
+      player.walkingBackward =
+        player.walking && data.walkingBackward === true;
 
       if (player.shieldRecharging && (player.jumping || player.sprinting)) {
         this.cancelShieldRecharge(player);
@@ -456,6 +659,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     meleeAttack: (client: Client, _data: MeleeAttackMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (!this.isMatchCombatAllowed()) return;
       if (player.activeWeaponId !== MELEE_WEAPON_ID) return;
 
       player.meleeAttackEndAt = this.state.worldTime + MELEE_ATTACK_ANIM_SEC;
@@ -548,6 +752,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (!this.isMatchCombatAllowed()) return;
       this.cancelShieldRecharge(player);
 
       const chestY = player.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5;
@@ -635,6 +840,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const shooter = this.state.players.get(client.sessionId);
       const target = this.state.players.get(data.targetId);
       if (!shooter?.alive || !target?.alive) return;
+      if (!this.isMatchCombatAllowed()) return;
       if (data.targetId === client.sessionId) return;
       if (!isWeaponId(data.weaponId)) return;
       if (shooter.activeWeaponId !== data.weaponId) return;
@@ -703,15 +909,21 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.cancelShieldDome(target);
 
       const killFeed: KillFeedMessage = {
+        killerId: client.sessionId,
         killerName: shooter.username,
         victimName: target.username,
       };
       this.broadcast('kill', killFeed);
 
+      if (this.isTdm() && isValidTdmTeamId(shooter.teamId, this.state.teamCount)) {
+        this.addTeamScore(shooter.teamId, TDM_KILL_POINTS);
+      }
+
       this.persistKillStats(client.sessionId, data.targetId);
 
       const targetId = data.targetId;
       this.clock.setTimeout(() => {
+        if (this.isTdm() && this.state.matchPhase === 'ended') return;
         this.respawnPlayer(targetId);
       }, RESPAWN_DELAY_SEC * 1000);
     },
@@ -724,7 +936,6 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
 
     const player = new PlayerState();
-    const spawn = pickSpawnPoint(this.countHumanPlayers());
     const username = this.sanitizeUsername(options.username);
 
     player.username = username;
@@ -733,12 +944,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.userIdBySession.set(client.sessionId, userId);
       registerGameUser(userId);
     }
-    player.teamId = this.resolveTeamId(options.teamId);
+    player.teamId = this.isTdm()
+      ? this.pickBalancedTdmTeam()
+      : this.resolveTeamId(options.teamId);
     player.hp = PLAYER_MAX_HP;
     const shield = resetPlayerShield();
     player.shieldLevel = shield.shieldLevel;
     player.shieldPoints = shield.shieldPoints;
     player.alive = true;
+    const spawn = this.pickSpawnForJoiningPlayer(player);
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
@@ -843,6 +1057,26 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     return team0 <= team1 ? 0 : 1;
   }
 
+  private pickBalancedTdmTeam(): number {
+    const teamCount = this.state.teamCount;
+    const counts = Array.from({ length: teamCount }, () => 0);
+
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      if (player.teamId >= 0 && player.teamId < teamCount) {
+        counts[player.teamId]! += 1;
+      }
+    }
+
+    let minTeam = 0;
+    for (let teamId = 1; teamId < teamCount; teamId++) {
+      if (counts[teamId]! < counts[minTeam]!) {
+        minTeam = teamId;
+      }
+    }
+    return minTeam;
+  }
+
   private respawnPlayer(sessionId: string): void {
     const player = this.state.players.get(sessionId);
     if (!player) return;
@@ -867,7 +1101,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       return;
     }
 
-    const spawn = HUMAN_RESPAWN_POINT;
+    const deathPosition = { x: player.x, z: player.z };
+    const spawn =
+      this.mapDef.pickTeamRespawnPoint
+        ? this.mapDef.pickTeamRespawnPoint(player.teamId, deathPosition)
+        : this.mapDef.humanRespawnPoint;
     player.hp = PLAYER_MAX_HP;
     const shield = resetPlayerShield();
     player.shieldLevel = shield.shieldLevel;

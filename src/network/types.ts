@@ -1,6 +1,21 @@
 import type { PlayerDamagedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 
+import type { GameMode, MatchPhase } from '../../shared/combat/match';
+
+export interface MatchSnapshot {
+  gameMode: GameMode;
+  phase: MatchPhase;
+  expectedPlayers: number;
+  teamCount: number;
+  teamScores: number[];
+  matchCountdownEndAt: number;
+  matchStartAt: number;
+  matchEndAt: number;
+  matchDurationSec: number;
+  winningTeamId: number;
+}
+
 export interface PlayerSnapshot {
   x: number;
   y: number;
@@ -26,6 +41,7 @@ export interface PlayerSnapshot {
   weaponSlot2: string;
   sprinting: boolean;
   walking: boolean;
+  walkingBackward: boolean;
   jumping: boolean;
   shieldDomeChargeEndAt: number;
   shieldDomeEndAt: number;
@@ -89,5 +105,9 @@ export type WeaponPickupGrantedHandler = (data: {
   index: number;
   weaponId: string;
 }) => void;
-export type KillFeedHandler = (killerName: string, victimName: string) => void;
+export type KillFeedHandler = (
+  killerId: string,
+  killerName: string,
+  victimName: string,
+) => void;
 export type LocalDamagedHandler = (damage: PlayerDamagedMessage) => void;

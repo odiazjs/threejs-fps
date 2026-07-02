@@ -14,6 +14,9 @@ import {
   type WeaponDropState,
 } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
+import { DEFAULT_MAP_ID, isValidMapId, normalizeMapId, type MapId } from '../../shared/level/maps';
+import type { GameMode } from '../../shared/combat/match';
+import { normalizeMatchPhase } from '../../shared/combat/match';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { WeaponId } from '../../shared/content/weaponIds';
@@ -24,6 +27,7 @@ import type {
   KillFeedHandler,
   LocalDamagedHandler,
   LocalPlayerChangeHandler,
+  MatchSnapshot,
   PlayerAddHandler,
   PlayerChangeHandler,
   PlayerRemoveHandler,
@@ -64,6 +68,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     weaponSlot2: player.weaponSlot2,
     sprinting: player.sprinting,
     walking: player.walking,
+    walkingBackward: player.walkingBackward,
     jumping: player.jumping,
     shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
     shieldDomeEndAt: player.shieldDomeEndAt,
@@ -108,6 +113,7 @@ export class RoomClient {
   private readonly boundPlayers = new Set<string>();
   private syncedWorldTime = 0;
   private worldTimeSyncAt = 0;
+  private cachedMatchState: MatchSnapshot | null = null;
 
   private onAddHandlers: PlayerAddHandler[] = [];
   private onRemoveHandlers: PlayerRemoveHandler[] = [];
@@ -142,6 +148,54 @@ export class RoomClient {
     return (this.room.state as FpsState).friendlyFire === true;
   }
 
+  getMapId(): MapId {
+    if (!this.room) return DEFAULT_MAP_ID;
+    return normalizeMapId((this.room.state as FpsState).mapId);
+  }
+
+  /** Returns null when the room has not synced a map id yet (e.g. older servers). */
+  getMapIdIfSynced(): MapId | null {
+    if (!this.room) return null;
+    const raw = (this.room.state as FpsState).mapId;
+    return isValidMapId(raw) ? raw : null;
+  }
+
+  getMatchState(): MatchSnapshot | null {
+    if (!this.room) return null;
+    if (this.cachedMatchState) return this.cachedMatchState;
+    return this.buildMatchSnapshot();
+  }
+
+  private buildMatchSnapshot(): MatchSnapshot | null {
+    if (!this.room) return null;
+    const state = this.room.state as FpsState;
+    const mapId = normalizeMapId(state.mapId);
+    const gameMode: GameMode =
+      state.gameMode === 'tdm' || mapId === 'killhouse_small' ? 'tdm' : 'ffa';
+    const duration = state.matchDurationSec > 0 ? state.matchDurationSec : 120;
+    return {
+      gameMode,
+      phase: normalizeMatchPhase(state.matchPhase),
+      expectedPlayers: state.expectedPlayers ?? 0,
+      teamCount: Math.max(1, state.teamCount || (gameMode === 'tdm' ? 2 : 2)),
+      teamScores: [
+        state.teamScore0 ?? 0,
+        state.teamScore1 ?? 0,
+        state.teamScore2 ?? 0,
+        state.teamScore3 ?? 0,
+      ],
+      matchCountdownEndAt: state.matchCountdownEndAt ?? 0,
+      matchStartAt: state.matchStartAt ?? 0,
+      matchEndAt: state.matchEndAt ?? 0,
+      matchDurationSec: duration,
+      winningTeamId: state.winningTeamId ?? -1,
+    };
+  }
+
+  private refreshMatchCache(): void {
+    this.cachedMatchState = this.buildMatchSnapshot();
+  }
+
   async connect(
     credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,
@@ -153,13 +207,24 @@ export class RoomClient {
       username: credentials.username,
     };
     if (joinIntent?.mode === 'join' && joinIntent.roomId) {
+      const joinByIdOptions: Record<string, string | number> = { ...joinOptions };
+      if (typeof joinIntent.teamId === 'number') {
+        joinByIdOptions.teamId = joinIntent.teamId;
+      }
       this.room = await this.joinByIdWithRetry(
         client,
         joinIntent.roomId,
-        { ...joinOptions, teamId: joinIntent.teamId },
+        joinByIdOptions,
       );
     } else {
-      this.room = await client.joinOrCreate('fps', joinOptions, FpsState);
+      this.room = await client.joinOrCreate(
+        'fps',
+        {
+          ...joinOptions,
+          mapId: normalizeMapId(joinIntent?.mapId),
+        },
+        FpsState,
+      );
     }
     this.bindProjectileMessages();
     this.bindAmmoPickupMessages();
@@ -172,7 +237,7 @@ export class RoomClient {
   private async joinByIdWithRetry(
     client: Client,
     roomId: string,
-    options: { userId: string; username: string; teamId: number },
+    options: Record<string, string | number>,
     attempts = 10,
   ): Promise<Room> {
     let lastError: unknown;
@@ -283,9 +348,20 @@ export class RoomClient {
     pitch: number,
     sprinting: boolean,
     walking: boolean,
+    walkingBackward: boolean,
     jumping: boolean,
   ): void {
-    this.room?.send('move', { x, y, z, yaw, pitch, sprinting, walking, jumping });
+    this.room?.send('move', {
+      x,
+      y,
+      z,
+      yaw,
+      pitch,
+      sprinting,
+      walking,
+      walkingBackward,
+      jumping,
+    });
   }
 
   sendShoot(spawn: ProjectileSpawnMessage): void {
@@ -421,7 +497,7 @@ export class RoomClient {
   private bindKillMessages(): void {
     this.room?.onMessage('kill', (data: KillFeedMessage) => {
       this.onKillFeedHandlers.forEach((handler) =>
-        handler(data.killerName, data.victimName),
+        handler(data.killerId, data.killerName, data.victimName),
       );
     });
   }
@@ -440,8 +516,10 @@ export class RoomClient {
     const state = this.room.state as FpsState;
 
     this.syncWorldTime(state.worldTime);
+    this.refreshMatchCache();
     callbacks.onChange(state, () => {
       this.syncWorldTime(state.worldTime);
+      this.refreshMatchCache();
     });
 
     callbacks.onAdd('players', (player, sessionId) => {
