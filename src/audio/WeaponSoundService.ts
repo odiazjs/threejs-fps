@@ -1,8 +1,11 @@
+import * as THREE from 'three';
 import type {
   WeaponConfig,
+  WeaponShotSoundPhase,
   WeaponSoundClip,
   WeaponSoundsConfig,
 } from '../../shared/content/weaponConfig';
+import type { WeaponSpatialAudioConfig } from '../content/audioConfig';
 
 const DEFAULT_VOLUME = 1;
 /** Samples below this amplitude are treated as silence when trimming auto loops. */
@@ -93,6 +96,12 @@ function computeAutoLoopRegion(buffer: AudioBuffer): { loopStart: number; loopEn
   return { loopStart, loopEnd };
 }
 
+const _listenerPos = new THREE.Vector3();
+const _forward = new THREE.Vector3();
+const _up = new THREE.Vector3();
+const _quat = new THREE.Quaternion();
+const _shotPos = new THREE.Vector3();
+
 export function collectWeaponSoundUrls(configs: readonly WeaponConfig[]): string[] {
   const urls = new Set<string>();
 
@@ -107,6 +116,13 @@ export function collectWeaponSoundUrls(configs: readonly WeaponConfig[]): string
   return [...urls];
 }
 
+interface RemoteAutoFireNodes {
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  panner: PannerNode;
+  url: string;
+}
+
 export class WeaponSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -114,7 +130,13 @@ export class WeaponSoundService {
   private autoSource: AudioBufferSourceNode | null = null;
   private autoGain: GainNode | null = null;
   private activeAutoUrl: string | null = null;
+  private readonly remoteAutoFire = new Map<string, RemoteAutoFireNodes>();
   private outOfAmmoConfig: { src: string; volume: number } | null = null;
+  private spatialConfig: WeaponSpatialAudioConfig | null = null;
+
+  configureSpatial(config: WeaponSpatialAudioConfig): void {
+    this.spatialConfig = config;
+  }
 
   async preload(urls: readonly string[]): Promise<void> {
     this.ensureContext();
@@ -228,6 +250,168 @@ export class WeaponSoundService {
     this.playOneShot(clip.url, clip.volume);
   }
 
+  updateListener(camera: THREE.Camera): void {
+    if (!this.context) return;
+
+    camera.updateMatrixWorld(true);
+    camera.getWorldPosition(_listenerPos);
+    camera.getWorldQuaternion(_quat);
+    _forward.set(0, 0, -1).applyQuaternion(_quat);
+    _up.set(0, 1, 0).applyQuaternion(_quat);
+
+    const listener = this.context.listener;
+    if ('positionX' in listener) {
+      listener.positionX.value = _listenerPos.x;
+      listener.positionY.value = _listenerPos.y;
+      listener.positionZ.value = _listenerPos.z;
+      listener.forwardX.value = _forward.x;
+      listener.forwardY.value = _forward.y;
+      listener.forwardZ.value = _forward.z;
+      listener.upX.value = _up.x;
+      listener.upY.value = _up.y;
+      listener.upZ.value = _up.z;
+      return;
+    }
+
+    const legacyListener = listener as AudioListener;
+    legacyListener.setPosition(_listenerPos.x, _listenerPos.y, _listenerPos.z);
+    legacyListener.setOrientation(
+      _forward.x,
+      _forward.y,
+      _forward.z,
+      _up.x,
+      _up.y,
+      _up.z,
+    );
+  }
+
+  playRemoteShot(
+    sessionId: string,
+    sounds: WeaponSoundsConfig | undefined,
+    phase: WeaponShotSoundPhase,
+    position: THREE.Vector3,
+  ): void {
+    if (phase === 'autoStop') {
+      this.stopRemoteAutoFire(sessionId);
+      return;
+    }
+
+    if (!sounds || !this.spatialConfig) return;
+
+    if (phase === 'autoStart') {
+      this.startRemoteAutoFire(sessionId, sounds, position);
+      return;
+    }
+
+    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const clip =
+      resolveSoundClip(sounds.singleShot, defaultVolume) ??
+      resolveSoundClip(sounds.autoShot, defaultVolume);
+    if (!clip) return;
+
+    const volume = clip.volume * this.spatialConfig.remoteVolumeScale;
+    _shotPos.copy(position);
+    this.playSpatialOneShot(clip.url, volume, _shotPos);
+  }
+
+  stopRemoteAutoFire(sessionId: string): void {
+    const nodes = this.remoteAutoFire.get(sessionId);
+    if (!nodes) return;
+
+    try {
+      nodes.source.stop();
+    } catch {
+      // Already stopped.
+    }
+
+    nodes.source.disconnect();
+    nodes.gain.disconnect();
+    nodes.panner.disconnect();
+    this.remoteAutoFire.delete(sessionId);
+  }
+
+  updateRemoteAutoFirePositions(
+    resolvePosition: (sessionId: string) => THREE.Vector3 | null,
+  ): void {
+    for (const sessionId of this.remoteAutoFire.keys()) {
+      const position = resolvePosition(sessionId);
+      if (!position) continue;
+
+      const nodes = this.remoteAutoFire.get(sessionId);
+      if (!nodes) continue;
+
+      nodes.panner.positionX.value = position.x;
+      nodes.panner.positionY.value = position.y;
+      nodes.panner.positionZ.value = position.z;
+    }
+  }
+
+  private startRemoteAutoFire(
+    sessionId: string,
+    sounds: WeaponSoundsConfig,
+    position: THREE.Vector3,
+  ): void {
+    if (!this.spatialConfig) return;
+
+    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const clip =
+      resolveSoundClip(sounds.autoShot, defaultVolume) ??
+      resolveSoundClip(sounds.singleShot, defaultVolume);
+    if (!clip) return;
+
+    const existing = this.remoteAutoFire.get(sessionId);
+    if (existing?.url === clip.url) {
+      existing.panner.positionX.value = position.x;
+      existing.panner.positionY.value = position.y;
+      existing.panner.positionZ.value = position.z;
+      return;
+    }
+
+    this.stopRemoteAutoFire(sessionId);
+    this.ensureContext();
+    if (!this.context || !this.masterGain) return;
+
+    const loaded = this.buffers.get(clip.url);
+    if (!loaded) return;
+
+    if (this.context.state === 'suspended') {
+      void this.context.resume();
+    }
+
+    const source = this.context.createBufferSource();
+    source.buffer = loaded.buffer;
+    source.loop = true;
+    source.loopStart = loaded.autoLoopStart;
+    source.loopEnd = loaded.autoLoopEnd;
+
+    const gain = this.context.createGain();
+    gain.gain.value = clip.volume * this.spatialConfig.remoteVolumeScale;
+
+    const panner = this.createSpatialPanner();
+    panner.positionX.value = position.x;
+    panner.positionY.value = position.y;
+    panner.positionZ.value = position.z;
+
+    source.connect(gain);
+    gain.connect(panner);
+    panner.connect(this.masterGain);
+    source.start(0, loaded.autoLoopStart);
+
+    this.remoteAutoFire.set(sessionId, { source, gain, panner, url: clip.url });
+  }
+
+  private createSpatialPanner(): PannerNode {
+    const panner = this.context!.createPanner();
+    panner.panningModel = 'HRTF';
+    panner.distanceModel = 'inverse';
+    panner.refDistance = this.spatialConfig!.refDistance;
+    panner.maxDistance = this.spatialConfig!.maxHearingDistance;
+    panner.rolloffFactor = this.spatialConfig!.rolloffFactor;
+    panner.coneInnerAngle = 360;
+    panner.coneOuterAngle = 360;
+    return panner;
+  }
+
   private playOneShot(url: string, volume: number): void {
     this.ensureContext();
     if (!this.context || !this.masterGain) return;
@@ -246,6 +430,34 @@ export class WeaponSoundService {
     gain.gain.value = volume;
     source.connect(gain);
     gain.connect(this.masterGain);
+    source.start();
+  }
+
+  private playSpatialOneShot(url: string, volume: number, position: THREE.Vector3): void {
+    this.ensureContext();
+    if (!this.context || !this.masterGain || !this.spatialConfig) return;
+
+    const loaded = this.buffers.get(url);
+    if (!loaded) return;
+
+    if (this.context.state === 'suspended') {
+      void this.context.resume();
+    }
+
+    const source = this.context.createBufferSource();
+    source.buffer = loaded.buffer;
+
+    const gain = this.context.createGain();
+    gain.gain.value = volume;
+
+    const panner = this.createSpatialPanner();
+    panner.positionX.value = position.x;
+    panner.positionY.value = position.y;
+    panner.positionZ.value = position.z;
+
+    source.connect(gain);
+    gain.connect(panner);
+    panner.connect(this.masterGain);
     source.start();
   }
 

@@ -37,6 +37,16 @@ export interface FootstepAudioConfig {
   readonly rolloffFactor: number;
 }
 
+export interface WeaponSpatialAudioConfig {
+  /** Full-volume radius for spatial weapon shots (meters). */
+  readonly refDistance: number;
+  /** Weapon shots inaudible beyond this distance (meters). */
+  readonly maxHearingDistance: number;
+  readonly rolloffFactor: number;
+  /** Multiplier applied on top of each weapon clip volume for remote shots. */
+  readonly remoteVolumeScale: number;
+}
+
 export interface GlobalAudioConfig {
   readonly src: string;
   readonly volume: number;
@@ -58,8 +68,8 @@ export const GAME_FOOTSTEP_AUDIO: FootstepAudioConfig = {
   src: '/sounds/footstep_grass3.wav',
   walkVolume: 0.45,
   sprintVolume: 0.55,
-  remoteWalkVolume: 0.42,
-  remoteSprintVolume: 0.5,
+  remoteWalkVolume: 0.90,
+  remoteSprintVolume: 1.25,
   walkStepIntervalSec: 0.45,
   sprintStepIntervalSec: 0.3,
   walkPlaybackRate: 0.95,
@@ -67,6 +77,13 @@ export const GAME_FOOTSTEP_AUDIO: FootstepAudioConfig = {
   refDistance: 2,
   maxHearingDistance: 22,
   rolloffFactor: 1.15,
+};
+
+export const GAME_WEAPON_SPATIAL_AUDIO: WeaponSpatialAudioConfig = {
+  refDistance: 4,
+  maxHearingDistance: 55,
+  rolloffFactor: 1.1,
+  remoteVolumeScale: 1.25,
 };
 
 export const GAME_ENEMY_HIT_IMPACT_AUDIO: GlobalAudioConfig = {

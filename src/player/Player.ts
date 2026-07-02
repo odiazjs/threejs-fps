@@ -25,6 +25,7 @@ import {
   computeTopOffsetAboveFeet,
   CHARACTER_MODEL_FILES,
   gameModelFileForWeapon,
+  loadDeathCharacterTemplate,
   loadGameCharacterTemplate,
   preloadGameCharacterModels,
   resolveCharacterRig,
@@ -56,6 +57,8 @@ import { getReloadState } from '../../shared/combat/reload';
 import {
   getMeleeAttackAnimState,
   getWeaponSwitchAnimState,
+  REMOTE_DEATH_DISPLAY_SEC,
+  REMOTE_DEATH_GROUND_DROP,
 } from '../../shared/combat/characterAnim';
 import { getDefaultShieldPoints, SHIELD_DEFAULT_LEVEL } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
@@ -75,6 +78,7 @@ function lerpAngle(from: number, to: number, t: number): number {
 }
 
 export type ShootCallback = (origin: THREE.Vector3, direction: THREE.Vector3) => void;
+export type AutoFireStopCallback = () => void;
 export type WeaponSwitchCallback = (slot: number, weaponId: WeaponId) => void;
 export type MeleeEquipCallback = (equipped: boolean) => void;
 export type MeleeAttackNetworkCallback = () => void;
@@ -133,6 +137,7 @@ export class Player {
   private weaponSway: WeaponSway | null = null;
   private katanaSlashFx: KatanaSlashTrailFx | null = null;
   private onShoot: ShootCallback | null = null;
+  private onAutoFireStopNetwork: AutoFireStopCallback | null = null;
   private onReloadNetwork: ReloadNetworkCallback | null = null;
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
   private onMeleeEquipNetwork: MeleeEquipCallback | null = null;
@@ -158,6 +163,7 @@ export class Player {
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
   private readonly activeMeshBaseRotation = new THREE.Euler();
   private fireCooldown = 0;
+  private localAutoFiring = false;
   private weaponSounds: WeaponSoundService | null = null;
   private projectileSpawnOptions: {
     canHitPlayers: boolean;
@@ -166,6 +172,10 @@ export class Player {
   } = { canHitPlayers: false, ownerTeamId: -1, ownerSessionId: '' };
   private teamId = 0;
   private alive = true;
+  private remoteDeathActive = false;
+  private remoteDeathHideAt = 0;
+  private remoteDeathStartedAt = 0;
+  private remoteDeathClipDurationSec = 2;
   private username = 'Player';
   private hp = 100;
   private shieldLevel = SHIELD_DEFAULT_LEVEL;
@@ -257,6 +267,16 @@ export class Player {
   async syncRemoteCharacterModel(worldTime: number): Promise<void> {
     if (this.camera) return;
 
+    this.tickRemoteDeath();
+    if (!this.alive) {
+      if (this.remoteDeathActive && this.object.visible) {
+        await this.ensureRemoteDeathModel();
+        return;
+      }
+      this.object.visible = false;
+      return;
+    }
+
     const weaponId = this.targetActiveWeaponId;
     const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
@@ -267,6 +287,51 @@ export class Player {
     this.applyRemoteAim();
     this.characterInstance?.update(0);
     this.applyRemoteSpinePitch();
+  }
+
+  private beginRemoteDeathSequence(): void {
+    this.remoteDeathActive = true;
+    this.remoteDeathHideAt = performance.now() / 1000 + REMOTE_DEATH_DISPLAY_SEC;
+    this.object.visible = true;
+    this.damageNumberStack?.clear();
+    this.loadout?.setMeshesVisible(false);
+    void this.ensureRemoteDeathModel();
+  }
+
+  private endRemoteDeathSequence(): void {
+    this.remoteDeathActive = false;
+    this.remoteDeathHideAt = 0;
+    this.remoteDeathStartedAt = 0;
+    this.object.visible = true;
+    if (this.pitchPivot) {
+      this.pitchPivot.position.y = 0;
+    }
+  }
+
+  private tickRemoteDeath(): void {
+    if (this.camera || this.alive || !this.remoteDeathActive) return;
+
+    if (performance.now() / 1000 >= this.remoteDeathHideAt) {
+      this.remoteDeathActive = false;
+      this.object.visible = false;
+    }
+  }
+
+  private async ensureRemoteDeathModel(): Promise<void> {
+    if (this.camera || this.alive) return;
+    if (this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.death && this.characterInstance) {
+      return;
+    }
+
+    const template = await loadDeathCharacterTemplate();
+    this.setCharacterModel(template);
+    this.loadout?.setMeshesVisible(false);
+    this.remoteDeathStartedAt = performance.now() / 1000;
+    this.remoteDeathClipDurationSec = Math.max(template.clipDurationSec, 0.5);
+    if (this.pitchPivot) {
+      this.pitchPivot.position.y = 0;
+    }
+    this.characterInstance?.update(0);
   }
 
   private getRemotePose(worldTime: number): RemoteCharacterPose {
@@ -489,6 +554,10 @@ export class Player {
     this.onShoot = callback;
   }
 
+  setAutoFireStopCallback(callback: AutoFireStopCallback | null): void {
+    this.onAutoFireStopNetwork = callback;
+  }
+
   setWeaponSoundService(service: WeaponSoundService | null): void {
     this.weaponSounds = service;
   }
@@ -675,10 +744,17 @@ export class Player {
     this.targetShieldRecharging = snapshot.shieldRecharging;
     this.targetShieldRechargeEndAt = snapshot.shieldRechargeEndAt;
     this.teamId = snapshot.teamId;
+    const wasAlive = this.alive;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
 
     if (!this.camera) {
+      if (wasAlive && !snapshot.alive) {
+        this.beginRemoteDeathSequence();
+      } else if (!wasAlive && snapshot.alive) {
+        this.endRemoteDeathSequence();
+      }
+
       if (snapshot.alive) {
         const hpLoss = Math.max(0, this.hp - snapshot.hp);
         const shieldLoss = Math.max(0, this.shieldPoints - snapshot.shieldPoints);
@@ -691,11 +767,8 @@ export class Player {
           this.onShieldBreakListener?.();
         }
       }
-      this.object.visible = snapshot.alive;
+
       this.remoteHealthBar?.update(snapshot.hp, snapshot.alive, snapshot.teamId, snapshot.username);
-      if (!snapshot.alive) {
-        this.damageNumberStack?.clear();
-      }
     }
 
     this.hp = snapshot.hp;
@@ -721,6 +794,9 @@ export class Player {
 
   interpolateRemote(delta: number): void {
     if (this.camera) return;
+
+    this.tickRemoteDeath();
+    this.applyRemoteDeathDrop();
 
     const t = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * delta);
     this.object.position.lerp(this.targetPosition, t);
@@ -790,6 +866,7 @@ export class Player {
 
   updateRemoteWeapon(delta: number, worldTime: number): void {
     if (this.camera || !this.weaponPose || !this.loadout) return;
+    if (!this.alive || this.remoteDeathActive) return;
 
     const pose = this.getRemotePose(worldTime);
     this.loadout.setMeshesVisible(!pose.switchingWeapon);
@@ -840,7 +917,7 @@ export class Player {
     this.katanaSlashFx?.update(delta);
 
     if (!canAct) {
-      this.weaponSounds?.stopAutoFire();
+      this.stopWeaponAutoFire();
       this.headBob.update(delta, false, false);
       if (this.headRig) this.headBob.apply(this.headRig, false);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
@@ -869,7 +946,7 @@ export class Player {
     const active = this.loadout.getActive();
     const ammoState = active.ammo.getState();
     if (ammoState.reloading) {
-      this.weaponSounds?.stopAutoFire();
+      this.stopWeaponAutoFire();
     }
     const shooting =
       active.config.fireMode === 'melee'
@@ -1060,7 +1137,7 @@ export class Player {
     const equip = !this.loadout.isMeleeEquipped();
     if (!this.loadout.tryEquipMelee(equip)) return;
 
-    this.weaponSounds?.stopAutoFire();
+    this.stopWeaponAutoFire();
     this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(this.loadout.getActive().config), 'local');
@@ -1075,7 +1152,7 @@ export class Player {
       if (!input.isJustPressed(code)) continue;
       if (!this.loadout.trySwitch(slot)) continue;
 
-      this.weaponSounds?.stopAutoFire();
+      this.stopWeaponAutoFire();
       this.weaponPose?.setViewConfig(this.loadout.getActive().config.view);
       this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(this.loadout.getActive().config), 'local');
@@ -1162,7 +1239,7 @@ export class Player {
     if (active.config.fireMode === 'melee') return;
 
     if (!pointer.isPressed(POINTER_SHOOT)) {
-      this.weaponSounds?.stopAutoFire();
+      this.stopWeaponAutoFire();
     }
 
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
@@ -1185,16 +1262,26 @@ export class Player {
     this.fireCooldown += active.fireInterval;
   }
 
+  private stopWeaponAutoFire(): void {
+    const wasAutoFiring = this.localAutoFiring;
+    this.localAutoFiring = false;
+    this.weaponSounds?.stopAutoFire();
+    if (wasAutoFiring) {
+      this.onAutoFireStopNetwork?.();
+    }
+  }
+
   private shoot(projectiles: ProjectileManager | null): boolean {
     if (!this.camera || !this.loadout || !projectiles) return false;
 
     const active = this.loadout.getActive();
     if (!active.ammo.tryShoot()) {
-      this.weaponSounds?.stopAutoFire();
+      this.stopWeaponAutoFire();
       return false;
     }
 
     if (active.config.fireMode === 'auto') {
+      this.localAutoFiring = true;
       this.weaponSounds?.startAutoFire(active.config.sounds);
     } else {
       this.weaponSounds?.playSingleShot(active.config.sounds);
@@ -1287,12 +1374,21 @@ export class Player {
 
   /** Pitch on the spine (waist up) so legs stay grounded in the idle pose. */
   private applyRemoteSpinePitch(): void {
-    if (!this.spineBone) return;
+    if (!this.spineBone || this.remoteDeathActive) return;
     // One-shot clips clamp on the last frame; the mixer may stop driving the spine
     // bone while this pose is still displayed — skip pitch to avoid quaternion drift.
     if (this.characterInstance?.isOneShotFinished) return;
 
     _spinePitchQuat.setFromAxisAngle(_spinePitchAxis, -this.currentPitch);
     this.spineBone.quaternion.multiply(_spinePitchQuat);
+  }
+
+  private applyRemoteDeathDrop(): void {
+    if (!this.pitchPivot || !this.remoteDeathActive || this.alive) return;
+
+    const elapsed = performance.now() / 1000 - this.remoteDeathStartedAt;
+    const t = THREE.MathUtils.clamp(elapsed / this.remoteDeathClipDurationSec, 0, 1);
+    const eased = t * t * (3 - 2 * t);
+    this.pitchPivot.position.y = -REMOTE_DEATH_GROUND_DROP * eased;
   }
 }

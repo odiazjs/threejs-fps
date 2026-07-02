@@ -29,6 +29,7 @@ export const CHARACTER_MODEL_FILES = {
   meleeRun: 'Melee Run.fbx',
   meleeJump: 'Melee Standing Jump 2.fbx',
   weaponEquip: 'Unarmed Equip Over Shoulder.fbx',
+  death: 'Player Death.fbx',
 } as const;
 
 const ONE_SHOT_MODEL_FILES = new Set<string>([
@@ -37,10 +38,15 @@ const ONE_SHOT_MODEL_FILES = new Set<string>([
   CHARACTER_MODEL_FILES.meleeJump,
   CHARACTER_MODEL_FILES.meleeAttack,
   CHARACTER_MODEL_FILES.weaponEquip,
+  CHARACTER_MODEL_FILES.death,
 ]);
 
 const ROOT_MOTION_STRIP_MODEL_FILES = new Set<string>([
-  ...ONE_SHOT_MODEL_FILES,
+  CHARACTER_MODEL_FILES.rifleJump,
+  CHARACTER_MODEL_FILES.pistolJump,
+  CHARACTER_MODEL_FILES.meleeJump,
+  CHARACTER_MODEL_FILES.meleeAttack,
+  CHARACTER_MODEL_FILES.weaponEquip,
   CHARACTER_MODEL_FILES.reloadWalk,
   CHARACTER_MODEL_FILES.reloadSprint,
   CHARACTER_MODEL_FILES.meleeWalkForward,
@@ -71,7 +77,7 @@ function assetUrl(file: string): string {
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
   return (
-    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload|melee|attack|equip|shoulder/i.test(clip.name)) ??
+    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload|melee|attack|equip|shoulder|death/i.test(clip.name)) ??
     animations[0] ??
     null
   );
@@ -376,6 +382,10 @@ export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<Chara
   });
 }
 
+export function loadDeathCharacterTemplate(): Promise<CharacterTemplate> {
+  return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death);
+}
+
 export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
   return Promise.all([
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.rifleAimingIdle),
@@ -396,6 +406,7 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeRun),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeJump),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.weaponEquip),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death),
   ]);
 }
 

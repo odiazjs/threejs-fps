@@ -39,6 +39,7 @@ import {
   getWeaponDamage,
   getWeaponMaxHitDistance,
   getWeaponReloadSec,
+  WEAPON_FIRE_MODE,
 } from '../../../shared/content/weaponStats.js';
 import {
   feetYFromEyeY,
@@ -55,6 +56,8 @@ import type { KillFeedMessage, PlayerDamagedMessage, PlayerHitMessage } from '..
 import type { ReloadMessage } from '../../../shared/network/reload.js';
 import type { SwitchWeaponMessage, EquipMeleeMessage } from '../../../shared/network/weapon.js';
 import type { MeleeAttackMessage } from '../../../shared/network/meleeAttack.js';
+import type { AutoFireStopMessage } from '../../../shared/network/autoFireStop.js';
+import type { WeaponShotSoundMessage } from '../../../shared/network/weaponShot.js';
 import {
   PICKUP_MAX_DESYNC,
   type PickupAmmoMessage,
@@ -130,6 +133,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly botMoveState = new Map<string, TrainingBotMoveState>();
   private readonly userIdBySession = new Map<string, string>();
   private readonly lastShotOriginBySession = new Map<string, LastShotOrigin>();
+  private readonly autoFiringSessions = new Set<string>();
 
   onCreate(options: JoinOptions = {}): void {
     this.inviteMatch = options.inviteMatch === true;
@@ -663,6 +667,16 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (player.activeWeaponId !== MELEE_WEAPON_ID) return;
 
       player.meleeAttackEndAt = this.state.worldTime + MELEE_ATTACK_ANIM_SEC;
+
+      const chestY = player.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5;
+      this.broadcastWeaponShot(
+        client,
+        MELEE_WEAPON_ID,
+        player.x,
+        chestY,
+        player.z,
+        'single',
+      );
     },
 
     dropWeapon: (client: Client, data: DropWeaponMessage) => {
@@ -763,7 +777,40 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         time: this.state.worldTime,
       });
 
+      let weaponId = data.weaponId;
+      if (!weaponId || !isWeaponId(weaponId)) {
+        weaponId = player.activeWeaponId;
+      }
+      if (weaponId && isWeaponId(weaponId)) {
+        if (WEAPON_FIRE_MODE[weaponId] === 'auto') {
+          if (!this.autoFiringSessions.has(client.sessionId)) {
+            this.autoFiringSessions.add(client.sessionId);
+            this.broadcastWeaponShot(
+              client,
+              weaponId,
+              data.x,
+              data.y,
+              data.z,
+              'autoStart',
+            );
+          }
+        } else {
+          this.broadcastWeaponShot(
+            client,
+            weaponId,
+            data.x,
+            data.y,
+            data.z,
+            'single',
+          );
+        }
+      }
+
       this.broadcast('projectile', { ...data, shooterId: client.sessionId }, { except: client });
+    },
+
+    autoFireStop: (client: Client, _data: AutoFireStopMessage) => {
+      this.stopAutoFireSound(client.sessionId);
     },
 
     startShieldRecharge: (client: Client, _data: StartShieldRechargeMessage) => {
@@ -905,6 +952,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       target.reloadEndAt = 0;
       target.weaponSwitchEndAt = 0;
       target.meleeAttackEndAt = 0;
+      this.stopAutoFireSound(data.targetId);
       this.cancelShieldRecharge(target);
       this.cancelShieldDome(target);
 
@@ -960,6 +1008,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   onLeave(client: Client): void {
+    this.stopAutoFireSound(client.sessionId);
     const userId = this.userIdBySession.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.userIdBySession.delete(client.sessionId);
@@ -1075,6 +1124,49 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       }
     }
     return minTeam;
+  }
+
+  private broadcastWeaponShot(
+    shooterClient: Client,
+    weaponId: string,
+    x: number,
+    y: number,
+    z: number,
+    phase: WeaponShotSoundMessage['phase'],
+  ): void {
+    this.broadcast(
+      'weaponShot',
+      {
+        shooterId: shooterClient.sessionId,
+        weaponId,
+        x,
+        y,
+        z,
+        phase,
+      } satisfies WeaponShotSoundMessage,
+      { except: shooterClient },
+    );
+  }
+
+  private stopAutoFireSound(sessionId: string): void {
+    if (!this.autoFiringSessions.delete(sessionId)) return;
+
+    const player = this.state.players.get(sessionId);
+    if (!player) return;
+
+    const chestY = player.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5;
+    const weaponId = isWeaponId(player.activeWeaponId)
+      ? player.activeWeaponId
+      : LOADOUT_WEAPON_IDS[0]!;
+
+    this.broadcast('weaponShot', {
+      shooterId: sessionId,
+      weaponId,
+      x: player.x,
+      y: chestY,
+      z: player.z,
+      phase: 'autoStop',
+    } satisfies WeaponShotSoundMessage);
   }
 
   private respawnPlayer(sessionId: string): void {

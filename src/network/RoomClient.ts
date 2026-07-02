@@ -1,6 +1,7 @@
 import { Client, Callbacks, type Room } from '@colyseus/sdk';
 import type { KillFeedMessage, PlayerDamagedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
+import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
 import type { ShieldChargeSpawnMessage } from '../../shared/network/shieldDrop';
@@ -40,6 +41,7 @@ import type {
   WeaponDropChangeHandler,
   WeaponDropSnapshot,
   WeaponPickupGrantedHandler,
+  WeaponShotSoundHandler,
 } from './types';
 
 function toSnapshot(player: PlayerState): PlayerSnapshot {
@@ -120,6 +122,7 @@ export class RoomClient {
   private onChangeHandlers: PlayerChangeHandler[] = [];
   private onLocalChangeHandlers: LocalPlayerChangeHandler[] = [];
   private onProjectileHandlers: ProjectileSpawnHandler[] = [];
+  private onWeaponShotSoundHandlers: WeaponShotSoundHandler[] = [];
   private onAmmoBoxChangeHandlers: AmmoBoxChangeHandler[] = [];
   private onAmmoPickupGrantedHandlers: AmmoPickupGrantedHandler[] = [];
   private onShieldChargeChangeHandlers: ShieldChargeChangeHandler[] = [];
@@ -227,6 +230,7 @@ export class RoomClient {
       );
     }
     this.bindProjectileMessages();
+    this.bindWeaponShotMessages();
     this.bindAmmoPickupMessages();
     this.bindShieldChargePickupMessages();
     this.bindWeaponDropMessages();
@@ -277,6 +281,10 @@ export class RoomClient {
 
   onProjectileSpawn(handler: ProjectileSpawnHandler): void {
     this.onProjectileHandlers.push(handler);
+  }
+
+  onWeaponShotSound(handler: WeaponShotSoundHandler): void {
+    this.onWeaponShotSoundHandlers.push(handler);
   }
 
   onAmmoBoxChange(handler: AmmoBoxChangeHandler): void {
@@ -368,6 +376,10 @@ export class RoomClient {
     this.room?.send('shoot', spawn);
   }
 
+  sendAutoFireStop(): void {
+    this.room?.send('autoFireStop', {});
+  }
+
   sendPickupAmmo(index: number, feetX: number, feetZ: number): void {
     this.room?.send('pickupAmmo', { index, x: feetX, z: feetZ });
   }
@@ -447,6 +459,12 @@ export class RoomClient {
   private bindProjectileMessages(): void {
     this.room?.onMessage('projectile', (data: ProjectileSpawnMessage) => {
       this.onProjectileHandlers.forEach((handler) => handler(data));
+    });
+  }
+
+  private bindWeaponShotMessages(): void {
+    this.room?.onMessage('weaponShot', (data: WeaponShotSoundMessage) => {
+      this.onWeaponShotSoundHandlers.forEach((handler) => handler(data));
     });
   }
 

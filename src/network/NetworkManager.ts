@@ -17,6 +17,7 @@ import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import type { ImpactSoundService } from '../audio/ImpactSoundService';
+import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { LocalCombatState, LocalDamagedHandler, PlayerSnapshot } from './types';
 import type { TeammateHudEntry } from '../ui/TeamHud';
 import type { GameJoinIntent } from '../auth/gameJoin';
@@ -32,6 +33,7 @@ import { RemotePlayerUiVisibility } from '../player/remotePlayerUiVisibility';
 const _origin = new THREE.Vector3();
 const _direction = new THREE.Vector3();
 const _shooterWorldPos = new THREE.Vector3();
+const _muzzlePos = new THREE.Vector3();
 /** Local hit still counts as breaking a shield if state sync arrives shortly after. */
 const LOCAL_HIT_SHIELD_BREAK_WINDOW_SEC = 0.75;
 
@@ -40,6 +42,7 @@ export class NetworkManager {
   readonly remoteUiVisibility = new RemotePlayerUiVisibility();
   private remotePlayers: RemotePlayers;
   private impactSounds: ImpactSoundService | null = null;
+  private weaponSounds: WeaponSoundService | null = null;
   private sendAccumulator = 0;
   private readonly sendInterval = 1 / 20;
   private localCombat: LocalCombatState = {
@@ -107,6 +110,34 @@ export class NetworkManager {
         shooterId: spawn.shooterId,
         shooterWorldPos: _shooterWorldPos,
       });
+    });
+    this.roomClient.onWeaponShotSound((shot) => {
+      if (shot.phase === 'autoStop') {
+        this.weaponSounds?.playRemoteShot(shot.shooterId, undefined, shot.phase, _muzzlePos);
+        return;
+      }
+
+      const weaponConfig = getWeaponConfig(shot.weaponId);
+      if (!weaponConfig?.sounds) return;
+
+      _muzzlePos.set(shot.x, shot.y, shot.z);
+      const weaponId = isWeaponId(shot.weaponId) ? shot.weaponId : undefined;
+      const shooter = shot.shooterId
+        ? this.remotePlayers.getPlayer(shot.shooterId)
+        : undefined;
+      if (!shooter?.readActiveMuzzleWorldPosition(_muzzlePos, weaponId)) {
+        _muzzlePos.set(shot.x, shot.y, shot.z);
+      }
+
+      this.weaponSounds?.playRemoteShot(
+        shot.shooterId,
+        weaponConfig.sounds,
+        shot.phase,
+        _muzzlePos,
+      );
+    });
+    this.roomClient.onPlayerRemove((sessionId) => {
+      this.weaponSounds?.stopRemoteAutoFire(sessionId);
     });
     this.roomClient.onAmmoBoxChange((index, snapshot) => {
       this.ammoPickups.applySnapshot(index, snapshot);
@@ -227,6 +258,11 @@ export class NetworkManager {
         shooterWorldY: feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
         shooterWorldZ: feet.z,
       });
+    });
+
+    player.setAutoFireStopCallback(() => {
+      if (!this.roomClient.connected) return;
+      this.roomClient.sendAutoFireStop();
     });
     player.setReloadNetworkCallback((weaponId) => {
       if (!this.roomClient.connected) return;
@@ -430,6 +466,10 @@ export class NetworkManager {
     this.remotePlayers.setFootstepSoundService(service);
   }
 
+  setWeaponSoundService(service: WeaponSoundService | null): void {
+    this.weaponSounds = service;
+  }
+
   setImpactSoundService(service: ImpactSoundService | null): void {
     this.impactSounds = service;
   }
@@ -484,6 +524,20 @@ export class NetworkManager {
 
   interpolateRemotes(delta: number, camera: THREE.Camera): void {
     if (!this.roomClient.connected) return;
+    this.weaponSounds?.updateListener(camera);
     this.remotePlayers.interpolate(delta, camera);
+    this.weaponSounds?.updateRemoteAutoFirePositions((sessionId) => {
+      const remote = this.remotePlayers.getPlayer(sessionId);
+      if (!remote) return null;
+
+      const weaponId = remote.getActiveWeaponId();
+      if (remote.readActiveMuzzleWorldPosition(_muzzlePos, weaponId)) {
+        return _muzzlePos;
+      }
+
+      const feet = remote.getFeetPosition();
+      _muzzlePos.set(feet.x, feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5, feet.z);
+      return _muzzlePos;
+    });
   }
 }

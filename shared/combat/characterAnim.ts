@@ -4,6 +4,12 @@ export const WEAPON_SWITCH_ANIM_SEC = 0.8833333253860474;
 /** Third-person katana slash clip length (`Standing Melee Attack Horizontal 100.fbx`). */
 export const MELEE_ATTACK_ANIM_SEC = 1.2000000476837158;
 
+/** How long remote corpses stay visible after death before hiding the model. */
+export const REMOTE_DEATH_DISPLAY_SEC = 4;
+
+/** World-space drop applied to the remote death model so the fall reaches the ground. */
+export const REMOTE_DEATH_GROUND_DROP = 0.15;
+
 export interface TimedCharacterAnimState {
   readonly active: boolean;
   readonly progress: number;

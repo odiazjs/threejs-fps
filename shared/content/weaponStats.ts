@@ -1,4 +1,5 @@
 import type { WeaponId } from './weaponIds.js';
+import type { WeaponFireMode } from './weaponConfig.js';
 
 export const WEAPON_DAMAGE: Record<WeaponId, number> = {
   plasma_rifle: 7,
@@ -19,6 +20,13 @@ export const WEAPON_MAX_HIT_DISTANCE: Record<WeaponId, number> = {
   pistol: 75,
   sniper_rifle: 220,
   katana: 2.8,
+};
+
+export const WEAPON_FIRE_MODE: Record<WeaponId, WeaponFireMode> = {
+  plasma_rifle: 'auto',
+  pistol: 'semi',
+  sniper_rifle: 'semi',
+  katana: 'melee',
 };
 
 /** Reserve rounds each weapon starts with and regains on respawn. */

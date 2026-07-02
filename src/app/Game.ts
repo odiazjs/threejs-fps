@@ -66,6 +66,7 @@ import {
   GAME_SHIELD_BREAK_LOCAL_AUDIO,
   GAME_SHIELD_CHARGE_AUDIO,
   GAME_SHIELD_CHARGE_END_AUDIO,
+  GAME_WEAPON_SPATIAL_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
@@ -158,6 +159,7 @@ export class Game {
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
     this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
+    this.weaponSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
     await Promise.all([
       preloadWeaponMeshes(),
       Player.preloadGameCharacterModels(),
@@ -387,6 +389,7 @@ export class Game {
     });
     await this.network.connect(credentials, joinIntent);
     this.network.setFootstepSoundService(this.footstepSounds);
+    this.network.setWeaponSoundService(this.weaponSounds);
     this.network.setImpactSoundService(this.impactSounds);
     this.network.applyLocalSpawn(this.player);
 

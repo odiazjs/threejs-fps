@@ -1,5 +1,6 @@
 import type { PlayerDamagedMessage } from '../../shared/network/damage';
 import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
+import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 
 import type { GameMode, MatchPhase } from '../../shared/combat/match';
 
@@ -51,7 +52,7 @@ export interface PlayerSnapshot {
   shieldDomeCenterZ: number;
 }
 
-export type { ProjectileSpawnMessage };
+export type { ProjectileSpawnMessage, WeaponShotSoundMessage };
 
 export interface AmmoBoxSnapshot {
   x: number;
@@ -95,6 +96,7 @@ export type PlayerRemoveHandler = (sessionId: string) => void;
 export type PlayerChangeHandler = (sessionId: string, player: PlayerSnapshot) => void;
 export type LocalPlayerChangeHandler = (player: PlayerSnapshot) => void;
 export type ProjectileSpawnHandler = (spawn: ProjectileSpawnMessage) => void;
+export type WeaponShotSoundHandler = (shot: WeaponShotSoundMessage) => void;
 export type AmmoBoxChangeHandler = (index: number, box: AmmoBoxSnapshot) => void;
 export type AmmoPickupGrantedHandler = () => void;
 export type ShieldChargeChangeHandler = (index: number, charge: ShieldChargeSnapshot) => void;

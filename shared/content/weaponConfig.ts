@@ -115,6 +115,8 @@ export interface WeaponSoundsConfig {
 
 export type WeaponShotSoundVariant = 'single' | 'auto';
 
+export type WeaponShotSoundPhase = 'single' | 'autoStart' | 'autoStop';
+
 export interface WeaponConfig {
   readonly id: WeaponId;
   readonly name: string;
