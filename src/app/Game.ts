@@ -37,7 +37,7 @@ import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
-import type { MatchPhase } from '../../shared/combat/match';
+import { getCountdownDisplayValue, type MatchPhase } from '../../shared/combat/match';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
@@ -57,6 +57,12 @@ import { FootstepSoundService } from '../audio/FootstepSoundService';
 import { ImpactSoundService } from '../audio/ImpactSoundService';
 import { EnvironmentSoundService } from '../audio/EnvironmentSoundService';
 import { LoopingSoundService } from '../audio/LoopingSoundService';
+import { MatchSoundService } from '../audio/MatchSoundService';
+import {
+  FPS_COUNTDOWN_TICK_MESSAGE,
+  FPS_GAME_START_MESSAGE,
+  FPS_LEAVE_GAME_MESSAGE,
+} from '../audio/CountdownTickPlayer';
 import {
   GAME_DRONE_PROXIMITY_AUDIO,
   GAME_ENEMY_HIT_IMPACT_AUDIO,
@@ -69,6 +75,9 @@ import {
   GAME_SHIELD_CHARGE_AUDIO,
   GAME_SHIELD_CHARGE_END_AUDIO,
   GAME_WEAPON_SPATIAL_AUDIO,
+  MATCH_COUNTDOWN_TICK_AUDIO,
+  MATCH_GAME_START_AUDIO,
+  MATCH_RESULTS_MUSIC_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
@@ -126,10 +135,13 @@ export class Game {
   private readonly shieldChargeSounds = new LoopingSoundService();
   private readonly footstepSounds = new FootstepSoundService();
   private readonly impactSounds = new ImpactSoundService();
+  private readonly matchSounds = new MatchSoundService();
   private audioUnlocked = false;
   private inventoryOpen = false;
   private matchEndHandled = false;
   private prevMatchPhase: MatchPhase | null = null;
+  private lastCountdownTickSec: number | null = null;
+  private gameStartSoundPlayed = false;
   private pendingKillerId: string | null = null;
   private lastCombatShooterId: string | null = null;
   /** Collision + visuals map; never overwritten by server schema defaults after load. */
@@ -181,13 +193,14 @@ export class Game {
       this.impactSounds.preloadShieldBreak(GAME_SHIELD_BREAK_AUDIO),
       this.impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
       this.impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
+      this.matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
+      this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
+      this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
     ]);
     this.initPlayer(initialMapId);
     this.applyActiveMap();
     this.initResize();
     await this.initNetwork(credentials, joinIntent);
-    const isTdm = this.network.getMatchState()?.gameMode === 'tdm';
-    this.playerControls.setMatchHud(this.matchHud, isTdm);
     this.applyActiveMap();
     onConnected?.();
     document.getElementById('blocker')!.hidden = false;
@@ -199,10 +212,14 @@ export class Game {
     if (this.leaving) return;
     this.leaving = true;
     this.running = false;
-    LoadingOverlay.shared().show('Leaving game...');
+    const embeddedInLobby = window.parent !== window;
+    if (!embeddedInLobby) {
+      LoadingOverlay.shared().show('Leaving game...');
+    }
     this.environmentSounds.stop();
     this.droneProximitySounds.stop();
     this.shieldChargeSounds.stop();
+    this.matchSounds.stopResultsMusic();
     this.playerControls.setLeaveEnabled(false);
     this.playerControls.controls.unlock();
 
@@ -211,7 +228,14 @@ export class Game {
     } catch (error) {
       console.warn('[Game] disconnect failed', error);
     } finally {
-      window.location.replace('/lobby.html');
+      if (embeddedInLobby) {
+        window.parent.postMessage(
+          { type: FPS_LEAVE_GAME_MESSAGE },
+          window.location.origin,
+        );
+      } else {
+        window.location.replace('/lobby.html');
+      }
     }
   }
 
@@ -220,6 +244,60 @@ export class Game {
     setClientMapDef(this.worldMapId);
     this.player?.setMapCollisionDef(mapDef);
     this.killCam.configureForMap(mapDef);
+  }
+
+  private updateMatchCountdownTicks(
+    match: ReturnType<typeof resolveMatchSnapshot>,
+    worldTime: number,
+  ): void {
+    if (!match || match.phase !== 'countdown') {
+      this.lastCountdownTickSec = null;
+      if (match?.phase !== 'playing') {
+        this.gameStartSoundPlayed = false;
+      }
+      return;
+    }
+
+    const display = getCountdownDisplayValue(worldTime, match.matchCountdownEndAt);
+    if (!display) return;
+
+    if (display === 'GO!') {
+      if (!this.gameStartSoundPlayed) {
+        this.gameStartSoundPlayed = true;
+        this.playMatchCue(FPS_GAME_START_MESSAGE, () => this.matchSounds.playGameStart());
+      }
+      return;
+    }
+
+    const second = Number(display);
+    if (!Number.isFinite(second) || second === this.lastCountdownTickSec) return;
+
+    this.lastCountdownTickSec = second;
+    this.playMatchCue(FPS_COUNTDOWN_TICK_MESSAGE, () => this.matchSounds.playTick());
+  }
+
+  private playMatchCue(messageType: string, localPlay: () => void): void {
+    // Lobby primes audio on Join and hosts playback so cues work without a
+    // second click on the game page (browser autoplay policy).
+    if (window.parent !== window) {
+      window.parent.postMessage({ type: messageType }, window.location.origin);
+      return;
+    }
+
+    localPlay();
+  }
+
+  private unlockGameAudio(): void {
+    if (this.audioUnlocked) return;
+    this.weaponSounds.unlock();
+    this.footstepSounds.unlock();
+    this.impactSounds.unlock();
+    this.matchSounds.unlock();
+    this.environmentSounds.unlock();
+    this.droneProximitySounds.unlock();
+    this.shieldChargeSounds.unlock();
+    this.environmentSounds.setActive(true);
+    this.audioUnlocked = true;
   }
 
   private getActiveCamera(): THREE.PerspectiveCamera {
@@ -262,7 +340,6 @@ export class Game {
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setTeamHud(this.teamHud);
-    this.playerControls.setMatchHud(this.matchHud, false);
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
@@ -272,6 +349,9 @@ export class Game {
     this.playerControls.setShieldPickupHud(this.shieldPickupHud);
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
+    });
+    this.playerControls.setEngageHandler(() => {
+      this.unlockGameAudio();
     });
     this.matchResultsOverlay.setLeaveHandler(() => {
       void this.leaveGame();
@@ -587,7 +667,12 @@ export class Game {
     const match = resolveMatchSnapshot(this.network?.getMatchState() ?? null);
     const worldTime = this.network?.getWorldTime() ?? 0;
     this.matchCountdownOverlay.update(match, worldTime);
-    this.matchResultsOverlay.update(match, this.localCombat.teamId);
+    this.matchResultsOverlay.update(
+      match,
+      this.localCombat.teamId,
+      this.network?.getAllPlayers() ?? [],
+    );
+    this.matchHud.update(match, worldTime, this.playerControls.isPlaying);
 
     const matchPhase = match?.phase ?? null;
     if (
@@ -603,6 +688,10 @@ export class Game {
       this.matchEndHandled = true;
       this.closeInventory();
       this.playerControls.controls.unlockSoft();
+      this.environmentSounds.stop();
+      this.droneProximitySounds.stop();
+      this.matchSounds.unlock();
+      this.matchSounds.playResultsMusic();
     }
 
     const tdmBlocksInput =
@@ -614,16 +703,11 @@ export class Game {
       this.localCombat.alive &&
       !this.inventoryOpen;
 
-    if (this.playerControls.isPlaying && !this.audioUnlocked) {
-      this.weaponSounds.unlock();
-      this.footstepSounds.unlock();
-      this.impactSounds.unlock();
-      this.environmentSounds.unlock();
-      this.droneProximitySounds.unlock();
-      this.shieldChargeSounds.unlock();
-      this.environmentSounds.setActive(true);
-      this.audioUnlocked = true;
+    if (this.playerControls.isPlaying) {
+      this.unlockGameAudio();
     }
+
+    this.updateMatchCountdownTicks(match, worldTime);
 
     this.player.update(
       delta,
@@ -688,7 +772,6 @@ export class Game {
       this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
       this.teamHud.update(this.network.getTeammateHudEntries());
-      this.matchHud.update(match, worldTime);
       this.shieldRechargeHud.update(
         getShieldRechargeState(
           this.localCombat.shieldRecharging,

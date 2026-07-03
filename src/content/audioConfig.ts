@@ -138,3 +138,27 @@ export const UI_CLICK_AUDIO: GlobalAudioConfig = {
   src: '/sounds/ui_click.wav',
   volume: 0.22,
 };
+
+/** One-shot per countdown second in team deathmatch. */
+export const MATCH_COUNTDOWN_TICK_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/clock_tick.wav',
+  volume: 0.45,
+};
+
+/** Plays once when the TDM countdown hits zero / match starts. */
+export const MATCH_GAME_START_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/game_start_1.wav',
+  volume: 0.55,
+};
+
+/** Plays once when the TDM results overlay is shown. */
+export const MATCH_RESULTS_MUSIC_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/Bio_Reclamation_Protocol.mp3',
+  volume: 0.1,
+};
+
+/** Soft cue while stats swipe in (leaderboard / match results). */
+export const STATS_INCOMING_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/stats_incoming.wav',
+  volume: 0.05,
+};

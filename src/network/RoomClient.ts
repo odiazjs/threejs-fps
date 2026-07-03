@@ -73,6 +73,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     walkingBackward: player.walkingBackward,
     jumping: player.jumping,
     crouching: player.crouching,
+    matchKills: player.matchKills ?? 0,
     shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
     shieldDomeEndAt: player.shieldDomeEndAt,
     shieldDomeCooldownEndAt: player.shieldDomeCooldownEndAt,
@@ -219,7 +220,9 @@ export class RoomClient {
         joinByIdOptions,
       );
     } else {
-      this.room = await client.joinOrCreate(
+      // Always create so lobby map/mode selection is applied (joinOrCreate can
+      // attach to an existing playground room and ignore create options).
+      this.room = await client.create(
         'fps',
         {
           ...joinOptions,

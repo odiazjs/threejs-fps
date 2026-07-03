@@ -35,6 +35,8 @@ export class PlayerState extends Schema {
   @type('boolean') walkingBackward = false;
   @type('boolean') jumping = false;
   @type('boolean') crouching = false;
+  /** Kills scored in the current TDM match (reset when countdown starts). */
+  @type('number') matchKills = 0;
   /** Server world time when the shield dome charge completes (0 when idle). */
   @type('number') shieldDomeChargeEndAt = 0;
   /** Server world time when the shield dome expires (0 when inactive). */

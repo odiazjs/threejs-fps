@@ -1,7 +1,6 @@
 import type * as THREE from 'three';
 import { PointerAimControls } from './PointerAimControls';
 import type { CrosshairHud } from '../ui/CrosshairHud';
-import type { MatchHud } from '../ui/MatchHud';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
@@ -24,10 +23,9 @@ export class PlayerControls {
   private weaponPickupHud: WeaponPickupHud | null = null;
   private shieldPickupHud: ShieldPickupHud | null = null;
   private teamHud: TeamHud | null = null;
-  private matchHud: MatchHud | null = null;
-  private matchHudEnabled = false;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
+  private onEngage: (() => void) | null = null;
   private hasLockedOnce = false;
   private isPaused = false;
   private inventoryOpen = false;
@@ -89,13 +87,13 @@ export class PlayerControls {
     this.teamHud = hud;
   }
 
-  setMatchHud(hud: MatchHud, enabled: boolean): void {
-    this.matchHud = hud;
-    this.matchHudEnabled = enabled;
-  }
-
   setLeaveHandler(handler: () => void): void {
     this.onLeave = handler;
+  }
+
+  /** Fired on click-to-play / re-engage (user gesture — safe for audio unlock). */
+  setEngageHandler(handler: () => void): void {
+    this.onEngage = handler;
   }
 
   setInventoryOpen(open: boolean): void {
@@ -113,6 +111,7 @@ export class PlayerControls {
 
   private initUI(): void {
     this.blocker.addEventListener('click', () => {
+      this.onEngage?.();
       if (!this.leaveButton.disabled) {
         this.controls.lock();
       }
@@ -122,6 +121,7 @@ export class PlayerControls {
       if (this.inventoryOpen) return;
       if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
       if (event.target === this.leaveButton) return;
+      this.onEngage?.();
       this.controls.lock();
     });
 
@@ -149,9 +149,6 @@ export class PlayerControls {
       this.killFeedHud?.setVisible(true);
       this.damageIndicatorHud?.setVisible(true);
       this.teamHud?.setVisible(true);
-      if (this.matchHudEnabled) {
-        this.matchHud?.setVisible(true);
-      }
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
@@ -169,7 +166,6 @@ export class PlayerControls {
       this.killFeedHud?.setVisible(false);
       this.damageIndicatorHud?.setVisible(false);
       this.teamHud?.setVisible(false);
-      this.matchHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
 
       if (this.hasLockedOnce) {

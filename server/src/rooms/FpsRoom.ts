@@ -254,6 +254,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (this.countHumanPlayers() >= this.expectedPlayers) {
         this.assignTdmTeams();
         this.teleportHumansToTeamSpawns();
+        this.resetMatchKills();
         this.state.matchPhase = 'countdown';
         this.state.matchCountdownEndAt = now + TDM_COUNTDOWN_SEC;
       }
@@ -273,6 +274,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     if (this.state.matchPhase === 'playing' && now >= this.state.matchEndAt) {
       this.endMatch();
+    }
+  }
+
+  private resetMatchKills(): void {
+    for (const player of this.state.players.values()) {
+      player.matchKills = 0;
     }
   }
 
@@ -1073,6 +1080,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         victimName: target.username,
       };
       this.broadcast('kill', killFeed);
+      shooter.matchKills += 1;
 
       if (this.isTdm() && isValidTdmTeamId(shooter.teamId, this.state.teamCount)) {
         this.addTeamScore(shooter.teamId, TDM_KILL_POINTS);

@@ -11,6 +11,7 @@ import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
 import { getSelectedMapId, initLobbyMapSelector } from './mapSelection';
 import { getSelectedGameMode, initLobbyGameModeSelector } from './gameModeSelection';
 import { setGameJoinIntent } from '../auth/gameJoin';
+import { launchGameOverlay, onGameOverlayClosed } from './launchGameOverlay';
 import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
@@ -61,12 +62,27 @@ async function startLobby(): Promise<void> {
     });
 
     const joinBtn = document.getElementById('lobby-join-btn') as HTMLButtonElement;
+    onGameOverlayClosed(() => {
+      loading.reset();
+      joinBtn.disabled = false;
+    });
     joinBtn.addEventListener('click', () => {
       if (loading.active) return;
+      loading.reset();
       loading.show('Joining game...');
       joinBtn.disabled = true;
       setGameJoinIntent({ mode: 'create', mapId: getSelectedMapId(), gameMode: getSelectedGameMode() });
-      window.location.href = '/game.html';
+      void launchGameOverlay()
+        .catch((error) => {
+          console.warn('[Lobby] failed to launch game', error);
+          loading.reset();
+          joinBtn.disabled = false;
+          window.location.href = '/game.html';
+        })
+        .finally(() => {
+          loading.reset();
+          joinBtn.disabled = false;
+        });
     });
 
     window.addEventListener('pagehide', () => {

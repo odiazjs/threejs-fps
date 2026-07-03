@@ -54,6 +54,12 @@ export function stopLobbyMusic(): void {
   lobbyMusic.stop();
 }
 
+export function resumeLobbyMusic(): void {
+  if (!lobbyMusicReady) return;
+  lobbyMusic.unlock();
+  lobbyMusic.setActive(true);
+}
+
 export function setLobbyMusicVolume(volume: number): void {
   const clamped = storeLobbyMusicVolume(volume);
   lobbyMusic.setVolume(clamped);

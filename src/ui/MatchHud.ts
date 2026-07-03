@@ -10,8 +10,6 @@ export class MatchHud {
   private readonly root: HTMLElement;
   private readonly timerEl: HTMLElement;
   private readonly scoresEl: HTMLElement;
-  private hudVisible = false;
-  private hasContent = false;
 
   constructor() {
     this.root = document.getElementById('match-hud')!;
@@ -19,15 +17,12 @@ export class MatchHud {
     this.scoresEl = this.root.querySelector('.match-hud-scores')!;
   }
 
-  setVisible(visible: boolean): void {
-    this.hudVisible = visible;
-    this.syncVisibility();
-  }
-
-  update(match: MatchSnapshot | null, worldTime: number): void {
-    if (!match || match.gameMode !== 'tdm' || match.phase === 'ended') {
-      this.hasContent = false;
-      this.syncVisibility();
+  /**
+   * @param hudActive Player is in-game (pointer-locked / not paused).
+   */
+  update(match: MatchSnapshot | null, worldTime: number, hudActive: boolean): void {
+    if (!hudActive || !match || match.gameMode !== 'tdm' || match.phase === 'ended') {
+      this.root.hidden = true;
       return;
     }
 
@@ -59,12 +54,7 @@ export class MatchHud {
       }
     }
 
-    this.hasContent = true;
-    this.syncVisibility();
-  }
-
-  private syncVisibility(): void {
-    this.root.hidden = !this.hudVisible || !this.hasContent;
+    this.root.hidden = false;
   }
 }
 

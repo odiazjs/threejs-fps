@@ -20,6 +20,7 @@ import {
 import { setGameJoinIntent } from '../auth/gameJoin';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
+import { launchGameOverlay, onGameOverlayClosed } from './launchGameOverlay';
 import { getSelectedMapId } from './mapSelection';
 import { getSelectedGameMode } from './gameModeSelection';
 import { isInviteablePresence } from './friendPresenceUi';
@@ -83,6 +84,12 @@ export class FriendsPanel {
     });
     this.leaveBtn.addEventListener('click', () => {
       void this.leaveParty();
+    });
+    onGameOverlayClosed(() => {
+      this.clearLaunchTimeout();
+      this.launching = false;
+      this.loading.reset();
+      this.updatePartyButtons();
     });
 
     this.lobby.onFriendRequest((data) => this.showRequestToast(data));
@@ -304,6 +311,8 @@ export class FriendsPanel {
 
   private launchGame(roomId: string, mapId?: string, teamId?: number): void {
     this.clearLaunchTimeout();
+    // Replace any prior spinner (e.g. "Starting game...") — depth must not stack.
+    this.loading.reset();
     this.loading.show('Joining game...');
     setGameJoinIntent({
       roomId,
@@ -311,8 +320,18 @@ export class FriendsPanel {
       mapId: mapId ?? getSelectedMapId(),
       ...(typeof teamId === 'number' ? { teamId } : {}),
     });
-    void this.lobby.disconnect();
-    window.location.assign('/game.html');
+    // Keep the lobby connection; the match runs in an overlay iframe.
+    void launchGameOverlay()
+      .catch((error) => {
+        console.warn('[Lobby] failed to launch game overlay', error);
+        this.launching = false;
+        this.loading.reset();
+        this.updatePartyButtons();
+        window.location.assign('/game.html');
+      })
+      .finally(() => {
+        this.loading.reset();
+      });
   }
 
   private startLaunchTimeout(): void {

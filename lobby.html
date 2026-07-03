@@ -208,25 +208,13 @@
     </section>
 
     <section id="app-view-leaderboard" class="app-view" data-view="leaderboard" hidden>
-      <main class="leaderboard-shell panel">
-        <h1 class="leaderboard-title">LEADERBOARD</h1>
-        <p id="leaderboard-status" class="leaderboard-status">Loading...</p>
-        <div class="leaderboard-table-wrap">
-          <table class="leaderboard-table" aria-label="Global player rankings">
-            <thead>
-              <tr>
-                <th scope="col">#</th>
-                <th scope="col">Player</th>
-                <th scope="col">Email</th>
-                <th scope="col">Kills</th>
-                <th scope="col">K/D</th>
-              </tr>
-            </thead>
-            <tbody id="leaderboard-body"></tbody>
-          </table>
-        </div>
+      <main class="leaderboard-shell" aria-label="Global player rankings">
+        <p class="leaderboard-subtitle leaderboard-swipe">Global Rankings</p>
+        <h1 class="leaderboard-title leaderboard-swipe">LEADERBOARD</h1>
+        <p id="leaderboard-status" class="leaderboard-status leaderboard-swipe">Loading...</p>
+        <div id="leaderboard-list" class="leaderboard-list"></div>
       </main>
-      <button id="leaderboard-back-btn" class="secondary-btn leaderboard-back-btn" type="button">
+      <button id="leaderboard-back-btn" class="leaderboard-back-btn leaderboard-swipe" type="button">
         BACK TO LOBBY
       </button>
     </section>
