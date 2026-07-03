@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { BodyPartId } from '../../shared/combat/bodyParts';
 import { findMeleeHitTarget, type MeleeHitCandidate } from '../../shared/combat/meleeHit';
 import type { ProjectileHitTarget } from './ProjectileManager';
 
@@ -8,6 +9,7 @@ const _direction = new THREE.Vector3();
 export interface MeleeHitResult {
   sessionId: string;
   point: THREE.Vector3;
+  bodyPart: BodyPartId;
 }
 
 /** Camera look direction + proximity cone vs enemy targets. */
@@ -25,6 +27,9 @@ export function tryMeleeHit(
     feetX: target.feetX,
     feetY: target.feetY,
     feetZ: target.feetZ,
+    yaw: target.yaw,
+    pitch: target.pitch,
+    volumes: target.volumes,
   }));
 
   const hit = findMeleeHitTarget(
@@ -45,5 +50,6 @@ export function tryMeleeHit(
   return {
     sessionId: hit.sessionId,
     point: new THREE.Vector3(hit.pointX, hit.pointY, hit.pointZ),
+    bodyPart: hit.bodyPart,
   };
 }

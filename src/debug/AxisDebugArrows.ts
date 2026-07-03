@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
-/** Flip to true to show local X/Y/Z arrows on any object using this helper. */
-export const SHOW_AXIS_DEBUG_ARROWS = true;
+/**
+ * @see show only if we are in localhost url
+ */
+export const SHOW_AXIS_DEBUG_ARROWS = window.location.hostname.includes('localhost');
 
 export interface AxisDebugArrowsOptions {
   /** Arrow length in the parent object's local space. */

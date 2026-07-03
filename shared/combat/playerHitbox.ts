@@ -1,47 +1,40 @@
+import {
+  BODY_PARTS,
+  bodyLocalPointToWorld,
+  getBodyPartDef,
+  isValidBodyPartId,
+  partBodyLocalCapCenters,
+  partSides,
+  partUsesUpperBodyPitch,
+  type BodyPartId,
+} from './bodyParts.js';
+import { CHARACTER_HIT_HEIGHT } from './bodyPartPose.js';
+import {
+  type BodyPartVolume,
+} from './bodyPartVolumes.js';
+
 /**
- * Vertical capsule hit volume — same cross-section from every yaw angle, unlike
- * world-axis mesh AABBs that balloon when a posed character rotates.
- *
- * Sized to match the fitted character mesh (~1.65 m), not the movement box.
+ * Legacy single-capsule dimensions — kept for chest-height FX and spawn margins.
  */
 export const PLAYER_HIT_CAPSULE_RADIUS = 0.26;
-export const PLAYER_HIT_CAPSULE_HEIGHT = 1.62;
+export const PLAYER_HIT_CAPSULE_HEIGHT = CHARACTER_HIT_HEIGHT;
 
 export interface PlayerHitTarget {
   feetX: number;
   feetY: number;
   feetZ: number;
+  yaw?: number;
+  pitch?: number;
+  /** Bone-driven world-space capsules; preferred over static fallback. */
+  volumes?: readonly BodyPartVolume[];
 }
 
-function intervalsOverlap(
-  aMin: number,
-  aMax: number,
-  bMin: number,
-  bMax: number,
-): boolean {
-  return Math.min(aMax, bMax) >= Math.max(aMin, bMin);
+export interface BodyPartHitResult {
+  part: BodyPartId;
+  distance: number;
 }
 
-/** Ray segment t in [0, maxDist] where Y lies in [yMin, yMax]. */
-function rayYInterval(
-  originY: number,
-  dirY: number,
-  maxDist: number,
-  yMin: number,
-  yMax: number,
-): [number, number] | null {
-  if (Math.abs(dirY) < 1e-12) {
-    return originY >= yMin && originY <= yMax ? [0, maxDist] : null;
-  }
-
-  const tEnter = (yMin - originY) / dirY;
-  const tExit = (yMax - originY) / dirY;
-  const tMin = Math.max(Math.min(tEnter, tExit), 0);
-  const tMax = Math.min(Math.max(tEnter, tExit), maxDist);
-  return tMax >= tMin ? [tMin, tMax] : null;
-}
-
-function rayHitsSphereSegment(
+function raycastSphere(
   originX: number,
   originY: number,
   originZ: number,
@@ -53,32 +46,67 @@ function rayHitsSphereSegment(
   centerY: number,
   centerZ: number,
   radius: number,
-  minHitY: number,
-  maxHitY: number,
-): boolean {
+): number | null {
   const lx = originX - centerX;
   const ly = originY - centerY;
   const lz = originZ - centerZ;
+  const a = dirX * dirX + dirY * dirY + dirZ * dirZ;
   const b = 2 * (dirX * lx + dirY * ly + dirZ * lz);
   const c = lx * lx + ly * ly + lz * lz - radius * radius;
-  const disc = b * b - 4 * c;
-  if (disc < 0) return false;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0 || a < 1e-12) return null;
 
   const sqrtDisc = Math.sqrt(disc);
-  const t0 = (-b - sqrtDisc) * 0.5;
-  const t1 = (-b + sqrtDisc) * 0.5;
+  const inv = 0.5 / a;
+  let best: number | null = null;
 
-  for (const t of [t0, t1]) {
+  for (const t of [(-b - sqrtDisc) * inv, (-b + sqrtDisc) * inv]) {
     if (t < 0 || t > maxDist) continue;
-    const hitY = originY + t * dirY;
-    if (hitY >= minHitY && hitY <= maxHitY) return true;
+    if (best === null || t < best) best = t;
   }
 
-  return false;
+  return best;
 }
 
-/** Ray segment vs the cylindrical body of a vertical capsule. */
-function rayHitsVerticalCapsuleCylinder(
+function distanceSquaredPointToSegment(
+  px: number,
+  py: number,
+  pz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+): number {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const apx = px - ax;
+  const apy = py - ay;
+  const apz = pz - az;
+  const abLenSq = abx * abx + aby * aby + abz * abz;
+  if (abLenSq < 1e-12) {
+    return apx * apx + apy * apy + apz * apz;
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(1, (apx * abx + apy * aby + apz * abz) / abLenSq),
+  );
+  const cx = ax + abx * t;
+  const cy = ay + aby * t;
+  const cz = az + abz * t;
+  const dx = px - cx;
+  const dy = py - cy;
+  const dz = pz - cz;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/**
+ * Ray segment vs capsule along AB with radius r (sphere centers at A and B).
+ */
+export function raycastCapsuleSegment(
   originX: number,
   originY: number,
   originZ: number,
@@ -86,54 +114,328 @@ function rayHitsVerticalCapsuleCylinder(
   dirY: number,
   dirZ: number,
   maxDist: number,
-  centerX: number,
-  centerY0: number,
-  centerY1: number,
-  centerZ: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
   radius: number,
-): boolean {
-  const yInterval = rayYInterval(originY, dirY, maxDist, centerY0, centerY1);
-  if (!yInterval) return false;
+): number | null {
+  if (maxDist <= 0) return null;
 
-  const lx = originX - centerX;
-  const lz = originZ - centerZ;
+  const abx = bx - ax;
+  const aby = by - ay;
+  const abz = bz - az;
+  const baba = abx * abx + aby * aby + abz * abz;
+
+  // Degenerate capsule — treat as a sphere.
+  if (baba < 1e-10) {
+    return raycastSphere(
+      originX,
+      originY,
+      originZ,
+      dirX,
+      dirY,
+      dirZ,
+      maxDist,
+      ax,
+      ay,
+      az,
+      radius,
+    );
+  }
+
+  const oax = originX - ax;
+  const oay = originY - ay;
+  const oaz = originZ - az;
+  const bard = abx * dirX + aby * dirY + abz * dirZ;
+  const baoa = abx * oax + aby * oay + abz * oaz;
+  const rdoa = dirX * oax + dirY * oay + dirZ * oaz;
+  const oaoa = oax * oax + oay * oay + oaz * oaz;
+  const rSq = radius * radius;
+
+  let best: number | null = null;
+  const consider = (t: number) => {
+    if (t < 0 || t > maxDist) return;
+    if (best === null || t < best) best = t;
+  };
+
+  const aa = baba - bard * bard;
+  const bb = baba * rdoa - baoa * bard;
+  const cc = baba * oaoa - baoa * baoa - rSq * baba;
+  const h = bb * bb - aa * cc;
+  if (h >= 0 && Math.abs(aa) > 1e-12) {
+    const sqrtH = Math.sqrt(h);
+    for (const sign of [-1, 1]) {
+      const t = (-bb + sign * sqrtH) / aa;
+      const along = baoa + t * bard;
+      if (along >= 0 && along <= baba) consider(t);
+    }
+  }
+
+  const hitA = raycastSphere(
+    originX,
+    originY,
+    originZ,
+    dirX,
+    dirY,
+    dirZ,
+    maxDist,
+    ax,
+    ay,
+    az,
+    radius,
+  );
+  if (hitA !== null) consider(hitA);
+
+  const hitB = raycastSphere(
+    originX,
+    originY,
+    originZ,
+    dirX,
+    dirY,
+    dirZ,
+    maxDist,
+    bx,
+    by,
+    bz,
+    radius,
+  );
+  if (hitB !== null) consider(hitB);
+
+  if (best !== null) return best;
+
+  // Forward scan fallback for grazing hits on thin limb capsules.
+  const steps = Math.max(16, Math.ceil(maxDist / 0.04));
   const radiusSq = radius * radius;
-  const insideAtStart = lx * lx + lz * lz <= radiusSq;
-  const horizontalLenSq = dirX * dirX + dirZ * dirZ;
-
-  if (horizontalLenSq < 1e-12) {
-    return insideAtStart && intervalsOverlap(0, maxDist, yInterval[0], yInterval[1]);
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * maxDist;
+    const px = originX + dirX * t;
+    const py = originY + dirY * t;
+    const pz = originZ + dirZ * t;
+    if (distanceSquaredPointToSegment(px, py, pz, ax, ay, az, bx, by, bz) <= radiusSq) {
+      return t;
+    }
   }
 
-  const a = horizontalLenSq;
-  const b = 2 * (lx * dirX + lz * dirZ);
-  const c = lx * lx + lz * lz - radiusSq;
-  const disc = b * b - 4 * a * c;
+  return null;
+}
 
-  if (disc < 0) {
-    if (!insideAtStart) return false;
-    return intervalsOverlap(0, maxDist, yInterval[0], yInterval[1]);
+function buildStaticBodyPartVolumes(
+  target: {
+    feetX: number;
+    feetY: number;
+    feetZ: number;
+    yaw?: number;
+    pitch?: number;
+  },
+): BodyPartVolume[] {
+  const volumes: BodyPartVolume[] = [];
+
+  for (const part of BODY_PARTS) {
+    for (const side of partSides(part)) {
+      const local = partBodyLocalCapCenters(part, side);
+      const applyPitch = partUsesUpperBodyPitch(part.id);
+      const yaw = target.yaw ?? 0;
+      const pitch = target.pitch ?? 0;
+
+      const a = bodyLocalPointToWorld(
+        target.feetX,
+        target.feetY,
+        target.feetZ,
+        yaw,
+        pitch,
+        local.ax,
+        local.ay,
+        local.az,
+        applyPitch,
+      );
+      const b = bodyLocalPointToWorld(
+        target.feetX,
+        target.feetY,
+        target.feetZ,
+        yaw,
+        pitch,
+        local.bx,
+        local.by,
+        local.bz,
+        applyPitch,
+      );
+
+      volumes.push({
+        part: part.id,
+        ax: a.x,
+        ay: a.y,
+        az: a.z,
+        bx: b.x,
+        by: b.y,
+        bz: b.z,
+        radius: part.radius,
+      });
+    }
   }
 
-  const sqrtDisc = Math.sqrt(disc);
-  const inv2a = 0.5 / a;
-  let tHorizMin = (-b - sqrtDisc) * inv2a;
-  let tHorizMax = (-b + sqrtDisc) * inv2a;
-  if (tHorizMin > tHorizMax) {
-    const swap = tHorizMin;
-    tHorizMin = tHorizMax;
-    tHorizMax = swap;
+  return volumes;
+}
+
+function resolveBodyPartVolumes(
+  target: {
+    feetX: number;
+    feetY: number;
+    feetZ: number;
+    yaw?: number;
+    pitch?: number;
+    volumes?: readonly BodyPartVolume[];
+  },
+): BodyPartVolume[] {
+  if (target.volumes && target.volumes.length > 0) {
+    return [...target.volumes];
+  }
+  return buildStaticBodyPartVolumes(target);
+}
+
+const PART_HIT_PRIORITY: Record<BodyPartId, number> = {
+  head: 0,
+  arms: 1,
+  legs: 2,
+  feet: 3,
+  torso: 4,
+};
+
+/** When multiple parts hit at similar depth, prefer limbs over torso. */
+const CLOSE_HIT_EPS = 0.1;
+
+/** Test ray/segment against an explicit list of body-part capsules. */
+export function raycastBodyPartVolumes(
+  originX: number,
+  originY: number,
+  originZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  maxDist: number,
+  volumes: readonly BodyPartVolume[],
+): BodyPartHitResult | null {
+  const hits: BodyPartHitResult[] = [];
+
+  for (const vol of volumes) {
+    const distance = raycastCapsuleSegment(
+      originX,
+      originY,
+      originZ,
+      dirX,
+      dirY,
+      dirZ,
+      maxDist,
+      vol.ax,
+      vol.ay,
+      vol.az,
+      vol.bx,
+      vol.by,
+      vol.bz,
+      vol.radius,
+    );
+    if (distance === null) continue;
+    hits.push({ part: vol.part, distance });
   }
 
-  if (insideAtStart) {
-    tHorizMin = 0;
+  if (hits.length === 0) return null;
+
+  const closestDist = Math.min(...hits.map((hit) => hit.distance));
+  const closeHits = hits.filter((hit) => hit.distance <= closestDist + CLOSE_HIT_EPS);
+  closeHits.sort((a, b) => {
+    const priorityDelta = PART_HIT_PRIORITY[a.part] - PART_HIT_PRIORITY[b.part];
+    if (priorityDelta !== 0) return priorityDelta;
+    return a.distance - b.distance;
+  });
+
+  return closeHits[0]!;
+}
+
+/** Returns the closest struck body part along the ray/segment, if any. */
+export function raycastPlayerBodyPart(
+  originX: number,
+  originY: number,
+  originZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  maxDist: number,
+  target: PlayerHitTarget,
+): BodyPartHitResult | null {
+  const volumes = resolveBodyPartVolumes(target);
+  return raycastBodyPartVolumes(
+    originX,
+    originY,
+    originZ,
+    dirX,
+    dirY,
+    dirZ,
+    maxDist,
+    volumes,
+  );
+}
+
+/** Resolve which body part contains a world-space point (melee / splash). */
+export function resolveBodyPartFromWorldPoint(
+  worldX: number,
+  worldY: number,
+  worldZ: number,
+  target: PlayerHitTarget,
+): BodyPartId {
+  const volumes = resolveBodyPartVolumes(target);
+  let bestPart: BodyPartId = 'torso';
+  let bestPriority = PART_HIT_PRIORITY.torso;
+  let bestDistSq = Infinity;
+
+  for (const vol of volumes) {
+    const distSq = distanceSquaredPointToSegment(
+      worldX,
+      worldY,
+      worldZ,
+      vol.ax,
+      vol.ay,
+      vol.az,
+      vol.bx,
+      vol.by,
+      vol.bz,
+    );
+    const radiusSq = vol.radius * vol.radius;
+    if (distSq > radiusSq * 1.2) continue;
+
+    const priority = PART_HIT_PRIORITY[vol.part];
+    if (priority < bestPriority || (priority === bestPriority && distSq < bestDistSq)) {
+      bestPriority = priority;
+      bestDistSq = distSq;
+      bestPart = vol.part;
+    }
   }
 
-  tHorizMin = Math.max(tHorizMin, 0);
-  tHorizMax = Math.min(tHorizMax, maxDist);
-  if (tHorizMax < tHorizMin) return false;
+  return bestPart;
+}
 
-  return intervalsOverlap(tHorizMin, tHorizMax, yInterval[0], yInterval[1]);
+/** Ray segment vs full player body (any part). */
+export function rayHitsPlayer(
+  originX: number,
+  originY: number,
+  originZ: number,
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  distance: number,
+  target: PlayerHitTarget,
+): boolean {
+  return raycastPlayerBodyPart(
+    originX,
+    originY,
+    originZ,
+    dirX,
+    dirY,
+    dirZ,
+    distance,
+    target,
+  ) !== null;
 }
 
 export function rayHitsVerticalCapsule(
@@ -152,29 +454,8 @@ export function rayHitsVerticalCapsule(
 ): boolean {
   const y0 = feetY + radius;
   const y1 = feetY + totalHeight - radius;
-  const topY = feetY + totalHeight;
-
-  if (
-    rayHitsVerticalCapsuleCylinder(
-      originX,
-      originY,
-      originZ,
-      dirX,
-      dirY,
-      dirZ,
-      maxDist,
-      feetX,
-      y0,
-      y1,
-      feetZ,
-      radius,
-    )
-  ) {
-    return true;
-  }
-
   return (
-    rayHitsSphereSegment(
+    raycastCapsuleSegment(
       originX,
       originY,
       originZ,
@@ -185,49 +466,17 @@ export function rayHitsVerticalCapsule(
       feetX,
       y0,
       feetZ,
-      radius,
-      feetY,
-      y0,
-    ) ||
-    rayHitsSphereSegment(
-      originX,
-      originY,
-      originZ,
-      dirX,
-      dirY,
-      dirZ,
-      maxDist,
       feetX,
       y1,
       feetZ,
       radius,
-      y1,
-      topY,
-    )
+    ) !== null
   );
 }
 
-/** Ray segment vs player body capsule. */
-export function rayHitsPlayer(
-  originX: number,
-  originY: number,
-  originZ: number,
-  dirX: number,
-  dirY: number,
-  dirZ: number,
-  distance: number,
-  target: PlayerHitTarget,
-): boolean {
-  return rayHitsVerticalCapsule(
-    originX,
-    originY,
-    originZ,
-    dirX,
-    dirY,
-    dirZ,
-    distance,
-    target.feetX,
-    target.feetY,
-    target.feetZ,
-  );
+export function scaleDamageForBodyPart(baseDamage: number, partId: BodyPartId): number {
+  return Math.max(1, Math.round(baseDamage * getBodyPartDef(partId).damageMultiplier));
 }
+
+export { isValidBodyPartId, type BodyPartId };
+export type { BodyPartVolume };

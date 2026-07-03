@@ -13,8 +13,9 @@ import type { WeaponFireMode } from '../../shared/content/weaponConfig';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { ShieldDomeAbility } from '../combat/ShieldDomeAbility';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
+import { bodyPartVolumesFromBoneRefs, type BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
-import { readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
+import { readCrosshairWorldRay, readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -28,7 +29,10 @@ import {
   loadDeathCharacterTemplate,
   loadGameCharacterTemplate,
   preloadGameCharacterModels,
+  readBodyPartBoneRefsWorld,
+  resolveBodyPartBones,
   resolveCharacterRig,
+  type BodyPartBones,
   type CharacterInstance,
   type CharacterTemplate,
   type RemoteCharacterPose,
@@ -45,7 +49,7 @@ import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
 import { WeaponSway } from './WeaponSway';
 import { KatanaSlashTrailFx, KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
-import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled } from '../combat/HitCapsuleDebugMesh';
+import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled, updateHitCapsuleDebugMesh } from '../combat/HitCapsuleDebugMesh';
 import {
   attachAxisDebugArrowsIfEnabled,
   type AxisDebugArrows,
@@ -62,9 +66,15 @@ import {
 } from '../../shared/combat/characterAnim';
 import { getDefaultShieldPoints, SHIELD_DEFAULT_LEVEL } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
+import {
+  CROUCH_EYE_DROP,
+  CROUCH_SPEED_MULTIPLIER,
+  feetYFromNetworkEyeY,
+} from '../../shared/combat/crouch';
 import { PlayerInventory } from '../inventory/PlayerInventory';
 import type { InventoryWeaponEntry, InventoryMeleeEntry } from '../ui/InventoryHud';
 const MOVE_SPEED = 3;
+const CROUCH_CAMERA_BLEND_SPEED = 12;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
 const _crosshairAimOffset = { x: 0, y: 0 };
@@ -133,6 +143,8 @@ export class Player {
   private onShieldBreakListener: (() => void) | null = null;
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
+  private hitRayOrigin = new THREE.Vector3();
+  private hitRayDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSway | null = null;
   private katanaSlashFx: KatanaSlashTrailFx | null = null;
@@ -153,11 +165,14 @@ export class Player {
   private targetWalking = false;
   private targetWalkingBackward = false;
   private targetJumping = false;
+  private targetCrouching = false;
   private targetShieldRecharging = false;
   private targetShieldRechargeEndAt = 0;
   private locomotionWalking = false;
   private locomotionWalkingBackward = false;
   private locomotionJumping = false;
+  private locomotionCrouching = false;
+  private crouchBlend = 0;
   private remoteDisplayedWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
   private readonly remoteWeaponBasePosition = new THREE.Vector3();
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
@@ -181,6 +196,7 @@ export class Player {
   private shieldLevel = SHIELD_DEFAULT_LEVEL;
   private shieldPoints = getDefaultShieldPoints();
   private hitCapsuleDebug: THREE.Group | null = null;
+  private bodyPartBones: BodyPartBones | null = null;
 
   private constructor(local: boolean) {
     this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG);
@@ -361,6 +377,7 @@ export class Player {
       walking: this.targetWalking,
       walkingBackward: this.targetWalkingBackward,
       jumping: this.targetJumping,
+      crouching: this.targetCrouching,
       reloading,
       switchingWeapon: weaponSwitch.active && !this.weaponSwitchAnimConsumed,
       meleeAttacking:
@@ -384,6 +401,7 @@ export class Player {
     this.characterInstance = createCharacterInstance(template);
     this.pitchPivot.add(this.characterInstance.root);
     this.displayedCharacterModelFile = template.modelFile;
+    this.bodyPartBones = resolveBodyPartBones(this.characterInstance.root);
     this.bindRemoteCharacterRig(template);
   }
 
@@ -451,7 +469,7 @@ export class Player {
     scene.add(this.object);
     if (isHitCapsuleDebugEnabled() && !this.camera) {
       this.hitCapsuleDebug = createHitCapsuleDebugMesh();
-      this.object.add(this.hitCapsuleDebug);
+      (this.bodyRoot ?? this.object).add(this.hitCapsuleDebug);
     }
   }
 
@@ -468,6 +486,7 @@ export class Player {
     isWalking: boolean;
     isWalkingBackward: boolean;
     isJumping: boolean;
+    isCrouching: boolean;
   } {
     if (this.camera) {
       return {
@@ -475,6 +494,7 @@ export class Player {
         isWalking: this.locomotionWalking,
         isWalkingBackward: this.locomotionWalkingBackward,
         isJumping: this.locomotionJumping,
+        isCrouching: this.locomotionCrouching,
       };
     }
 
@@ -483,6 +503,7 @@ export class Player {
       isWalking: this.targetWalking,
       isWalkingBackward: this.targetWalkingBackward,
       isJumping: this.targetJumping,
+      isCrouching: this.targetCrouching,
     };
   }
 
@@ -658,6 +679,19 @@ export class Player {
     return this.currentYaw;
   }
 
+  getAimPitch(): number {
+    return this.currentPitch;
+  }
+
+  /** Bone-driven world-space hit capsules (updated each remote frame). */
+  getBodyHitVolumes(): BodyPartVolume[] | null {
+    if (!this.bodyPartBones || !this.characterInstance) return null;
+    this.characterInstance.update(0);
+    this.object.updateMatrixWorld(true);
+    const boneRefs = readBodyPartBoneRefsWorld(this.bodyPartBones);
+    return bodyPartVolumesFromBoneRefs(boneRefs);
+  }
+
   /** Third-person active weapon muzzle in world space (remote observers). */
   readActiveMuzzleWorldPosition(position: THREE.Vector3, weaponId?: WeaponId): boolean {
     if (!this.loadout || this.camera) return false;
@@ -696,6 +730,11 @@ export class Player {
 
     this.headBob.reset();
     this.footstepSounds?.reset();
+    this.crouchBlend = 0;
+    this.locomotionCrouching = false;
+    if (this.pitchRig) {
+      this.pitchRig.position.y = EYE_HEIGHT;
+    }
     if (this.headRig) {
       this.headRig.position.set(0, 0, 0);
       this.headRig.rotation.set(0, 0, 0);
@@ -721,7 +760,11 @@ export class Player {
   }
 
   setFromSnapshot(snapshot: PlayerSnapshot, snap = false): void {
-    this.targetPosition.set(snapshot.x, snapshot.y - EYE_HEIGHT, snapshot.z);
+    this.targetPosition.set(
+      snapshot.x,
+      feetYFromNetworkEyeY(snapshot.y, snapshot.crouching),
+      snapshot.z,
+    );
     this.targetYaw = snapshot.yaw;
     this.targetPitch = snapshot.pitch;
     this.targetReloadEndAt = snapshot.reloadEndAt;
@@ -741,6 +784,7 @@ export class Player {
     this.targetWalking = snapshot.walking;
     this.targetWalkingBackward = snapshot.walkingBackward;
     this.targetJumping = snapshot.jumping;
+    this.targetCrouching = snapshot.crouching;
     this.targetShieldRecharging = snapshot.shieldRecharging;
     this.targetShieldRechargeEndAt = snapshot.shieldRechargeEndAt;
     this.teamId = snapshot.teamId;
@@ -805,6 +849,15 @@ export class Player {
     this.applyRemoteAim();
     this.characterInstance?.update(delta);
     this.applyRemoteSpinePitch();
+    this.syncHitCapsuleDebug();
+  }
+
+  private syncHitCapsuleDebug(): void {
+    if (!this.hitCapsuleDebug) return;
+
+    const space = this.bodyRoot ?? this.object;
+    const volumes = this.getBodyHitVolumes();
+    updateHitCapsuleDebugMesh(this.hitCapsuleDebug, volumes, space);
   }
 
   updateRemoteHealthBar(
@@ -953,7 +1006,20 @@ export class Player {
         ? this.weaponPose?.isSlashing() ?? false
         : this.isFiring(pointer, active.config.fireMode);
 
+    const wantsCrouch = input.isPressed('KeyC');
+    this.locomotionCrouching = wantsCrouch;
+    this.crouchBlend = THREE.MathUtils.damp(
+      this.crouchBlend,
+      wantsCrouch ? 1 : 0,
+      CROUCH_CAMERA_BLEND_SPEED,
+      delta,
+    );
+    if (this.pitchRig) {
+      this.pitchRig.position.y = EYE_HEIGHT - this.crouchBlend * CROUCH_EYE_DROP;
+    }
+
     const wantsSprint =
+      !wantsCrouch &&
       input.isPressed('ShiftLeft') &&
       input.isPressed('KeyW') &&
       this.physics.grounded;
@@ -1020,7 +1086,9 @@ export class Player {
     const moveMultiplier =
       meleeEquipped && isSprinting
         ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
-        : 1;
+        : wantsCrouch
+          ? CROUCH_SPEED_MULTIPLIER
+          : 1;
     const speed = MOVE_SPEED * moveMultiplier * delta;
 
     this.camera.getWorldDirection(this.forward);
@@ -1051,7 +1119,7 @@ export class Player {
       deltaZ -= this.right.z * speed;
     }
 
-    const jump = input.isJustPressed('Space');
+    const jump = !wantsCrouch && input.isJustPressed('Space');
     const wasGrounded = this.physics.grounded;
     const result = stepPlayerPhysics(
       this.object.position.x,
@@ -1122,6 +1190,7 @@ export class Player {
     this.katanaSlashFx?.dispose();
     this.katanaSlashFx = null;
     this.hitCapsuleDebug = null;
+    this.bodyPartBones = null;
     this.object.traverse((child) => {
       if (child instanceof THREE.Mesh || child instanceof THREE.LineSegments) {
         child.geometry.dispose();
@@ -1298,8 +1367,35 @@ export class Player {
       this.muzzleOrigin,
       this.aimDirection,
     );
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    projectMuzzleAimToScreenOffset(
+      active.mesh,
+      this.camera,
+      viewportWidth,
+      viewportHeight,
+      _crosshairAimOffset,
+    );
+    readCrosshairWorldRay(
+      this.camera,
+      viewportWidth,
+      viewportHeight,
+      _crosshairAimOffset.x,
+      _crosshairAimOffset.y,
+      this.hitRayOrigin,
+      this.hitRayDirection,
+    );
+
     const feet = this.object.position;
-    projectiles.spawn(this.muzzleOrigin, this.aimDirection, {
+    projectiles.spawn(
+      {
+        hitRayOrigin: this.hitRayOrigin,
+        hitRayDirection: this.hitRayDirection,
+        visualOrigin: this.muzzleOrigin,
+        speed: active.config.projectileSpeed,
+      },
+      {
       ...this.projectileSpawnOptions,
       shooterId: this.projectileSpawnOptions.ownerSessionId || undefined,
       shooterWorldPos: new THREE.Vector3(
@@ -1308,8 +1404,8 @@ export class Player {
         feet.z,
       ),
       muzzleFlash: active.config.muzzleFlash,
-      speed: active.config.projectileSpeed,
-    });
+      },
+    );
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
     return true;
   }

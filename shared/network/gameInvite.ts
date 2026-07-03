@@ -46,4 +46,5 @@ export interface StartGameInviteMessage {
   partyId?: string;
   friendlyFire?: boolean;
   mapId?: string;
+  gameMode?: string;
 }

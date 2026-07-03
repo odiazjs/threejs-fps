@@ -5,7 +5,7 @@ export const WEAPON_DAMAGE: Record<WeaponId, number> = {
   plasma_rifle: 7,
   pistol: 11,
   sniper_rifle: 90,
-  katana: 15,
+  katana: 44,
 };
 
 export const WEAPON_RELOAD_SEC: Record<WeaponId, number> = {

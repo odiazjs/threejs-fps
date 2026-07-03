@@ -151,10 +151,17 @@
         </nav>
 
         <button id="lobby-join-btn" class="primary-btn" type="button">QUICK MATCH</button>
-        <div class="lobby-map-select panel">
-          <label class="lobby-map-select-label" for="lobby-map-select">MAP</label>
-          <select id="lobby-map-select" class="lobby-map-select-input text-input" aria-label="Select map">
-          </select>
+        <div class="lobby-match-setup panel">
+          <div class="lobby-match-setup-row">
+            <label class="lobby-match-setup-label" for="lobby-mode-select">MODE</label>
+            <select id="lobby-mode-select" class="lobby-match-setup-input text-input" aria-label="Select game mode">
+            </select>
+          </div>
+          <div class="lobby-match-setup-row">
+            <label class="lobby-match-setup-label" for="lobby-map-select">MAP</label>
+            <select id="lobby-map-select" class="lobby-match-setup-input text-input" aria-label="Select map">
+            </select>
+          </div>
         </div>
       </div>
     </section>

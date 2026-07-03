@@ -1,6 +1,9 @@
+import type { BodyPartId } from '../combat/bodyParts.js';
+
 export interface PlayerHitMessage {
   targetId: string;
   weaponId: string;
+  bodyPart?: BodyPartId;
 }
 
 /** Sent to the victim when a hit lands — includes shooter position from fire time. */

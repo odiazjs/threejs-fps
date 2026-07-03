@@ -1,6 +1,7 @@
 import { Client, Room } from 'colyseus';
 import { overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
 import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
+import { CROUCH_EYE_HEIGHT } from '../../../shared/combat/crouch.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
 import { getMapDef, normalizeMapId, type MapCollisionDef } from '../../../shared/level/maps.js';
@@ -11,8 +12,8 @@ import {
 } from '../../../shared/combat/damage.js';
 import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
 import {
-  defaultGameModeForMap,
   defaultTdmExpectedPlayers,
+  normalizeGameMode,
   resolveTdmTeamCount,
   TDM_COUNTDOWN_SEC,
   TDM_KILL_POINTS,
@@ -44,9 +45,15 @@ import {
   WEAPON_FIRE_MODE,
 } from '../../../shared/content/weaponStats.js';
 import {
+  aimDirectionFromYawPitch,
   feetYFromEyeY,
   isMeleeHitValid,
 } from '../../../shared/combat/meleeHit.js';
+import { normalizeBodyPartId } from '../../../shared/combat/bodyParts.js';
+import {
+  raycastPlayerBodyPart,
+  scaleDamageForBodyPart,
+} from '../../../shared/combat/playerHitbox.js';
 import { applyDamageWithShield, applyShieldChargeRecharge, canUseShieldCharge, getShieldCapacity, resetPlayerShield } from '../../../shared/combat/shield.js';
 import { SHIELD_CHARGE_TIME_SEC } from '../../../shared/combat/shieldRecharge.js';
 import {
@@ -103,6 +110,7 @@ interface MoveMessage {
   walking?: boolean;
   walkingBackward?: boolean;
   jumping?: boolean;
+  crouching?: boolean;
 }
 
 interface JoinOptions {
@@ -113,6 +121,7 @@ interface JoinOptions {
   maxPartySize?: number;
   friendlyFire?: boolean;
   mapId?: string;
+  gameMode?: string;
 }
 
 interface LastShotOrigin {
@@ -126,7 +135,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   state = new FpsState();
   maxClients = 8;
   private inviteMatch = false;
-  private gameMode: GameMode = 'ffa';
+  private gameMode: GameMode = 'playground';
   private expectedPlayers = 0;
   private mapDef!: MapCollisionDef;
   private emptyDisposeTimer?: ReturnType<Room['clock']['setTimeout']>;
@@ -150,7 +159,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const mapId = normalizeMapId(options.mapId);
     this.state.mapId = mapId;
     this.mapDef = getMapDef(mapId);
-    this.gameMode = defaultGameModeForMap(mapId);
+    this.gameMode = normalizeGameMode(options.gameMode);
     this.state.gameMode = this.gameMode;
 
     if (this.gameMode === 'tdm') {
@@ -652,7 +661,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!player?.alive) return;
       if (this.isTdm() && this.state.matchPhase !== 'playing') return;
 
-      const clientFeetY = data.y - EYE_HEIGHT;
+      const crouching = data.crouching === true;
+      const eyeHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+      const clientFeetY = data.y - eyeHeight;
       const feetYForMove = resolveMoveFeetY(data.x, data.z, clientFeetY, this.mapDef);
       const deltaX = data.x - player.x;
       const deltaZ = data.z - player.z;
@@ -667,11 +678,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       player.x = resolved.x;
       player.z = resolved.z;
-      player.y = clampEyeY(resolved.x, resolved.z, data.y, this.mapDef);
+      player.y = clampEyeY(resolved.x, resolved.z, data.y, this.mapDef, crouching);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
-      player.jumping = data.jumping === true;
-      player.sprinting = data.sprinting === true && !player.jumping;
+      player.crouching = crouching;
+      player.jumping = data.jumping === true && !crouching;
+      player.sprinting = data.sprinting === true && !player.jumping && !crouching;
       player.walking = data.walking === true && !player.sprinting && !player.jumping;
       player.walkingBackward =
         player.walking && data.walkingBackward === true;
@@ -978,8 +990,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const maxDistance = getWeaponMaxHitDistance(data.weaponId);
       if (distance > maxDistance) return;
 
+      const targetFeetY = feetYFromEyeY(target.y);
       if (data.weaponId === MELEE_WEAPON_ID) {
-        const targetFeetY = feetYFromEyeY(target.y);
         if (
           !isMeleeHitValid(
             shooter.x,
@@ -997,7 +1009,31 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         }
       }
 
-      const damage = getWeaponDamage(data.weaponId);
+      const targetHit = {
+        feetX: target.x,
+        feetY: targetFeetY,
+        feetZ: target.z,
+        yaw: target.yaw,
+        pitch: target.pitch,
+      };
+
+      let bodyPart = normalizeBodyPartId(data.bodyPart);
+      if (data.weaponId === MELEE_WEAPON_ID) {
+        const dir = aimDirectionFromYawPitch(shooter.yaw, shooter.pitch);
+        const meleeHit = raycastPlayerBodyPart(
+          shooter.x,
+          shooter.y,
+          shooter.z,
+          dir.x,
+          dir.y,
+          dir.z,
+          maxDistance,
+          targetHit,
+        );
+        if (meleeHit) bodyPart = meleeHit.part;
+      }
+
+      const damage = scaleDamageForBodyPart(getWeaponDamage(data.weaponId), bodyPart);
       const prevShieldPoints = target.shieldPoints;
       const result = applyDamageWithShield(target.hp, target.shieldPoints, damage);
       target.shieldPoints = result.shieldPoints;
@@ -1298,6 +1334,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.sprinting = false;
     player.walking = false;
     player.jumping = false;
+    player.crouching = false;
     initDefaultLoadoutSlots(player);
     player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
   }

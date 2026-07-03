@@ -9,6 +9,7 @@ import { refreshLobbyProfileStats } from './lobbyProfileStats';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
 import { getSelectedMapId, initLobbyMapSelector } from './mapSelection';
+import { getSelectedGameMode, initLobbyGameModeSelector } from './gameModeSelection';
 import { setGameJoinIntent } from '../auth/gameJoin';
 import type { AppPresenceView } from '../../shared/network/appView';
 
@@ -47,6 +48,7 @@ async function startLobby(): Promise<void> {
     ]);
 
     appShell.bindNavigation();
+    initLobbyGameModeSelector();
     initLobbyMapSelector();
     if (initialView !== 'lobby') {
       await appShell.showView(initialView);
@@ -63,7 +65,7 @@ async function startLobby(): Promise<void> {
       if (loading.active) return;
       loading.show('Joining game...');
       joinBtn.disabled = true;
-      setGameJoinIntent({ mode: 'create', mapId: getSelectedMapId() });
+      setGameJoinIntent({ mode: 'create', mapId: getSelectedMapId(), gameMode: getSelectedGameMode() });
       window.location.href = '/game.html';
     });
 

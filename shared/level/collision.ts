@@ -1,3 +1,4 @@
+import { CROUCH_EYE_HEIGHT } from '../combat/crouch.js';
 import {
   EYE_HEIGHT,
   GROUND_SNAP,
@@ -365,11 +366,14 @@ export function clampEyeY(
   feetZ: number,
   eyeY: number,
   map: MapCollisionDef = getClientMapDef(),
+  crouching = false,
 ): number {
-  const feetY = eyeY - EYE_HEIGHT;
+  const standEyeHeight = EYE_HEIGHT;
+  const feetY = eyeY - standEyeHeight;
   const ground = getGroundHeight(feetX, feetZ, feetY, map);
-  const minEyeY = ground + EYE_HEIGHT;
-  const maxEyeY = ground + EYE_HEIGHT + MAX_JUMP_HEIGHT;
+  const minEyeHeight = crouching ? CROUCH_EYE_HEIGHT : standEyeHeight;
+  const minEyeY = ground + minEyeHeight;
+  const maxEyeY = ground + standEyeHeight + MAX_JUMP_HEIGHT;
   return Math.max(minEyeY, Math.min(eyeY, maxEyeY));
 }
 

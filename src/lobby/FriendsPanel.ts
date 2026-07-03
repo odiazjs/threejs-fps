@@ -21,6 +21,7 @@ import { setGameJoinIntent } from '../auth/gameJoin';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
 import { getSelectedMapId } from './mapSelection';
+import { getSelectedGameMode } from './gameModeSelection';
 import { isInviteablePresence } from './friendPresenceUi';
 
 const ACTION_TIMEOUT_MS = 12_000;
@@ -280,6 +281,7 @@ export class FriendsPanel {
       this.party.partyId,
       this.friendlyFireCheckbox.checked,
       getSelectedMapId(),
+      getSelectedGameMode(),
     );
   }
 

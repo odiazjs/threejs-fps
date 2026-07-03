@@ -1,16 +1,36 @@
 import type { MapId } from '../level/maps.js';
 
-export type GameMode = 'ffa' | 'tdm';
+export type GameMode = 'playground' | 'tdm';
 
 export type MatchPhase = 'waiting' | 'countdown' | 'playing' | 'ended';
+
+export const DEFAULT_GAME_MODE: GameMode = 'playground';
+
+export const GAME_MODE_OPTIONS = [
+  {
+    id: 'playground' as const,
+    label: 'Testing Playground',
+    description: 'Free play — no timer or scores',
+  },
+  {
+    id: 'tdm' as const,
+    label: 'Team Deathmatch',
+    description: 'Team match with countdown, timer, and scores',
+  },
+] as const;
 
 export const TDM_COUNTDOWN_SEC = 5;
 export const TDM_MATCH_DURATION_SEC = 120;
 export const TDM_KILL_POINTS = 10;
 export const MAX_TDM_TEAMS = 4;
 
-export function defaultGameModeForMap(mapId: MapId): GameMode {
-  return mapId === 'killhouse_small' ? 'tdm' : 'ffa';
+export function isValidGameMode(value: string | null | undefined): value is GameMode {
+  return value === 'playground' || value === 'tdm';
+}
+
+export function normalizeGameMode(value: string | null | undefined): GameMode {
+  if (value === 'tdm') return 'tdm';
+  return 'playground';
 }
 
 /** Humans required before a TDM match leaves the lobby. */

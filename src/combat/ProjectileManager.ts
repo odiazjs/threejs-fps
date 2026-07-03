@@ -1,12 +1,18 @@
 import type { Scene, Vector3 } from 'three';
 import * as THREE from 'three';
+import type { BodyPartId } from '../../shared/combat/bodyParts';
 import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
-import { rayHitsPlayer } from '../../shared/combat/playerHitbox';
+import { raycastPlayerBodyPart } from '../../shared/combat/playerHitbox';
 import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
 import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
 import { HitSplash } from './HitSplash';
 import { MuzzleFlash } from './MuzzleFlash';
-import { Projectile } from './Projectile';
+import {
+  Projectile,
+  type ProjectileLevelHit,
+  type ProjectileSegmentProbe,
+  type ProjectileSpawnParams,
+} from './Projectile';
 import { tryMeleeHit as raycastMeleeHit } from './meleeAttack';
 
 export interface ProjectileHitTarget extends PlayerHitTarget {
@@ -22,13 +28,21 @@ interface ProjectileMeta {
   shooterWorldPos?: THREE.Vector3;
 }
 
+interface SegmentHitCandidate {
+  point: THREE.Vector3;
+  distance: number;
+}
+
+const _aimOrigin = new THREE.Vector3();
+const _aimDir = new THREE.Vector3();
+
 export class ProjectileManager {
   private readonly projectiles: Projectile[] = [];
   private readonly splashes: HitSplash[] = [];
   private readonly muzzleFlashes: MuzzleFlash[] = [];
   private readonly meta = new WeakMap<Projectile, ProjectileMeta>();
   private getHitTargets: (() => ProjectileHitTarget[]) | null = null;
-  private onPlayerHit: ((targetId: string, point: Vector3) => void) | null = null;
+  private onPlayerHit: ((targetId: string, point: Vector3, bodyPart: BodyPartId) => void) | null = null;
   private shieldDomeManager: ShieldDomeManager | null = null;
   private getWorldTime: (() => number) | null = null;
 
@@ -44,7 +58,7 @@ export class ProjectileManager {
 
   setPlayerHitHandlers(
     getHitTargets: () => ProjectileHitTarget[],
-    onPlayerHit: (targetId: string, point: Vector3) => void,
+    onPlayerHit: (targetId: string, point: Vector3, bodyPart: BodyPartId) => void,
   ): void {
     this.getHitTargets = getHitTargets;
     this.onPlayerHit = onPlayerHit;
@@ -66,13 +80,12 @@ export class ProjectileManager {
     if (!hit) return false;
 
     this.spawnSplash(hit.point);
-    this.onPlayerHit(hit.sessionId, hit.point);
+    this.onPlayerHit(hit.sessionId, hit.point, hit.bodyPart);
     return true;
   }
 
   spawn(
-    origin: Vector3,
-    direction: Vector3,
+    params: ProjectileSpawnParams,
     options?: {
       canHitPlayers?: boolean;
       ownerTeamId?: number;
@@ -80,20 +93,19 @@ export class ProjectileManager {
       shooterId?: string;
       shooterWorldPos?: Vector3;
       muzzleFlash?: MuzzleFlashConfig;
-      speed?: number;
     },
   ): void {
     if (options?.muzzleFlash) {
-      const flash = new MuzzleFlash(origin, direction, options.muzzleFlash);
+      const flash = new MuzzleFlash(
+        params.visualOrigin,
+        params.hitRayDirection,
+        options.muzzleFlash,
+      );
       this.scene.add(flash.object);
       this.muzzleFlashes.push(flash);
     }
 
-    const projectile = new Projectile(
-      origin,
-      direction,
-      options?.speed ?? 100,
-    );
+    const projectile = new Projectile(params);
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);
     this.meta.set(projectile, {
@@ -110,18 +122,21 @@ export class ProjectileManager {
       const projectile = this.projectiles[i];
       let playerHitPoint: Vector3 | null = null;
 
-      const result = projectile.update(delta, (from, to) => {
-        const domeHit = this.tryShieldDomeHit(projectile, from, to, worldTime);
-        if (domeHit) {
-          playerHitPoint = domeHit;
-          return true;
+      const probe: ProjectileSegmentProbe = (from, to, levelHit) => {
+        const resolved = this.resolveGameplaySegmentHit(
+          projectile,
+          from,
+          to,
+          levelHit,
+          worldTime,
+        );
+        if (resolved?.isPlayer) {
+          playerHitPoint = resolved.point;
         }
+        return resolved?.point ?? null;
+      };
 
-        const hitPoint = this.tryPlayerHitSegment(projectile, from, to);
-        if (!hitPoint) return false;
-        playerHitPoint = hitPoint;
-        return true;
-      });
+      const result = projectile.update(delta, probe);
 
       if (playerHitPoint) {
         this.spawnSplash(playerHitPoint);
@@ -157,69 +172,167 @@ export class ProjectileManager {
     }
   }
 
-  private tryShieldDomeHit(
+  private resolveGameplaySegmentHit(
     projectile: Projectile,
-    from: Vector3,
-    to: Vector3,
+    from: THREE.Vector3,
+    to: THREE.Vector3,
+    levelHit: ProjectileLevelHit | null,
     worldTime: number,
-  ): Vector3 | null {
+  ): { point: THREE.Vector3; isPlayer: boolean } | null {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const travel = Math.hypot(dx, dy, dz);
+    if (travel <= 1e-6) return null;
+
+    const dirX = dx / travel;
+    const dirY = dy / travel;
+    const dirZ = dz / travel;
+
+    projectile.getAimOrigin(_aimOrigin);
+    projectile.getAimDirection(_aimDir);
+    const segStartDist = (
+      (from.x - _aimOrigin.x) * _aimDir.x
+      + (from.y - _aimOrigin.y) * _aimDir.y
+      + (from.z - _aimOrigin.z) * _aimDir.z
+    );
+    const segEndDist = (
+      (to.x - _aimOrigin.x) * _aimDir.x
+      + (to.y - _aimOrigin.y) * _aimDir.y
+      + (to.z - _aimOrigin.z) * _aimDir.z
+    );
+
+    let best: SegmentHitCandidate | null = null;
+
+    if (levelHit) {
+      const absDist = segStartDist + levelHit.distance;
+      if (levelHit.distance >= 0 && levelHit.distance <= travel + 1e-5) {
+        best = {
+          point: new THREE.Vector3(levelHit.x, levelHit.y, levelHit.z),
+          distance: absDist,
+        };
+      }
+    }
+
+    const shieldHit = this.tryShieldDomeSegmentHit(
+      projectile,
+      from,
+      dirX,
+      dirY,
+      dirZ,
+      travel,
+      worldTime,
+    );
+    if (shieldHit) {
+      const absDist = segStartDist + shieldHit.distance;
+      if (!best || absDist < best.distance) {
+        best = { point: shieldHit.point, distance: absDist };
+      }
+    }
+
+    const playerHit = this.tryPlayerRayHit(projectile, segEndDist);
+    if (playerHit && (!best || playerHit.distance < best.distance)) {
+      if (!this.onPlayerHit) return null;
+      this.onPlayerHit(playerHit.sessionId, playerHit.point, playerHit.bodyPart);
+      return { point: playerHit.point, isPlayer: true };
+    }
+
+    if (!best) return null;
+    return { point: best.point, isPlayer: false };
+  }
+
+  private tryShieldDomeSegmentHit(
+    projectile: Projectile,
+    from: THREE.Vector3,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    travel: number,
+    worldTime: number,
+  ): SegmentHitCandidate | null {
     if (!this.shieldDomeManager) return null;
 
     const info = this.meta.get(projectile);
     const ownerSessionId = info?.ownerSessionId ?? '';
     const time = this.getWorldTime?.() ?? worldTime;
-    return this.shieldDomeManager.testProjectileSegment(
+    const endX = from.x + dirX * travel;
+    const endY = from.y + dirY * travel;
+    const endZ = from.z + dirZ * travel;
+    const hitPoint = this.shieldDomeManager.testProjectileSegment(
       from,
-      to,
+      new THREE.Vector3(endX, endY, endZ),
       ownerSessionId,
       time,
     );
+    if (!hitPoint) return null;
+
+    const distance = this.distanceAlongSegment(from, dirX, dirY, dirZ, hitPoint);
+    if (distance < 0 || distance > travel + 1e-5) return null;
+
+    return { point: hitPoint, distance };
   }
 
-  private tryPlayerHitSegment(
+  private tryPlayerRayHit(
     projectile: Projectile,
-    from: Vector3,
-    to: Vector3,
-  ): Vector3 | null {
+    maxDist: number,
+  ): { sessionId: string; point: THREE.Vector3; bodyPart: BodyPartId; distance: number } | null {
     const info = this.meta.get(projectile);
-    if (!info?.canHitPlayers || !this.getHitTargets || !this.onPlayerHit) {
+    if (!info?.canHitPlayers || !this.getHitTargets || maxDist <= 1e-6) {
       return null;
     }
 
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const dz = to.z - from.z;
-    const dist = Math.hypot(dx, dy, dz);
-    if (dist <= 1e-6) return null;
+    projectile.getAimOrigin(_aimOrigin);
+    projectile.getAimDirection(_aimDir);
 
-    const dirX = dx / dist;
-    const dirY = dy / dist;
-    const dirZ = dz / dist;
+    let bestHit: {
+      target: ProjectileHitTarget;
+      bodyHit: { part: BodyPartId; distance: number };
+    } | null = null;
 
     for (const target of this.getHitTargets()) {
       if (info.ownerSessionId && target.sessionId === info.ownerSessionId) {
         continue;
       }
-      if (
-        !rayHitsPlayer(
-          from.x,
-          from.y,
-          from.z,
-          dirX,
-          dirY,
-          dirZ,
-          dist,
-          target,
-        )
-      ) {
-        continue;
-      }
 
-      this.onPlayerHit(target.sessionId, to.clone());
-      return to.clone();
+      const bodyHit = raycastPlayerBodyPart(
+        _aimOrigin.x,
+        _aimOrigin.y,
+        _aimOrigin.z,
+        _aimDir.x,
+        _aimDir.y,
+        _aimDir.z,
+        maxDist,
+        target,
+      );
+      if (!bodyHit) continue;
+      if (bestHit && bodyHit.distance >= bestHit.bodyHit.distance) continue;
+      bestHit = { target, bodyHit };
     }
 
-    return null;
+    if (!bestHit) return null;
+
+    const point = _aimOrigin.clone().addScaledVector(_aimDir, bestHit.bodyHit.distance);
+
+    return {
+      sessionId: bestHit.target.sessionId,
+      point,
+      bodyPart: bestHit.bodyHit.part,
+      distance: bestHit.bodyHit.distance,
+    };
+  }
+
+  private distanceAlongSegment(
+    from: THREE.Vector3,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    point: THREE.Vector3,
+  ): number {
+    return (
+      (point.x - from.x) * dirX
+      + (point.y - from.y) * dirY
+      + (point.z - from.z) * dirZ
+    );
   }
 
   private spawnSplash(point: Vector3): void {

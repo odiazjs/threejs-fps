@@ -10,6 +10,8 @@ const _aimPoint = new THREE.Vector3();
 const _muzzlePos = new THREE.Vector3();
 const _muzzleDir = new THREE.Vector3();
 const _muzzleBack = new THREE.Vector3();
+const _ndcNear = new THREE.Vector3();
+const _ndcFar = new THREE.Vector3();
 
 function getMuzzleObject(weapon: THREE.Object3D): THREE.Object3D {
   const cached = weapon.userData.weaponMuzzle as THREE.Object3D | undefined;
@@ -25,6 +27,25 @@ export function readWeaponMuzzleWorldPosition(
 
 function readMuzzlePosition(weapon: THREE.Object3D, position: THREE.Vector3): void {
   readWeaponMuzzleWorldPosition(weapon, position);
+}
+
+/** World-space ray through a screen pixel (crosshair position). */
+export function readCrosshairWorldRay(
+  camera: THREE.Camera,
+  viewportWidth: number,
+  viewportHeight: number,
+  screenOffsetX: number,
+  screenOffsetY: number,
+  origin: THREE.Vector3,
+  direction: THREE.Vector3,
+): void {
+  const ndcX = ((viewportWidth * 0.5 + screenOffsetX) / viewportWidth) * 2 - 1;
+  const ndcY = -((viewportHeight * 0.5 + screenOffsetY) / viewportHeight) * 2 + 1;
+
+  _ndcNear.set(ndcX, ndcY, 0).unproject(camera);
+  _ndcFar.set(ndcX, ndcY, 1).unproject(camera);
+  origin.copy(_ndcNear);
+  direction.subVectors(_ndcFar, _ndcNear).normalize();
 }
 
 /** World-space bore direction from the muzzle (includes sway / visual recoil). */

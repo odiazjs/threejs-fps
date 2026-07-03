@@ -1,4 +1,4 @@
-const DEFAULT_PREVENT_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft'] as const;
+const DEFAULT_PREVENT_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'ShiftLeft', 'KeyC'] as const;
 
 export class KeyboardInput {
   private keys: Record<string, boolean> = {};

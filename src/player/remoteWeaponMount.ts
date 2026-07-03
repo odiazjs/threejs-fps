@@ -73,6 +73,9 @@ export function getRemoteWeaponMount(modelFile: string, weaponId: WeaponId): Rem
     return MELEE_IDLE_MOUNT;
   }
 
+  if (modelFile === CHARACTER_MODEL_FILES.crouchIdle) return RIFLE_AIMING_RIFLE_MOUNT;
+  if (modelFile === CHARACTER_MODEL_FILES.crouchWalk) return RIFLE_WALK_MOUNT;
+
   if (weaponId === 'pistol') {
     if (modelFile === CHARACTER_MODEL_FILES.pistolRun) return PISTOL_RUN_MOUNT;
     if (modelFile === CHARACTER_MODEL_FILES.pistolWalk) return PISTOL_WALK_MOUNT;

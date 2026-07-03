@@ -44,6 +44,7 @@ export interface PlayerSnapshot {
   walking: boolean;
   walkingBackward: boolean;
   jumping: boolean;
+  crouching: boolean;
   shieldDomeChargeEndAt: number;
   shieldDomeEndAt: number;
   shieldDomeCooldownEndAt: number;

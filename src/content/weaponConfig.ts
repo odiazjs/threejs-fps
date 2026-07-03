@@ -263,7 +263,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     glowLayers: 2,
     particleSizeScale: 1.35,
   },
-  sway: { intensity: 0.72 },
+  sway: { intensity: 1.75 },
   sounds: {
     singleShot: '/sounds/sniper_3.wav',
     reload: '/sounds/sniper_reload_1.wav',

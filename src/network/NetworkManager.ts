@@ -5,6 +5,7 @@ import { isWeaponId, MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import type { Player } from '../player/Player';
 import type { PlayerControls } from '../player/PlayerControls';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
+import { CROUCH_EYE_HEIGHT } from '../../shared/combat/crouch';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
@@ -104,12 +105,19 @@ export class NetworkManager {
 
       readProjectileShooterWorldPos(spawn, _shooterWorldPos);
 
-      this.projectiles.spawn(_origin, _direction, {
-        muzzleFlash: weaponConfig?.muzzleFlash,
-        speed: weaponConfig?.projectileSpeed,
-        shooterId: spawn.shooterId,
-        shooterWorldPos: _shooterWorldPos,
-      });
+      this.projectiles.spawn(
+        {
+          hitRayOrigin: _origin,
+          hitRayDirection: _direction,
+          visualOrigin: _origin,
+          speed: weaponConfig?.projectileSpeed ?? 100,
+        },
+        {
+          muzzleFlash: weaponConfig?.muzzleFlash,
+          shooterId: spawn.shooterId,
+          shooterWorldPos: _shooterWorldPos,
+        },
+      );
     });
     this.roomClient.onWeaponShotSound((shot) => {
       if (shot.phase === 'autoStop') {
@@ -231,14 +239,14 @@ export class NetworkManager {
           this.localCombat.teamId,
           this.roomClient.sessionId ?? '',
         ),
-      (targetId, point) => {
+      (targetId, point, bodyPart) => {
         this.impactSounds?.playEnemyHit();
         this.recordLocalHit(targetId);
         const weaponId = player.getActiveWeaponId();
         if (weaponId === MELEE_WEAPON_ID) {
           this.remotePlayers.getPlayer(targetId)?.playMeleeHitFx(point);
         }
-        this.roomClient.sendHit(targetId, weaponId);
+        this.roomClient.sendHit(targetId, weaponId, bodyPart);
         onLocalHit?.();
       },
     );
@@ -508,10 +516,13 @@ export class NetworkManager {
     const { yaw, pitch } = player.getNetworkAim();
 
     const locomotion = player.getLocomotionState();
+    const eyeY = locomotion.isCrouching
+      ? feet.y + CROUCH_EYE_HEIGHT
+      : feet.y + EYE_HEIGHT;
 
     this.roomClient.sendMove(
       feet.x,
-      feet.y + EYE_HEIGHT,
+      eyeY,
       feet.z,
       yaw,
       pitch,
@@ -519,6 +530,7 @@ export class NetworkManager {
       locomotion.isWalking,
       locomotion.isWalkingBackward,
       locomotion.isJumping,
+      locomotion.isCrouching,
     );
   }
 

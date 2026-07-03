@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
+import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
 import { DEFAULT_MAP_ID, getMapDef, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
@@ -185,9 +186,7 @@ export class Game {
     this.applyActiveMap();
     this.initResize();
     await this.initNetwork(credentials, joinIntent);
-    const isTdm =
-      this.worldMapId === 'killhouse_small' ||
-      this.network.getMatchState()?.gameMode === 'tdm';
+    const isTdm = this.network.getMatchState()?.gameMode === 'tdm';
     this.playerControls.setMatchHud(this.matchHud, isTdm);
     this.applyActiveMap();
     onConnected?.();
@@ -263,7 +262,7 @@ export class Game {
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setTeamHud(this.teamHud);
-    this.playerControls.setMatchHud(this.matchHud, mapId === 'killhouse_small');
+    this.playerControls.setMatchHud(this.matchHud, false);
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
@@ -475,7 +474,7 @@ export class Game {
     if (snapshot) {
       this.killCam.updateFollow(
         snapshot.x,
-        snapshot.y - EYE_HEIGHT,
+        feetYFromNetworkEyeY(snapshot.y, snapshot.crouching),
         snapshot.z,
         snapshot.yaw,
         delta,
@@ -585,12 +584,9 @@ export class Game {
       this.toggleInventory();
     }
 
-    const match = resolveMatchSnapshot(
-      this.network?.getMatchState() ?? null,
-      this.worldMapId,
-    );
+    const match = resolveMatchSnapshot(this.network?.getMatchState() ?? null);
     const worldTime = this.network?.getWorldTime() ?? 0;
-    this.matchCountdownOverlay.update(match, worldTime, this.worldMapId);
+    this.matchCountdownOverlay.update(match, worldTime);
     this.matchResultsOverlay.update(match, this.localCombat.teamId);
 
     const matchPhase = match?.phase ?? null;

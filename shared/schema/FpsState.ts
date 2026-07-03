@@ -34,6 +34,7 @@ export class PlayerState extends Schema {
   @type('boolean') walking = false;
   @type('boolean') walkingBackward = false;
   @type('boolean') jumping = false;
+  @type('boolean') crouching = false;
   /** Server world time when the shield dome charge completes (0 when idle). */
   @type('number') shieldDomeChargeEndAt = 0;
   /** Server world time when the shield dome expires (0 when inactive). */
@@ -69,7 +70,7 @@ export class FpsState extends Schema {
   @type('number') worldTime = 0;
   @type('boolean') friendlyFire = false;
   @type('string') mapId = 'kilo_sector';
-  @type('string') gameMode = 'ffa';
+  @type('string') gameMode = 'playground';
   @type('string') matchPhase = 'waiting';
   @type('number') expectedPlayers = 0;
   @type('number') teamCount = 2;

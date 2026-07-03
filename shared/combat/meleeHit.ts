@@ -1,6 +1,9 @@
 import { EYE_HEIGHT } from '../level/levelData.js';
 import {
   PLAYER_HIT_CAPSULE_HEIGHT,
+  raycastPlayerBodyPart,
+  resolveBodyPartFromWorldPoint,
+  type BodyPartId,
   type PlayerHitTarget,
 } from './playerHitbox.js';
 
@@ -25,6 +28,7 @@ export interface MeleeHitResult {
   readonly pointX: number;
   readonly pointY: number;
   readonly pointZ: number;
+  readonly bodyPart: BodyPartId;
 }
 
 /** World look direction from pointer-aim yaw/pitch (YXZ, forward = -Z). */
@@ -77,11 +81,38 @@ export function findMeleeHitTarget(
   aimHalfAngleRad = MELEE_AIM_HALF_ANGLE_RAD,
 ): MeleeHitResult | null {
   let best: MeleeHitResult | null = null;
-  let bestDistanceSq = Infinity;
+  let bestDistance = Infinity;
 
   for (const target of targets) {
     if (excludeSessionId && target.sessionId === excludeSessionId) continue;
     if (!isTargetInMeleeCone(aim, target, range, aimHalfAngleRad)) continue;
+
+    const bodyHit = raycastPlayerBodyPart(
+      aim.eyeX,
+      aim.eyeY,
+      aim.eyeZ,
+      aim.dirX,
+      aim.dirY,
+      aim.dirZ,
+      range,
+      target,
+    );
+
+    if (bodyHit) {
+      if (bodyHit.distance >= bestDistance) continue;
+      bestDistance = bodyHit.distance;
+      const pointX = aim.eyeX + aim.dirX * bodyHit.distance;
+      const pointY = aim.eyeY + aim.dirY * bodyHit.distance;
+      const pointZ = aim.eyeZ + aim.dirZ * bodyHit.distance;
+      best = {
+        sessionId: target.sessionId,
+        pointX,
+        pointY,
+        pointZ,
+        bodyPart: bodyHit.part,
+      };
+      continue;
+    }
 
     const centerX = target.feetX;
     const centerY = targetCenterY(target.feetY);
@@ -90,15 +121,15 @@ export function findMeleeHitTarget(
     const toY = centerY - aim.eyeY;
     const toZ = centerZ - aim.eyeZ;
     const distanceSq = toX * toX + toY * toY + toZ * toZ;
+    if (distanceSq >= bestDistance * bestDistance) continue;
 
-    if (distanceSq >= bestDistanceSq) continue;
-
-    bestDistanceSq = distanceSq;
+    bestDistance = Math.sqrt(distanceSq);
     best = {
       sessionId: target.sessionId,
       pointX: centerX,
       pointY: centerY,
       pointZ: centerZ,
+      bodyPart: resolveBodyPartFromWorldPoint(centerX, centerY, centerZ, target),
     };
   }
 

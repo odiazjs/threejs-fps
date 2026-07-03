@@ -1,5 +1,4 @@
 import { getCountdownDisplayValue } from '../../shared/combat/match';
-import type { MapId } from '../../shared/level/maps';
 import type { MatchSnapshot } from '../network/types';
 
 export class MatchCountdownOverlay {
@@ -13,13 +12,8 @@ export class MatchCountdownOverlay {
     this.subtitleEl = this.root.querySelector('.match-countdown-subtitle')!;
   }
 
-  update(
-    match: MatchSnapshot | null,
-    worldTime: number,
-    worldMapId: MapId,
-  ): void {
-    const isTdm = match?.gameMode === 'tdm' || worldMapId === 'killhouse_small';
-    if (!isTdm || !match || match.phase !== 'countdown') {
+  update(match: MatchSnapshot | null, worldTime: number): void {
+    if (!match || match.gameMode !== 'tdm' || match.phase !== 'countdown') {
       this.root.hidden = true;
       return;
     }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import type { BodyPartBoneRefs } from '../../shared/combat/bodyPartPose';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import { MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 
@@ -29,6 +30,8 @@ export const CHARACTER_MODEL_FILES = {
   meleeRun: 'Melee Run.fbx',
   meleeJump: 'Melee Standing Jump 2.fbx',
   weaponEquip: 'Unarmed Equip Over Shoulder.fbx',
+  crouchIdle: 'Idle Crouching Aiming.fbx',
+  crouchWalk: 'Crouched Walking.fbx',
   death: 'Player Death.fbx',
 } as const;
 
@@ -52,6 +55,7 @@ const ROOT_MOTION_STRIP_MODEL_FILES = new Set<string>([
   CHARACTER_MODEL_FILES.meleeWalkForward,
   CHARACTER_MODEL_FILES.meleeWalkBack,
   CHARACTER_MODEL_FILES.meleeRun,
+  CHARACTER_MODEL_FILES.crouchWalk,
 ]);
 
 export interface RemoteCharacterPose {
@@ -59,6 +63,7 @@ export interface RemoteCharacterPose {
   walking: boolean;
   walkingBackward: boolean;
   jumping: boolean;
+  crouching: boolean;
   reloading: boolean;
   switchingWeapon: boolean;
   meleeAttacking: boolean;
@@ -112,6 +117,133 @@ export interface CharacterRig {
   rightHand: THREE.Object3D;
   head: THREE.Object3D;
   spine: THREE.Object3D;
+}
+
+export interface BodyPartBones {
+  head: THREE.Object3D;
+  spine: THREE.Object3D;
+  hips: THREE.Object3D;
+  leftFoot: THREE.Object3D;
+  rightFoot: THREE.Object3D;
+  leftShoulder: THREE.Object3D | null;
+  rightShoulder: THREE.Object3D | null;
+  leftArm: THREE.Object3D;
+  rightArm: THREE.Object3D;
+  leftForeArm: THREE.Object3D | null;
+  rightForeArm: THREE.Object3D | null;
+  leftHand: THREE.Object3D;
+  rightHand: THREE.Object3D;
+}
+
+function findBestBoneBySuffix(root: THREE.Object3D, suffix: string): THREE.Object3D | null {
+  const target = suffix.toLowerCase();
+  let exact: THREE.Object3D | null = null;
+  let fallback: THREE.Object3D | null = null;
+
+  root.traverse((child) => {
+    if (child.type !== 'Bone') return;
+    const name = child.name.replace(/^mixamorig:?/i, '').toLowerCase();
+    if (!name.endsWith(target)) return;
+    if (name === target) {
+      exact = child;
+      return;
+    }
+    if (!fallback) fallback = child;
+  });
+
+  return exact ?? fallback;
+}
+
+export function resolveBodyPartBones(root: THREE.Object3D): BodyPartBones | null {
+  const head = findBestBoneBySuffix(root, 'Head');
+  const spine = findBestBoneBySuffix(root, 'Spine1') ?? findBestBoneBySuffix(root, 'Spine');
+  const hips = findBestBoneBySuffix(root, 'Hips');
+  const leftFoot = findBestBoneBySuffix(root, 'LeftFoot');
+  const rightFoot = findBestBoneBySuffix(root, 'RightFoot');
+  const leftShoulder = findBestBoneBySuffix(root, 'LeftShoulder');
+  const rightShoulder = findBestBoneBySuffix(root, 'RightShoulder');
+  const leftArm = findBestBoneBySuffix(root, 'LeftArm');
+  const rightArm = findBestBoneBySuffix(root, 'RightArm');
+  const leftForeArm = findBestBoneBySuffix(root, 'LeftForeArm');
+  const rightForeArm = findBestBoneBySuffix(root, 'RightForeArm');
+  const leftHand = findBestBoneBySuffix(root, 'LeftHand');
+  const rightHand = findBestBoneBySuffix(root, 'RightHand');
+
+  const leftUpper = leftShoulder ?? leftArm;
+  const rightUpper = rightShoulder ?? rightArm;
+
+  if (!head || !spine || !hips || !leftFoot || !rightFoot || !leftUpper || !rightUpper || !leftHand || !rightHand) {
+    return null;
+  }
+
+  return {
+    head,
+    spine,
+    hips,
+    leftFoot,
+    rightFoot,
+    leftShoulder,
+    rightShoulder,
+    leftArm: leftUpper,
+    rightArm: rightUpper,
+    leftForeArm,
+    rightForeArm,
+    leftHand,
+    rightHand,
+  };
+}
+
+const _boneWorld = new THREE.Vector3();
+
+export function readBodyPartBoneRefs(
+  feetObject: THREE.Object3D,
+  bones: BodyPartBones,
+): BodyPartBoneRefs {
+  const read = (bone: THREE.Object3D) => {
+    bone.getWorldPosition(_boneWorld);
+    const local = feetObject.worldToLocal(_boneWorld.clone());
+    return { x: local.x, y: local.y, z: local.z };
+  };
+
+  return {
+    head: read(bones.head),
+    spine: read(bones.spine),
+    hips: read(bones.hips),
+    leftFoot: read(bones.leftFoot),
+    rightFoot: read(bones.rightFoot),
+    leftArm: read(bones.leftArm),
+    rightArm: read(bones.rightArm),
+    leftShoulder: bones.leftShoulder ? read(bones.leftShoulder) : null,
+    rightShoulder: bones.rightShoulder ? read(bones.rightShoulder) : null,
+    leftForeArm: bones.leftForeArm ? read(bones.leftForeArm) : null,
+    rightForeArm: bones.rightForeArm ? read(bones.rightForeArm) : null,
+    leftHand: read(bones.leftHand),
+    rightHand: read(bones.rightHand),
+  };
+}
+
+/** Bone positions in world space — used for bone-driven hit volumes. */
+export function readBodyPartBoneRefsWorld(bones: BodyPartBones): BodyPartBoneRefs {
+  const read = (bone: THREE.Object3D) => {
+    bone.getWorldPosition(_boneWorld);
+    return { x: _boneWorld.x, y: _boneWorld.y, z: _boneWorld.z };
+  };
+
+  return {
+    head: read(bones.head),
+    spine: read(bones.spine),
+    hips: read(bones.hips),
+    leftFoot: read(bones.leftFoot),
+    rightFoot: read(bones.rightFoot),
+    leftArm: read(bones.leftArm),
+    rightArm: read(bones.rightArm),
+    leftShoulder: bones.leftShoulder ? read(bones.leftShoulder) : null,
+    rightShoulder: bones.rightShoulder ? read(bones.rightShoulder) : null,
+    leftForeArm: bones.leftForeArm ? read(bones.leftForeArm) : null,
+    rightForeArm: bones.rightForeArm ? read(bones.rightForeArm) : null,
+    leftHand: read(bones.leftHand),
+    rightHand: read(bones.rightHand),
+  };
 }
 
 function detectBoneNames(root: THREE.Object3D): CharacterBoneNames | null {
@@ -316,6 +448,12 @@ export function gameModelFileForWeapon(
     return CHARACTER_MODEL_FILES.reloadIdle;
   }
 
+  if (pose.crouching && weaponId !== MELEE_WEAPON_ID) {
+    return pose.walking
+      ? CHARACTER_MODEL_FILES.crouchWalk
+      : CHARACTER_MODEL_FILES.crouchIdle;
+  }
+
   if (pose.sprinting) {
     if (weaponId === MELEE_WEAPON_ID) {
       return CHARACTER_MODEL_FILES.meleeRun;
@@ -352,6 +490,7 @@ export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
     walking: false,
     walkingBackward: false,
     jumping: false,
+    crouching: false,
     reloading: false,
     switchingWeapon: false,
     meleeAttacking: false,
@@ -376,6 +515,7 @@ export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<Chara
     walking: false,
     walkingBackward: false,
     jumping: false,
+    crouching: false,
     reloading: false,
     switchingWeapon: false,
     meleeAttacking: false,
@@ -406,6 +546,8 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeRun),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.meleeJump),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.weaponEquip),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.crouchIdle),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.crouchWalk),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death),
   ]);
 }

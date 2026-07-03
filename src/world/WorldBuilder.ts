@@ -8,7 +8,7 @@ import { DroneField } from './DroneField';
 import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
 import type { GrassQualityProfile } from '../render/grassQuality';
-import { createSkyboxTexture } from './SkyboxBuilder';
+import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
 export class WorldBuilder {
   private sceneBuilder = new SceneBuilder();
@@ -23,11 +23,15 @@ export class WorldBuilder {
   }
 
   build(): this {
-    const fogColor = this.mapDef.outdoor ? 0x88d4f0 : 0x1a2228;
+    const isKillhouse = this.mapDef.id === 'killhouse_small';
+    const skybox = isKillhouse ? createKillhouseSkyboxTexture() : createSkyboxTexture();
+    const fogColor = isKillhouse ? 0xc8a060 : this.mapDef.outdoor ? 0x88d4f0 : 0x1a2228;
+    const fogNear = isKillhouse ? this.mapDef.mapHalf * 1.4 : this.mapDef.mapHalf * 0.5;
+    const fogFar = isKillhouse ? this.mapDef.mapHalf * 5 : this.mapDef.mapHalf * 2.2;
     this.sceneBuilder
       .build()
-      .addBackground(createSkyboxTexture())
-      .addFog(fogColor, this.mapDef.mapHalf * 0.5, this.mapDef.mapHalf * 2.2);
+      .addBackground(skybox)
+      .addFog(fogColor, fogNear, fogFar);
     return this;
   }
 

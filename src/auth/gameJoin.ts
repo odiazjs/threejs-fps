@@ -4,6 +4,12 @@ import {
   normalizeMapId,
   type MapId,
 } from '../../shared/level/maps';
+import {
+  DEFAULT_GAME_MODE,
+  isValidGameMode,
+  normalizeGameMode,
+  type GameMode,
+} from '../../shared/combat/match';
 
 const STORAGE_KEY = 'fps_game_join';
 
@@ -12,6 +18,16 @@ export interface GameJoinIntent {
   teamId?: number;
   mode: 'create' | 'join';
   mapId?: string;
+  gameMode?: GameMode;
+}
+
+function readStoredGameModePreference(): GameMode {
+  try {
+    const stored = localStorage.getItem('fps_selected_game_mode');
+    return isValidGameMode(stored) ? stored : DEFAULT_GAME_MODE;
+  } catch {
+    return DEFAULT_GAME_MODE;
+  }
 }
 
 function readStoredMapPreference(): MapId {
@@ -35,9 +51,10 @@ export function consumeGameJoinIntent(): GameJoinIntent | null {
   try {
     const parsed = JSON.parse(raw) as GameJoinIntent;
     const mapId = normalizeMapId(parsed.mapId ?? readStoredMapPreference());
+    const gameMode = normalizeGameMode(parsed.gameMode ?? readStoredGameModePreference());
 
     if (parsed.mode === 'create') {
-      return { mode: 'create', mapId };
+      return { mode: 'create', mapId, gameMode };
     }
 
     if (parsed.mode === 'join' && typeof parsed.roomId === 'string') {
@@ -45,6 +62,7 @@ export function consumeGameJoinIntent(): GameJoinIntent | null {
         roomId: parsed.roomId,
         mode: 'join',
         mapId,
+        gameMode,
         ...(typeof parsed.teamId === 'number' ? { teamId: parsed.teamId } : {}),
       };
     }

@@ -118,7 +118,7 @@ function sampleSky(u: number, v: number): RGB {
   return [clamp01(color[0]), clamp01(color[1]), clamp01(color[2])];
 }
 
-function buildSkyCanvas(): HTMLCanvasElement {
+function buildSkyCanvas(sample: (u: number, v: number) => RGB): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
   canvas.height = HEIGHT;
@@ -129,7 +129,7 @@ function buildSkyCanvas(): HTMLCanvasElement {
     const v = py / (HEIGHT - 1);
     for (let px = 0; px < WIDTH; px++) {
       const u = px / WIDTH;
-      const [r, g, b] = sampleSky(u, v);
+      const [r, g, b] = sample(u, v);
       const i = (py * WIDTH + px) * 4;
       image.data[i] = Math.round(r * 255);
       image.data[i + 1] = Math.round(g * 255);
@@ -142,12 +142,69 @@ function buildSkyCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-/** Procedural sci-fi panorama sky — no texture assets required. */
-export function createSkyboxTexture(): THREE.Texture {
-  const texture = new THREE.CanvasTexture(buildSkyCanvas());
+function createPanoramaTexture(sample: (u: number, v: number) => RGB): THREE.Texture {
+  const texture = new THREE.CanvasTexture(buildSkyCanvas(sample));
   texture.mapping = THREE.EquirectangularReflectionMapping;
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.wrapS = THREE.RepeatWrapping;
   texture.needsUpdate = true;
   return texture;
+}
+
+/** Procedural sci-fi panorama sky — no texture assets required. */
+export function createSkyboxTexture(): THREE.Texture {
+  return createPanoramaTexture(sampleSky);
+}
+
+function azimuthDistance(u: number, center: number): number {
+  const d = Math.abs(u - center);
+  return Math.min(d, 1 - d);
+}
+
+function killhouseSkyGradient(y: number): RGB {
+  const t = clamp01((y + 0.04) / 0.96);
+  const zenith: RGB = [0.22, 0.58, 0.82];
+  const upper: RGB = [0.34, 0.68, 0.9];
+  const mid: RGB = [0.52, 0.76, 0.94];
+  const horizon: RGB = [0.92, 0.72, 0.42];
+  const sunTint: RGB = [0.98, 0.84, 0.48];
+
+  if (t > 0.62) {
+    return lerpRgb(upper, zenith, (t - 0.62) / 0.38);
+  }
+  if (t > 0.28) {
+    return lerpRgb(mid, upper, (t - 0.28) / 0.34);
+  }
+  if (t > 0.1) {
+    return lerpRgb(horizon, mid, (t - 0.1) / 0.18);
+  }
+  return lerpRgb(sunTint, horizon, t / 0.1);
+}
+
+function sunBloom(u: number, y: number): number {
+  const du = azimuthDistance(u, 0.5);
+  const dy = y - 0.44;
+  const core = Math.exp(-((du / 0.055) ** 2 + (dy / 0.14) ** 2));
+  const halo = Math.exp(-((du / 0.14) ** 2 + (dy / 0.22) ** 2)) * 0.45;
+  return core + halo;
+}
+
+function sampleKillhouseSky(u: number, v: number): RGB {
+  const [, y] = directionFromUV(u, v);
+
+  let color = killhouseSkyGradient(y);
+
+  const bloom = sunBloom(u, y);
+  const sunColor: RGB = [1.0, 0.9, 0.55];
+  color = lerpRgb(color, sunColor, bloom * 0.85);
+
+  const haze = smoothstep(0.03, 0.1, y) * smoothstep(0.2, 0.1, y);
+  color = lerpRgb(color, [0.88, 0.72, 0.48], haze * 0.28);
+
+  return [clamp01(color[0]), clamp01(color[1]), clamp01(color[2])];
+}
+
+/** Dusk panorama with sun glow — used by Chrono-Bowl. */
+export function createKillhouseSkyboxTexture(): THREE.Texture {
+  return createPanoramaTexture(sampleKillhouseSky);
 }

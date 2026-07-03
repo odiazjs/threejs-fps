@@ -69,12 +69,16 @@ export class RemotePlayers {
       if (!friendlyFire && !isBot && player.getTeamId() === localTeamId) continue;
 
       const feet = player.getFeetPosition();
+      const volumes = player.getBodyHitVolumes() ?? undefined;
       targets.push({
         sessionId,
         teamId: player.getTeamId(),
         feetX: feet.x,
         feetY: feet.y,
         feetZ: feet.z,
+        yaw: player.getAimYaw(),
+        pitch: player.getAimPitch(),
+        volumes,
       });
     }
 

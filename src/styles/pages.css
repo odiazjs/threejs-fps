@@ -301,6 +301,7 @@ body {
   letter-spacing: 0.14em;
 }
 
+.lobby-match-setup,
 .lobby-map-select {
   position: fixed;
   right: 1.5rem;
@@ -311,9 +312,16 @@ body {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
+  gap: 0.55rem;
+}
+
+.lobby-match-setup-row {
+  display: flex;
+  flex-direction: column;
   gap: 0.4rem;
 }
 
+.lobby-match-setup-label,
 .lobby-map-select-label {
   font-size: 0.62rem;
   font-weight: 700;
@@ -321,6 +329,7 @@ body {
   color: #9ec9c9;
 }
 
+.lobby-match-setup-input,
 .lobby-map-select-input {
   width: 100%;
   padding: 0.5rem 0.55rem;
@@ -331,6 +340,7 @@ body {
   border-radius: 6px;
 }
 
+.lobby-match-setup-input:focus,
 .lobby-map-select-input:focus {
   outline: none;
   border-color: rgba(130, 219, 219, 0.55);

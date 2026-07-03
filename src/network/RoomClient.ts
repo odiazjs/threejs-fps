@@ -16,11 +16,11 @@ import {
 } from '../../shared/schema/FpsState';
 import { SERVER_URL } from '../config/serverUrl';
 import { DEFAULT_MAP_ID, isValidMapId, normalizeMapId, type MapId } from '../../shared/level/maps';
-import type { GameMode } from '../../shared/combat/match';
-import { normalizeMatchPhase } from '../../shared/combat/match';
+import { normalizeGameMode, normalizeMatchPhase } from '../../shared/combat/match';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { WeaponId } from '../../shared/content/weaponIds';
+import type { BodyPartId } from '../../shared/combat/bodyParts';
 import type {
   AmmoBoxChangeHandler,
   AmmoBoxSnapshot,
@@ -72,6 +72,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     walking: player.walking,
     walkingBackward: player.walkingBackward,
     jumping: player.jumping,
+    crouching: player.crouching,
     shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
     shieldDomeEndAt: player.shieldDomeEndAt,
     shieldDomeCooldownEndAt: player.shieldDomeCooldownEndAt,
@@ -172,9 +173,7 @@ export class RoomClient {
   private buildMatchSnapshot(): MatchSnapshot | null {
     if (!this.room) return null;
     const state = this.room.state as FpsState;
-    const mapId = normalizeMapId(state.mapId);
-    const gameMode: GameMode =
-      state.gameMode === 'tdm' || mapId === 'killhouse_small' ? 'tdm' : 'ffa';
+    const gameMode = normalizeGameMode(state.gameMode);
     const duration = state.matchDurationSec > 0 ? state.matchDurationSec : 120;
     return {
       gameMode,
@@ -225,6 +224,7 @@ export class RoomClient {
         {
           ...joinOptions,
           mapId: normalizeMapId(joinIntent?.mapId),
+          gameMode: joinIntent?.gameMode,
         },
         FpsState,
       );
@@ -358,6 +358,7 @@ export class RoomClient {
     walking: boolean,
     walkingBackward: boolean,
     jumping: boolean,
+    crouching: boolean,
   ): void {
     this.room?.send('move', {
       x,
@@ -369,6 +370,7 @@ export class RoomClient {
       walking,
       walkingBackward,
       jumping,
+      crouching,
     });
   }
 
@@ -408,8 +410,8 @@ export class RoomClient {
     this.room?.send('pickupWeaponDrop', { index });
   }
 
-  sendHit(targetId: string, weaponId: WeaponId): void {
-    this.room?.send('hit', { targetId, weaponId });
+  sendHit(targetId: string, weaponId: WeaponId, bodyPart?: BodyPartId): void {
+    this.room?.send('hit', { targetId, weaponId, bodyPart });
   }
 
   sendReload(weaponId: WeaponId): void {
