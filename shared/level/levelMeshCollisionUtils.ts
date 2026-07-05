@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import {
+  appendTrianglesToBuffers,
+  countMergedTriangleCapacity,
+  extractWorldTriangles,
+  filterShellCollisionTriangles,
+} from './collisionMeshPrep.js';
 
 const PROXY_MESH_NAME = /(?:^|[\s_-])(?:lodbox|lod\d+|ucx\d*|ubx|collision|collider|proxy)(?:[\s_-]|$)/i;
 const _proxyWorldBox = new THREE.Box3();
@@ -20,6 +26,8 @@ function meshMaterialBlocksCollision(mesh: THREE.Mesh): boolean {
 
 /** FBX props often include a low-poly LOD / UCX hull — not part of the visible model. */
 function isEmbeddedProxyHull(mesh: THREE.Mesh): boolean {
+  if (mesh.userData.collisionMesh === true) return false;
+
   const label = `${mesh.name} ${mesh.parent?.name ?? ''}`;
   if (PROXY_MESH_NAME.test(label)) return true;
 
@@ -44,7 +52,7 @@ function isEmbeddedProxyHull(mesh: THREE.Mesh): boolean {
 
 export function isLevelCollisionMesh(object: THREE.Object3D): object is THREE.Mesh {
   if (!(object instanceof THREE.Mesh)) return false;
-  if (!object.visible) return false;
+  if (!object.visible && object.userData.collisionMesh !== true) return false;
   if (object.userData.colliderDebug) return false;
   if (object.name.startsWith('mesh-bvh-collider-debug')) return false;
   if (!meshMaterialBlocksCollision(object)) return false;
@@ -71,22 +79,28 @@ export function collectLevelCollisionMeshes(roots: readonly THREE.Object3D[]): T
 
 /** Merge collected level meshes into one indexed world-space geometry for MeshBVH. */
 export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[]): THREE.BufferGeometry {
-  let totalVertices = 0;
-  let totalIndices = 0;
+  const { vertices, indices } = countMergedTriangleCapacity(meshes);
 
-  for (const mesh of meshes) {
-    const position = mesh.geometry.attributes.position;
-    totalVertices += position.count;
-    totalIndices += mesh.geometry.index?.count ?? position.count;
-  }
-
-  const positions = new Float32Array(totalVertices * 3);
-  const indices = new Uint32Array(totalIndices);
+  const positions = new Float32Array(vertices * 3);
+  const indexData = new Uint32Array(indices);
 
   let vertexOffset = 0;
   let indexOffset = 0;
 
   for (const mesh of meshes) {
+    if (mesh.userData.shellCollision === true) {
+      const worldTriangles = extractWorldTriangles(mesh);
+      const shellTriangles = filterShellCollisionTriangles(worldTriangles);
+      ({ vertexOffset, indexOffset } = appendTrianglesToBuffers(
+        shellTriangles,
+        positions,
+        indexData,
+        vertexOffset,
+        indexOffset,
+      ));
+      continue;
+    }
+
     mesh.updateWorldMatrix(true, false);
     const geometry = mesh.geometry;
     const position = geometry.attributes.position;
@@ -108,13 +122,13 @@ export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[])
         const b = vertexOffset + index.getX(i + 1);
         const c = vertexOffset + index.getX(i + 2);
         if (flipWinding) {
-          indices[indexOffset + i] = a;
-          indices[indexOffset + i + 1] = c;
-          indices[indexOffset + i + 2] = b;
+          indexData[indexOffset + i] = a;
+          indexData[indexOffset + i + 1] = c;
+          indexData[indexOffset + i + 2] = b;
         } else {
-          indices[indexOffset + i] = a;
-          indices[indexOffset + i + 1] = b;
-          indices[indexOffset + i + 2] = c;
+          indexData[indexOffset + i] = a;
+          indexData[indexOffset + i + 1] = b;
+          indexData[indexOffset + i + 2] = c;
         }
       }
       indexOffset += index.count;
@@ -124,13 +138,13 @@ export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[])
         const b = vertexOffset + i + 1;
         const c = vertexOffset + i + 2;
         if (flipWinding) {
-          indices[indexOffset + i] = a;
-          indices[indexOffset + i + 1] = c;
-          indices[indexOffset + i + 2] = b;
+          indexData[indexOffset + i] = a;
+          indexData[indexOffset + i + 1] = c;
+          indexData[indexOffset + i + 2] = b;
         } else {
-          indices[indexOffset + i] = a;
-          indices[indexOffset + i + 1] = b;
-          indices[indexOffset + i + 2] = c;
+          indexData[indexOffset + i] = a;
+          indexData[indexOffset + i + 1] = b;
+          indexData[indexOffset + i + 2] = c;
         }
       }
       indexOffset += position.count;
@@ -141,7 +155,7 @@ export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[])
 
   const merged = new THREE.BufferGeometry();
   merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  merged.setIndex(new THREE.BufferAttribute(indices, 1));
+  merged.setIndex(new THREE.BufferAttribute(indexData, 1));
   return merged;
 }
 

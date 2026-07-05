@@ -5,6 +5,8 @@ import {
   PERIMETER_BIO_WALL_PLACEMENTS,
   type PerimeterBioWallPlacement,
 } from '../../shared/level/killhouseSmallColliders.js';
+import { markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
+import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
 
 const WALL_ASSET_BASE = '/3d/';
 const BASIC_WALL_MODEL = 'bio_wall_basic.fbx';
@@ -50,7 +52,17 @@ function getMeshCentroidXZ(model: THREE.Object3D): { x: number; z: number } {
   return { x: sumX / count, z: sumZ / count };
 }
 
-function prepareWallProp(model: THREE.Group, scale: number): THREE.Group {
+function prepareWallProp(
+  model: THREE.Group,
+  scale: number,
+  lodMode?: number | 'lowest-poly',
+): THREE.Group {
+  if (lodMode === 'lowest-poly') {
+    keepLowestPolyFbxLodMesh(model);
+    markLodCollisionShell(model);
+  } else if (lodMode !== undefined) {
+    keepSingleFbxLodMesh(model, lodMode);
+  }
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
@@ -75,9 +87,10 @@ function prepareWallProp(model: THREE.Group, scale: number): THREE.Group {
 export function loadKillhouseWallTemplate(
   modelPath: string,
   scale = KILLHOUSE_CENTER_WALL_SCALE,
+  lodMode?: number | 'lowest-poly',
 ): Promise<THREE.Group> {
   const modelFile = normalizeModelFile(modelPath);
-  const cacheKey = `${modelFile}:${scale}`;
+  const cacheKey = `${modelFile}:${scale}:${lodMode ?? 'all'}`;
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
 
@@ -85,7 +98,7 @@ export function loadKillhouseWallTemplate(
     const loader = new FBXLoader();
     loader.setResourcePath(WALL_ASSET_BASE);
     const fbx = await loader.loadAsync(`${WALL_ASSET_BASE}${encodeURIComponent(modelFile)}`);
-    return prepareWallProp(fbx as THREE.Group, scale);
+    return prepareWallProp(fbx as THREE.Group, scale, lodMode);
   })();
 
   templateCache.set(cacheKey, loadPromise);

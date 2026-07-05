@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
 import { DEFAULT_MAP_ID, getMapDef, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
+import { normalizeGameMode, type GameMode } from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { PointerInput } from '../input/PointerInput';
@@ -205,7 +206,7 @@ export class Game {
       this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
       this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
     ]);
-    this.initPlayer(initialMapId);
+    this.initPlayer(initialMapId, joinIntent?.gameMode);
     this.applyActiveMap();
     this.initResize();
     await this.initNetwork(credentials, joinIntent);
@@ -361,13 +362,15 @@ export class Game {
     }
   }
 
-  private initPlayer(mapId: MapId): void {
+  private initPlayer(mapId: MapId, gameMode?: GameMode): void {
     this.player = Player.createLocal();
     const mapDef = getMapDef(mapId);
-    if (!mapDef.pickTeamSpawnPoint) {
-      const spawn = mapDef.pickSpawnPoint(0);
-      this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
-    }
+    const mode = normalizeGameMode(gameMode);
+    const spawn =
+      mode === 'tdm' && mapDef.pickTeamSpawnPoint
+        ? mapDef.pickTeamSpawnPoint(0, 0)
+        : mapDef.pickSpawnPoint(0);
+    this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
     this.player.attachToScene(this.scene);
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
     this.player.bindAimControls(this.playerControls.controls);

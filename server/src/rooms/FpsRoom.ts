@@ -1332,10 +1332,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       occupied,
       this.countPlayersOnTeam(player.teamId),
     );
-    const spawn =
-      this.mapDef.pickTeamRespawnPoint
-        ? this.mapDef.pickTeamRespawnPoint(player.teamId, deathPosition, spawnContext)
-        : this.mapDef.humanRespawnPoint;
+    const spawn = this.isTdm() && this.mapDef.pickTeamRespawnPoint
+      ? this.mapDef.pickTeamRespawnPoint(player.teamId, deathPosition, spawnContext)
+      : this.mapDef.pickSpawnPoint(occupied.length, spawnContext);
     player.hp = PLAYER_MAX_HP;
     const shield = resetPlayerShield();
     player.shieldLevel = shield.shieldLevel;

@@ -4,7 +4,7 @@ import type { MapCollisionDef } from '../../shared/level/maps';
 import { MergedMeshBvhCollision } from '../../shared/level/mergedMeshBvhCollision';
 import { buildMergedLevelCollisionGeometry, collectLevelCollisionMeshes } from './levelMeshUtils';
 import {
-  attachMeshBvhColliderDebug,
+  attachMeshBvhColliderDebugGeometry,
   disposeMeshBvhColliderDebugMesh,
   isMeshBvhColliderDebugEnabled,
 } from '../debug/MeshBvhColliderDebugMesh';
@@ -13,7 +13,7 @@ import {
 export class LevelMeshBvhCollision {
   private readonly collision = new MergedMeshBvhCollision();
   private debugRoot: THREE.Object3D | null = null;
-  private debugSources: THREE.Mesh[] = [];
+  private debugGeometry: THREE.BufferGeometry | null = null;
 
   get isReady(): boolean {
     return this.collision.isReady;
@@ -28,8 +28,6 @@ export class LevelMeshBvhCollision {
       return;
     }
 
-    this.debugSources = meshes;
-
     try {
       const geometry = buildMergedLevelCollisionGeometry(meshes);
       this.collision.setGeometry(geometry, true);
@@ -38,34 +36,34 @@ export class LevelMeshBvhCollision {
       console.info(
         `[LevelMeshBvh] Built level BVH from ${meshes.length} meshes (${Math.round(triangleCount)} tris)`,
       );
+
+      if (debugParent && isMeshBvhColliderDebugEnabled()) {
+        this.debugGeometry = geometry.clone();
+        this.debugRoot = attachMeshBvhColliderDebugGeometry(debugParent, this.debugGeometry);
+      }
     } catch (error) {
       console.error('[LevelMeshBvh] Failed to build BVH geometry', error);
       throw error;
-    }
-
-
-    if (debugParent && isMeshBvhColliderDebugEnabled()) {
-      this.attachColliderDebug(debugParent);
     }
   }
 
   attachColliderDebug(parent: THREE.Object3D): void {
     this.detachColliderDebug();
-    if (!isMeshBvhColliderDebugEnabled() || this.debugSources.length === 0) return;
-
-    this.debugRoot = attachMeshBvhColliderDebug(parent, this.debugSources);
+    if (!isMeshBvhColliderDebugEnabled() || !this.debugGeometry) return;
+    this.debugRoot = attachMeshBvhColliderDebugGeometry(parent, this.debugGeometry);
   }
 
   detachColliderDebug(): void {
     if (!this.debugRoot) return;
     disposeMeshBvhColliderDebugMesh(this.debugRoot);
     this.debugRoot = null;
+    this.debugGeometry?.dispose();
+    this.debugGeometry = null;
   }
 
   clear(): void {
     this.detachColliderDebug();
     this.collision.clear();
-    this.debugSources = [];
   }
 
   raycast(

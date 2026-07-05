@@ -32,41 +32,24 @@ const CENTER_BIO_WALL_MODEL_SIZE = {
 
 export const KILLHOUSE_CENTER_WALL_SCALE = 0.02;
 
-/** Matches wall prop scale for shield_pink_prop_1.fbx visual placement. */
-export const KILLHOUSE_SHIELD_PROP_SCALE = 0.010;
+/** Center house — same ground-alignment pipeline as perimeter walls. */
+export const KILLHOUSE_CENTER_HOUSE_SCALE = 0.045;
+export const KILLHOUSE_CENTER_HOUSE_VISUAL_MODEL = 'basic_house.fbx';
+/** Low-poly LOD mesh used for server bake + client mesh BVH. */
+export const KILLHOUSE_CENTER_HOUSE_COLLISION_MODEL = 'lod_basic_house.fbx';
+/** FBX embeds model_LOD0–LOD4; pick one level per use to avoid coplanar Z-fighting. */
+export const KILLHOUSE_CENTER_HOUSE_VISUAL_LOD = 0;
 
-/** Shield prop coarse proxy footprint half-extents at KILLHOUSE_SHIELD_PROP_SCALE. */
-export const KILLHOUSE_SHIELD_PROP_HALF_X = 0.799;
-export const KILLHOUSE_SHIELD_PROP_HALF_Z = 0.949;
-/** Full vertical span of shield module at KILLHOUSE_SHIELD_PROP_SCALE (from LOD3 bake bounds). */
-export const KILLHOUSE_SHIELD_PROP_HEIGHT = 1.45;
+const CORNER_SW = { x: -17, z: -12 } as const;
+const CORNER_NE = { x: 17, z: 12 } as const;
+const CORNER_NW = { x: -17, z: 12 } as const;
+const CORNER_SE = { x: 17, z: -12 } as const;
 
-export interface KillhouseShieldPropPlacement {
-  x: number;
-  z: number;
-  /** Radians — 90° steps only (0, ±π/2, π). */
-  rotationY: number;
+const CORNER_SPAWN_SPREAD = { spreadX: 2.5, spreadZ: 2.5 } as const;
+
+function cornerZone(x: number, z: number): SpawnZone {
+  return { x, z, ...CORNER_SPAWN_SPREAD };
 }
-
-/** Ten shield props across Chrono-Bowl — axis-aligned rotations, inside playable bounds. */
-export const KILLHOUSE_SHIELD_PROP_PLACEMENTS: readonly KillhouseShieldPropPlacement[] = [
-  { x: 0, z: 0, rotationY: 0 },
-  { x: -14, z: -9, rotationY: Math.PI / 2 },
-  { x: 14, z: -9, rotationY: Math.PI },
-  { x: -14, z: 9, rotationY: -Math.PI / 2 },
-  { x: 14, z: 9, rotationY: 0 },
-  { x: -8, z: 0, rotationY: Math.PI / 2 },
-  { x: 8, z: 0, rotationY: Math.PI },
-  { x: 0, z: -11, rotationY: 0 },
-  { x: 0, z: 11, rotationY: Math.PI / 2 },
-  { x: -6, z: 6, rotationY: Math.PI },
-] as const;
-
-/** @deprecated Use KILLHOUSE_SHIELD_PROP_PLACEMENTS[0] */
-export const KILLHOUSE_CENTER_SHIELD_PROP = {
-  x: KILLHOUSE_SHIELD_PROP_PLACEMENTS[0]!.x,
-  z: KILLHOUSE_SHIELD_PROP_PLACEMENTS[0]!.z,
-} as const;
 
 /** Module span along its long edge after scale — matches 12 × length = width, 10 × length = depth. */
 export const BIO_WALL_MODULE_LENGTH =
@@ -130,42 +113,21 @@ export const PERIMETER_BIO_WALL_PLACEMENTS: readonly PerimeterBioWallPlacement[]
   ...buildDepthWallRun(eastX, -Math.PI / 2),
 ];
 
-/** Chrono-Bowl spawn pools — B1–B6 (west) and R1–R6 (east) per arena layout. */
-const BLUE_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: -20.52, z: -14.85, spreadX: 2.2, spreadZ: 2.6 },
-  { x: -11.4, z: -0.59, spreadX: 2.55, spreadZ: 3.05 },
-  { x: -18.97, z: 4.51, spreadX: 2.0, spreadZ: 3.55 },
-  { x: -15.68, z: 8.55, spreadX: 2.4, spreadZ: 2.85 },
-  { x: -18.7, z: 15.2, spreadX: 2.55, spreadZ: 2.6 },
-  { x: -2.28, z: 1.43, spreadX: 2.4, spreadZ: 3.35 },
+/** Playground / FFA — one corner per player (up to 4), away from the center house. */
+const PLAYGROUND_SPAWN_POOL: readonly SpawnZone[] = [
+  cornerZone(CORNER_SW.x, CORNER_SW.z),
+  cornerZone(CORNER_NE.x, CORNER_NE.z),
+  cornerZone(CORNER_NW.x, CORNER_NW.z),
+  cornerZone(CORNER_SE.x, CORNER_SE.z),
 ];
 
-const RED_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: 20.52, z: 14.85, spreadX: 2.2, spreadZ: 2.6 },
-  { x: 11.4, z: 0.59, spreadX: 2.55, spreadZ: 3.05 },
-  { x: 15.96, z: 11.64, spreadX: 2.55, spreadZ: 3.05 },
-  { x: 15.68, z: -3.33, spreadX: 2.4, spreadZ: 3.55 },
-  { x: 3.19, z: 1.19, spreadX: 2.4, spreadZ: 3.35 },
-  { x: 18.7, z: -15.2, spreadX: 2.55, spreadZ: 2.6 },
-];
+/** TDM team corners — one zone per team at map corners. */
+const BLUE_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_SW.x, CORNER_SW.z)];
+const RED_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_NE.x, CORNER_NE.z)];
+const GREEN_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_NW.x, CORNER_NW.z)];
+const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_SE.x, CORNER_SE.z)];
 
-const GREEN_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: -16.87, z: 16.03, spreadX: 2.4, spreadZ: 2.85 },
-  { x: -12.77, z: 16.86, spreadX: 2.2, spreadZ: 2.6 },
-  { x: -20.06, z: 12.47, spreadX: 2.0, spreadZ: 3.05 },
-  { x: -10.49, z: 14.01, spreadX: 2.55, spreadZ: 2.85 },
-  { x: -18.24, z: 17.22, spreadX: 2.2, spreadZ: 2.35 },
-  { x: -14.14, z: 10.09, spreadX: 2.4, spreadZ: 2.85 },
-];
-
-const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: 16.87, z: -16.03, spreadX: 2.4, spreadZ: 2.85 },
-  { x: 12.77, z: -16.86, spreadX: 2.2, spreadZ: 2.6 },
-  { x: 20.06, z: -12.47, spreadX: 2.0, spreadZ: 3.05 },
-  { x: 10.49, z: -14.01, spreadX: 2.55, spreadZ: 2.85 },
-  { x: 18.24, z: -17.22, spreadX: 2.2, spreadZ: 2.35 },
-  { x: 14.14, z: -10.09, spreadX: 2.4, spreadZ: 2.85 },
-];
+export const HUMAN_RESPAWN_POINT = CORNER_SW;
 
 const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
   BLUE_SPAWN_POOL,
@@ -173,10 +135,6 @@ const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
   GREEN_SPAWN_POOL,
   PURPLE_SPAWN_POOL,
 ];
-
-const FFA_SPAWN_POOL: readonly SpawnZone[] = [...BLUE_SPAWN_POOL, ...RED_SPAWN_POOL];
-
-export const HUMAN_RESPAWN_POINT = { x: -17.33, z: -14.25 } as const;
 
 function teamPool(teamId: number): readonly SpawnZone[] {
   return TEAM_SPAWN_POOLS[teamId % TEAM_SPAWN_POOLS.length] ?? BLUE_SPAWN_POOL;
@@ -212,8 +170,8 @@ export function pickSpawnPoint(
   playerIndex: number,
   context: SpawnPickContext = {},
 ): { x: number; z: number } {
-  void playerIndex;
-  return pickRandomTeamSpawn(FFA_SPAWN_POOL, context);
+  const zone = PLAYGROUND_SPAWN_POOL[playerIndex % PLAYGROUND_SPAWN_POOL.length]!;
+  return pickRandomTeamSpawn([zone], context);
 }
 
 export function sampleGroundHeight(_x: number, _z: number): number {
@@ -232,13 +190,11 @@ export function isInsideKillhouseBounds(
 }
 
 export const KILLHOUSE_AMMO_POSITIONS = [
-  { x: 0, z: 0 },
-  { x: -12.77, z: -9.5 },
-  { x: 12.77, z: 7.13 },
-  { x: -5.47, z: 11.87 },
+  { x: CORNER_SW.x + 3, z: CORNER_SW.z + 2 },
+  { x: CORNER_NE.x - 3, z: CORNER_NE.z - 2 },
 ] as const;
 
 export const KILLHOUSE_SHIELD_POSITIONS = [
-  { x: 9.12, z: -9.5 },
-  { x: -10.94, z: 4.75 },
+  { x: CORNER_NW.x + 3, z: CORNER_NW.z - 2 },
+  { x: CORNER_SE.x - 3, z: CORNER_SE.z + 2 },
 ] as const;

@@ -33,7 +33,37 @@ function createWireMaterial(): THREE.MeshBasicMaterial {
   });
 }
 
-/** One world-space debug overlay per source mesh — same triangles as the visible model. */
+/** Debug overlay for the merged BVH geometry (post shell-filtering). */
+export function attachMeshBvhColliderDebugGeometry(
+  parent: THREE.Object3D,
+  geometry: THREE.BufferGeometry,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'mesh-bvh-collider-debug';
+  group.renderOrder = 10000;
+  group.frustumCulled = false;
+
+  const fill = new THREE.Mesh(geometry, createFillMaterial());
+  fill.renderOrder = 10000;
+  fill.frustumCulled = false;
+  fill.userData.colliderDebug = true;
+
+  const wire = new THREE.Mesh(geometry, createWireMaterial());
+  wire.renderOrder = 10001;
+  wire.frustumCulled = false;
+  wire.userData.colliderDebug = true;
+
+  group.add(fill, wire);
+  debugRoots.add(group);
+  parent.add(group);
+
+  const triangleCount = (geometry.index?.count ?? geometry.attributes.position.count) / 3;
+  console.info(`[MeshBvhColliderDebug] Attached merged BVH overlay (${Math.round(triangleCount)} tris)`);
+
+  return group;
+}
+
+/** @deprecated Prefer attachMeshBvhColliderDebugGeometry — raw meshes omit shell filtering. */
 export function attachMeshBvhColliderDebug(
   parent: THREE.Object3D,
   sourceMeshes: readonly THREE.Mesh[],

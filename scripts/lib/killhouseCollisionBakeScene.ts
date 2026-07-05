@@ -4,24 +4,18 @@ import { pathToFileURL } from 'node:url';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import {
+  KILLHOUSE_CENTER_HOUSE_COLLISION_MODEL,
+  KILLHOUSE_CENTER_HOUSE_SCALE,
   KILLHOUSE_CENTER_WALL_SCALE,
   KILLHOUSE_DEPTH,
-  KILLHOUSE_SHIELD_PROP_PLACEMENTS,
-  KILLHOUSE_SHIELD_PROP_SCALE,
   KILLHOUSE_WIDTH,
   PERIMETER_BIO_WALL_PLACEMENTS,
   type PerimeterBioWallPlacement,
 } from '../../shared/level/killhouseSmallColliders.js';
-import {
-  KILLHOUSE_INTERIOR_WALL_SCALE,
-  KILLHOUSE_MAZE_WALL_PLACEMENTS,
-  type MazeWallPlacement,
-} from '../../shared/level/killhouseMazeWalls.js';
+import { markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
+import { keepLowestPolyFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
 
 const BASIC_WALL_MODEL = 'bio_wall_basic.fbx';
-const GLASS_WALL_MODEL = 'bio_glass_wall.fbx';
-const MEDIUM_WALL_MODEL = 'bio_wall_medium.fbx';
-const SHIELD_PROP_MODEL = 'shield_pink_prop_1.fbx';
 
 export function installThreeNodePolyfills(): void {
   globalThis.window ??= globalThis as unknown as Window & typeof globalThis;
@@ -88,7 +82,11 @@ function getMeshCentroidXZ(model: THREE.Object3D): { x: number; z: number } {
   return { x: sumX / count, z: sumZ / count };
 }
 
-function prepareWallProp(model: THREE.Group, scale: number): THREE.Group {
+function prepareWallProp(model: THREE.Group, scale: number, lodMode?: 'lowest-poly'): THREE.Group {
+  if (lodMode === 'lowest-poly') {
+    keepLowestPolyFbxLodMesh(model);
+    markLodCollisionShell(model);
+  }
   model.updateMatrixWorld(true);
 
   const box = new THREE.Box3().setFromObject(model);
@@ -109,27 +107,17 @@ async function loadTemplate(
   assetDir: string,
   modelFile: string,
   scale: number,
+  lodMode?: 'lowest-poly',
 ): Promise<THREE.Group> {
   const bytes = readFileSync(join(assetDir, modelFile));
   const fbx = loader.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), modelFile);
-  return prepareWallProp(fbx as THREE.Group, scale);
+  return prepareWallProp(fbx as THREE.Group, scale, lodMode);
 }
 
 function addWallInstance(
   parent: THREE.Group,
   template: THREE.Group,
   placement: PerimeterBioWallPlacement,
-): void {
-  const wall = template.clone(true);
-  wall.rotation.y = placement.rotationY;
-  wall.position.set(placement.x, 0, placement.z);
-  parent.add(wall);
-}
-
-function addMazeWallInstance(
-  parent: THREE.Group,
-  template: THREE.Group,
-  placement: MazeWallPlacement,
 ): void {
   const wall = template.clone(true);
   wall.rotation.y = placement.rotationY;
@@ -156,28 +144,24 @@ export async function buildKillhouseCollisionScene(assetDir: string): Promise<TH
 
   addFloor(root);
 
-  const [basicTemplate, glassTemplate, mediumTemplate, shieldTemplate] = await Promise.all([
+  const [basicTemplate, houseTemplate] = await Promise.all([
     loadTemplate(loader, assetDir, BASIC_WALL_MODEL, KILLHOUSE_CENTER_WALL_SCALE),
-    loadTemplate(loader, assetDir, GLASS_WALL_MODEL, KILLHOUSE_INTERIOR_WALL_SCALE),
-    loadTemplate(loader, assetDir, MEDIUM_WALL_MODEL, KILLHOUSE_INTERIOR_WALL_SCALE),
-    loadTemplate(loader, assetDir, SHIELD_PROP_MODEL, KILLHOUSE_SHIELD_PROP_SCALE),
+    loadTemplate(
+      loader,
+      assetDir,
+      KILLHOUSE_CENTER_HOUSE_COLLISION_MODEL,
+      KILLHOUSE_CENTER_HOUSE_SCALE,
+      'lowest-poly',
+    ),
   ]);
 
   for (const placement of PERIMETER_BIO_WALL_PLACEMENTS) {
     addWallInstance(root, basicTemplate, placement);
   }
 
-  for (const placement of KILLHOUSE_MAZE_WALL_PLACEMENTS) {
-    const template = placement.kind === 'glass' ? glassTemplate : mediumTemplate;
-    addMazeWallInstance(root, template, placement);
-  }
-
-  for (const placement of KILLHOUSE_SHIELD_PROP_PLACEMENTS) {
-    const prop = shieldTemplate.clone(true);
-    prop.rotation.y = placement.rotationY;
-    prop.position.set(placement.x, 0, placement.z);
-    root.add(prop);
-  }
+  const house = houseTemplate.clone(true);
+  house.position.set(0, 0, 0);
+  root.add(house);
 
   root.updateWorldMatrix(true, true);
   return root;

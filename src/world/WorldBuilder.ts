@@ -7,9 +7,8 @@ import { TerrainBuilder } from './TerrainBuilder';
 import { DroneField } from './DroneField';
 import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
-import { KillhouseMazeWalls } from './KillhouseMazeWalls';
 import { KillhouseWall } from './KillhouseWall';
-import { KillhouseCenterProp } from './KillhouseCenterProp';
+import { KillhouseCenterHouse } from './KillhouseCenterHouse';
 import type { GrassQualityProfile } from '../render/grassQuality';
 import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
@@ -21,8 +20,7 @@ export class WorldBuilder {
   private platformParticles: PlatformLiftParticles | null = null;
   private mapGroup: THREE.Object3D | null = null;
   private killhouseWall: KillhouseWall | null = null;
-  private killhouseMazeWalls: KillhouseMazeWalls | null = null;
-  private killhouseCenterProp: KillhouseCenterProp | null = null;
+  private killhouseCenterHouse: KillhouseCenterHouse | null = null;
   private readonly mapDef;
 
   constructor(mapId: MapId = 'kilo_sector') {
@@ -62,26 +60,24 @@ export class WorldBuilder {
 
     if (this.mapDef.id === 'killhouse_small') {
       this.killhouseWall = new KillhouseWall();
-      this.killhouseMazeWalls = new KillhouseMazeWalls();
-      this.killhouseCenterProp = new KillhouseCenterProp();
+      this.killhouseCenterHouse = new KillhouseCenterHouse();
       this.sceneBuilder
         .addObject(this.killhouseWall.group)
-        .addObject(this.killhouseMazeWalls.group)
-        .addObject(this.killhouseCenterProp.group);
+        .addObject(this.killhouseCenterHouse.group)
+        .addObject(this.killhouseCenterHouse.collisionGroup);
     }
     return this;
   }
 
   whenKillhouseBulletBvhReady(): Promise<void> {
     if (this.mapDef.id !== 'killhouse_small') return Promise.resolve();
-    if (!this.killhouseWall || !this.killhouseMazeWalls || !this.killhouseCenterProp) {
+    if (!this.killhouseWall || !this.killhouseCenterHouse) {
       return Promise.resolve();
     }
 
     return Promise.all([
       this.killhouseWall.whenReady,
-      this.killhouseMazeWalls.whenReady,
-      this.killhouseCenterProp.whenReady,
+      this.killhouseCenterHouse.whenReady,
     ]).then(() => undefined);
   }
 
@@ -89,8 +85,7 @@ export class WorldBuilder {
     const roots: THREE.Object3D[] = [];
     if (this.mapGroup) roots.push(this.mapGroup);
     if (this.killhouseWall) roots.push(this.killhouseWall.group);
-    if (this.killhouseMazeWalls) roots.push(this.killhouseMazeWalls.group);
-    if (this.killhouseCenterProp) roots.push(this.killhouseCenterProp.group);
+    if (this.killhouseCenterHouse) roots.push(this.killhouseCenterHouse.collisionGroup);
     return roots;
   }
 
