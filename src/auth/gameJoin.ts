@@ -10,8 +10,15 @@ import {
   normalizeGameMode,
   type GameMode,
 } from '../../shared/combat/match';
+import {
+  FPS_JOIN_INTENT_MESSAGE,
+  FPS_REQUEST_JOIN_INTENT_MESSAGE,
+  type GameJoinIntentPayload,
+  type GameJoinIntentResponseMessage,
+} from '../../shared/network/gameOverlayMessages';
 
 const STORAGE_KEY = 'fps_game_join';
+const PARENT_INTENT_TIMEOUT_MS = 3_000;
 
 export interface GameJoinIntent {
   roomId?: string;
@@ -39,36 +46,86 @@ function readStoredMapPreference(): MapId {
   }
 }
 
-export function setGameJoinIntent(intent: GameJoinIntent): void {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(intent));
+function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | null {
+  const mapId = normalizeMapId(raw.mapId ?? readStoredMapPreference());
+  const gameMode = normalizeGameMode(raw.gameMode ?? readStoredGameModePreference());
+
+  if (raw.mode === 'create') {
+    return { mode: 'create', mapId, gameMode };
+  }
+
+  if (raw.mode === 'join' && typeof raw.roomId === 'string' && raw.roomId.length > 0) {
+    return {
+      roomId: raw.roomId,
+      mode: 'join',
+      mapId,
+      gameMode,
+      ...(typeof raw.teamId === 'number' ? { teamId: raw.teamId } : {}),
+    };
+  }
+
+  return null;
 }
 
-export function consumeGameJoinIntent(): GameJoinIntent | null {
+function payloadToIntent(payload: GameJoinIntentPayload | null): GameJoinIntent | null {
+  if (!payload) return null;
+  return normalizeJoinIntent(payload);
+}
+
+function consumeStoredJoinIntent(): GameJoinIntent | null {
   const raw = sessionStorage.getItem(STORAGE_KEY);
   if (!raw) return null;
 
   sessionStorage.removeItem(STORAGE_KEY);
   try {
-    const parsed = JSON.parse(raw) as GameJoinIntent;
-    const mapId = normalizeMapId(parsed.mapId ?? readStoredMapPreference());
-    const gameMode = normalizeGameMode(parsed.gameMode ?? readStoredGameModePreference());
-
-    if (parsed.mode === 'create') {
-      return { mode: 'create', mapId, gameMode };
-    }
-
-    if (parsed.mode === 'join' && typeof parsed.roomId === 'string') {
-      return {
-        roomId: parsed.roomId,
-        mode: 'join',
-        mapId,
-        gameMode,
-        ...(typeof parsed.teamId === 'number' ? { teamId: parsed.teamId } : {}),
-      };
-    }
+    return normalizeJoinIntent(JSON.parse(raw) as Partial<GameJoinIntent>);
   } catch {
-    // ignore malformed payload
+    return null;
   }
+}
 
-  return null;
+function requestJoinIntentFromParent(): Promise<GameJoinIntent | null> {
+  return new Promise((resolve) => {
+    const origin = window.location.origin;
+
+    const finish = (intent: GameJoinIntent | null) => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', onMessage);
+      resolve(intent);
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== origin) return;
+      const data = event.data as GameJoinIntentResponseMessage | null;
+      if (data?.type !== FPS_JOIN_INTENT_MESSAGE) return;
+      finish(payloadToIntent(data.intent));
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      finish(null);
+    }, PARENT_INTENT_TIMEOUT_MS);
+
+    window.addEventListener('message', onMessage);
+    window.parent.postMessage({ type: FPS_REQUEST_JOIN_INTENT_MESSAGE }, origin);
+  });
+}
+
+export function setGameJoinIntent(intent: GameJoinIntent): void {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(intent));
+}
+
+/**
+ * Resolve how to join the match. Iframe games request intent from the lobby
+ * parent via postMessage; full-page navigation reads one-shot sessionStorage.
+ */
+export async function resolveGameJoinIntent(): Promise<GameJoinIntent | null> {
+  if (window.parent !== window) {
+    return requestJoinIntentFromParent();
+  }
+  return consumeStoredJoinIntent();
+}
+
+/** @deprecated Use resolveGameJoinIntent — kept for callers that cannot await. */
+export function consumeGameJoinIntent(): GameJoinIntent | null {
+  return consumeStoredJoinIntent();
 }
