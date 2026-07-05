@@ -1,8 +1,3 @@
-import type { Aabb } from './levelData.js';
-import { BIO_GLASS_WALL_VOXEL_COLLIDERS } from './bioGlassWallVoxelColliders.js';
-import { BIO_WALL_MEDIUM_VOXEL_COLLIDERS } from './bioWallMediumVoxelColliders.js';
-import { transformPlacedVoxelColliders } from './placedVoxelCollider.js';
-
 /** Same scale as perimeter bio_wall_basic / bio_glass_wall modules. */
 export const KILLHOUSE_INTERIOR_WALL_SCALE = 0.02;
 
@@ -100,16 +95,3 @@ export const KILLHOUSE_MAZE_WALL_PLACEMENTS: readonly MazeWallPlacement[] = [
   ...buildVerticalRun('glass', 10, -5.7, -1.9, []),
   ...buildVerticalRun('glass', 10, 1.9, 5.7, []),
 ] as const;
-
-export function getMazeWallCollidersAt(placement: MazeWallPlacement): Aabb[] {
-  const voxels =
-    placement.kind === 'glass'
-      ? BIO_GLASS_WALL_VOXEL_COLLIDERS
-      : BIO_WALL_MEDIUM_VOXEL_COLLIDERS;
-  return transformPlacedVoxelColliders(voxels, placement);
-}
-
-/** World-space voxel colliders for interior maze/hallway wall modules (debug visualization). */
-export function getKillhouseMazeWallColliders(): Aabb[] {
-  return KILLHOUSE_MAZE_WALL_PLACEMENTS.flatMap(getMazeWallCollidersAt);
-}

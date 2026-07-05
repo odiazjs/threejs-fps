@@ -65,15 +65,20 @@ function isInBounds(x: number, z: number, map: MapCollisionDef): boolean {
   return Math.abs(x) <= map.mapHalfX && Math.abs(z) <= map.mapHalfZ;
 }
 
+function resolveColliders(map: MapCollisionDef, colliders?: readonly Aabb[]): readonly Aabb[] {
+  return colliders ?? map.getLevelColliders();
+}
+
 export function getGroundHeight(
   feetX: number,
   feetZ: number,
   feetY: number,
   map: MapCollisionDef = getClientMapDef(),
+  colliders?: readonly Aabb[],
 ): number {
   let ground = map.sampleGroundHeight(feetX, feetZ);
 
-  for (const box of map.getLevelColliders()) {
+  for (const box of resolveColliders(map, colliders)) {
     if (!overlapsXZ(feetX, feetZ, box)) continue;
 
     if (box.platform) {
@@ -199,10 +204,11 @@ export function raycastLevel(
   maxDistance = DEFAULT_RAYCAST_DISTANCE,
   minDistance = 0,
   map: MapCollisionDef = getClientMapDef(),
+  colliders?: readonly Aabb[],
 ): RaycastHit | null {
   let closest: number | null = null;
 
-  for (const box of map.getLevelColliders()) {
+  for (const box of resolveColliders(map, colliders)) {
     const t = rayAabbIntersect(ox, oy, oz, dx, dy, dz, box, maxDistance);
     if (t === null || t < minDistance) continue;
     if (closest === null || t < closest) closest = t;
@@ -265,6 +271,7 @@ function resolveCeiling(
   feetZ: number,
   nextFeetY: number,
   map: MapCollisionDef,
+  colliders?: readonly Aabb[],
 ): number {
   const headDelta = nextFeetY - feetY;
   if (headDelta <= 0) return nextFeetY;
@@ -272,7 +279,7 @@ function resolveCeiling(
   let cappedFeetY = nextFeetY;
   const nextHeadY = nextFeetY + PLAYER_HEIGHT;
 
-  for (const box of map.getLevelColliders()) {
+  for (const box of resolveColliders(map, colliders)) {
     const player = playerAabb(feetX, feetY, feetZ);
     if (!overlapsXZ(feetX, feetZ, box)) continue;
     if (box.minY <= player.maxY + EPS || box.minY > nextHeadY) continue;
@@ -304,10 +311,11 @@ export function movePlayer(
   deltaX: number,
   deltaZ: number,
   map: MapCollisionDef = getClientMapDef(),
+  colliders?: readonly Aabb[],
 ): { x: number; y: number; z: number } {
-  const colliders = map.getLevelColliders();
-  const x = resolveAxis(feetX, feetY, feetZ, 'x', deltaX, colliders);
-  const z = resolveAxis(x, feetY, feetZ, 'z', deltaZ, colliders);
+  const boxes = resolveColliders(map, colliders);
+  const x = resolveAxis(feetX, feetY, feetZ, 'x', deltaX, boxes as Aabb[]);
+  const z = resolveAxis(x, feetY, feetZ, 'z', deltaZ, boxes as Aabb[]);
   const bounded = clampToMapBounds(x, z, map);
 
   return { x: bounded.x, y: feetY, z: bounded.z };
@@ -323,6 +331,7 @@ export function stepPlayerPhysics(
   jump: boolean,
   delta: number,
   map: MapCollisionDef = getClientMapDef(),
+  colliders?: readonly Aabb[],
 ): { x: number; y: number; z: number; state: PlayerPhysicsState } {
   let { verticalVelocity, grounded } = state;
 
@@ -333,9 +342,9 @@ export function stepPlayerPhysics(
 
   verticalVelocity -= GRAVITY * delta;
   let nextFeetY = feetY + verticalVelocity * delta;
-  nextFeetY = resolveCeiling(feetX, feetY, feetZ, nextFeetY, map);
+  nextFeetY = resolveCeiling(feetX, feetY, feetZ, nextFeetY, map, colliders);
 
-  const ground = getGroundHeight(feetX, feetZ, feetY, map);
+  const ground = getGroundHeight(feetX, feetZ, feetY, map, colliders);
   if (nextFeetY <= ground) {
     nextFeetY = ground;
     verticalVelocity = 0;
@@ -344,8 +353,8 @@ export function stepPlayerPhysics(
     grounded = false;
   }
 
-  const horizontal = movePlayer(feetX, nextFeetY, feetZ, deltaX, deltaZ, map);
-  const groundAfter = getGroundHeight(horizontal.x, horizontal.z, nextFeetY, map);
+  const horizontal = movePlayer(feetX, nextFeetY, feetZ, deltaX, deltaZ, map, colliders);
+  const groundAfter = getGroundHeight(horizontal.x, horizontal.z, nextFeetY, map, colliders);
 
   if (nextFeetY <= groundAfter + GROUND_SNAP && verticalVelocity <= 0) {
     nextFeetY = groundAfter;
@@ -367,10 +376,11 @@ export function clampEyeY(
   eyeY: number,
   map: MapCollisionDef = getClientMapDef(),
   crouching = false,
+  colliders?: readonly Aabb[],
 ): number {
   const standEyeHeight = EYE_HEIGHT;
   const feetY = eyeY - standEyeHeight;
-  const ground = getGroundHeight(feetX, feetZ, feetY, map);
+  const ground = getGroundHeight(feetX, feetZ, feetY, map, colliders);
   const minEyeHeight = crouching ? CROUCH_EYE_HEIGHT : standEyeHeight;
   const minEyeY = ground + minEyeHeight;
   const maxEyeY = ground + standEyeHeight + MAX_JUMP_HEIGHT;

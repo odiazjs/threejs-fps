@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { EYE_HEIGHT, stepPlayerPhysics, type PlayerPhysicsState } from '../../shared/level/collision';
+import { EYE_HEIGHT, type PlayerPhysicsState } from '../../shared/level/collision';
+import { stepPlayerPhysicsClient } from './levelMovement';
 import { DEFAULT_MAP_ID, getMapDef, type MapCollisionDef } from '../../shared/level/maps';
 import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import {
@@ -1144,7 +1145,7 @@ export class Player {
 
     const jump = !wantsCrouch && input.isJustPressed('Space');
     const wasGrounded = this.physics.grounded;
-    const result = stepPlayerPhysics(
+    const result = stepPlayerPhysicsClient(
       this.object.position.x,
       this.object.position.y,
       this.object.position.z,

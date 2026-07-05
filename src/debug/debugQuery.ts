@@ -1,5 +1,4 @@
 const DEBUG_QUERY_KEYS = [
-  'debugVoxelColliders',
   'debugHitboxes',
   'axisDebug',
 ] as const;

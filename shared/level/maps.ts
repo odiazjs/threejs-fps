@@ -17,7 +17,6 @@ import {
   MAP_HALF as KILLHOUSE_MAP_HALF,
   MAP_HALF_X as KILLHOUSE_HALF_X,
   MAP_HALF_Z as KILLHOUSE_HALF_Z,
-  getLevelColliders as getKillhouseColliders,
   pickSpawnPoint as pickKillhouseSpawnPoint,
   pickTeamSpawnPoint as pickKillhouseTeamSpawnPoint,
   pickTeamSpawnBatch as pickKillhouseTeamSpawnBatch,
@@ -29,6 +28,7 @@ import {
   KILLHOUSE_WALL_THICK,
 } from './killhouseSmallColliders.js';
 import { sampleGroundHeight as kiloGroundHeight } from './terrainHeight.js';
+import { usesKillhouseMeshCollision } from './mapMeshMovement.js';
 
 export type MapId = 'kilo_sector' | 'killhouse_small';
 
@@ -62,7 +62,11 @@ export interface MapCollisionDef {
   mapHalfZ: number;
   wallThickness: number;
   outdoor: boolean;
+  /** True when movement uses baked/runtime mesh BVH instead of module AABBs. */
+  usesMeshCollision?: boolean;
   getLevelColliders: () => Aabb[];
+  /** Client-only box fallback before mesh BVH is ready. */
+  getClientGameplayColliders?: () => Aabb[];
   sampleGroundHeight: (x: number, z: number) => number;
   pickSpawnPoint: (playerIndex: number, context?: SpawnPickContext) => { x: number; z: number };
   pickTeamSpawnPoint?: (
@@ -116,7 +120,9 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     mapHalfZ: KILLHOUSE_HALF_Z,
     wallThickness: KILLHOUSE_WALL_THICK,
     outdoor: false,
-    getLevelColliders: getKillhouseColliders,
+    usesMeshCollision: true,
+    getLevelColliders: () => [],
+    getClientGameplayColliders: () => [],
     sampleGroundHeight: killhouseGroundHeight,
     pickSpawnPoint: pickKillhouseSpawnPoint,
     pickTeamSpawnPoint: pickKillhouseTeamSpawnPoint,
@@ -149,4 +155,12 @@ export function setClientMapDef(mapId: MapId): void {
 
 export function getClientMapDef(): MapCollisionDef {
   return clientMapDef;
+}
+
+/** Box colliders used by the client before mesh BVH is ready. Empty on mesh-collision maps. */
+export function getClientGameplayColliders(map: MapCollisionDef = getClientMapDef()): Aabb[] {
+  if (usesKillhouseMeshCollision(map)) {
+    return map.getClientGameplayColliders?.() ?? [];
+  }
+  return map.getClientGameplayColliders?.() ?? map.getLevelColliders();
 }

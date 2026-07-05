@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 
-import { attachVoxelColliderDebug } from '../debug/VoxelColliderDebugMesh';
 import {
-  getKillhouseShieldPropWorldColliders,
   KILLHOUSE_SHIELD_PROP_PLACEMENTS,
   KILLHOUSE_SHIELD_PROP_SCALE,
 } from '../../shared/level/killhouseSmallColliders.js';
@@ -13,15 +11,9 @@ const SHIELD_PROP_MODEL = 'shield_pink_prop_1.fbx';
 export class KillhouseCenterProp {
   readonly group = new THREE.Group();
   readonly whenReady: Promise<void>;
-  readonly voxelDebugGroup: THREE.Group;
 
   constructor() {
     this.group.name = 'killhouseCenterProp';
-    this.voxelDebugGroup = attachVoxelColliderDebug(
-      this.group,
-      getKillhouseShieldPropWorldColliders(),
-      'shield prop LOD voxel',
-    );
     this.whenReady = loadKillhouseWallTemplate(SHIELD_PROP_MODEL, KILLHOUSE_SHIELD_PROP_SCALE)
       .then((template) => {
         for (const placement of KILLHOUSE_SHIELD_PROP_PLACEMENTS) {

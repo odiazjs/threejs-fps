@@ -1,12 +1,4 @@
-import type { Aabb } from './levelData.js';
 import type { SpawnPickContext, SpawnZone } from './spawnPick.js';
-import { BIO_WALL_BASIC_VOXEL_COLLIDERS } from './bioWallBasicVoxelColliders.js';
-import {
-  getMazeWallCollidersAt,
-  KILLHOUSE_MAZE_WALL_PLACEMENTS,
-} from './killhouseMazeWalls.js';
-import { transformPlacedVoxelColliders } from './placedVoxelCollider.js';
-import { LOD_SHIELD_PROP_COLLIDERS } from './lodShieldPropColliders.js';
 import {
   pickBatchTeamSpawns,
   pickRandomTeamRespawn,
@@ -43,9 +35,11 @@ export const KILLHOUSE_CENTER_WALL_SCALE = 0.02;
 /** Matches wall prop scale for shield_pink_prop_1.fbx visual placement. */
 export const KILLHOUSE_SHIELD_PROP_SCALE = 0.010;
 
-/** Scaled lod_shield_prop.fbx (model_LOD3) voxel footprint half-extents at KILLHOUSE_SHIELD_PROP_SCALE. */
+/** Shield prop coarse proxy footprint half-extents at KILLHOUSE_SHIELD_PROP_SCALE. */
 export const KILLHOUSE_SHIELD_PROP_HALF_X = 0.799;
 export const KILLHOUSE_SHIELD_PROP_HALF_Z = 0.949;
+/** Full vertical span of shield module at KILLHOUSE_SHIELD_PROP_SCALE (from LOD3 bake bounds). */
+export const KILLHOUSE_SHIELD_PROP_HEIGHT = 1.45;
 
 export interface KillhouseShieldPropPlacement {
   x: number;
@@ -136,10 +130,6 @@ export const PERIMETER_BIO_WALL_PLACEMENTS: readonly PerimeterBioWallPlacement[]
   ...buildDepthWallRun(eastX, -Math.PI / 2),
 ];
 
-function getPerimeterWallCollidersAt(placement: PerimeterBioWallPlacement): Aabb[] {
-  return transformPlacedVoxelColliders(BIO_WALL_BASIC_VOXEL_COLLIDERS, placement);
-}
-
 /** Chrono-Bowl spawn pools — B1–B6 (west) and R1–R6 (east) per arena layout. */
 const BLUE_SPAWN_POOL: readonly SpawnZone[] = [
   { x: -20.52, z: -14.85, spreadX: 2.2, spreadZ: 2.6 },
@@ -228,31 +218,6 @@ export function pickSpawnPoint(
 
 export function sampleGroundHeight(_x: number, _z: number): number {
   return 0;
-}
-
-function getShieldPropCollidersAt(placement: KillhouseShieldPropPlacement): Aabb[] {
-  return transformPlacedVoxelColliders(LOD_SHIELD_PROP_COLLIDERS, placement);
-}
-
-/** World-space voxel colliders for perimeter bio_wall_basic modules (debug visualization). */
-export function getKillhousePerimeterWallColliders(): Aabb[] {
-  return PERIMETER_BIO_WALL_PLACEMENTS.flatMap(getPerimeterWallCollidersAt);
-}
-
-/** World-space LOD voxel colliders for all shield prop placements (debug visualization). */
-export function getKillhouseShieldPropWorldColliders(): Aabb[] {
-  return KILLHOUSE_SHIELD_PROP_PLACEMENTS.flatMap(getShieldPropCollidersAt);
-}
-
-let cachedColliders: Aabb[] | null = null;
-
-export function getLevelColliders(): Aabb[] {
-  cachedColliders ??= [
-    ...PERIMETER_BIO_WALL_PLACEMENTS.flatMap(getPerimeterWallCollidersAt),
-    ...KILLHOUSE_MAZE_WALL_PLACEMENTS.flatMap(getMazeWallCollidersAt),
-    ...KILLHOUSE_SHIELD_PROP_PLACEMENTS.flatMap(getShieldPropCollidersAt),
-  ];
-  return cachedColliders;
 }
 
 export function isInsideKillhouseBounds(

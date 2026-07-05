@@ -47,8 +47,9 @@ import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import { getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
-import { LevelMeshBvhBulletRaycast } from '../world/LevelMeshBvhBulletRaycast';
-import { setLevelMeshBvhBulletRaycast } from '../combat/levelBulletRaycast';
+import { LevelMeshBvhCollision } from '../world/LevelMeshBvhCollision';
+import { setLevelMeshBvhCollision } from '../player/levelMovement';
+import { SHOW_MESH_BVH_COLLIDER_DEBUG } from '../debug/debugConfig';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
@@ -122,7 +123,7 @@ export class Game {
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
   private worldBuilder: WorldBuilder | null = null;
-  private levelBulletBvh: LevelMeshBvhBulletRaycast | null = null;
+  private levelMeshBvh: LevelMeshBvhCollision | null = null;
   private shieldDomeManager!: ShieldDomeManager;
   private shieldDomeChargeManager!: ShieldDomeChargeManager;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
@@ -334,25 +335,29 @@ export class Game {
     this.weaponDrops = new WeaponDrops(this.scene);
 
     if (mapId === 'killhouse_small') {
-      void this.initKillhouseBulletBvh();
+      void this.initKillhouseMeshBvh();
+    } else if (SHOW_MESH_BVH_COLLIDER_DEBUG) {
+      console.warn(
+        '[MeshBvhColliderDebug] Mesh BVH debug is only built on Chrono-Bowl — select killhouse_small in the lobby map dropdown',
+      );
     }
   }
 
-  private async initKillhouseBulletBvh(): Promise<void> {
+  private async initKillhouseMeshBvh(): Promise<void> {
     const world = this.worldBuilder;
     if (!world) return;
 
-    this.levelBulletBvh = new LevelMeshBvhBulletRaycast();
-    setLevelMeshBvhBulletRaycast(this.levelBulletBvh);
+    this.levelMeshBvh = new LevelMeshBvhCollision();
+    setLevelMeshBvhCollision(this.levelMeshBvh);
 
     try {
       await world.whenKillhouseBulletBvhReady();
-      this.levelBulletBvh.rebuild(world.getKillhouseBulletBvhRoots());
+      this.levelMeshBvh.rebuild(world.getKillhouseBulletBvhRoots(), this.scene);
     } catch (error) {
-      console.warn('[Game] Failed to build killhouse bullet BVH', error);
-      this.levelBulletBvh.dispose();
-      this.levelBulletBvh = null;
-      setLevelMeshBvhBulletRaycast(null);
+      console.warn('[Game] Failed to build killhouse mesh BVH', error);
+      this.levelMeshBvh.dispose();
+      this.levelMeshBvh = null;
+      setLevelMeshBvhCollision(null);
     }
   }
 

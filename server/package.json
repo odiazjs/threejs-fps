@@ -20,6 +20,8 @@
     "drizzle-orm": "^0.44.2",
     "express": "^5.2.1",
     "pg": "^8.16.0",
+    "three": "^0.177.0",
+    "three-mesh-bvh": "^0.9.10",
     "tsx": "^4.20.3"
   },
   "devDependencies": {

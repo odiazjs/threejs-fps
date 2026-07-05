@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 
-import { attachVoxelColliderDebug } from '../debug/VoxelColliderDebugMesh';
 import {
-  getKillhouseMazeWallColliders,
   KILLHOUSE_INTERIOR_WALL_SCALE,
   KILLHOUSE_MAZE_WALL_PLACEMENTS,
   type MazeWallPlacement,
@@ -26,15 +24,9 @@ function addMazeWallInstance(
 export class KillhouseMazeWalls {
   readonly group = new THREE.Group();
   readonly whenReady: Promise<void>;
-  readonly colliderDebugGroup: THREE.Group;
 
   constructor() {
     this.group.name = 'killhouseMazeWalls';
-    this.colliderDebugGroup = attachVoxelColliderDebug(
-      this.group,
-      getKillhouseMazeWallColliders(),
-      'maze/hallway wall',
-    );
     this.whenReady = this.build().catch((error) => {
       console.warn('[KillhouseMazeWalls] Failed to load maze wall models', error);
     });

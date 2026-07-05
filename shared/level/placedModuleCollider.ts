@@ -1,8 +1,4 @@
 import type { Aabb } from './levelData.js';
-import {
-  scaleLocalColliderSet,
-  VOXEL_COLLIDER_SCALE,
-} from './voxelColliderConfig.js';
 
 export interface PlacedModuleCollider {
   x: number;
@@ -28,8 +24,8 @@ function rotateLocalXZ(x: number, z: number, quarters: number): { x: number; z: 
   }
 }
 
-/** Rotate and translate local-module voxel boxes into world space. */
-export function transformPlacedVoxelCollider(
+/** Rotate and translate a local-module AABB into world space. */
+export function transformPlacedModuleAabb(
   box: Aabb,
   placement: PlacedModuleCollider,
 ): Aabb {
@@ -68,11 +64,25 @@ export function transformPlacedVoxelCollider(
   return { minX, minY, minZ, maxX, maxY, maxZ };
 }
 
-export function transformPlacedVoxelColliders(
-  boxes: readonly Aabb[],
+/** Single module box rotated/translated into world space (server proxies). */
+export function createPlacedModuleAabb(
+  length: number,
+  depth: number,
+  height: number,
   placement: PlacedModuleCollider,
-  colliderScale = VOXEL_COLLIDER_SCALE,
-): Aabb[] {
-  const scaled = scaleLocalColliderSet(boxes, colliderScale);
-  return scaled.map((box) => transformPlacedVoxelCollider(box, placement));
+  padding = 0,
+): Aabb {
+  const halfLength = length / 2 + padding;
+  const halfDepth = depth / 2 + padding;
+  return transformPlacedModuleAabb(
+    {
+      minX: -halfLength,
+      maxX: halfLength,
+      minY: -padding,
+      maxY: height + padding,
+      minZ: -halfDepth,
+      maxZ: halfDepth,
+    },
+    placement,
+  );
 }

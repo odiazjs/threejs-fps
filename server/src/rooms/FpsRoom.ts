@@ -1,6 +1,14 @@
 import { Client, Room } from 'colyseus';
 import { overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
-import { clampEyeY, movePlayer, resolveMoveFeetY, stepPlayerPhysics, type PlayerPhysicsState } from '../../../shared/level/collision.js';
+import type { PlayerPhysicsState } from '../../../shared/level/collision.js';
+import {
+  clampEyeYForMap,
+  getSpawnCollidersForMap,
+  isSpawnBlockedForMap,
+  movePlayerForMap,
+  resolveMoveFeetYForMap,
+  stepPlayerPhysicsForMap,
+} from '../../../shared/level/mapMeshMovement.js';
 import { CROUCH_EYE_HEIGHT } from '../../../shared/combat/crouch.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
@@ -99,6 +107,7 @@ import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.
 import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
 import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
+import { loadKillhouseMeshCollisionForServer } from '../level/loadKillhouseCollision.js';
 
 interface MoveMessage {
   x: number;
@@ -161,6 +170,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.mapDef = getMapDef(mapId);
     this.gameMode = normalizeGameMode(options.gameMode);
     this.state.gameMode = this.gameMode;
+
+    if (mapId === 'killhouse_small') {
+      loadKillhouseMeshCollisionForServer();
+    }
 
     if (this.gameMode === 'tdm') {
       this.state.friendlyFire = false;
@@ -347,7 +360,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       occupied,
       playersOnTeam,
       teamCount: this.state.teamCount,
-      colliders: this.mapDef.getLevelColliders(),
+      colliders: getSpawnCollidersForMap(this.mapDef),
+      isGeometryBlocked: (x, z) => isSpawnBlockedForMap(x, z, this.mapDef),
     };
   }
 
@@ -616,7 +630,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       const { deltaX, deltaZ } = computeTrainingBotMoveDelta(moveState, deltaSec);
       const feetY = player.y - EYE_HEIGHT;
-      const result = stepPlayerPhysics(
+      const result = stepPlayerPhysicsForMap(
         player.x,
         feetY,
         player.z,
@@ -671,10 +685,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const crouching = data.crouching === true;
       const eyeHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
       const clientFeetY = data.y - eyeHeight;
-      const feetYForMove = resolveMoveFeetY(data.x, data.z, clientFeetY, this.mapDef);
+      const feetYForMove = resolveMoveFeetYForMap(data.x, data.z, clientFeetY, this.mapDef);
       const deltaX = data.x - player.x;
       const deltaZ = data.z - player.z;
-      const resolved = movePlayer(
+      const resolved = movePlayerForMap(
         player.x,
         feetYForMove,
         player.z,
@@ -685,7 +699,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       player.x = resolved.x;
       player.z = resolved.z;
-      player.y = clampEyeY(resolved.x, resolved.z, data.y, this.mapDef, crouching);
+      player.y = clampEyeYForMap(resolved.x, resolved.z, data.y, this.mapDef, crouching);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
       player.crouching = crouching;

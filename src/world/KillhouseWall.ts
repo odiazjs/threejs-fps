@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { attachVoxelColliderDebug } from '../debug/VoxelColliderDebugMesh';
 import {
-  getKillhousePerimeterWallColliders,
   KILLHOUSE_CENTER_WALL_SCALE,
   PERIMETER_BIO_WALL_PLACEMENTS,
   type PerimeterBioWallPlacement,
@@ -108,15 +106,9 @@ function addWallInstance(
 export class KillhouseWall {
   readonly group = new THREE.Group();
   readonly whenReady: Promise<void>;
-  readonly colliderDebugGroup: THREE.Group;
 
   constructor() {
     this.group.name = 'killhouseWalls';
-    this.colliderDebugGroup = attachVoxelColliderDebug(
-      this.group,
-      getKillhousePerimeterWallColliders(),
-      'perimeter wall',
-    );
     this.whenReady = this.build().catch((error) => {
       console.warn('[KillhouseWall] Failed to load wall models', error);
     });
