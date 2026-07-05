@@ -85,8 +85,12 @@ export function setGameJoinIntent(intent: GameJoinIntent): void {
 export async function resolveGameJoinIntent(
   credentials: FpsJoinCredentials,
 ): Promise<GameJoinIntent | null> {
-  const partyLaunch = await fetchPartyGameLaunch(credentials);
-  if (partyLaunch) return partyLaunch;
+  try {
+    const partyLaunch = await fetchPartyGameLaunch(credentials);
+    if (partyLaunch) return partyLaunch;
+  } catch (error) {
+    console.warn('[GameJoin] requestGameLaunch failed — falling back to quick match', error);
+  }
 
   const stored = consumeStoredJoinIntent();
   if (stored) return stored;

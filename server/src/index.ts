@@ -32,6 +32,11 @@ async function main(): Promise<void> {
   await initRapier();
   console.log('[physics] Rapier initialized');
 
+  const { warmKillhousePhysics } = await import('./level/killhousePhysicsCache.js');
+  void warmKillhousePhysics().catch((error) => {
+    console.warn('[physics] Chrono-Bowl collision warm-up failed (will retry on first match)', error);
+  });
+
   await maybeRunMigrations();
 
   server.listen(port);

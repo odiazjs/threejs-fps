@@ -14,7 +14,7 @@ import {
   type ShieldChargeState,
   type WeaponDropState,
 } from '../../shared/schema/FpsState';
-import { SERVER_URL } from '../config/serverUrl';
+import { getServerUrl } from '../config/serverUrl';
 import { DEFAULT_MAP_ID, isValidMapId, normalizeMapId, type MapId } from '../../shared/level/maps';
 import { normalizeGameMode, normalizeMatchPhase } from '../../shared/combat/match';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
@@ -202,7 +202,7 @@ export class RoomClient {
   async connect(
     credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,
-    url = SERVER_URL,
+    url = getServerUrl(),
   ): Promise<void> {
     const client = new Client(url);
     const joinOptions = {
@@ -222,15 +222,11 @@ export class RoomClient {
     } else {
       // Always create so lobby map/mode selection is applied (joinOrCreate can
       // attach to an existing playground room and ignore create options).
-      this.room = await client.create(
-        'fps',
-        {
-          ...joinOptions,
-          mapId: normalizeMapId(joinIntent?.mapId),
-          gameMode: joinIntent?.gameMode,
-        },
-        FpsState,
-      );
+      this.room = await this.createWithRetry(client, {
+        ...joinOptions,
+        mapId: normalizeMapId(joinIntent?.mapId),
+        gameMode: joinIntent?.gameMode,
+      });
     }
     this.bindProjectileMessages();
     this.bindWeaponShotMessages();
@@ -255,6 +251,25 @@ export class RoomClient {
         lastError = error;
         if (attempt < attempts - 1) {
           await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  private async createWithRetry(
+    client: Client,
+    options: Record<string, string | number>,
+    attempts = 10,
+  ): Promise<Room> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        return await client.create('fps', options, FpsState);
+      } catch (error) {
+        lastError = error;
+        if (attempt < attempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
         }
       }
     }

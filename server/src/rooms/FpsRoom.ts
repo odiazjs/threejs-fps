@@ -157,7 +157,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly lastShotOriginBySession = new Map<string, LastShotOrigin>();
   private readonly autoFiringSessions = new Set<string>();
 
-  onCreate(options: JoinOptions = {}): void {
+  async onCreate(options: JoinOptions = {}): Promise<void> {
     this.inviteMatch = options.inviteMatch === true;
     this.autoDispose = !this.inviteMatch;
     const partySize = Math.min(
@@ -173,7 +173,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.gameMode = normalizeGameMode(options.gameMode);
     this.state.gameMode = this.gameMode;
 
-    loadMapPhysicsForServer(this.mapDef);
+    await loadMapPhysicsForServer(this.mapDef);
 
     if (this.gameMode === 'tdm') {
       this.state.friendlyFire = false;

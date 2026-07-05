@@ -1,13 +1,13 @@
 import { Client, type Room } from '@colyseus/sdk';
 import type { GameLaunchMessage } from '../../shared/network/gameInvite';
 import { LobbyState } from '../../shared/schema/LobbyState';
-import { SERVER_URL } from '../config/serverUrl';
+import { getServerUrl } from '../config/serverUrl';
 import type { FpsJoinCredentials } from './joinCredentials';
 import type { GameJoinIntent } from './gameJoin';
 import { normalizeGameMode } from '../../shared/combat/match';
 import { normalizeMapId } from '../../shared/level/maps';
 
-const LOBBY_LAUNCH_TIMEOUT_MS = 8_000;
+const LOBBY_LAUNCH_TIMEOUT_MS = 4_000;
 
 function launchToIntent(data: GameLaunchMessage): GameJoinIntent {
   return {
@@ -21,12 +21,12 @@ function launchToIntent(data: GameLaunchMessage): GameJoinIntent {
 
 /**
  * Brief lobby connection to consume the server-side pending party launch.
- * Authoritative source for roomId — not URL params or parent window state.
+ * Authoritative source for roomId — lobby WebSocket only.
  */
 export async function fetchPartyGameLaunch(
   credentials: FpsJoinCredentials,
 ): Promise<GameJoinIntent | null> {
-  const client = new Client(SERVER_URL);
+  const client = new Client(getServerUrl());
   let room: Room | null = null;
 
   try {

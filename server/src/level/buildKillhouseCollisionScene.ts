@@ -7,7 +7,7 @@ import {
   KILLHOUSE_CENTER_WALL_SCALE,
   PERIMETER_BIO_WALL_PLACEMENTS,
   type PerimeterBioWallPlacement,
-} from '../../shared/level/killhouseSmallColliders.js';
+} from '../../../shared/level/killhouseSmallColliders.js';
 import {
   KILLHOUSE_LAYOUT_HOUSE_COLLISION_LOD,
   KILLHOUSE_LAYOUT_HOUSE_COLLISION_MODEL,
@@ -21,9 +21,9 @@ import {
   KILLHOUSE_LAYOUT_PINK_PROP_PLACEMENTS,
   KILLHOUSE_LAYOUT_PINK_PROP_SCALE,
   type LayoutPropPlacement,
-} from '../../shared/level/killhouseLayout.js';
-import { markLodCollisionMesh, markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
-import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
+} from '../../../shared/level/killhouseLayout.js';
+import { markLodCollisionMesh, markLodCollisionShell } from '../../../shared/level/collisionMeshPrep.js';
+import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../../shared/visuals/fbxLodUtils.js';
 
 const BASIC_WALL_MODEL = 'bio_wall_basic.fbx';
 

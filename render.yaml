@@ -23,6 +23,8 @@ services:
     buildCommand: npm install && npm run build:client
     staticPublishPath: dist
     envVars:
+      # Baked into the JS bundle at build time. If empty, the client falls back to
+      # deriving https://<name>-server.onrender.com from the static site hostname.
       - key: VITE_COLYSEUS_URL
         fromService:
           type: web

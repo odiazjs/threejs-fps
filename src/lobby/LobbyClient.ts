@@ -19,7 +19,7 @@ import type {
 } from '../../shared/network/gameInvite';
 import type { PartySnapshotMessage, RequestPartySnapshotMessage } from '../../shared/network/party';
 import { LobbyState } from '../../shared/schema/LobbyState';
-import { SERVER_URL } from '../config/serverUrl';
+import { getServerUrl } from '../config/serverUrl';
 
 interface LobbyJoinOptions {
   userId: string;
@@ -33,7 +33,7 @@ export class LobbyClient {
     return this.room !== null;
   }
 
-  async connect(options: LobbyJoinOptions, url = SERVER_URL): Promise<void> {
+  async connect(options: LobbyJoinOptions, url = getServerUrl()): Promise<void> {
     if (this.room) {
       await this.disconnect();
     }
@@ -43,7 +43,7 @@ export class LobbyClient {
     this.requestPartySnapshot();
   }
 
-  async reconnect(options: LobbyJoinOptions, url = SERVER_URL): Promise<void> {
+  async reconnect(options: LobbyJoinOptions, url = getServerUrl()): Promise<void> {
     await this.connect(options, url);
   }
 
