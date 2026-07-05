@@ -1,5 +1,5 @@
 import { Game } from '../app/Game';
-import { consumeGameJoinIntent } from '../auth/gameJoin';
+import { resolveGameJoinIntent } from '../auth/gameJoin';
 import { apiGetMe } from '../auth/meApi';
 import { ensureSession } from '../auth/playerSession';
 import { bootstrapDebugFlags } from '../debug/debugQuery';
@@ -14,7 +14,7 @@ async function startGame(): Promise<void> {
     const session = await ensureSession();
     await apiGetMe();
 
-    const joinIntent = consumeGameJoinIntent();
+    const joinIntent = await resolveGameJoinIntent();
     const game = new Game();
     await game.start(
       { userId: session.userId, username: session.username },
