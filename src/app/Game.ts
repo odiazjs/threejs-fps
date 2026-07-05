@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
 import { DEFAULT_MAP_ID, getMapDef, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
+import { normalizeGameMode, type GameMode } from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { PointerInput } from '../input/PointerInput';
@@ -47,8 +48,7 @@ import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import { getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
-import { LevelMeshBvhBulletRaycast } from '../world/LevelMeshBvhBulletRaycast';
-import { setLevelMeshBvhBulletRaycast } from '../combat/levelBulletRaycast';
+import { buildClientMapPhysics, disposeClientMapPhysics } from '../physics/buildMapPhysics';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
@@ -122,7 +122,6 @@ export class Game {
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
   private worldBuilder: WorldBuilder | null = null;
-  private levelBulletBvh: LevelMeshBvhBulletRaycast | null = null;
   private shieldDomeManager!: ShieldDomeManager;
   private shieldDomeChargeManager!: ShieldDomeChargeManager;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
@@ -204,7 +203,7 @@ export class Game {
       this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
       this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
     ]);
-    this.initPlayer(initialMapId);
+    this.initPlayer(initialMapId, joinIntent?.gameMode);
     this.applyActiveMap();
     this.initResize();
     await this.initNetwork(credentials, joinIntent);
@@ -333,36 +332,37 @@ export class Game {
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
 
-    if (mapId === 'killhouse_small') {
-      void this.initKillhouseBulletBvh();
-    }
+    void this.initMapPhysics(mapId);
   }
 
-  private async initKillhouseBulletBvh(): Promise<void> {
+  private async initMapPhysics(mapId: MapId): Promise<void> {
     const world = this.worldBuilder;
     if (!world) return;
 
-    this.levelBulletBvh = new LevelMeshBvhBulletRaycast();
-    setLevelMeshBvhBulletRaycast(this.levelBulletBvh);
+    const mapDef = getMapDef(mapId);
 
     try {
-      await world.whenKillhouseBulletBvhReady();
-      this.levelBulletBvh.rebuild(world.getKillhouseBulletBvhRoots());
+      if (mapId === 'killhouse_small') {
+        await world.whenKillhousePhysicsReady();
+        await buildClientMapPhysics(mapDef, world.getKillhousePhysicsRoots(), this.scene);
+      } else {
+        await buildClientMapPhysics(mapDef, undefined, this.scene);
+      }
     } catch (error) {
-      console.warn('[Game] Failed to build killhouse bullet BVH', error);
-      this.levelBulletBvh.dispose();
-      this.levelBulletBvh = null;
-      setLevelMeshBvhBulletRaycast(null);
+      console.warn('[Game] Failed to build map physics', error);
+      disposeClientMapPhysics();
     }
   }
 
-  private initPlayer(mapId: MapId): void {
+  private initPlayer(mapId: MapId, gameMode?: GameMode): void {
     this.player = Player.createLocal();
     const mapDef = getMapDef(mapId);
-    if (!mapDef.pickTeamSpawnPoint) {
-      const spawn = mapDef.pickSpawnPoint(0);
-      this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
-    }
+    const mode = normalizeGameMode(gameMode);
+    const spawn =
+      mode === 'tdm' && mapDef.pickTeamSpawnPoint
+        ? mapDef.pickTeamSpawnPoint(0, 0)
+        : mapDef.pickSpawnPoint(0);
+    this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
     this.player.attachToScene(this.scene);
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
     this.player.bindAimControls(this.playerControls.controls);

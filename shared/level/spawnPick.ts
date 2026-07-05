@@ -21,8 +21,10 @@ export interface SpawnPickContext {
   playersOnTeam?: number;
   /** Active team count for the match (2–4). */
   teamCount?: number;
-  /** Optional map colliders for spawn-safe checks. */
+  /** Optional map colliders for spawn-safe checks (AABB fallback maps). */
   colliders?: ReadonlyArray<Aabb>;
+  /** Mesh-accurate spawn block test (Chrono-Bowl baked collision). */
+  isGeometryBlocked?: (x: number, z: number) => boolean;
   /** Minimum horizontal gap between two spawn points. */
   minSeparation?: number;
 }
@@ -95,6 +97,7 @@ function isSpawnClear(
 ): boolean {
   const minSeparation = context?.minSeparation ?? DEFAULT_MIN_SEPARATION;
   if (isTooCloseToOccupied(x, z, occupied, minSeparation)) return false;
+  if (context?.isGeometryBlocked?.(x, z)) return false;
   if (isSpawnBlocked(x, z, context?.colliders)) return false;
   return true;
 }

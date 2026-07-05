@@ -226,7 +226,7 @@ export class WeaponPose {
     return null;
   }
 
-  apply(weapon: THREE.Object3D): void {
+  apply(weapon: THREE.Object3D, wallPullback = 0): void {
     if (!this.view) return;
 
     copyViewOffset(_hip, this.view.hip);
@@ -236,6 +236,10 @@ export class WeaponPose {
     const pose = this.getActivePoseOffsets();
     if (pose) {
       applyPoseOffsets(_offset, _offset, pose);
+    }
+
+    if (wallPullback > 0) {
+      _offset.z += wallPullback;
     }
 
     weapon.position.copy(_offset);

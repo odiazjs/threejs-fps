@@ -6,24 +6,25 @@
     "sync:sounds": "node scripts/sync-sounds.mjs",
     "sync:images": "node scripts/process-inventory-icons.mjs",
     "sync:3d": "node scripts/sync-3d.mjs",
+    "bake:collision": "tsx scripts/bake-killhouse-collision.ts",
     "dev": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite",
     "dev:server": "npm run dev --prefix server",
     "install:all": "npm install && npm install --prefix server",
-    "build": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite build",
-    "build:client": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite build",
-    "bake:voxels": "node scripts/bake-voxel-colliders.mjs",
+    "build": "npm run sync:sounds && npm run sync:images && npm run sync:3d && npm run bake:collision && vite build",
+    "build:client": "npm run sync:sounds && npm run sync:images && npm run sync:3d && npm run bake:collision && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@colyseus/schema": "^4.0.26",
     "@colyseus/sdk": "^0.17.43",
-    "three": "^0.177.0",
-    "three-mesh-bvh": "^0.9.10"
+    "@dimforge/rapier3d-compat": "^0.19.3",
+    "three": "^0.177.0"
   },
   "devDependencies": {
     "@types/three": "^0.177.0",
     "pngjs": "^7.0.0",
+    "tsx": "^4.23.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"
   }
