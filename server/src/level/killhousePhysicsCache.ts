@@ -1,59 +1,34 @@
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  bakedDataFromGeometry,
-  buildMergedLevelCollisionGeometry,
-  collectLevelCollisionMeshes,
-} from '../../../shared/level/levelMeshCollisionUtils.js';
+import { buildKillhouseServerColliders } from '../../../shared/level/killhouseServerColliders.js';
 import { loadKillhouseGroundCollider } from '../../../shared/level/killhouseGroundCollider.js';
 import { LevelPhysicsWorld } from '../../../shared/physics/levelPhysicsWorld.js';
 import { initRapier } from '../../../shared/physics/rapierInit.js';
-import {
-  buildKillhouseCollisionScene,
-  installThreeNodePolyfills,
-} from './buildKillhouseCollisionScene.js';
 
 let cachedWorld: LevelPhysicsWorld | null = null;
 let loadPromise: Promise<LevelPhysicsWorld> | null = null;
 
-function resolveKillhouseAssetDir(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), '../../../public/3d');
-}
-
 async function buildKillhousePhysicsWorld(): Promise<LevelPhysicsWorld> {
   await initRapier();
-  installThreeNodePolyfills();
 
-  const assetDir = resolveKillhouseAssetDir();
-  const root = await buildKillhouseCollisionScene(assetDir);
-  const meshes = collectLevelCollisionMeshes([root]);
-  if (meshes.length === 0) {
-    throw new Error('[ServerPhysics] No collision meshes found for Chrono-Bowl layout');
-  }
-  const geometry = buildMergedLevelCollisionGeometry(meshes);
-  const { positions, indices } = bakedDataFromGeometry(geometry);
-  if (positions.length < 9 || indices.length < 3) {
-    throw new Error('[ServerPhysics] Chrono-Bowl collision geometry is empty');
+  const boxes = buildKillhouseServerColliders();
+  if (boxes.length === 0) {
+    throw new Error('[ServerPhysics] No box colliders for Chrono-Bowl layout');
   }
 
   const world = new LevelPhysicsWorld();
   world.init();
-  world.loadTrimesh(positions, indices);
+  world.loadOrientedBoxes(boxes);
   loadKillhouseGroundCollider(world);
-  geometry.dispose();
 
   if (!world.isReady) {
-    throw new Error('[ServerPhysics] Failed to build Chrono-Bowl trimesh collision');
+    throw new Error('[ServerPhysics] Failed to build Chrono-Bowl box collision');
   }
 
-  console.info(
-    `[ServerPhysics] Built Chrono-Bowl trimesh (${meshes.length} meshes, ${Math.round(indices.length / 3)} tris)`,
-  );
+  console.info(`[ServerPhysics] Built Chrono-Bowl box collision (${boxes.length} colliders)`);
 
   return world;
 }
 
-/** Cached killhouse Rapier world — built once from FBX layout, shared across fps rooms. */
+/** Cached killhouse Rapier world — box colliders from layout data, shared across fps rooms. */
 export async function getOrBuildKillhousePhysicsWorld(): Promise<LevelPhysicsWorld> {
   if (cachedWorld?.isReady) return cachedWorld;
   if (!loadPromise) {
@@ -70,7 +45,7 @@ export async function getOrBuildKillhousePhysicsWorld(): Promise<LevelPhysicsWor
   return loadPromise;
 }
 
-/** Optional startup warm — avoids first match waiting on FBX load. */
+/** Optional startup warm — instant with box colliders (no FBX load). */
 export async function warmKillhousePhysics(): Promise<void> {
   await getOrBuildKillhousePhysicsWorld();
 }

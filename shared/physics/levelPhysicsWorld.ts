@@ -7,6 +7,7 @@ import {
   type Aabb,
 } from '../level/levelData.js';
 import type { RaycastHit, PlayerPhysicsState } from '../level/collision.js';
+import type { OrientedBoxCollider } from '../level/killhouseServerColliders.js';
 import type { MapCollisionDef } from '../level/maps.js';
 import {
   CAPSULE_HALF_HEIGHT,
@@ -77,6 +78,19 @@ export class LevelPhysicsWorld {
 
       const desc = RAPIER.ColliderDesc.cuboid(hx, hy, hz)
         .setTranslation(cx, cy, cz)
+        .setFriction(0.6);
+      this.world.createCollider(desc);
+    }
+  }
+
+  loadOrientedBoxes(boxes: readonly OrientedBoxCollider[]): void {
+    if (!this.world) throw new Error('[LevelPhysics] init() before loading colliders');
+
+    for (const box of boxes) {
+      const halfAngle = box.rotationY * 0.5;
+      const desc = RAPIER.ColliderDesc.cuboid(box.halfX, box.halfY, box.halfZ)
+        .setTranslation(box.centerX, box.centerY, box.centerZ)
+        .setRotation({ w: Math.cos(halfAngle), x: 0, y: Math.sin(halfAngle), z: 0 })
         .setFriction(0.6);
       this.world.createCollider(desc);
     }
