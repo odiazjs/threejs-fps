@@ -34,10 +34,17 @@ export class LobbyClient {
   }
 
   async connect(options: LobbyJoinOptions, url = SERVER_URL): Promise<void> {
+    if (this.room) {
+      await this.disconnect();
+    }
     const client = new Client(url);
     this.room = await client.joinOrCreate('lobby', options, LobbyState);
     this.bindMessages();
     this.requestPartySnapshot();
+  }
+
+  async reconnect(options: LobbyJoinOptions, url = SERVER_URL): Promise<void> {
+    await this.connect(options, url);
   }
 
   async disconnect(): Promise<void> {
@@ -146,6 +153,9 @@ export class LobbyClient {
   private partySnapshotHandler: ((data: PartySnapshotMessage) => void) | null = null;
 
   private bindMessages(): void {
+    this.room?.onLeave(() => {
+      this.room = null;
+    });
     this.room?.onMessage('friendRequest', (data: FriendRequestMessage) => {
       this.friendRequestHandler?.(data);
     });

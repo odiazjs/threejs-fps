@@ -70,8 +70,11 @@ async function startLobby(): Promise<void> {
     onGameOverlayClosed(() => {
       loading.reset();
       joinBtn.disabled = false;
-      appShell?.syncPresenceAfterGame();
-      friendsPanel?.syncControls();
+      void lobbyClient.reconnect({ userId: session.userId, username: session.username }).then(() => {
+        lobbyClient.setAppView(shellPresenceView(parseShellViewFromUrl()));
+        appShell?.syncPresenceAfterGame();
+        friendsPanel?.syncControls();
+      });
     });
 
     window.addEventListener('pagehide', () => {

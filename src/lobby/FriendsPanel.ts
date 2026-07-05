@@ -320,7 +320,7 @@ export class FriendsPanel {
     setGameJoinIntent(intent);
 
     try {
-      await launchGameOverlay(intent);
+      await launchGameOverlay();
     } catch (error) {
       console.warn('[Lobby] failed to launch game', error);
       this.loading.reset();
@@ -374,21 +374,21 @@ export class FriendsPanel {
     // Replace any prior spinner (e.g. "Starting game...") — depth must not stack.
     this.loading.reset();
     this.loading.show('Joining game...');
-    const intent = {
-      roomId,
-      mode: 'join' as const,
-      mapId: mapId ?? getSelectedMapId(),
-      gameMode: getSelectedGameMode(),
-      ...(typeof teamId === 'number' ? { teamId } : {}),
-    };
-    setGameJoinIntent(intent);
     // Keep the lobby connection; the match runs in an overlay iframe.
-    void launchGameOverlay(intent)
+    // Game client fetches roomId from the lobby WebSocket on load.
+    void launchGameOverlay()
       .catch((error) => {
         console.warn('[Lobby] failed to launch game overlay', error);
         this.launching = false;
         this.loading.reset();
         this.updatePartyButtons();
+        setGameJoinIntent({
+          roomId,
+          mode: 'join',
+          mapId: mapId ?? getSelectedMapId(),
+          gameMode: getSelectedGameMode(),
+          ...(typeof teamId === 'number' ? { teamId } : {}),
+        });
         window.location.assign(buildGameUrl('/game.html'));
       })
       .finally(() => {

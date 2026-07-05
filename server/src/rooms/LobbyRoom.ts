@@ -52,6 +52,10 @@ import { normalizeGameMode } from '../../../shared/combat/match.js';
 import { registerLobbyUser, setLobbyAppView, unregisterUser } from '../lobby/presence.js';
 
 import { sendFriendPresenceSnapshot } from '../lobby/presenceNotify.js';
+import {
+  consumePendingGameLaunch,
+  setPendingGameLaunch,
+} from '../lobby/pendingGameLaunches.js';
 
 
 
@@ -584,7 +588,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
         for (const member of launchMembers) {
-          const launch: GameLaunchMessage = { roomId, mapId };
+          const launch: GameLaunchMessage = { roomId, mapId, gameMode };
+          setPendingGameLaunch(member.userId, launch);
           member.client.send('gameLaunch', launch);
         }
 
@@ -644,6 +649,19 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       const userId = this.getUserId(client);
       if (!userId) return;
       void sendFriendPresenceSnapshot(client, userId);
+    },
+
+    requestGameLaunch: (client: Client) => {
+      const userId = this.getUserId(client);
+      if (!userId) return;
+
+      const launch = consumePendingGameLaunch(userId);
+      if (launch) {
+        client.send('gameLaunch', launch);
+        return;
+      }
+
+      client.send('gameLaunchNone', { _none: true });
     },
 
     requestPartySnapshot: (client: Client, _data: RequestPartySnapshotMessage) => {

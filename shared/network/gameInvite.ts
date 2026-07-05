@@ -28,6 +28,16 @@ export interface GameLaunchMessage {
   roomId: string;
   teamId?: number;
   mapId?: string;
+  gameMode?: string;
+}
+
+/** Sent when the client asks for a pending party launch but none exists. */
+export interface GameLaunchNoneMessage {
+  _none: true;
+}
+
+export interface RequestGameLaunchMessage {
+  _request?: true;
 }
 
 export interface SendGameInviteMessage {

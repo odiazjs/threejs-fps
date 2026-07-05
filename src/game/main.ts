@@ -14,7 +14,10 @@ async function startGame(): Promise<void> {
     const session = await ensureSession();
     await apiGetMe();
 
-    const joinIntent = await resolveGameJoinIntent();
+    const joinIntent = await resolveGameJoinIntent({
+      userId: session.userId,
+      username: session.username,
+    });
     const game = new Game();
     await game.start(
       { userId: session.userId, username: session.username },
