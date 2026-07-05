@@ -74,6 +74,13 @@ import {
 } from '../../shared/combat/crouch';
 import { PlayerInventory } from '../inventory/PlayerInventory';
 import type { InventoryWeaponEntry, InventoryMeleeEntry } from '../ui/InventoryHud';
+import { getClientPhysicsWorld } from '../physics/buildMapPhysics';
+import {
+  applyForwardLimbWallClearance,
+  measureForwardLimbClearanceFactor,
+  measureViewWeaponWallPullback,
+} from '../../shared/physics/forwardWallClearance';
+import { aimDirectionFromYawPitch } from '../../shared/combat/meleeHit';
 const MOVE_SPEED = 3;
 const CROUCH_CAMERA_BLEND_SPEED = 12;
 const REMOTE_INTERPOLATION_SPEED = 12;
@@ -493,7 +500,7 @@ export class Player {
         isSprinting: this.sprint.getState().isSprinting,
         isWalking: this.locomotionWalking,
         isWalkingBackward: this.locomotionWalkingBackward,
-        isJumping: this.locomotionJumping,
+        isJumping: !this.physics.grounded,
         isCrouching: this.locomotionCrouching,
       };
     }
@@ -844,6 +851,18 @@ export class Player {
 
     const t = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * delta);
     this.object.position.lerp(this.targetPosition, t);
+    const aim = aimDirectionFromYawPitch(this.currentYaw, this.currentPitch);
+    const cleared = applyForwardLimbWallClearance(
+      getClientPhysicsWorld(),
+      this.object.position.x,
+      this.object.position.y,
+      this.object.position.z,
+      aim.x,
+      aim.z,
+      this.targetCrouching,
+    );
+    this.object.position.x = cleared.x;
+    this.object.position.z = cleared.z;
     this.currentYaw = lerpAngle(this.currentYaw, this.targetYaw, t);
     this.currentPitch = THREE.MathUtils.lerp(this.currentPitch, this.targetPitch, t);
     this.applyRemoteAim();
@@ -963,6 +982,18 @@ export class Player {
 
     const active = this.loadout.getActive();
     this.remoteWeaponBasePosition.copy(this.remoteWeaponMount.weaponPosition);
+    const aim = aimDirectionFromYawPitch(this.currentYaw, this.currentPitch);
+    const limbFactor = measureForwardLimbClearanceFactor(
+      getClientPhysicsWorld(),
+      this.object.position.x,
+      this.object.position.y,
+      this.object.position.z,
+      aim.x,
+      aim.y,
+      aim.z,
+      this.targetCrouching,
+    );
+    this.remoteWeaponBasePosition.multiplyScalar(limbFactor);
     const remoteBaseRotation = getRemoteWeaponBaseRotation(
       active.config,
       this.remoteWeaponMount.weaponRotation,
@@ -1031,16 +1062,7 @@ export class Player {
         : this.isFiring(pointer, active.config.fireMode);
 
     const wantsCrouch = input.isPressed('KeyC');
-    this.locomotionCrouching = wantsCrouch;
-    this.crouchBlend = THREE.MathUtils.damp(
-      this.crouchBlend,
-      wantsCrouch ? 1 : 0,
-      CROUCH_CAMERA_BLEND_SPEED,
-      delta,
-    );
-    if (this.pitchRig) {
-      this.pitchRig.position.y = EYE_HEIGHT - this.crouchBlend * CROUCH_EYE_DROP;
-    }
+    const isCrouching = wantsCrouch && this.physics.grounded;
 
     const wantsSprint =
       !wantsCrouch &&
@@ -1110,7 +1132,7 @@ export class Player {
     const moveMultiplier =
       meleeEquipped && isSprinting
         ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
-        : wantsCrouch
+        : isCrouching
           ? CROUCH_SPEED_MULTIPLIER
           : 1;
     const speed = MOVE_SPEED * moveMultiplier * delta;
@@ -1167,9 +1189,32 @@ export class Player {
       this.locomotionJumping = false;
     }
 
+    this.locomotionCrouching = wantsCrouch && this.physics.grounded;
+    this.crouchBlend = THREE.MathUtils.damp(
+      this.crouchBlend,
+      this.locomotionCrouching ? 1 : 0,
+      CROUCH_CAMERA_BLEND_SPEED,
+      delta,
+    );
+    if (this.pitchRig) {
+      this.pitchRig.position.y = EYE_HEIGHT - this.crouchBlend * CROUCH_EYE_DROP;
+    }
+
+    const cleared = applyForwardLimbWallClearance(
+      getClientPhysicsWorld(),
+      this.object.position.x,
+      this.object.position.y,
+      this.object.position.z,
+      this.forward.x,
+      this.forward.z,
+      this.locomotionCrouching,
+    );
+    this.object.position.x = cleared.x;
+    this.object.position.z = cleared.z;
+
     this.tryDeployShieldDome(input, {
       isSprinting,
-      isJumping: this.locomotionJumping,
+      isJumping: !this.physics.grounded,
       grounded: this.physics.grounded,
       shooting,
       reloading: ammoState.reloading,
@@ -1468,7 +1513,28 @@ export class Player {
 
   private applyActiveWeaponPose(): void {
     if (!this.loadout) return;
-    this.weaponPose?.apply(this.loadout.getActive().mesh);
+
+    let wallPullback = 0;
+    if (this.camera) {
+      const physics = getClientPhysicsWorld();
+      if (physics?.isReady) {
+        this.camera.getWorldPosition(this.muzzleOrigin);
+        this.camera.getWorldDirection(this.aimDirection);
+        const reach = Math.abs(this.weaponPose?.hipOffset.z ?? 0.35) + 0.3;
+        wallPullback = measureViewWeaponWallPullback(
+          physics,
+          this.muzzleOrigin.x,
+          this.muzzleOrigin.y,
+          this.muzzleOrigin.z,
+          this.aimDirection.x,
+          this.aimDirection.y,
+          this.aimDirection.z,
+          reach,
+        );
+      }
+    }
+
+    this.weaponPose?.apply(this.loadout.getActive().mesh, wallPullback);
   }
 
   private getActiveMeshBaseRotation(): THREE.Euler {

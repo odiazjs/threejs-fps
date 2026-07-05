@@ -1,5 +1,5 @@
-export const SHOW_MESH_BVH_COLLIDER_DEBUG = false;
-/** Client mesh BVH — merged collision geometry (shell-filtered for enterable props). Green fill + white wire. */
+/** Draw Rapier colliders as wireframe overlays in the game scene. */
+export const SHOW_PHYSICS_COLLIDER_DEBUG = false;
 
-/** Server module AABBs — coarse orange wireframe boxes; server anti-cheat only, not client collision. */
-export const SHOW_SERVER_PROXY_COLLIDER_DEBUG = false;
+/** Draw translucent hit-capsule meshes on remote players. */
+export const SHOW_HIT_CAPSULE_DEBUG = true;

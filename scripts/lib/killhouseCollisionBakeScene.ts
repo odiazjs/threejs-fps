@@ -4,16 +4,26 @@ import { pathToFileURL } from 'node:url';
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import {
-  KILLHOUSE_CENTER_HOUSE_COLLISION_MODEL,
-  KILLHOUSE_CENTER_HOUSE_SCALE,
   KILLHOUSE_CENTER_WALL_SCALE,
-  KILLHOUSE_DEPTH,
-  KILLHOUSE_WIDTH,
   PERIMETER_BIO_WALL_PLACEMENTS,
   type PerimeterBioWallPlacement,
 } from '../../shared/level/killhouseSmallColliders.js';
-import { markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
-import { keepLowestPolyFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
+import {
+  KILLHOUSE_LAYOUT_HOUSE_COLLISION_LOD,
+  KILLHOUSE_LAYOUT_HOUSE_COLLISION_MODEL,
+  KILLHOUSE_LAYOUT_HOUSE_PLACEMENTS,
+  KILLHOUSE_LAYOUT_HOUSE_SCALE,
+  KILLHOUSE_LAYOUT_MEDIUM_WALL_MODEL,
+  KILLHOUSE_LAYOUT_MEDIUM_WALL_PLACEMENTS,
+  KILLHOUSE_LAYOUT_MEDIUM_WALL_SCALE,
+  KILLHOUSE_LAYOUT_PINK_PROP_COLLISION_LOD,
+  KILLHOUSE_LAYOUT_PINK_PROP_COLLISION_MODEL,
+  KILLHOUSE_LAYOUT_PINK_PROP_PLACEMENTS,
+  KILLHOUSE_LAYOUT_PINK_PROP_SCALE,
+  type LayoutPropPlacement,
+} from '../../shared/level/killhouseLayout.js';
+import { markLodCollisionMesh, markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
+import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
 
 const BASIC_WALL_MODEL = 'bio_wall_basic.fbx';
 
@@ -82,17 +92,41 @@ function getMeshCentroidXZ(model: THREE.Object3D): { x: number; z: number } {
   return { x: sumX / count, z: sumZ / count };
 }
 
-function prepareWallProp(model: THREE.Group, scale: number, lodMode?: 'lowest-poly'): THREE.Group {
+function getAlignXZ(
+  model: THREE.Object3D,
+  mode: 'centroid' | 'bbox',
+): { x: number; z: number } {
+  if (mode === 'bbox') {
+    const center = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+    return { x: center.x, z: center.z };
+  }
+  return getMeshCentroidXZ(model);
+}
+
+function prepareWallProp(
+  model: THREE.Group,
+  scale: number,
+  lodMode?: number | 'lowest-poly',
+  shellCollision = true,
+  alignXZ: 'centroid' | 'bbox' = 'centroid',
+): THREE.Group {
   if (lodMode === 'lowest-poly') {
     keepLowestPolyFbxLodMesh(model);
-    markLodCollisionShell(model);
+    if (shellCollision) {
+      markLodCollisionShell(model);
+    } else {
+      markLodCollisionMesh(model);
+    }
+  } else if (lodMode !== undefined) {
+    keepSingleFbxLodMesh(model, lodMode);
+    markLodCollisionMesh(model);
   }
   model.updateMatrixWorld(true);
 
   const box = new THREE.Box3().setFromObject(model);
-  const centroid = getMeshCentroidXZ(model);
-  model.position.x -= centroid.x;
-  model.position.z -= centroid.z;
+  const anchor = getAlignXZ(model, alignXZ);
+  model.position.x -= anchor.x;
+  model.position.z -= anchor.z;
   model.position.y -= box.min.y;
 
   const wrapper = new THREE.Group();
@@ -107,11 +141,13 @@ async function loadTemplate(
   assetDir: string,
   modelFile: string,
   scale: number,
-  lodMode?: 'lowest-poly',
+  lodMode?: number | 'lowest-poly',
+  shellCollision = true,
+  alignXZ: 'centroid' | 'bbox' = 'centroid',
 ): Promise<THREE.Group> {
   const bytes = readFileSync(join(assetDir, modelFile));
   const fbx = loader.parse(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), modelFile);
-  return prepareWallProp(fbx as THREE.Group, scale, lodMode);
+  return prepareWallProp(fbx as THREE.Group, scale, lodMode, shellCollision, alignXZ);
 }
 
 function addWallInstance(
@@ -125,16 +161,29 @@ function addWallInstance(
   parent.add(wall);
 }
 
-function addFloor(parent: THREE.Group): void {
-  const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(KILLHOUSE_WIDTH, 0.12, KILLHOUSE_DEPTH),
-    new THREE.MeshBasicMaterial({ color: 0x8a9098 }),
-  );
-  floor.position.y = -0.06;
-  parent.add(floor);
+function addLayoutInstance(
+  parent: THREE.Group,
+  template: THREE.Group,
+  placement: LayoutPropPlacement,
+): void {
+  const instance = template.clone(true);
+  instance.rotation.y = placement.rotationY;
+  instance.position.set(placement.x, 0, placement.z);
+  parent.add(instance);
 }
 
-/** Build the same collision hierarchy the client uses for Chrono-Bowl mesh BVH. */
+function addHouseInstance(
+  parent: THREE.Group,
+  template: THREE.Group,
+  placement: LayoutPropPlacement & { rotationY: number },
+): void {
+  const house = template.clone(true);
+  house.rotation.y = placement.rotationY;
+  house.position.set(placement.x, 0, placement.z);
+  parent.add(house);
+}
+
+/** Build the same collision hierarchy the client uses for Chrono-Bowl. */
 export async function buildKillhouseCollisionScene(assetDir: string): Promise<THREE.Group> {
   const loader = new FBXLoader();
   loader.setResourcePath(`${pathToFileURL(join(assetDir, '/')).href}`);
@@ -142,16 +191,26 @@ export async function buildKillhouseCollisionScene(assetDir: string): Promise<TH
   const root = new THREE.Group();
   root.name = 'killhouse_collision_bake';
 
-  addFloor(root);
-
-  const [basicTemplate, houseTemplate] = await Promise.all([
+  const [basicTemplate, mediumTemplate, houseTemplate, pinkPropTemplate] = await Promise.all([
     loadTemplate(loader, assetDir, BASIC_WALL_MODEL, KILLHOUSE_CENTER_WALL_SCALE),
+    loadTemplate(loader, assetDir, KILLHOUSE_LAYOUT_MEDIUM_WALL_MODEL, KILLHOUSE_LAYOUT_MEDIUM_WALL_SCALE),
     loadTemplate(
       loader,
       assetDir,
-      KILLHOUSE_CENTER_HOUSE_COLLISION_MODEL,
-      KILLHOUSE_CENTER_HOUSE_SCALE,
-      'lowest-poly',
+      KILLHOUSE_LAYOUT_HOUSE_COLLISION_MODEL,
+      KILLHOUSE_LAYOUT_HOUSE_SCALE,
+      KILLHOUSE_LAYOUT_HOUSE_COLLISION_LOD,
+      false,
+      'bbox',
+    ),
+    loadTemplate(
+      loader,
+      assetDir,
+      KILLHOUSE_LAYOUT_PINK_PROP_COLLISION_MODEL,
+      KILLHOUSE_LAYOUT_PINK_PROP_SCALE,
+      KILLHOUSE_LAYOUT_PINK_PROP_COLLISION_LOD,
+      false,
+      'bbox',
     ),
   ]);
 
@@ -159,9 +218,17 @@ export async function buildKillhouseCollisionScene(assetDir: string): Promise<TH
     addWallInstance(root, basicTemplate, placement);
   }
 
-  const house = houseTemplate.clone(true);
-  house.position.set(0, 0, 0);
-  root.add(house);
+  for (const placement of KILLHOUSE_LAYOUT_MEDIUM_WALL_PLACEMENTS) {
+    addLayoutInstance(root, mediumTemplate, placement);
+  }
+
+  for (const placement of KILLHOUSE_LAYOUT_HOUSE_PLACEMENTS) {
+    addHouseInstance(root, houseTemplate, placement);
+  }
+
+  for (const placement of KILLHOUSE_LAYOUT_PINK_PROP_PLACEMENTS) {
+    addLayoutInstance(root, pinkPropTemplate, placement);
+  }
 
   root.updateWorldMatrix(true, true);
   return root;

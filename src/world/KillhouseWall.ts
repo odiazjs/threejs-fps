@@ -5,7 +5,7 @@ import {
   PERIMETER_BIO_WALL_PLACEMENTS,
   type PerimeterBioWallPlacement,
 } from '../../shared/level/killhouseSmallColliders.js';
-import { markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
+import { markLodCollisionMesh, markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
 import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
 
 const WALL_ASSET_BASE = '/3d/';
@@ -21,6 +21,17 @@ function normalizeModelFile(modelPath: string): string {
     return modelPath.slice('/3d/'.length);
   }
   return modelPath;
+}
+
+function getAlignXZ(
+  model: THREE.Object3D,
+  mode: 'centroid' | 'bbox',
+): { x: number; z: number } {
+  if (mode === 'bbox') {
+    const center = new THREE.Box3().setFromObject(model).getCenter(new THREE.Vector3());
+    return { x: center.x, z: center.z };
+  }
+  return getMeshCentroidXZ(model);
 }
 
 function getMeshCentroidXZ(model: THREE.Object3D): { x: number; z: number } {
@@ -52,16 +63,30 @@ function getMeshCentroidXZ(model: THREE.Object3D): { x: number; z: number } {
   return { x: sumX / count, z: sumZ / count };
 }
 
+export interface LoadLodOptions {
+  /** When false, use the LOD mesh verbatim (for pre-authored collision hulls). Default true for lowest-poly. */
+  shellCollision?: boolean;
+  /** bbox = stable across LOD siblings; centroid = legacy wall tiling. */
+  alignXZ?: 'centroid' | 'bbox';
+}
+
 function prepareWallProp(
   model: THREE.Group,
   scale: number,
   lodMode?: number | 'lowest-poly',
+  options: LoadLodOptions = {},
 ): THREE.Group {
+  const alignXZ = options.alignXZ ?? 'centroid';
   if (lodMode === 'lowest-poly') {
     keepLowestPolyFbxLodMesh(model);
-    markLodCollisionShell(model);
+    if (options.shellCollision !== false) {
+      markLodCollisionShell(model);
+    } else {
+      markLodCollisionMesh(model);
+    }
   } else if (lodMode !== undefined) {
     keepSingleFbxLodMesh(model, lodMode);
+    markLodCollisionMesh(model);
   }
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
@@ -72,9 +97,9 @@ function prepareWallProp(
   model.updateMatrixWorld(true);
 
   const box = new THREE.Box3().setFromObject(model);
-  const centroid = getMeshCentroidXZ(model);
-  model.position.x -= centroid.x;
-  model.position.z -= centroid.z;
+  const anchor = getAlignXZ(model, alignXZ);
+  model.position.x -= anchor.x;
+  model.position.z -= anchor.z;
   model.position.y -= box.min.y;
 
   const wrapper = new THREE.Group();
@@ -88,9 +113,10 @@ export function loadKillhouseWallTemplate(
   modelPath: string,
   scale = KILLHOUSE_CENTER_WALL_SCALE,
   lodMode?: number | 'lowest-poly',
+  options: LoadLodOptions = {},
 ): Promise<THREE.Group> {
   const modelFile = normalizeModelFile(modelPath);
-  const cacheKey = `${modelFile}:${scale}:${lodMode ?? 'all'}`;
+  const cacheKey = `${modelFile}:${scale}:${lodMode ?? 'all'}:${options.shellCollision ?? 'default'}:${options.alignXZ ?? 'centroid'}`;
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
 
@@ -98,7 +124,7 @@ export function loadKillhouseWallTemplate(
     const loader = new FBXLoader();
     loader.setResourcePath(WALL_ASSET_BASE);
     const fbx = await loader.loadAsync(`${WALL_ASSET_BASE}${encodeURIComponent(modelFile)}`);
-    return prepareWallProp(fbx as THREE.Group, scale, lodMode);
+    return prepareWallProp(fbx as THREE.Group, scale, lodMode, options);
   })();
 
   templateCache.set(cacheKey, loadPromise);

@@ -19,6 +19,11 @@ const floor = createStyledMesh(
   FLOOR_TILE,
 );
 floor.position.y = -0.06;
+floor.traverse((child) => {
+  if (child instanceof THREE.Mesh) {
+    child.userData.skipCollision = true;
+  }
+});
 mapGroup.add(floor);
 
 export { mapGroup };

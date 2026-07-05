@@ -8,7 +8,9 @@ import { DroneField } from './DroneField';
 import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
 import { KillhouseWall } from './KillhouseWall';
-import { KillhouseCenterHouse } from './KillhouseCenterHouse';
+import { KillhouseLayoutHouses } from './KillhouseLayoutHouses';
+import { KillhouseLayoutWalls } from './KillhouseLayoutWalls';
+import { KillhousePinkProps } from './KillhousePinkProps';
 import type { GrassQualityProfile } from '../render/grassQuality';
 import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
@@ -20,7 +22,9 @@ export class WorldBuilder {
   private platformParticles: PlatformLiftParticles | null = null;
   private mapGroup: THREE.Object3D | null = null;
   private killhouseWall: KillhouseWall | null = null;
-  private killhouseCenterHouse: KillhouseCenterHouse | null = null;
+  private killhouseLayoutHouses: KillhouseLayoutHouses | null = null;
+  private killhouseLayoutWalls: KillhouseLayoutWalls | null = null;
+  private killhousePinkProps: KillhousePinkProps | null = null;
   private readonly mapDef;
 
   constructor(mapId: MapId = 'kilo_sector') {
@@ -60,32 +64,46 @@ export class WorldBuilder {
 
     if (this.mapDef.id === 'killhouse_small') {
       this.killhouseWall = new KillhouseWall();
-      this.killhouseCenterHouse = new KillhouseCenterHouse();
-      this.sceneBuilder
-        .addObject(this.killhouseWall.group)
-        .addObject(this.killhouseCenterHouse.group)
-        .addObject(this.killhouseCenterHouse.collisionGroup);
+      this.killhouseLayoutHouses = new KillhouseLayoutHouses();
+      this.killhouseLayoutWalls = new KillhouseLayoutWalls();
+      this.killhousePinkProps = new KillhousePinkProps();
+
+      this.sceneBuilder.addObject(this.killhouseWall.group);
+      this.sceneBuilder.addObject(this.killhouseLayoutWalls.group);
+      this.sceneBuilder.addObject(this.killhousePinkProps.group);
+      for (const group of this.killhouseLayoutHouses.groups) {
+        this.sceneBuilder.addObject(group);
+      }
+      this.sceneBuilder.addObject(this.killhousePinkProps.collisionGroup);
     }
     return this;
   }
 
-  whenKillhouseBulletBvhReady(): Promise<void> {
+  whenKillhousePhysicsReady(): Promise<void> {
     if (this.mapDef.id !== 'killhouse_small') return Promise.resolve();
-    if (!this.killhouseWall || !this.killhouseCenterHouse) {
+    if (!this.killhouseWall || !this.killhouseLayoutHouses) {
       return Promise.resolve();
     }
 
     return Promise.all([
       this.killhouseWall.whenReady,
-      this.killhouseCenterHouse.whenReady,
+      this.killhouseLayoutHouses.whenReady,
+      this.killhouseLayoutWalls?.whenReady,
+      this.killhousePinkProps?.whenReady,
     ]).then(() => undefined);
   }
 
-  getKillhouseBulletBvhRoots(): THREE.Object3D[] {
+  getKillhousePhysicsRoots(): THREE.Object3D[] {
     const roots: THREE.Object3D[] = [];
     if (this.mapGroup) roots.push(this.mapGroup);
     if (this.killhouseWall) roots.push(this.killhouseWall.group);
-    if (this.killhouseCenterHouse) roots.push(this.killhouseCenterHouse.collisionGroup);
+    if (this.killhouseLayoutWalls) roots.push(this.killhouseLayoutWalls.group);
+    if (this.killhouseLayoutHouses) {
+      for (const collisionGroup of this.killhouseLayoutHouses.collisionGroups) {
+        roots.push(collisionGroup);
+      }
+    }
+    if (this.killhousePinkProps) roots.push(this.killhousePinkProps.collisionGroup);
     return roots;
   }
 

@@ -28,7 +28,7 @@ import {
   KILLHOUSE_WALL_THICK,
 } from './killhouseSmallColliders.js';
 import { sampleGroundHeight as kiloGroundHeight } from './terrainHeight.js';
-import { usesKillhouseMeshCollision } from './mapMeshMovement.js';
+import { getMapPhysics } from './mapMeshMovement.js';
 
 export type MapId = 'kilo_sector' | 'killhouse_small';
 
@@ -157,9 +157,9 @@ export function getClientMapDef(): MapCollisionDef {
   return clientMapDef;
 }
 
-/** Box colliders used by the client before mesh BVH is ready. Empty on mesh-collision maps. */
+/** Box colliders used before Rapier physics is ready. Empty on trimesh maps once physics loads. */
 export function getClientGameplayColliders(map: MapCollisionDef = getClientMapDef()): Aabb[] {
-  if (usesKillhouseMeshCollision(map)) {
+  if (map.usesMeshCollision && getMapPhysics()?.isReady) {
     return map.getClientGameplayColliders?.() ?? [];
   }
   return map.getClientGameplayColliders?.() ?? map.getLevelColliders();

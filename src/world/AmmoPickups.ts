@@ -6,7 +6,7 @@ import {
 import { PLAYER_HALF_WIDTH } from '../../shared/level/levelData';
 import { getClientMapDef } from '../../shared/level/maps';
 import type { AmmoBoxSnapshot } from '../network/types';
-import { createAmmoBox } from './ammoBoxVisual';
+import { loadAmmoBoxTemplate } from './ammoBoxVisual';
 
 export type LocalPickupHandler = () => void;
 type SendPickup = (index: number, feetX: number, feetZ: number) => void;
@@ -14,6 +14,7 @@ type SendPickup = (index: number, feetX: number, feetZ: number) => void;
 const PICKUP_RETRY_SEC = 0.15;
 
 export class AmmoPickups {
+  private readonly root = new THREE.Group();
   private readonly boxes: THREE.Group[] = [];
   private readonly positions: Array<{ x: number; z: number }> = [];
   private readonly collected = new Set<number>();
@@ -24,22 +25,30 @@ export class AmmoPickups {
   private lastFeetZ = 0;
   private hasLastFeet = false;
   private elapsed = 0;
+  readonly whenReady: Promise<void>;
 
   constructor(scene: THREE.Scene, spawnPositions: ReadonlyArray<{ x: number; z: number }>) {
-    const group = new THREE.Group();
-    group.name = 'ammo-pickups';
-    const groundY = getClientMapDef().sampleGroundHeight;
+    this.root.name = 'ammo-pickups';
+    scene.add(this.root);
+    this.whenReady = this.build(spawnPositions);
+  }
 
-    for (const pos of spawnPositions) {
-      const box = createAmmoBox();
-      const y = groundY(pos.x, pos.z);
-      box.position.set(pos.x, y, pos.z);
-      this.boxes.push(box);
-      this.positions.push({ x: pos.x, z: pos.z });
-      group.add(box);
+  private async build(spawnPositions: ReadonlyArray<{ x: number; z: number }>): Promise<void> {
+    try {
+      const template = await loadAmmoBoxTemplate();
+      const groundY = getClientMapDef().sampleGroundHeight;
+
+      for (const pos of spawnPositions) {
+        const box = template.clone(true);
+        const y = groundY(pos.x, pos.z);
+        box.position.set(pos.x, y, pos.z);
+        this.boxes.push(box);
+        this.positions.push({ x: pos.x, z: pos.z });
+        this.root.add(box);
+      }
+    } catch (error) {
+      console.warn('[AmmoPickups] Failed to load ammo box model', error);
     }
-
-    scene.add(group);
   }
 
   bindNetwork(

@@ -8,29 +8,20 @@ import {
   type PlayerPhysicsState,
 } from './collision.js';
 import type { MapCollisionDef } from './maps.js';
-import { MergedMeshBvhCollision } from './mergedMeshBvhCollision.js';
-import { parseLevelCollisionBake } from './levelMeshCollisionUtils.js';
+import { LevelPhysicsWorld } from '../physics/levelPhysicsWorld.js';
 
-let killhouseMeshCollision: MergedMeshBvhCollision | null = null;
+let mapPhysics: LevelPhysicsWorld | null = null;
 
-export function initKillhouseMeshCollisionFromBuffer(buffer: ArrayBuffer): MergedMeshBvhCollision {
-  const collision = new MergedMeshBvhCollision();
-  collision.loadFromBake(parseLevelCollisionBake(buffer));
-  killhouseMeshCollision = collision;
-  return collision;
+export function setMapPhysics(world: LevelPhysicsWorld | null): void {
+  mapPhysics = world;
 }
 
-export function getKillhouseMeshCollision(): MergedMeshBvhCollision | null {
-  return killhouseMeshCollision;
+export function getMapPhysics(): LevelPhysicsWorld | null {
+  return mapPhysics;
 }
 
-export function usesKillhouseMeshCollision(map: MapCollisionDef): boolean {
-  return map.id === 'killhouse_small';
-}
-
-function meshForMap(map: MapCollisionDef): MergedMeshBvhCollision | null {
-  if (!usesKillhouseMeshCollision(map)) return null;
-  return killhouseMeshCollision;
+function physicsForMap(_map: MapCollisionDef): LevelPhysicsWorld | null {
+  return mapPhysics?.isReady ? mapPhysics : null;
 }
 
 export function movePlayerForMap(
@@ -41,9 +32,9 @@ export function movePlayerForMap(
   deltaZ: number,
   map: MapCollisionDef,
 ): { x: number; y: number; z: number } {
-  const mesh = meshForMap(map);
-  if (mesh?.isReady) {
-    return mesh.movePlayer(feetX, feetY, feetZ, deltaX, deltaZ, map);
+  const physics = physicsForMap(map);
+  if (physics?.isReady) {
+    return physics.movePlayer(feetX, feetY, feetZ, deltaX, deltaZ, map);
   }
   return movePlayer(feetX, feetY, feetZ, deltaX, deltaZ, map);
 }
@@ -59,9 +50,9 @@ export function stepPlayerPhysicsForMap(
   delta: number,
   map: MapCollisionDef,
 ): { x: number; y: number; z: number; state: PlayerPhysicsState } {
-  const mesh = meshForMap(map);
-  if (mesh?.isReady) {
-    return mesh.stepPlayerPhysics(feetX, feetY, feetZ, state, deltaX, deltaZ, jump, delta, map);
+  const physics = physicsForMap(map);
+  if (physics?.isReady) {
+    return physics.stepPlayerPhysics(feetX, feetY, feetZ, state, deltaX, deltaZ, jump, delta, map);
   }
   return stepPlayerPhysics(feetX, feetY, feetZ, state, deltaX, deltaZ, jump, delta, map);
 }
@@ -73,9 +64,9 @@ export function clampEyeYForMap(
   map: MapCollisionDef,
   crouching = false,
 ): number {
-  const mesh = meshForMap(map);
-  if (mesh?.isReady) {
-    return mesh.clampEyeY(
+  const physics = physicsForMap(map);
+  if (physics?.isReady) {
+    return physics.clampEyeY(
       feetX,
       feetZ,
       eyeY,
@@ -94,15 +85,15 @@ export function resolveMoveFeetYForMap(
   clientFeetY: number,
   map: MapCollisionDef,
 ): number {
-  const mesh = meshForMap(map);
-  if (mesh?.isReady) {
-    return mesh.resolveMoveFeetY(feetX, feetZ, clientFeetY, map);
+  const physics = physicsForMap(map);
+  if (physics?.isReady) {
+    return physics.resolveMoveFeetY(feetX, feetZ, clientFeetY, map);
   }
   return resolveMoveFeetY(feetX, feetZ, clientFeetY, map);
 }
 
 export function getSpawnCollidersForMap(map: MapCollisionDef) {
-  if (usesKillhouseMeshCollision(map) && killhouseMeshCollision?.isReady) {
+  if (map.usesMeshCollision && mapPhysics?.isReady) {
     return [];
   }
   return map.getLevelColliders();
@@ -114,9 +105,9 @@ export function isSpawnBlockedForMap(
   map: MapCollisionDef,
   feetY = 0,
 ): boolean {
-  const mesh = meshForMap(map);
-  if (mesh?.isReady) {
-    return mesh.isSpawnBlocked(x, z, feetY);
+  const physics = physicsForMap(map);
+  if (physics?.isReady) {
+    return physics.isSpawnBlocked(x, z, feetY);
   }
   return false;
 }

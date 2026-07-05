@@ -379,10 +379,10 @@ export function clampEyeY(
   colliders?: readonly Aabb[],
 ): number {
   const standEyeHeight = EYE_HEIGHT;
-  const feetY = eyeY - standEyeHeight;
+  const activeEyeHeight = crouching ? CROUCH_EYE_HEIGHT : standEyeHeight;
+  const feetY = eyeY - activeEyeHeight;
   const ground = getGroundHeight(feetX, feetZ, feetY, map, colliders);
-  const minEyeHeight = crouching ? CROUCH_EYE_HEIGHT : standEyeHeight;
-  const minEyeY = ground + minEyeHeight;
+  const minEyeY = ground + activeEyeHeight;
   const maxEyeY = ground + standEyeHeight + MAX_JUMP_HEIGHT;
   return Math.max(minEyeY, Math.min(eyeY, maxEyeY));
 }

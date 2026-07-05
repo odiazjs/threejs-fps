@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { configureColyseusCors } from './api/cors.js';
 import { initPresenceNotifications } from './lobby/presenceNotify.js';
 import { closeDb, connectDb } from './db/index.js';
+import { initRapier } from '../../shared/physics/rapierInit.js';
 import server from './app.config.js';
 
 const port = Number(process.env.PORT) || 4001;
@@ -27,6 +28,9 @@ async function main(): Promise<void> {
 
   await connectDb();
   console.log('[db] connected');
+
+  await initRapier();
+  console.log('[physics] Rapier initialized');
 
   await maybeRunMigrations();
 

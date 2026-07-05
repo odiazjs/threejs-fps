@@ -32,13 +32,22 @@ const CENTER_BIO_WALL_MODEL_SIZE = {
 
 export const KILLHOUSE_CENTER_WALL_SCALE = 0.02;
 
-/** Center house — same ground-alignment pipeline as perimeter walls. */
-export const KILLHOUSE_CENTER_HOUSE_SCALE = 0.045;
-export const KILLHOUSE_CENTER_HOUSE_VISUAL_MODEL = 'basic_house.fbx';
-/** Low-poly LOD mesh used for server bake + client mesh BVH. */
-export const KILLHOUSE_CENTER_HOUSE_COLLISION_MODEL = 'lod_basic_house.fbx';
-/** FBX embeds model_LOD0–LOD4; pick one level per use to avoid coplanar Z-fighting. */
-export const KILLHOUSE_CENTER_HOUSE_VISUAL_LOD = 0;
+export const KILLHOUSE_GROUND_THICK = 0.02;
+
+/** @deprecated Use KILLHOUSE_LAYOUT_* from killhouseLayout.ts */
+export {
+  KILLHOUSE_LAYOUT_HOUSE_SCALE as KILLHOUSE_FLAT_HOUSE_SCALE,
+  KILLHOUSE_LAYOUT_HOUSE_VISUAL_MODEL as KILLHOUSE_FLAT_HOUSE_VISUAL_MODEL,
+  KILLHOUSE_LAYOUT_HOUSE_COLLISION_MODEL as KILLHOUSE_FLAT_HOUSE_COLLISION_MODEL,
+  KILLHOUSE_LAYOUT_HOUSE_COLLISION_LOD as KILLHOUSE_FLAT_HOUSE_COLLISION_LOD,
+  KILLHOUSE_LAYOUT_HOUSE_VISUAL_LOD as KILLHOUSE_FLAT_HOUSE_VISUAL_LOD,
+  KILLHOUSE_LAYOUT_HOUSE_PLACEMENTS,
+} from './killhouseLayout.js';
+
+import { KILLHOUSE_LAYOUT_HOUSE_PLACEMENTS } from './killhouseLayout.js';
+
+/** First house placement — legacy single-house constant. */
+export const KILLHOUSE_FLAT_HOUSE_POSITION = KILLHOUSE_LAYOUT_HOUSE_PLACEMENTS[0]!;
 
 const CORNER_SW = { x: -17, z: -12 } as const;
 const CORNER_NE = { x: 17, z: 12 } as const;
@@ -113,7 +122,7 @@ export const PERIMETER_BIO_WALL_PLACEMENTS: readonly PerimeterBioWallPlacement[]
   ...buildDepthWallRun(eastX, -Math.PI / 2),
 ];
 
-/** Playground / FFA — one corner per player (up to 4), away from the center house. */
+/** Playground / FFA — one corner per player (up to 4), away from the center building. */
 const PLAYGROUND_SPAWN_POOL: readonly SpawnZone[] = [
   cornerZone(CORNER_SW.x, CORNER_SW.z),
   cornerZone(CORNER_NE.x, CORNER_NE.z),
@@ -121,9 +130,15 @@ const PLAYGROUND_SPAWN_POOL: readonly SpawnZone[] = [
   cornerZone(CORNER_SE.x, CORNER_SE.z),
 ];
 
-/** TDM team corners — one zone per team at map corners. */
-const BLUE_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_SW.x, CORNER_SW.z)];
-const RED_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_NE.x, CORNER_NE.z)];
+/** TDM — blue west, red east (Chrono-Bowl 2v2 layout). */
+const BLUE_SPAWN_POOL: readonly SpawnZone[] = [
+  cornerZone(-18, -14),
+  cornerZone(-14, 10),
+];
+const RED_SPAWN_POOL: readonly SpawnZone[] = [
+  cornerZone(18, -14),
+  cornerZone(14, 10),
+];
 const GREEN_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_NW.x, CORNER_NW.z)];
 const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_SE.x, CORNER_SE.z)];
 
@@ -190,11 +205,11 @@ export function isInsideKillhouseBounds(
 }
 
 export const KILLHOUSE_AMMO_POSITIONS = [
-  { x: CORNER_SW.x + 3, z: CORNER_SW.z + 2 },
-  { x: CORNER_NE.x - 3, z: CORNER_NE.z - 2 },
+  { x: -6, z: -5 },
+  { x: 6, z: 5 },
 ] as const;
 
 export const KILLHOUSE_SHIELD_POSITIONS = [
-  { x: CORNER_NW.x + 3, z: CORNER_NW.z - 2 },
-  { x: CORNER_SE.x - 3, z: CORNER_SE.z + 2 },
+  { x: -6, z: 5 },
+  { x: 6, z: -5 },
 ] as const;

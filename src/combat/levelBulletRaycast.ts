@@ -1,8 +1,8 @@
 import { raycastLevel, type RaycastHit } from '../../shared/level/collision';
 import { getClientGameplayColliders, getClientMapDef } from '../../shared/level/maps';
-import { getLevelMeshBvhCollision } from '../player/levelMovement';
+import { getClientPhysicsWorld } from '../physics/buildMapPhysics';
 
-/** Bullet raycast — mesh BVH on Chrono-Bowl when ready, otherwise AABB fallback. */
+/** Bullet raycast — Rapier when physics world is ready, otherwise AABB fallback. */
 export function raycastLevelBullets(
   ox: number,
   oy: number,
@@ -13,9 +13,9 @@ export function raycastLevelBullets(
   maxDistance: number,
   minDistance = 0,
 ): RaycastHit | null {
-  const meshCollision = getLevelMeshBvhCollision();
-  if (meshCollision?.isReady) {
-    return meshCollision.raycast(ox, oy, oz, dx, dy, dz, maxDistance, minDistance);
+  const physics = getClientPhysicsWorld();
+  if (physics?.isReady) {
+    return physics.raycast(ox, oy, oz, dx, dy, dz, maxDistance, minDistance);
   }
 
   const map = getClientMapDef();

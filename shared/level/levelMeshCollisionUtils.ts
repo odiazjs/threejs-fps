@@ -3,6 +3,7 @@ import {
   appendTrianglesToBuffers,
   countMergedTriangleCapacity,
   extractWorldTriangles,
+  filterInteriorHorizontalSlabs,
   filterShellCollisionTriangles,
 } from './collisionMeshPrep.js';
 
@@ -54,7 +55,6 @@ export function isLevelCollisionMesh(object: THREE.Object3D): object is THREE.Me
   if (!(object instanceof THREE.Mesh)) return false;
   if (!object.visible && object.userData.collisionMesh !== true) return false;
   if (object.userData.colliderDebug) return false;
-  if (object.name.startsWith('mesh-bvh-collider-debug')) return false;
   if (!meshMaterialBlocksCollision(object)) return false;
   if (isEmbeddedProxyHull(object)) return false;
 
@@ -93,6 +93,19 @@ export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[])
       const shellTriangles = filterShellCollisionTriangles(worldTriangles);
       ({ vertexOffset, indexOffset } = appendTrianglesToBuffers(
         shellTriangles,
+        positions,
+        indexData,
+        vertexOffset,
+        indexOffset,
+      ));
+      continue;
+    }
+
+    if (mesh.userData.collisionMesh === true) {
+      const worldTriangles = extractWorldTriangles(mesh);
+      const hullTriangles = filterInteriorHorizontalSlabs(worldTriangles);
+      ({ vertexOffset, indexOffset } = appendTrianglesToBuffers(
+        hullTriangles,
         positions,
         indexData,
         vertexOffset,
@@ -154,8 +167,11 @@ export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[])
   }
 
   const merged = new THREE.BufferGeometry();
-  merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  merged.setIndex(new THREE.BufferAttribute(indexData, 1));
+  merged.setAttribute(
+    'position',
+    new THREE.BufferAttribute(positions.subarray(0, vertexOffset * 3), 3),
+  );
+  merged.setIndex(new THREE.BufferAttribute(indexData.subarray(0, indexOffset), 1));
   return merged;
 }
 

@@ -7,20 +7,10 @@ import {
 import { CROUCH_EYE_HEIGHT } from '../../shared/combat/crouch';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { getClientGameplayColliders, type MapCollisionDef } from '../../shared/level/maps';
-import type { LevelMeshBvhCollision } from '../world/LevelMeshBvhCollision';
+import { getClientPhysicsWorld } from '../physics/buildMapPhysics';
 
-let meshCollision: LevelMeshBvhCollision | null = null;
-
-export function setLevelMeshBvhCollision(provider: LevelMeshBvhCollision | null): void {
-  meshCollision = provider;
-}
-
-export function getLevelMeshBvhCollision(): LevelMeshBvhCollision | null {
-  return meshCollision;
-}
-
-export function isLevelMeshMovementActive(): boolean {
-  return meshCollision?.isReady ?? false;
+export function isLevelPhysicsActive(): boolean {
+  return getClientPhysicsWorld()?.isReady ?? false;
 }
 
 function clientFallbackColliders(map: MapCollisionDef) {
@@ -38,8 +28,9 @@ export function stepPlayerPhysicsClient(
   delta: number,
   map: MapCollisionDef,
 ): { x: number; y: number; z: number; state: PlayerPhysicsState } {
-  if (meshCollision?.isReady) {
-    return meshCollision.stepPlayerPhysics(
+  const physics = getClientPhysicsWorld();
+  if (physics?.isReady) {
+    return physics.stepPlayerPhysics(
       feetX,
       feetY,
       feetZ,
@@ -75,8 +66,9 @@ export function movePlayerClient(
   deltaZ: number,
   map: MapCollisionDef,
 ): { x: number; y: number; z: number } {
-  if (meshCollision?.isReady) {
-    return meshCollision.movePlayer(feetX, feetY, feetZ, deltaX, deltaZ, map);
+  const physics = getClientPhysicsWorld();
+  if (physics?.isReady) {
+    return physics.movePlayer(feetX, feetY, feetZ, deltaX, deltaZ, map);
   }
 
   return movePlayer(feetX, feetY, feetZ, deltaX, deltaZ, map, clientFallbackColliders(map));
@@ -89,8 +81,9 @@ export function clampEyeYClient(
   map: MapCollisionDef,
   crouching = false,
 ): number {
-  if (meshCollision?.isReady) {
-    return meshCollision.clampEyeY(
+  const physics = getClientPhysicsWorld();
+  if (physics?.isReady) {
+    return physics.clampEyeY(
       feetX,
       feetZ,
       eyeY,

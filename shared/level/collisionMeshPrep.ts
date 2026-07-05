@@ -7,6 +7,7 @@ const _centroid = new THREE.Vector3();
 const _edge1 = new THREE.Vector3();
 const _edge2 = new THREE.Vector3();
 const _normal = new THREE.Vector3();
+const _triBox = new THREE.Box3();
 
 export interface ShellCollisionOptions {
   /** Inset from bounds used to detect walkable interior (auto if omitted). */
@@ -18,6 +19,15 @@ export interface WorldTriangle {
   b: THREE.Vector3;
   c: THREE.Vector3;
   centroid: THREE.Vector3;
+}
+
+/** Mark a prop root as gameplay collision geometry (no interior shell stripping). */
+export function markLodCollisionMesh(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.userData.collisionMesh = true;
+    }
+  });
 }
 
 /** Mark a prop root as an invisible LOD collision source (shell extraction at merge time). */
@@ -42,13 +52,91 @@ function triangleNormalY(tri: WorldTriangle): number {
   return Math.abs(_normal.crossVectors(_edge1, _edge2).normalize().y);
 }
 
-function centroidInInteriorFootprint(point: THREE.Vector3, interior: THREE.Box3): boolean {
-  return (
-    point.x >= interior.min.x &&
-    point.x <= interior.max.x &&
-    point.z >= interior.min.z &&
-    point.z <= interior.max.z
+function triangleBounds(tri: WorldTriangle): THREE.Box3 {
+  return _triBox.setFromPoints([tri.a, tri.b, tri.c]);
+}
+
+function overlapsInteriorFootprintXZ(box: THREE.Box3, interior: THREE.Box3): boolean {
+  return !(
+    box.max.x < interior.min.x ||
+    box.min.x > interior.max.x ||
+    box.max.z < interior.min.z ||
+    box.min.z > interior.max.z
   );
+}
+
+function isInteriorHorizontalSlab(
+  tri: WorldTriangle,
+  bounds: THREE.Box3,
+  interior: THREE.Box3,
+  wall: number,
+  hullBounds: THREE.Box3,
+): boolean {
+  if (triangleNormalY(tri) < 0.65) return false;
+  if (!overlapsInteriorFootprintXZ(bounds, interior)) return false;
+
+  const thickness = bounds.max.y - bounds.min.y;
+  const bottomCapTop = hullBounds.min.y + 0.05;
+  const raisedWalkFloor = hullBounds.min.y + 0.06;
+  const floorBandTop = interior.min.y + wall * 1.25;
+  const ceilingBandBottom = interior.max.y - wall * 1.25;
+
+  // Bottom caps at hull ymin are not the walk surface on enterable props.
+  if (bounds.max.y <= bottomCapTop) return true;
+
+  // Keep the raised interior floor slab.
+  if (bounds.min.y >= raisedWalkFloor && bounds.max.y <= floorBandTop) return false;
+
+  if (bounds.max.y <= floorBandTop) return true;
+  if (bounds.min.y >= ceilingBandBottom) return true;
+
+  if (
+    thickness < 0.2 &&
+    bounds.min.y > interior.min.y + 0.06 &&
+    bounds.max.y < interior.max.y - 0.06
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Drop interior floor/ceiling/shelf slabs from pre-authored collision hulls.
+ * Unlike shell extraction, keeps all wall faces (including inner surfaces).
+ */
+export function filterInteriorHorizontalSlabs(
+  triangles: readonly WorldTriangle[],
+  options: ShellCollisionOptions = {},
+): WorldTriangle[] {
+  if (triangles.length === 0) return [];
+
+  const bounds = new THREE.Box3();
+  for (const tri of triangles) {
+    bounds.expandByPoint(tri.a);
+    bounds.expandByPoint(tri.b);
+    bounds.expandByPoint(tri.c);
+  }
+
+  const wall = options.wallThickness ?? estimateWallThickness(bounds);
+  const interior = bounds.clone();
+  interior.min.x += wall;
+  interior.max.x -= wall;
+  interior.min.z += wall;
+  interior.max.z -= wall;
+  interior.min.y += 0.05;
+  interior.max.y -= Math.min(wall, 0.2);
+
+  const kept: WorldTriangle[] = [];
+  for (const tri of triangles) {
+    const triBounds = triangleBounds(tri);
+    if (isInteriorHorizontalSlab(tri, triBounds, interior, wall, bounds)) {
+      continue;
+    }
+    kept.push(tri);
+  }
+
+  return kept.length > 0 ? kept : triangles;
 }
 
 /**
@@ -79,24 +167,13 @@ export function filterShellCollisionTriangles(
 
   const kept: WorldTriangle[] = [];
   for (const tri of triangles) {
-    const { centroid } = tri;
-    if (interior.containsPoint(centroid)) {
+    const triBounds = triangleBounds(tri);
+
+    if (interior.containsPoint(tri.centroid)) {
       continue;
     }
 
-    if (
-      triangleNormalY(tri) > 0.7 &&
-      centroidInInteriorFootprint(centroid, interior) &&
-      centroid.y <= interior.min.y + wall
-    ) {
-      continue;
-    }
-
-    if (
-      triangleNormalY(tri) > 0.7 &&
-      centroidInInteriorFootprint(centroid, interior) &&
-      centroid.y >= interior.max.y - wall
-    ) {
+    if (isInteriorHorizontalSlab(tri, triBounds, interior, wall, bounds)) {
       continue;
     }
 
@@ -179,7 +256,7 @@ export function countMergedTriangleCapacity(meshes: readonly THREE.Mesh[]): {
   for (const mesh of meshes) {
     const position = mesh.geometry.attributes.position;
     if (!position) continue;
-    if (mesh.userData.shellCollision === true) {
+    if (mesh.userData.shellCollision === true || mesh.userData.collisionMesh === true) {
       const triCount = (mesh.geometry.index?.count ?? position.count) / 3;
       vertices += triCount * 3;
       indices += triCount * 3;

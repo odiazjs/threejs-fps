@@ -3,12 +3,14 @@ import { overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
 import type { PlayerPhysicsState } from '../../../shared/level/collision.js';
 import {
   clampEyeYForMap,
+  getMapPhysics,
   getSpawnCollidersForMap,
   isSpawnBlockedForMap,
   movePlayerForMap,
   resolveMoveFeetYForMap,
   stepPlayerPhysicsForMap,
 } from '../../../shared/level/mapMeshMovement.js';
+import { applyForwardLimbWallClearance } from '../../../shared/physics/forwardWallClearance.js';
 import { CROUCH_EYE_HEIGHT } from '../../../shared/combat/crouch.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
@@ -107,7 +109,7 @@ import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.
 import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
 import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
-import { loadKillhouseMeshCollisionForServer } from '../level/loadKillhouseCollision.js';
+import { loadMapPhysicsForServer } from '../level/loadMapPhysics.js';
 
 interface MoveMessage {
   x: number;
@@ -171,9 +173,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.gameMode = normalizeGameMode(options.gameMode);
     this.state.gameMode = this.gameMode;
 
-    if (mapId === 'killhouse_small') {
-      loadKillhouseMeshCollisionForServer();
-    }
+    loadMapPhysicsForServer(this.mapDef);
 
     if (this.gameMode === 'tdm') {
       this.state.friendlyFire = false;
@@ -682,7 +682,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!player?.alive) return;
       if (this.isTdm() && this.state.matchPhase !== 'playing') return;
 
-      const crouching = data.crouching === true;
+      const airborne = data.jumping === true;
+      const crouching = data.crouching === true && !airborne;
       const eyeHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
       const clientFeetY = data.y - eyeHeight;
       const feetYForMove = resolveMoveFeetYForMap(data.x, data.z, clientFeetY, this.mapDef);
@@ -699,11 +700,25 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       player.x = resolved.x;
       player.z = resolved.z;
-      player.y = clampEyeYForMap(resolved.x, resolved.z, data.y, this.mapDef, crouching);
+
+      const aim = aimDirectionFromYawPitch(data.yaw, data.pitch);
+      const cleared = applyForwardLimbWallClearance(
+        getMapPhysics(),
+        player.x,
+        feetYForMove,
+        player.z,
+        aim.x,
+        aim.z,
+        crouching,
+      );
+      player.x = cleared.x;
+      player.z = cleared.z;
+
+      player.y = clampEyeYForMap(cleared.x, cleared.z, data.y, this.mapDef, crouching);
       player.yaw = data.yaw;
       player.pitch = data.pitch;
       player.crouching = crouching;
-      player.jumping = data.jumping === true && !crouching;
+      player.jumping = airborne;
       player.sprinting = data.sprinting === true && !player.jumping && !crouching;
       player.walking = data.walking === true && !player.sprinting && !player.jumping;
       player.walkingBackward =

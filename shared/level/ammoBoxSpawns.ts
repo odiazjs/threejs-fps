@@ -1,8 +1,13 @@
 import type { Aabb } from './levelData.js';
+import {
+  AMMO_BOX_HALF_SIZE,
+  AMMO_BOX_HEIGHT,
+} from './ammoBoxConfig.js';
 import { COLUMN_POSITIONS, MAP_HALF } from './kiloSectorColliders.js';
 
-/** Visual radius of the ammo cylinder mesh (0.3 m diameter). */
-export const AMMO_BOX_HALF_SIZE = 0.15;
+/** @deprecated Import from ammoBoxConfig.js */
+export { AMMO_BOX_HALF_SIZE } from './ammoBoxConfig.js';
+
 /** Extra pickup forgiveness beyond player + crate footprints. */
 export const AMMO_BOX_PICKUP_PADDING = 0.35;
 
@@ -66,7 +71,7 @@ export function ammoBoxPickupAabb(boxX: number, boxZ: number): Aabb {
     minX: boxX - half,
     maxX: boxX + half,
     minY: 0,
-    maxY: 1,
+    maxY: AMMO_BOX_HEIGHT,
     minZ: boxZ - half,
     maxZ: boxZ + half,
   };
