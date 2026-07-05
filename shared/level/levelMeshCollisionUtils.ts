@@ -5,6 +5,7 @@ import {
   extractWorldTriangles,
   filterInteriorHorizontalSlabs,
   filterShellCollisionTriangles,
+  isThreeMesh,
 } from './collisionMeshPrep.js';
 
 const PROXY_MESH_NAME = /(?:^|[\s_-])(?:lodbox|lod\d+|ucx\d*|ubx|collision|collider|proxy)(?:[\s_-]|$)/i;
@@ -52,7 +53,7 @@ function isEmbeddedProxyHull(mesh: THREE.Mesh): boolean {
 }
 
 export function isLevelCollisionMesh(object: THREE.Object3D): object is THREE.Mesh {
-  if (!(object instanceof THREE.Mesh)) return false;
+  if (!isThreeMesh(object)) return false;
   if (!object.visible && object.userData.collisionMesh !== true) return false;
   if (object.userData.colliderDebug) return false;
   if (!meshMaterialBlocksCollision(object)) return false;

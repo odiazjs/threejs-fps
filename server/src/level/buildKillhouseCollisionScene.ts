@@ -22,7 +22,7 @@ import {
   KILLHOUSE_LAYOUT_PINK_PROP_SCALE,
   type LayoutPropPlacement,
 } from '../../../shared/level/killhouseLayout.js';
-import { markLodCollisionMesh, markLodCollisionShell } from '../../../shared/level/collisionMeshPrep.js';
+import { markLodCollisionMesh, markLodCollisionShell, isThreeMesh } from '../../../shared/level/collisionMeshPrep.js';
 import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../../shared/visuals/fbxLodUtils.js';
 
 const BASIC_WALL_MODEL = 'bio_wall_basic.fbx';
@@ -70,7 +70,7 @@ function getMeshCentroidXZ(model: THREE.Object3D): { x: number; z: number } {
   const vertex = new THREE.Vector3();
 
   model.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
+    if (!isThreeMesh(child)) return;
     const positions = child.geometry.attributes.position;
     if (!positions) return;
 
@@ -192,8 +192,14 @@ export async function buildKillhouseCollisionScene(assetDir: string): Promise<TH
   root.name = 'killhouse_collision_bake';
 
   const [basicTemplate, mediumTemplate, houseTemplate, pinkPropTemplate] = await Promise.all([
-    loadTemplate(loader, assetDir, BASIC_WALL_MODEL, KILLHOUSE_CENTER_WALL_SCALE),
-    loadTemplate(loader, assetDir, KILLHOUSE_LAYOUT_MEDIUM_WALL_MODEL, KILLHOUSE_LAYOUT_MEDIUM_WALL_SCALE),
+    loadTemplate(loader, assetDir, BASIC_WALL_MODEL, KILLHOUSE_CENTER_WALL_SCALE, 'lowest-poly'),
+    loadTemplate(
+      loader,
+      assetDir,
+      KILLHOUSE_LAYOUT_MEDIUM_WALL_MODEL,
+      KILLHOUSE_LAYOUT_MEDIUM_WALL_SCALE,
+      'lowest-poly',
+    ),
     loadTemplate(
       loader,
       assetDir,

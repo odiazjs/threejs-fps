@@ -27,8 +27,14 @@ async function buildKillhousePhysicsWorld(): Promise<LevelPhysicsWorld> {
   const assetDir = resolveKillhouseAssetDir();
   const root = await buildKillhouseCollisionScene(assetDir);
   const meshes = collectLevelCollisionMeshes([root]);
+  if (meshes.length === 0) {
+    throw new Error('[ServerPhysics] No collision meshes found for Chrono-Bowl layout');
+  }
   const geometry = buildMergedLevelCollisionGeometry(meshes);
   const { positions, indices } = bakedDataFromGeometry(geometry);
+  if (positions.length < 9 || indices.length < 3) {
+    throw new Error('[ServerPhysics] Chrono-Bowl collision geometry is empty');
+  }
 
   const world = new LevelPhysicsWorld();
   world.init();

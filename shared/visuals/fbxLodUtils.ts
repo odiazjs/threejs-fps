@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isThreeMesh } from '../level/collisionMeshPrep.js';
 
 const LOD_NAME = /LOD(\d+)/i;
 
@@ -21,7 +22,7 @@ export function keepSingleFbxLodMesh(
   const lodMeshes: Array<{ mesh: THREE.Mesh; level: number; tris: number }> = [];
 
   root.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
+    if (!isThreeMesh(child)) return;
     const match = child.name.match(LOD_NAME);
     if (!match) return;
     const tris = (child.geometry.index?.count ?? child.geometry.attributes.position.count) / 3;
@@ -60,7 +61,7 @@ export function keepLowestPolyFbxLodMesh(
   const lodMeshes: Array<{ mesh: THREE.Mesh; level: number; tris: number }> = [];
 
   root.traverse((child) => {
-    if (!(child instanceof THREE.Mesh)) return;
+    if (!isThreeMesh(child)) return;
     const match = child.name.match(LOD_NAME);
     if (!match) return;
     const tris = (child.geometry.index?.count ?? child.geometry.attributes.position.count) / 3;

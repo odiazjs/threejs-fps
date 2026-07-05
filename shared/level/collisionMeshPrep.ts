@@ -21,10 +21,15 @@ export interface WorldTriangle {
   centroid: THREE.Vector3;
 }
 
+/** Duck-type mesh check — works when FBX loaders and shared code use different three bundles. */
+export function isThreeMesh(object: THREE.Object3D): object is THREE.Mesh {
+  return (object as THREE.Mesh).isMesh === true;
+}
+
 /** Mark a prop root as gameplay collision geometry (no interior shell stripping). */
 export function markLodCollisionMesh(root: THREE.Object3D): void {
   root.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
+    if (isThreeMesh(child)) {
       child.userData.collisionMesh = true;
     }
   });
@@ -33,7 +38,7 @@ export function markLodCollisionMesh(root: THREE.Object3D): void {
 /** Mark a prop root as an invisible LOD collision source (shell extraction at merge time). */
 export function markLodCollisionShell(root: THREE.Object3D): void {
   root.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
+    if (isThreeMesh(child)) {
       child.userData.collisionMesh = true;
       child.userData.shellCollision = true;
     }
