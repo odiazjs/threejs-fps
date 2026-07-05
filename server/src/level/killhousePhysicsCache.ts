@@ -23,7 +23,9 @@ async function buildKillhousePhysicsWorld(): Promise<LevelPhysicsWorld> {
     throw new Error('[ServerPhysics] Failed to build Chrono-Bowl box collision');
   }
 
-  console.info(`[ServerPhysics] Built Chrono-Bowl box collision (${boxes.length} colliders)`);
+  console.info(
+    `[ServerPhysics] Built Chrono-Bowl box collision v2 (${boxes.length} colliders, no trimesh)`,
+  );
 
   return world;
 }

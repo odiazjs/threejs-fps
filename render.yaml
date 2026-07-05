@@ -3,7 +3,8 @@ services:
     name: threejs-fps-server
     runtime: node
     rootDir: server
-    buildCommand: npm install && npm install --prefix ..
+    # Root install first — shared/ resolves @dimforge/rapier3d-compat from repo root (single WASM copy).
+    buildCommand: npm install --prefix .. && npm install
     startCommand: npm start
     plan: free
     envVars:
