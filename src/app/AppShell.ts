@@ -122,6 +122,12 @@ export class AppShell {
     void this.lobbyClient.disconnect();
   }
 
+  /** Re-sync lobby presence and friend list after closing the in-lobby game overlay. */
+  syncPresenceAfterGame(): void {
+    this.lobbyClient.setAppView(this.presenceViewFor(this.currentView));
+    this.friendsPanel?.refreshPresence();
+  }
+
   private readonly onPopState = (): void => {
     const view = parseShellViewFromUrl();
     if (view === this.currentView) return;

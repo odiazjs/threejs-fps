@@ -2,11 +2,13 @@ import type { WebGLRenderer } from 'three';
 
 const FPS_SAMPLE_SEC = 0.5;
 const WORST_WINDOW_SEC = 2;
+const TIME_SAMPLE_SEC = 2;
 
 export class PerformanceHud {
   private readonly root: HTMLElement;
   private readonly fpsEl: HTMLElement;
   private readonly frameEl: HTMLElement;
+  private readonly timeEl: HTMLElement;
   private readonly worstEl: HTMLElement;
   private readonly gpuEl: HTMLElement;
 
@@ -16,34 +18,43 @@ export class PerformanceHud {
   private worstMs = 0;
   private worstInWindow = 0;
   private worstWindow = 0;
+  private simTimeAccum = 0;
+  private wallSampleStartMs = 0;
+  private timeScale = 1;
 
   constructor() {
     this.root = document.createElement('div');
     this.root.id = 'perf-hud';
-    Object.assign(this.root.style, {
-      position: 'fixed',
-      top: '12px',
-      right: '12px',
-      zIndex: '10000',
-      padding: '8px 10px',
-      fontFamily: 'Consolas, Monaco, monospace',
-      fontSize: '11px',
-      lineHeight: '1.45',
-      color: '#d8ffe0',
-      background: 'rgba(8, 16, 12, 0.72)',
-      border: '1px solid rgba(120, 200, 140, 0.35)',
-      borderRadius: '4px',
-      pointerEvents: 'none',
-      whiteSpace: 'pre',
-      textAlign: 'right',
-    });
+    this.root.className = 'hud-panel game-perf-hud';
 
-    this.fpsEl = document.createElement('div');
-    this.frameEl = document.createElement('div');
-    this.worstEl = document.createElement('div');
-    this.gpuEl = document.createElement('div');
-    this.root.append(this.fpsEl, this.frameEl, this.worstEl, this.gpuEl);
+    this.fpsEl = this.createRow('FPS', 'game-perf-value');
+    this.frameEl = this.createRow('FRAME', 'game-perf-meta');
+    this.timeEl = this.createRow('TIME', 'game-perf-meta');
+    this.worstEl = this.createRow('WORST', 'game-perf-meta');
+    this.gpuEl = this.createRow('GPU', 'game-perf-meta');
+
+    this.root.append(
+      this.fpsEl.parentElement!,
+      this.frameEl.parentElement!,
+      this.timeEl.parentElement!,
+      this.worstEl.parentElement!,
+      this.gpuEl.parentElement!,
+    );
     document.body.appendChild(this.root);
+  }
+
+  private createRow(label: string, valueClass: string): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'game-perf-row';
+
+    const labelEl = document.createElement('span');
+    labelEl.textContent = label;
+
+    const valueEl = document.createElement('span');
+    valueEl.className = valueClass;
+
+    row.append(labelEl, valueEl);
+    return valueEl;
   }
 
   update(delta: number, renderer?: WebGLRenderer): void {
@@ -65,18 +76,37 @@ export class PerformanceHud {
       this.worstWindow = 0;
     }
 
-    const fpsColor = this.fps >= 55 ? '#9dffb0' : this.fps >= 45 ? '#ffe08a' : '#ff8a8a';
-    this.fpsEl.style.color = fpsColor;
-    this.fpsEl.textContent = `FPS ${this.fps.toFixed(0)}`;
+    if (this.wallSampleStartMs === 0) {
+      this.wallSampleStartMs = performance.now();
+    }
+    this.simTimeAccum += delta;
+    const wallSec = (performance.now() - this.wallSampleStartMs) / 1000;
+    if (wallSec >= TIME_SAMPLE_SEC) {
+      this.timeScale = wallSec > 0 ? this.simTimeAccum / wallSec : 1;
+      this.simTimeAccum = 0;
+      this.wallSampleStartMs = performance.now();
+    }
 
-    this.frameEl.textContent = `Frame ${frameMs.toFixed(1)} ms`;
-    this.worstEl.textContent = `Worst ${this.worstMs.toFixed(1)} ms (2s)`;
+    const stable = this.fps >= 55;
+    const warn = this.fps >= 45 && !stable;
+    this.fpsEl.textContent = `${this.fps.toFixed(0)}`;
+    this.fpsEl.classList.toggle('game-perf-value--stable', stable);
+    this.fpsEl.classList.toggle('game-perf-value--neutral', warn);
+    this.fpsEl.classList.toggle('game-perf-value--warn', !stable && !warn);
+
+    this.frameEl.textContent = `${frameMs.toFixed(1)} MS`;
+    this.timeEl.textContent = `${this.timeScale.toFixed(2)}×`;
+    this.timeEl.classList.toggle(
+      'game-perf-value--warn',
+      this.timeScale < 0.95 || this.timeScale > 1.05,
+    );
+    this.worstEl.textContent = `${this.worstMs.toFixed(1)} MS (2S)`;
 
     if (renderer) {
       const { calls, triangles } = renderer.info.render;
-      this.gpuEl.textContent = `Draws ${calls}  Tris ${(triangles / 1000).toFixed(0)}k`;
+      this.gpuEl.textContent = `${calls} DRAWS · ${(triangles / 1000).toFixed(0)}K TRIS`;
     } else {
-      this.gpuEl.textContent = '';
+      this.gpuEl.textContent = '—';
     }
   }
 

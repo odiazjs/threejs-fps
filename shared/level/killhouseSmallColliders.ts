@@ -1,5 +1,12 @@
 import type { Aabb } from './levelData.js';
 import type { SpawnPickContext, SpawnZone } from './spawnPick.js';
+import { BIO_WALL_BASIC_VOXEL_COLLIDERS } from './bioWallBasicVoxelColliders.js';
+import {
+  getMazeWallCollidersAt,
+  KILLHOUSE_MAZE_WALL_PLACEMENTS,
+} from './killhouseMazeWalls.js';
+import { transformPlacedVoxelColliders } from './placedVoxelCollider.js';
+import { LOD_SHIELD_PROP_COLLIDERS } from './lodShieldPropColliders.js';
 import {
   pickBatchTeamSpawns,
   pickRandomTeamRespawn,
@@ -7,205 +14,167 @@ import {
 } from './spawnPick.js';
 
 /** Chrono-Bowl 2v2 arena — compact rectangular killhouse. */
-export const KILLHOUSE_WIDTH = 50;
-export const KILLHOUSE_DEPTH = 32;
+/**
+ * Each wall is 3.80m wide, 3.10m length, and 0.45m thick.
+ * So the wide part has a total of 12 walls, and the narrow part has a total of 10 walls.
+ */
+export const KILLHOUSE_WIDTH = 45.6;
+export const KILLHOUSE_DEPTH = 38;
 export const MAP_HALF_X = KILLHOUSE_WIDTH / 2;
 export const MAP_HALF_Z = KILLHOUSE_DEPTH / 2;
 export const KILLHOUSE_WALL_THICK = 0.45;
-export const KILLHOUSE_WALL_HEIGHT = 3.2;
 
 /** Largest extent — used for fog / coarse bounds until rectangular maps are wired everywhere. */
 export const FLOOR_SIZE = Math.max(KILLHOUSE_WIDTH, KILLHOUSE_DEPTH);
 export const MAP_HALF = FLOOR_SIZE / 2;
 
-const MAP_INSET = 3;
+const MAP_INSET_X = 2.7;
+const MAP_INSET_Z = 3.5;
 
-export interface BoxProp {
+/** bio_wall_basic.fbx bounds after center/ground alignment, before scale. */
+const CENTER_BIO_WALL_MODEL_SIZE = {
+  x: 189.91550207138062,
+  y: 164.43270679385066,
+  z: 53.65080360100366,
+} as const;
+
+export const KILLHOUSE_CENTER_WALL_SCALE = 0.02;
+
+/** Matches wall prop scale for shield_pink_prop_1.fbx visual placement. */
+export const KILLHOUSE_SHIELD_PROP_SCALE = 0.010;
+
+/** Scaled lod_shield_prop.fbx (model_LOD3) voxel footprint half-extents at KILLHOUSE_SHIELD_PROP_SCALE. */
+export const KILLHOUSE_SHIELD_PROP_HALF_X = 0.799;
+export const KILLHOUSE_SHIELD_PROP_HALF_Z = 0.949;
+
+export interface KillhouseShieldPropPlacement {
   x: number;
   z: number;
-  w: number;
-  h: number;
-  d: number;
-  rotY?: number;
-  minY?: number;
+  /** Radians — 90° steps only (0, ±π/2, π). */
+  rotationY: number;
 }
 
-export interface PlatformDef {
+/** Ten shield props across Chrono-Bowl — axis-aligned rotations, inside playable bounds. */
+export const KILLHOUSE_SHIELD_PROP_PLACEMENTS: readonly KillhouseShieldPropPlacement[] = [
+  { x: 0, z: 0, rotationY: 0 },
+  { x: -14, z: -9, rotationY: Math.PI / 2 },
+  { x: 14, z: -9, rotationY: Math.PI },
+  { x: -14, z: 9, rotationY: -Math.PI / 2 },
+  { x: 14, z: 9, rotationY: 0 },
+  { x: -8, z: 0, rotationY: Math.PI / 2 },
+  { x: 8, z: 0, rotationY: Math.PI },
+  { x: 0, z: -11, rotationY: 0 },
+  { x: 0, z: 11, rotationY: Math.PI / 2 },
+  { x: -6, z: 6, rotationY: Math.PI },
+] as const;
+
+/** @deprecated Use KILLHOUSE_SHIELD_PROP_PLACEMENTS[0] */
+export const KILLHOUSE_CENTER_SHIELD_PROP = {
+  x: KILLHOUSE_SHIELD_PROP_PLACEMENTS[0]!.x,
+  z: KILLHOUSE_SHIELD_PROP_PLACEMENTS[0]!.z,
+} as const;
+
+/** Module span along its long edge after scale — matches 12 × length = width, 10 × length = depth. */
+export const BIO_WALL_MODULE_LENGTH =
+  CENTER_BIO_WALL_MODEL_SIZE.x * KILLHOUSE_CENTER_WALL_SCALE;
+export const BIO_WALL_MODULE_DEPTH =
+  CENTER_BIO_WALL_MODEL_SIZE.z * KILLHOUSE_CENTER_WALL_SCALE;
+export const BIO_WALL_MODULE_HEIGHT =
+  CENTER_BIO_WALL_MODEL_SIZE.y * KILLHOUSE_CENTER_WALL_SCALE;
+
+export const KILLHOUSE_WIDTH_WALL_COUNT = 12;
+export const KILLHOUSE_DEPTH_WALL_COUNT = 10;
+
+export interface PerimeterBioWallPlacement {
   x: number;
   z: number;
-  w: number;
-  d: number;
-  surfaceY: number;
-  thickness?: number;
+  rotationY: number;
 }
 
-export const PERIMETER_WALLS: readonly BoxProp[] = [
-  {
-    x: 0,
-    z: -MAP_HALF_Z + KILLHOUSE_WALL_THICK / 2,
-    w: KILLHOUSE_WIDTH,
-    h: KILLHOUSE_WALL_HEIGHT,
-    d: KILLHOUSE_WALL_THICK,
-  },
-  {
-    x: 0,
-    z: MAP_HALF_Z - KILLHOUSE_WALL_THICK / 2,
-    w: KILLHOUSE_WIDTH,
-    h: KILLHOUSE_WALL_HEIGHT,
-    d: KILLHOUSE_WALL_THICK,
-  },
-  {
-    x: -MAP_HALF_X + KILLHOUSE_WALL_THICK / 2,
-    z: 0,
-    w: KILLHOUSE_WALL_THICK,
-    h: KILLHOUSE_WALL_HEIGHT,
-    d: KILLHOUSE_DEPTH,
-  },
-  {
-    x: MAP_HALF_X - KILLHOUSE_WALL_THICK / 2,
-    z: 0,
-    w: KILLHOUSE_WALL_THICK,
-    h: KILLHOUSE_WALL_HEIGHT,
-    d: KILLHOUSE_DEPTH,
-  },
-] as const;
-
-export const CONTAINERS: readonly BoxProp[] = [
-  { x: 1.5, z: 1, w: 2.4, h: 2.6, d: 6.2, rotY: Math.PI / 4 },
-  { x: -5, z: -5.5, w: 2.4, h: 2.6, d: 6.2 },
-  { x: 9, z: -7, w: 2.4, h: 2.6, d: 6.2, rotY: 0.22 },
-  { x: -1, z: 9.5, w: 2.4, h: 2.6, d: 6.2, rotY: -0.12 },
-] as const;
-
-export const COVER_WALLS: readonly BoxProp[] = [
-  { x: -8, z: -2, w: 3.6, h: 1.8, d: 0.35 },
-  { x: 6, z: 4.5, w: 0.35, h: 1.8, d: 3.2 },
-  { x: -2, z: -9, w: 4.2, h: 1.4, d: 0.35 },
-  { x: 12, z: 7, w: 2.8, h: 1.4, d: 0.35, rotY: Math.PI / 2 },
-] as const;
-
-export const ENERGY_BARRIERS: readonly BoxProp[] = [
-  { x: -3, z: 3, w: 2.8, h: 1.25, d: 0.08 },
-  { x: 4, z: -2, w: 0.08, h: 1.25, d: 2.6 },
-  { x: -11, z: -8, w: 2.2, h: 1.25, d: 0.08 },
-  { x: 16, z: 2, w: 0.08, h: 1.25, d: 2.4 },
-] as const;
-
-export const CRATE_STACKS: readonly BoxProp[] = [
-  { x: -20, z: -10, w: 0.9, h: 0.9, d: 0.9 },
-  { x: -19.1, z: -10, w: 0.9, h: 0.9, d: 0.9 },
-  { x: 18, z: 10, w: 0.85, h: 0.85, d: 0.85 },
-  { x: 18.9, z: 10, w: 0.85, h: 0.85, d: 0.85 },
-  { x: 18.45, z: 10.9, w: 0.85, h: 0.85, d: 0.85 },
-  { x: -14, z: 12, w: 0.8, h: 0.8, d: 0.8 },
-  { x: 8, z: 11, w: 0.8, h: 0.8, d: 0.8 },
-] as const;
-
-/** Elevated lab platforms + mid-landing decks. */
-export const PLATFORMS: readonly PlatformDef[] = [
-  { x: -16, z: 4, w: 9, d: 7, surfaceY: 3.2 },
-  { x: 14, z: -1, w: 7.5, d: 9, surfaceY: 3.2 },
-  { x: -16, z: 4, w: 3.5, d: 2.2, surfaceY: 1.55, thickness: 0.28 },
-  { x: 14, z: -1, w: 3.5, d: 2.2, surfaceY: 1.55, thickness: 0.28 },
-] as const;
-
-/** Ground-floor lab shell walls. */
-export const LAB_SHELLS: readonly BoxProp[] = [
-  { x: -16, z: 4, w: 10, h: 2.8, d: 0.35 },
-  { x: -21.2, z: 4, w: 0.35, h: 2.8, d: 8.2 },
-  { x: -16, z: 8.35, w: 10, h: 2.8, d: 0.35 },
-  { x: -10.8, z: 4, w: 0.35, h: 2.8, d: 8.2 },
-  { x: 14, z: -1, w: 8.5, h: 2.8, d: 0.35 },
-  { x: 18.6, z: -1, w: 0.35, h: 2.8, d: 10.2 },
-  { x: 14, z: 4.35, w: 8.5, h: 2.8, d: 0.35 },
-  { x: 9.4, z: -1, w: 0.35, h: 2.8, d: 10.2 },
-] as const;
-
-function buildStairs(originX: number, originZ: number, stairOffsetX: number): BoxProp[] {
-  const stairs: BoxProp[] = [];
-  const stairX = originX + stairOffsetX;
-  for (let step = 0; step < 6; step++) {
-    stairs.push({
-      x: stairX,
-      z: originZ - 2.4 + step * 0.55,
-      w: 1.4,
-      h: (step + 1) * 0.24,
-      d: 0.7,
+function buildWidthWallRun(
+  z: number,
+  rotationY: number,
+): PerimeterBioWallPlacement[] {
+  const start = -KILLHOUSE_WIDTH / 2 + BIO_WALL_MODULE_LENGTH / 2;
+  const placements: PerimeterBioWallPlacement[] = [];
+  for (let i = 0; i < KILLHOUSE_WIDTH_WALL_COUNT; i++) {
+    placements.push({
+      x: start + i * BIO_WALL_MODULE_LENGTH,
+      z,
+      rotationY,
     });
   }
-  return stairs;
+  return placements;
 }
 
-export const STAIRS: readonly BoxProp[] = [
-  ...buildStairs(-16, 4, -3.8),
-  ...buildStairs(14, -1, 3.8),
-] as const;
+function buildDepthWallRun(
+  x: number,
+  rotationY: number,
+): PerimeterBioWallPlacement[] {
+  const start = -KILLHOUSE_DEPTH / 2 + BIO_WALL_MODULE_LENGTH / 2;
+  const placements: PerimeterBioWallPlacement[] = [];
+  for (let i = 0; i < KILLHOUSE_DEPTH_WALL_COUNT; i++) {
+    placements.push({
+      x,
+      z: start + i * BIO_WALL_MODULE_LENGTH,
+      rotationY,
+    });
+  }
+  return placements;
+}
 
-export const ROVERS: readonly BoxProp[] = [
-  { x: -8, z: -11, w: 1.6, h: 1.1, d: 2.4, rotY: 0.4 },
-  { x: 5, z: 8, w: 1.6, h: 1.1, d: 2.4, rotY: -0.8 },
-  { x: 17, z: -9, w: 1.6, h: 1.1, d: 2.4, rotY: 1.2 },
-] as const;
+const northZ = -MAP_HALF_Z + KILLHOUSE_WALL_THICK / 2;
+const southZ = MAP_HALF_Z - KILLHOUSE_WALL_THICK / 2;
+const westX = -MAP_HALF_X + KILLHOUSE_WALL_THICK / 2;
+const eastX = MAP_HALF_X - KILLHOUSE_WALL_THICK / 2;
 
-export const VIEWPORT_WALLS: readonly BoxProp[] = [
-  { x: 0, z: MAP_HALF_Z - KILLHOUSE_WALL_THICK - 0.2, w: 12, h: 2.6, d: 0.35 },
-  { x: -6.2, z: MAP_HALF_Z - KILLHOUSE_WALL_THICK - 0.2, w: 0.35, h: 3.4, d: 0.35 },
-  { x: 6.2, z: MAP_HALF_Z - KILLHOUSE_WALL_THICK - 0.2, w: 0.35, h: 3.4, d: 0.35 },
-  { x: 0, z: MAP_HALF_Z - KILLHOUSE_WALL_THICK - 0.2, w: 12.8, h: 0.35, d: 0.35, minY: 3.35 },
-] as const;
+/** Twelve modules per north/south edge, ten per west/east edge — natural scale, edge to edge. */
+export const PERIMETER_BIO_WALL_PLACEMENTS: readonly PerimeterBioWallPlacement[] = [
+  ...buildWidthWallRun(northZ, 0),
+  ...buildWidthWallRun(southZ, Math.PI),
+  ...buildDepthWallRun(westX, Math.PI / 2),
+  ...buildDepthWallRun(eastX, -Math.PI / 2),
+];
 
-export const PLATFORM_RAILS: readonly BoxProp[] = [
-  { x: -16, z: 0.7, w: 9, h: 1.05, d: 0.08, minY: 3.2 },
-  { x: -20.3, z: 4, w: 0.08, h: 1.05, d: 7, minY: 3.2 },
-  { x: -11.7, z: 4, w: 0.08, h: 1.05, d: 7, minY: 3.2 },
-  { x: 14, z: -4.3, w: 7.5, h: 1.05, d: 0.08, minY: 3.2 },
-  { x: 10.55, z: -1, w: 0.08, h: 1.05, d: 9, minY: 3.2 },
-  { x: 17.45, z: -1, w: 0.08, h: 1.05, d: 9, minY: 3.2 },
-] as const;
-
-export const LAB_PROPS: readonly BoxProp[] = [
-  { x: -16, z: 4, w: 1.1, h: 1.6, d: 1.1 },
-  { x: 14, z: -1, w: 1.1, h: 1.6, d: 1.1 },
-  { x: -17.2, z: 5.2, w: 1.2, h: 0.9, d: 0.5, minY: 3.2 },
-  { x: 12.8, z: 0.2, w: 1.2, h: 0.9, d: 0.5, minY: 3.2 },
-] as const;
+function getPerimeterWallCollidersAt(placement: PerimeterBioWallPlacement): Aabb[] {
+  return transformPlacedVoxelColliders(BIO_WALL_BASIC_VOXEL_COLLIDERS, placement);
+}
 
 /** Chrono-Bowl spawn pools — B1–B6 (west) and R1–R6 (east) per arena layout. */
 const BLUE_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: -22.5, z: -12.5, spreadX: 2.4, spreadZ: 2.2 }, // B1 top-left corner
-  { x: -12.5, z: -0.5, spreadX: 2.8, spreadZ: 2.6 }, // B2 mid-left lane
-  { x: -20.8, z: 3.8, spreadX: 2.2, spreadZ: 3.0 }, // B3 west lab corridor
-  { x: -17.2, z: 7.2, spreadX: 2.6, spreadZ: 2.4 }, // B4 lab interior / stairs
-  { x: -20.5, z: 12.8, spreadX: 2.8, spreadZ: 2.2 }, // B5 bottom-left exterior
-  { x: -2.5, z: 1.2, spreadX: 2.6, spreadZ: 2.8 }, // B6 center-left behind container
+  { x: -20.52, z: -14.85, spreadX: 2.2, spreadZ: 2.6 },
+  { x: -11.4, z: -0.59, spreadX: 2.55, spreadZ: 3.05 },
+  { x: -18.97, z: 4.51, spreadX: 2.0, spreadZ: 3.55 },
+  { x: -15.68, z: 8.55, spreadX: 2.4, spreadZ: 2.85 },
+  { x: -18.7, z: 15.2, spreadX: 2.55, spreadZ: 2.6 },
+  { x: -2.28, z: 1.43, spreadX: 2.4, spreadZ: 3.35 },
 ];
 
 const RED_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: 22.5, z: 12.5, spreadX: 2.4, spreadZ: 2.2 }, // R1 top-right corner
-  { x: 12.5, z: 0.5, spreadX: 2.8, spreadZ: 2.6 }, // R2 mid-right lane
-  { x: 17.5, z: 9.8, spreadX: 2.8, spreadZ: 2.6 }, // R3 center-right crate stack
-  { x: 17.2, z: -2.8, spreadX: 2.6, spreadZ: 3.0 }, // R4 east lab interior
-  { x: 3.5, z: 1.0, spreadX: 2.6, spreadZ: 2.8 }, // R5 center-top container lane
-  { x: 20.5, z: -12.8, spreadX: 2.8, spreadZ: 2.2 }, // R6 bottom-right exterior
+  { x: 20.52, z: 14.85, spreadX: 2.2, spreadZ: 2.6 },
+  { x: 11.4, z: 0.59, spreadX: 2.55, spreadZ: 3.05 },
+  { x: 15.96, z: 11.64, spreadX: 2.55, spreadZ: 3.05 },
+  { x: 15.68, z: -3.33, spreadX: 2.4, spreadZ: 3.55 },
+  { x: 3.19, z: 1.19, spreadX: 2.4, spreadZ: 3.35 },
+  { x: 18.7, z: -15.2, spreadX: 2.55, spreadZ: 2.6 },
 ];
 
-/** Extra pools for 3–4 team layouts on the same map. */
 const GREEN_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: -18.5, z: 13.5, spreadX: 2.6, spreadZ: 2.4 },
-  { x: -14.0, z: 14.2, spreadX: 2.4, spreadZ: 2.2 },
-  { x: -22.0, z: 10.5, spreadX: 2.2, spreadZ: 2.6 },
-  { x: -11.5, z: 11.8, spreadX: 2.8, spreadZ: 2.4 },
-  { x: -20.0, z: 14.5, spreadX: 2.4, spreadZ: 2.0 },
-  { x: -15.5, z: 8.5, spreadX: 2.6, spreadZ: 2.4 },
+  { x: -16.87, z: 16.03, spreadX: 2.4, spreadZ: 2.85 },
+  { x: -12.77, z: 16.86, spreadX: 2.2, spreadZ: 2.6 },
+  { x: -20.06, z: 12.47, spreadX: 2.0, spreadZ: 3.05 },
+  { x: -10.49, z: 14.01, spreadX: 2.55, spreadZ: 2.85 },
+  { x: -18.24, z: 17.22, spreadX: 2.2, spreadZ: 2.35 },
+  { x: -14.14, z: 10.09, spreadX: 2.4, spreadZ: 2.85 },
 ];
 
 const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [
-  { x: 18.5, z: -13.5, spreadX: 2.6, spreadZ: 2.4 },
-  { x: 14.0, z: -14.2, spreadX: 2.4, spreadZ: 2.2 },
-  { x: 22.0, z: -10.5, spreadX: 2.2, spreadZ: 2.6 },
-  { x: 11.5, z: -11.8, spreadX: 2.8, spreadZ: 2.4 },
-  { x: 20.0, z: -14.5, spreadX: 2.4, spreadZ: 2.0 },
-  { x: 15.5, z: -8.5, spreadX: 2.6, spreadZ: 2.4 },
+  { x: 16.87, z: -16.03, spreadX: 2.4, spreadZ: 2.85 },
+  { x: 12.77, z: -16.86, spreadX: 2.2, spreadZ: 2.6 },
+  { x: 20.06, z: -12.47, spreadX: 2.0, spreadZ: 3.05 },
+  { x: 10.49, z: -14.01, spreadX: 2.55, spreadZ: 2.85 },
+  { x: 18.24, z: -17.22, spreadX: 2.2, spreadZ: 2.35 },
+  { x: 14.14, z: -10.09, spreadX: 2.4, spreadZ: 2.85 },
 ];
 
 const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
@@ -215,12 +184,9 @@ const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
   PURPLE_SPAWN_POOL,
 ];
 
-const FFA_SPAWN_POOL: readonly SpawnZone[] = [
-  ...BLUE_SPAWN_POOL,
-  ...RED_SPAWN_POOL,
-];
+const FFA_SPAWN_POOL: readonly SpawnZone[] = [...BLUE_SPAWN_POOL, ...RED_SPAWN_POOL];
 
-export const HUMAN_RESPAWN_POINT = { x: -19, z: -12 } as const;
+export const HUMAN_RESPAWN_POINT = { x: -17.33, z: -14.25 } as const;
 
 function teamPool(teamId: number): readonly SpawnZone[] {
   return TEAM_SPAWN_POOLS[teamId % TEAM_SPAWN_POOLS.length] ?? BLUE_SPAWN_POOL;
@@ -264,85 +230,50 @@ export function sampleGroundHeight(_x: number, _z: number): number {
   return 0;
 }
 
-function rotatedHalfExtents(w: number, d: number, rotY: number): { halfX: number; halfZ: number } {
-  const c = Math.abs(Math.cos(rotY));
-  const s = Math.abs(Math.sin(rotY));
-  return {
-    halfX: c * (w / 2) + s * (d / 2),
-    halfZ: s * (w / 2) + c * (d / 2),
-  };
+function getShieldPropCollidersAt(placement: KillhouseShieldPropPlacement): Aabb[] {
+  return transformPlacedVoxelColliders(LOD_SHIELD_PROP_COLLIDERS, placement);
 }
 
-function boxAabb(prop: BoxProp, platform = false): Aabb {
-  const rotY = prop.rotY ?? 0;
-  const { halfX, halfZ } = rotatedHalfExtents(prop.w, prop.d, rotY);
-  const minY = prop.minY ?? 0;
-  return {
-    minX: prop.x - halfX,
-    maxX: prop.x + halfX,
-    minY,
-    maxY: minY + prop.h,
-    minZ: prop.z - halfZ,
-    maxZ: prop.z + halfZ,
-    ...(platform ? { platform: true as const } : {}),
-  };
+/** World-space voxel colliders for perimeter bio_wall_basic modules (debug visualization). */
+export function getKillhousePerimeterWallColliders(): Aabb[] {
+  return PERIMETER_BIO_WALL_PLACEMENTS.flatMap(getPerimeterWallCollidersAt);
 }
 
-function platformAabb(def: PlatformDef): Aabb {
-  const thickness = def.thickness ?? 0.32;
-  return {
-    minX: def.x - def.w / 2,
-    maxX: def.x + def.w / 2,
-    minY: def.surfaceY - thickness,
-    maxY: def.surfaceY,
-    minZ: def.z - def.d / 2,
-    maxZ: def.z + def.d / 2,
-    platform: true,
-  };
-}
-
-function propsToAabbs(props: readonly BoxProp[]): Aabb[] {
-  return props.map((prop) => boxAabb(prop));
-}
-
-function buildColliderList(): Aabb[] {
-  return [
-    ...propsToAabbs(PERIMETER_WALLS),
-    ...propsToAabbs(CONTAINERS),
-    ...propsToAabbs(COVER_WALLS),
-    ...propsToAabbs(ENERGY_BARRIERS),
-    ...propsToAabbs(CRATE_STACKS),
-    ...propsToAabbs(LAB_SHELLS),
-    ...propsToAabbs(STAIRS),
-    ...propsToAabbs(ROVERS),
-    ...propsToAabbs(VIEWPORT_WALLS),
-    ...propsToAabbs(PLATFORM_RAILS),
-    ...propsToAabbs(LAB_PROPS),
-    ...PLATFORMS.map(platformAabb),
-  ];
+/** World-space LOD voxel colliders for all shield prop placements (debug visualization). */
+export function getKillhouseShieldPropWorldColliders(): Aabb[] {
+  return KILLHOUSE_SHIELD_PROP_PLACEMENTS.flatMap(getShieldPropCollidersAt);
 }
 
 let cachedColliders: Aabb[] | null = null;
 
 export function getLevelColliders(): Aabb[] {
-  cachedColliders ??= buildColliderList();
+  cachedColliders ??= [
+    ...PERIMETER_BIO_WALL_PLACEMENTS.flatMap(getPerimeterWallCollidersAt),
+    ...KILLHOUSE_MAZE_WALL_PLACEMENTS.flatMap(getMazeWallCollidersAt),
+    ...KILLHOUSE_SHIELD_PROP_PLACEMENTS.flatMap(getShieldPropCollidersAt),
+  ];
   return cachedColliders;
 }
 
-export function isInsideKillhouseBounds(x: number, z: number, padding = MAP_INSET): boolean {
-  const limitX = MAP_HALF_X - padding;
-  const limitZ = MAP_HALF_Z - padding;
+export function isInsideKillhouseBounds(
+  x: number,
+  z: number,
+  paddingX = MAP_INSET_X,
+  paddingZ = MAP_INSET_Z,
+): boolean {
+  const limitX = MAP_HALF_X - paddingX;
+  const limitZ = MAP_HALF_Z - paddingZ;
   return Math.abs(x) <= limitX && Math.abs(z) <= limitZ;
 }
 
 export const KILLHOUSE_AMMO_POSITIONS = [
   { x: 0, z: 0 },
-  { x: -14, z: -8 },
-  { x: 14, z: 6 },
-  { x: -6, z: 10 },
+  { x: -12.77, z: -9.5 },
+  { x: 12.77, z: 7.13 },
+  { x: -5.47, z: 11.87 },
 ] as const;
 
 export const KILLHOUSE_SHIELD_POSITIONS = [
-  { x: 10, z: -8 },
-  { x: -12, z: 4 },
+  { x: 9.12, z: -9.5 },
+  { x: -10.94, z: 4.75 },
 ] as const;

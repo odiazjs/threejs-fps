@@ -40,7 +40,7 @@ import {
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
 import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
-import { DamageNumberStack } from '../ui/DamageNumberStack';
+import { DamageNumberStack, DAMAGE_NUMBER_HEIGHT_SCALE } from '../ui/DamageNumberStack';
 import { ShieldBreakFx } from '../effects/ShieldBreakFx';
 import { MeleeHitFx } from '../effects/MeleeHitFx';
 import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
@@ -136,6 +136,7 @@ export class Player {
   private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteKatanaAxisDebug: AxisDebugArrows | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
+  private remoteHeadTopOffset = EYE_HEIGHT + 0.38;
   private damageNumberStack: DamageNumberStack | null = null;
   private shieldBreakFx: ShieldBreakFx | null = null;
   private meleeHitFx: MeleeHitFx | null = null;
@@ -250,9 +251,6 @@ export class Player {
 
       this.damageNumberStack = new DamageNumberStack();
       this.remoteUiRig.add(this.damageNumberStack.object);
-
-      this.shieldBreakFx = new ShieldBreakFx();
-      this.object.add(this.shieldBreakFx.object);
 
       this.meleeHitFx = new MeleeHitFx();
       this.object.add(this.meleeHitFx.object);
@@ -403,6 +401,7 @@ export class Player {
     this.displayedCharacterModelFile = template.modelFile;
     this.bodyPartBones = resolveBodyPartBones(this.characterInstance.root);
     this.bindRemoteCharacterRig(template);
+    this.refreshRemoteUiTopOffset();
   }
 
   private bindRemoteCharacterRig(template: CharacterTemplate): void {
@@ -807,7 +806,7 @@ export class Player {
           this.showDamageNumber(totalDamage);
         }
         if (this.shieldPoints > 0 && snapshot.shieldPoints <= 0) {
-          this.shieldBreakFx?.play();
+          this.playShieldBreakFx();
           this.onShieldBreakListener?.();
         }
       }
@@ -872,13 +871,23 @@ export class Player {
   private syncRemoteUiHeight(): void {
     if (!this.remoteHealthBar) return;
 
-    const clearance = 0.38;
-    const topOffset = this.characterInstance
-      ? computeTopOffsetAboveFeet(this.characterInstance.root, this.object, clearance)
-      : EYE_HEIGHT + clearance;
+    this.remoteHealthBar.setHeadTopOffset(this.remoteHeadTopOffset);
+    this.damageNumberStack?.setHeadTopOffset(
+      (this.remoteHeadTopOffset + 0.16) * DAMAGE_NUMBER_HEIGHT_SCALE,
+    );
+  }
 
-    this.remoteHealthBar.setHeadTopOffset(topOffset);
-    this.damageNumberStack?.setHeadTopOffset(topOffset + 0.16);
+  private refreshRemoteUiTopOffset(): void {
+    if (!this.characterInstance) {
+      this.remoteHeadTopOffset = EYE_HEIGHT + 0.38;
+      return;
+    }
+
+    this.remoteHeadTopOffset = computeTopOffsetAboveFeet(
+      this.characterInstance.root,
+      this.object,
+      0.38,
+    );
   }
 
   showDamageNumber(amount: number): void {
@@ -896,9 +905,23 @@ export class Player {
     this.onShieldBreakListener = listener;
   }
 
+  private playShieldBreakFx(): void {
+    if (this.camera) return;
+    if (!this.shieldBreakFx) {
+      this.shieldBreakFx = new ShieldBreakFx();
+      this.object.add(this.shieldBreakFx.object);
+    }
+    this.shieldBreakFx.play();
+  }
+
   updateDamageNumbers(delta: number, camera: THREE.Camera): void {
     this.damageNumberStack?.update(delta, camera);
-    this.shieldBreakFx?.update(delta, camera);
+    if (this.shieldBreakFx) {
+      if (!this.shieldBreakFx.update(delta, camera)) {
+        this.shieldBreakFx.dispose();
+        this.shieldBreakFx = null;
+      }
+    }
     this.meleeHitFx?.update(delta, camera);
   }
 

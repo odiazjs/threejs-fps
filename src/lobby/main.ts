@@ -2,20 +2,21 @@ import { handoffPageBoot } from '../app/pageBoot';
 import { AppShell, parseShellViewFromUrl } from '../app/AppShell';
 import { initAppSession } from '../app/bootstrap';
 import { logout } from '../auth/playerSession';
+import { bootstrapDebugFlags } from '../debug/debugQuery';
 import { FriendsPanel } from './FriendsPanel';
 import { LobbyClient } from './LobbyClient';
 import { LobbyScene } from './LobbyScene';
 import { refreshLobbyProfileStats } from './lobbyProfileStats';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
-import { getSelectedMapId, initLobbyMapSelector } from './mapSelection';
-import { getSelectedGameMode, initLobbyGameModeSelector } from './gameModeSelection';
-import { setGameJoinIntent } from '../auth/gameJoin';
-import { launchGameOverlay, onGameOverlayClosed } from './launchGameOverlay';
+import { initLobbyMapSelector } from './mapSelection';
+import { initLobbyGameModeSelector } from './gameModeSelection';
+import { onGameOverlayClosed, setGameOverlayBackgroundHooks } from './launchGameOverlay';
 import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
 loading.show('Loading lobby...');
+bootstrapDebugFlags();
 handoffPageBoot();
 
 function shellPresenceView(view: ReturnType<typeof parseShellViewFromUrl>): AppPresenceView {
@@ -30,6 +31,10 @@ async function startLobby(): Promise<void> {
   try {
     const session = await initAppSession();
     const scene = new LobbyScene(document.getElementById('lobby-canvas')!, session.userId);
+    setGameOverlayBackgroundHooks(
+      () => scene.setActive(false),
+      () => scene.setActive(true),
+    );
     const lobbyClient = new LobbyClient();
     friendsPanel = new FriendsPanel(lobbyClient);
     friendsPanel.onPartySnapshot((data) => {
@@ -65,24 +70,8 @@ async function startLobby(): Promise<void> {
     onGameOverlayClosed(() => {
       loading.reset();
       joinBtn.disabled = false;
-    });
-    joinBtn.addEventListener('click', () => {
-      if (loading.active) return;
-      loading.reset();
-      loading.show('Joining game...');
-      joinBtn.disabled = true;
-      setGameJoinIntent({ mode: 'create', mapId: getSelectedMapId(), gameMode: getSelectedGameMode() });
-      void launchGameOverlay()
-        .catch((error) => {
-          console.warn('[Lobby] failed to launch game', error);
-          loading.reset();
-          joinBtn.disabled = false;
-          window.location.href = '/game.html';
-        })
-        .finally(() => {
-          loading.reset();
-          joinBtn.disabled = false;
-        });
+      appShell?.syncPresenceAfterGame();
+      friendsPanel?.syncControls();
     });
 
     window.addEventListener('pagehide', () => {

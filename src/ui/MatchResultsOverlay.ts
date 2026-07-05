@@ -18,6 +18,8 @@ export class MatchResultsOverlay {
   private readonly leaveButton: HTMLButtonElement;
   private onLeave: (() => void) | null = null;
   private renderedKey: string | null = null;
+  private frozenMatchKey: string | null = null;
+  private frozenRoster: MatchResultsPlayer[] | null = null;
 
   constructor() {
     this.root = document.getElementById('match-results-overlay')!;
@@ -40,11 +42,31 @@ export class MatchResultsOverlay {
     if (!match || match.gameMode !== 'tdm' || match.phase !== 'ended') {
       this.root.hidden = true;
       this.renderedKey = null;
+      this.frozenMatchKey = null;
+      this.frozenRoster = null;
       this.root.classList.remove('match-results-visible');
       return;
     }
 
-    const renderKey = `${match.matchEndAt}:${match.winningTeamId}:${players
+    const matchKey = `${match.matchEndAt}:${match.winningTeamId}`;
+    if (this.frozenMatchKey !== matchKey) {
+      this.frozenMatchKey = matchKey;
+      this.frozenRoster = players
+        .filter((player) => !isTrainingBotSessionId(player.sessionId))
+        .map(
+          (player): MatchResultsPlayer => ({
+            sessionId: player.sessionId,
+            username: player.username,
+            teamId: player.teamId,
+            matchKills: player.matchKills ?? 0,
+          }),
+        );
+      this.renderedKey = null;
+    }
+
+    const humans = this.frozenRoster ?? [];
+
+    const renderKey = `${matchKey}:${humans
       .map((player) => `${player.sessionId}:${player.matchKills}`)
       .join(',')}`;
 
@@ -70,17 +92,6 @@ export class MatchResultsOverlay {
     this.titleEl.classList.add('match-results-swipe');
     this.subtitleEl.style.setProperty('--swipe-delay', '0ms');
     this.titleEl.style.setProperty('--swipe-delay', '90ms');
-
-    const humans = players
-      .filter((player) => !isTrainingBotSessionId(player.sessionId))
-      .map(
-        (player): MatchResultsPlayer => ({
-          sessionId: player.sessionId,
-          username: player.username,
-          teamId: player.teamId,
-          matchKills: player.matchKills ?? 0,
-        }),
-      );
 
     this.scoresEl.replaceChildren();
     let animIndex = 2;

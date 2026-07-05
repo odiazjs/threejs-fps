@@ -10,10 +10,22 @@ import {
 } from '../content/audioConfig';
 import { resumeLobbyMusic, stopLobbyMusic } from '../audio/initMenuAudio';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
+import { buildGameUrl } from '../debug/debugQuery';
 
 let overlay: HTMLIFrameElement | null = null;
 let messageBound = false;
 const closedHandlers = new Set<() => void>();
+let pauseBackgroundScene: (() => void) | null = null;
+let resumeBackgroundScene: (() => void) | null = null;
+
+/** Pause lobby WebGL while the game iframe runs (avoids dual rAF + GPU contention). */
+export function setGameOverlayBackgroundHooks(
+  pause: () => void,
+  resume: () => void,
+): void {
+  pauseBackgroundScene = pause;
+  resumeBackgroundScene = resume;
+}
 
 function onWindowMessage(event: MessageEvent): void {
   if (event.origin !== window.location.origin) return;
@@ -56,6 +68,7 @@ export function closeGameOverlay(): void {
   document.body.style.overflow = '';
   LoadingOverlay.shared().reset();
   resumeLobbyMusic();
+  resumeBackgroundScene?.();
   for (const handler of closedHandlers) {
     handler();
   }
@@ -73,12 +86,13 @@ export async function launchGameOverlay(): Promise<void> {
   ]);
   tickPlayer.unlock();
   stopLobbyMusic();
+  pauseBackgroundScene?.();
 
   closeGameOverlay();
   ensureMessageHandler();
 
   const iframe = document.createElement('iframe');
-  iframe.src = '/game.html';
+  iframe.src = buildGameUrl('/game.html');
   iframe.title = 'Game';
   iframe.allow = 'autoplay; fullscreen; pointer-lock';
   iframe.style.cssText = [

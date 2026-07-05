@@ -4,9 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Three.js FPS — Lobby</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       html {
-        background: #0e1114;
+        background: #04080e;
         color-scheme: dark;
       }
 
@@ -21,15 +27,15 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: #0e1114;
+        background: #04080e;
       }
 
       #page-boot-splash .page-boot-spinner {
         width: 2.75rem;
         height: 2.75rem;
         border-radius: 50%;
-        border: 3px solid rgba(130, 219, 219, 0.2);
-        border-top-color: #82dbdb;
+        border: 3px solid rgba(0, 242, 255, 0.15);
+        border-top-color: #00f2ff;
         animation: page-boot-spin 0.75s linear infinite;
       }
 
@@ -40,6 +46,7 @@
       }
     </style>
     <link rel="stylesheet" href="/src/styles/pages.css" />
+    <link rel="stylesheet" href="/src/styles/lobby-hud.css" />
   </head>
   <body class="lobby-page app-shell">
     <div id="page-boot-splash" aria-live="polite" aria-busy="true">
@@ -49,56 +56,30 @@
     <section id="app-view-lobby" class="app-view" data-view="lobby">
       <div id="lobby-canvas"></div>
       <div class="lobby-ui">
-        <div class="lobby-top-bar">
-          <div class="lobby-account-bar">
-            <div class="lobby-account panel">
-              <div class="lobby-account-body">
-                <div class="lobby-account-details">
-                  <div class="lobby-account-label">SIGNED IN</div>
-                  <div class="lobby-username" id="lobby-username">Player</div>
-                  <div class="lobby-email" id="lobby-email">player@example.com</div>
-                </div>
-                <button
-                  id="lobby-logout-btn"
-                  class="lobby-logout-btn"
-                  type="button"
-                  title="Log out"
-                  aria-label="Log out"
-                >
-                  <svg class="lobby-logout-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                    <polyline
-                      points="16 17 21 12 16 7"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                    <line
-                      x1="21"
-                      y1="12"
-                      x2="9"
-                      y2="12"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
+        <nav id="lobby-menu" class="lobby-nav" aria-label="Lobby menu">
+          <button class="lobby-nav-item is-active" type="button" disabled>HOME</button>
+          <button id="lobby-leaderboard-btn" class="lobby-nav-item" type="button">
+            LEADERBOARD
+          </button>
+          <button id="lobby-weapons-btn" class="lobby-nav-item" type="button">ARMORY</button>
+          <button id="lobby-settings-btn" class="lobby-nav-item" type="button">SETTINGS</button>
+        </nav>
+
+        <header class="lobby-profile hud-panel">
+          <div class="lobby-profile-avatar" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2L2 22h20L12 2z" stroke-linejoin="round" />
+              <path d="M12 9v4M12 17h.01" stroke-linecap="round" />
+            </svg>
           </div>
-          <div class="lobby-stats">
+          <div class="lobby-profile-info">
+            <div class="lobby-profile-label">OPERATOR</div>
+            <div class="lobby-username" id="lobby-username">Player</div>
+            <div class="lobby-email" id="lobby-email">player@example.com</div>
+          </div>
+          <div class="lobby-profile-stats">
             <div class="lobby-stat">
-              <span class="lobby-stat-label">KILLS</span>
+              <span class="lobby-stat-label">UNITS IN-FIELD</span>
               <span class="lobby-stat-value" id="stat-kills">0</span>
             </div>
             <div class="lobby-stat">
@@ -106,63 +87,130 @@
               <span class="lobby-stat-value" id="stat-kd">0.00</span>
             </div>
           </div>
-        </div>
-
-        <aside id="friends-panel" class="friends-panel panel">
-          <h2 class="friends-title">FRIENDS</h2>
-          <div class="friends-add-row">
-            <input
-              id="friend-email-input"
-              class="text-input"
-              type="email"
-              placeholder="Friend email"
-              autocomplete="email"
-            />
-            <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+          <div class="lobby-profile-footer">
+            <div class="lobby-profile-accent" aria-hidden="true"></div>
+            <button
+              id="lobby-logout-btn"
+              class="lobby-logout-btn"
+              type="button"
+              title="Log out"
+              aria-label="Log out"
+            >
+              <svg class="lobby-logout-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <polyline
+                  points="16 17 21 12 16 7"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <line
+                  x1="21"
+                  y1="12"
+                  x2="9"
+                  y2="12"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
           </div>
-          <div id="friends-status" class="friends-status"></div>
-          <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
-            <input id="friendly-fire-checkbox" type="checkbox" />
-            <span>Friendly fire</span>
-          </label>
-          <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
-            START GAME
-          </button>
-          <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
-            LEAVE PARTY
-          </button>
-        <ul id="friends-list" class="friends-list"></ul>
-      </aside>
+        </header>
 
-      <nav id="lobby-menu" aria-label="Lobby menu">
-          <button
-            id="lobby-leaderboard-btn"
-            class="lobby-menu-item secondary-btn"
-            type="button"
-          >
-            LEADERBOARD
-          </button>
-          <button id="lobby-weapons-btn" class="lobby-menu-item secondary-btn" type="button">
-            WEAPONS
-          </button>
-          <button id="lobby-settings-btn" class="lobby-menu-item secondary-btn" type="button">
-            SETTINGS
-          </button>
-        </nav>
+        <aside class="lobby-perf hud-panel">
+          <div class="lobby-perf-row">
+            <span>FPS</span>
+            <span id="lobby-perf-fps" class="lobby-perf-value lobby-perf-value--stable">60 STABLE</span>
+          </div>
+          <div class="lobby-perf-row">
+            <span>MS</span>
+            <span id="lobby-perf-ms" class="lobby-perf-value lobby-perf-value--neutral">16 MS</span>
+          </div>
+          <div class="lobby-perf-row">
+            <span>PACKET LOSS</span>
+            <span id="lobby-perf-packet" class="lobby-perf-value lobby-perf-value--stable">0%</span>
+          </div>
+        </aside>
 
-        <button id="lobby-join-btn" class="primary-btn" type="button">QUICK MATCH</button>
-        <div class="lobby-match-setup panel">
-          <div class="lobby-match-setup-row">
-            <label class="lobby-match-setup-label" for="lobby-mode-select">MODE</label>
-            <select id="lobby-mode-select" class="lobby-match-setup-input text-input" aria-label="Select game mode">
-            </select>
+        <aside id="friends-panel" class="friends-panel hud-panel">
+          <div class="friends-panel-tabs">
+            <button id="friends-tab-btn" class="friends-tab is-active" type="button">
+              FRIENDS
+            </button>
+            <button id="party-tab-btn" class="friends-tab" type="button" disabled>
+              PARTY
+            </button>
           </div>
-          <div class="lobby-match-setup-row">
-            <label class="lobby-match-setup-label" for="lobby-map-select">MAP</label>
-            <select id="lobby-map-select" class="lobby-match-setup-input text-input" aria-label="Select map">
-            </select>
+
+          <div id="friends-section" class="friends-section">
+            <ul id="friends-list" class="friends-list"></ul>
           </div>
-        </div>
+
+          <div id="party-members-section" class="friends-section" hidden>
+            <ul id="party-members-list" class="friends-list"></ul>
+          </div>
+
+          <div class="party-section">
+            <div class="party-section-header">
+              <span class="party-section-label">PARTY</span>
+              <span id="party-slot-count" class="party-slot-count">1/4</span>
+            </div>
+            <div class="friends-add-row">
+              <input
+                id="friend-email-input"
+                class="text-input"
+                type="email"
+                placeholder="Friend email"
+                autocomplete="email"
+              />
+              <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+            </div>
+            <div id="friends-status" class="friends-status"></div>
+            <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
+              <input id="friendly-fire-checkbox" type="checkbox" />
+              <span>Friendly fire</span>
+            </label>
+            <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
+              START GAME
+            </button>
+            <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
+              LEAVE PARTY
+            </button>
+          </div>
+        </aside>
+
+        <aside class="lobby-match-panel hud-panel">
+          <div class="lobby-match-setup panel">
+            <div class="lobby-match-setup-row">
+              <label class="lobby-match-setup-label" for="lobby-map-select">CURRENT MAP</label>
+              <select
+                id="lobby-map-select"
+                class="lobby-match-setup-input text-input"
+                aria-label="Select map"
+              ></select>
+            </div>
+            <div class="lobby-match-setup-row">
+              <label class="lobby-match-setup-label" for="lobby-mode-select">SELECTED MODE</label>
+              <select
+                id="lobby-mode-select"
+                class="lobby-match-setup-input text-input"
+                aria-label="Select game mode"
+              ></select>
+            </div>
+          </div>
+          <p class="lobby-queue-estimate">QUEUE ESTIMATE: <strong>~ INSTANT</strong></p>
+          <button id="lobby-join-btn" class="primary-btn" type="button">LAUNCH QUICK MATCH</button>
+        </aside>
       </div>
     </section>
 
@@ -171,35 +219,17 @@
     <section id="app-view-weapons" class="app-view" data-view="weapons" hidden>
       <div id="weapons-canvas"></div>
       <div class="weapons-ui">
-        <nav id="weapons-picker" class="weapons-picker panel" aria-label="Weapon selection">
-          <button
-            type="button"
-            class="weapons-picker-btn active"
-            data-weapon-id="pistol"
-          >
+        <nav id="weapons-picker" class="weapons-picker hud-panel" aria-label="Weapon selection">
+          <button type="button" class="weapons-picker-btn active" data-weapon-id="pistol">
             Pistol
           </button>
-          <button
-            type="button"
-            class="weapons-picker-btn"
-            data-weapon-id="plasma_rifle"
-          >
+          <button type="button" class="weapons-picker-btn" data-weapon-id="plasma_rifle">
             Assault Rifle
           </button>
-          <button
-            type="button"
-            class="weapons-picker-btn"
-            data-weapon-id="sniper_rifle"
-          >
+          <button type="button" class="weapons-picker-btn" data-weapon-id="sniper_rifle">
             Sniper Rifle
           </button>
-          <button
-            type="button"
-            class="weapons-picker-btn"
-            data-weapon-id="katana"
-          >
-            Katana
-          </button>
+          <button type="button" class="weapons-picker-btn" data-weapon-id="katana">Katana</button>
         </nav>
         <button id="weapons-back-btn" class="secondary-btn weapons-back-btn" type="button">
           BACK TO LOBBY
@@ -208,20 +238,20 @@
     </section>
 
     <section id="app-view-leaderboard" class="app-view" data-view="leaderboard" hidden>
-      <main class="leaderboard-shell" aria-label="Global player rankings">
-        <p class="leaderboard-subtitle leaderboard-swipe">Global Rankings</p>
-        <h1 class="leaderboard-title leaderboard-swipe">LEADERBOARD</h1>
+      <main class="leaderboard-shell hud-panel hud-panel--lg" aria-label="Global player rankings">
+        <p class="leaderboard-subtitle hud-subtitle hud-subtitle--center leaderboard-swipe">GLOBAL STATS / LEADERBOARD</p>
+        <h1 class="leaderboard-title hud-title hud-title--hero leaderboard-swipe">LEADERBOARD</h1>
         <p id="leaderboard-status" class="leaderboard-status leaderboard-swipe">Loading...</p>
         <div id="leaderboard-list" class="leaderboard-list"></div>
       </main>
-      <button id="leaderboard-back-btn" class="leaderboard-back-btn leaderboard-swipe" type="button">
+      <button id="leaderboard-back-btn" class="leaderboard-back-btn hud-btn hud-btn--secondary leaderboard-swipe" type="button">
         BACK TO LOBBY
       </button>
     </section>
 
     <section id="app-view-settings" class="app-view" data-view="settings" hidden>
-      <main class="settings-shell panel">
-        <h1 class="settings-title">SETTINGS</h1>
+      <main class="settings-shell hud-panel hud-panel--md">
+        <h1 class="settings-title hud-title">SETTINGS</h1>
         <div class="settings-option">
           <div class="settings-option-header">
             <label for="lobby-music-volume" class="settings-label">Lobby music volume</label>

@@ -18,6 +18,7 @@ import {
   apiSendFriendRequest,
 } from '../auth/friendsApi';
 import { setGameJoinIntent } from '../auth/gameJoin';
+import { buildGameUrl } from '../debug/debugQuery';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
 import { launchGameOverlay, onGameOverlayClosed } from './launchGameOverlay';
@@ -34,6 +35,8 @@ interface PartySnapshotWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+type SocialListTab = 'friends' | 'party';
+
 interface InviteSendWaiter {
   resolve: () => void;
   reject: (error: Error) => void;
@@ -42,6 +45,11 @@ interface InviteSendWaiter {
 
 export class FriendsPanel {
   private readonly list: HTMLElement;
+  private readonly partyList: HTMLElement;
+  private readonly friendsTabBtn: HTMLButtonElement;
+  private readonly partyTabBtn: HTMLButtonElement;
+  private readonly friendsSection: HTMLElement;
+  private readonly partyMembersSection: HTMLElement;
   private readonly input: HTMLInputElement;
   private readonly addBtn: HTMLButtonElement;
   private readonly status: HTMLElement;
@@ -50,12 +58,14 @@ export class FriendsPanel {
   private readonly leaveBtn: HTMLButtonElement;
   private readonly friendlyFireToggle: HTMLLabelElement;
   private readonly friendlyFireCheckbox: HTMLInputElement;
+  private readonly launchBtn: HTMLButtonElement;
   private readonly loading = LoadingOverlay.shared();
   private readonly pending = new Map<string, FriendRequestMessage>();
   private readonly pendingGameInvites = new Map<string, GameInviteMessage>();
   private friends: FriendSummary[] = [];
   private readonly presenceByUserId = new Map<string, FriendPresenceStatus>();
   private party: PartySnapshotMessage | null = null;
+  private activeListTab: SocialListTab = 'friends';
   private launching = false;
   private launchTimeout: ReturnType<typeof setTimeout> | null = null;
   private onPartySnapshotHandler: ((data: PartySnapshotMessage) => void) | null = null;
@@ -64,6 +74,11 @@ export class FriendsPanel {
 
   constructor(private readonly lobby: LobbyClient) {
     this.list = document.getElementById('friends-list')!;
+    this.partyList = document.getElementById('party-members-list')!;
+    this.friendsTabBtn = document.getElementById('friends-tab-btn') as HTMLButtonElement;
+    this.partyTabBtn = document.getElementById('party-tab-btn') as HTMLButtonElement;
+    this.friendsSection = document.getElementById('friends-section')!;
+    this.partyMembersSection = document.getElementById('party-members-section')!;
     this.input = document.getElementById('friend-email-input') as HTMLInputElement;
     this.addBtn = document.getElementById('friend-add-btn') as HTMLButtonElement;
     this.status = document.getElementById('friends-status')!;
@@ -72,6 +87,7 @@ export class FriendsPanel {
     this.leaveBtn = document.getElementById('party-leave-btn') as HTMLButtonElement;
     this.friendlyFireToggle = document.getElementById('friendly-fire-toggle') as HTMLLabelElement;
     this.friendlyFireCheckbox = document.getElementById('friendly-fire-checkbox') as HTMLInputElement;
+    this.launchBtn = document.getElementById('lobby-join-btn') as HTMLButtonElement;
 
     this.addBtn.addEventListener('click', () => {
       void this.sendRequest();
@@ -82,14 +98,21 @@ export class FriendsPanel {
     this.startBtn.addEventListener('click', () => {
       void this.startHostedGame();
     });
+    this.launchBtn.addEventListener('click', () => {
+      void this.handleLaunchClick();
+    });
     this.leaveBtn.addEventListener('click', () => {
       void this.leaveParty();
     });
+    this.friendsTabBtn.addEventListener('click', () => this.setListTab('friends'));
+    this.partyTabBtn.addEventListener('click', () => this.setListTab('party'));
     onGameOverlayClosed(() => {
       this.clearLaunchTimeout();
       this.launching = false;
       this.loading.reset();
+      this.refreshPresence();
       this.updatePartyButtons();
+      this.refreshListPanel();
     });
 
     this.lobby.onFriendRequest((data) => this.showRequestToast(data));
@@ -126,7 +149,7 @@ export class FriendsPanel {
       this.party = data;
       this.resolvePartySnapshotWaiters(data);
       this.updatePartyButtons();
-      this.renderFriends();
+      this.refreshListPanel();
       this.onPartySnapshotHandler?.(data);
     });
 
@@ -150,15 +173,16 @@ export class FriendsPanel {
 
   refreshPresence(): void {
     this.lobby.requestFriendPresenceSnapshot();
+    this.lobby.requestPartySnapshot();
   }
 
   syncControls(): void {
+    this.syncListTabs();
     this.updatePartyButtons();
   }
 
   private applyPresenceSnapshot(updates: FriendPresenceUpdate[]): void {
     for (const entry of updates) {
-      if (!this.friends.some((friend) => friend.userId === entry.userId)) continue;
       this.presenceByUserId.set(entry.userId, entry.presence);
       const friend = this.friends.find((item) => item.userId === entry.userId);
       if (friend) {
@@ -166,7 +190,7 @@ export class FriendsPanel {
         friend.presence = entry.presence;
       }
     }
-    this.renderFriends();
+    this.refreshListPanel();
   }
 
   private async loadFriends(): Promise<void> {
@@ -193,7 +217,7 @@ export class FriendsPanel {
         });
       }
 
-      this.renderFriends();
+      this.refreshListPanel();
     } catch (error) {
       this.handleActionError(error instanceof Error ? error.message : 'Could not load friends');
     }
@@ -269,8 +293,38 @@ export class FriendsPanel {
 
   private handleInviteSent(data: GameInviteSentMessage): void {
     this.resolveInviteSendWait();
-    this.renderFriends();
+    this.refreshListPanel();
     this.setStatus(`Invite sent to ${data.toUsername} — Party ${data.roomId}`);
+  }
+
+  private async handleLaunchClick(): Promise<void> {
+    if (this.loading.active || this.launching) return;
+
+    if (this.hasActiveParty()) {
+      await this.startHostedGame();
+      return;
+    }
+
+    await this.launchQuickMatch();
+  }
+
+  private async launchQuickMatch(): Promise<void> {
+    this.loading.reset();
+    this.loading.show('Joining game...');
+    this.launchBtn.disabled = true;
+    setGameJoinIntent({ mode: 'create', mapId: getSelectedMapId(), gameMode: getSelectedGameMode() });
+
+    try {
+      await launchGameOverlay();
+    } catch (error) {
+      console.warn('[Lobby] failed to launch game', error);
+      this.loading.reset();
+      this.launchBtn.disabled = false;
+      window.location.href = buildGameUrl('/game.html');
+    } finally {
+      this.loading.reset();
+      this.updatePartyButtons();
+    }
   }
 
   private async startHostedGame(): Promise<void> {
@@ -282,6 +336,7 @@ export class FriendsPanel {
     this.startBtn.disabled = true;
     this.startBtn.textContent = 'STARTING...';
     this.friendlyFireCheckbox.disabled = true;
+    this.updateLaunchButton();
     this.loading.show('Starting game...');
     this.startLaunchTimeout();
     this.lobby.startGameInvite(
@@ -327,7 +382,7 @@ export class FriendsPanel {
         this.launching = false;
         this.loading.reset();
         this.updatePartyButtons();
-        window.location.assign('/game.html');
+        window.location.assign(buildGameUrl('/game.html'));
       })
       .finally(() => {
         this.loading.reset();
@@ -355,7 +410,7 @@ export class FriendsPanel {
     this.pending.set(data.requestId, data);
 
     const toast = document.createElement('div');
-    toast.className = 'friend-toast panel';
+    toast.className = 'friend-toast hud-panel';
     toast.dataset.requestId = data.requestId;
 
     const text = document.createElement('p');
@@ -420,7 +475,7 @@ export class FriendsPanel {
     this.pendingGameInvites.set(data.inviteId, data);
 
     const toast = document.createElement('div');
-    toast.className = 'friend-toast panel';
+    toast.className = 'friend-toast hud-panel';
     toast.dataset.inviteId = data.inviteId;
 
     const text = document.createElement('p');
@@ -538,21 +593,195 @@ export class FriendsPanel {
     const showHostControls = isHost && partySize >= 2;
     const blockPartyActions = this.launching;
 
+    const slotEl = document.getElementById('party-slot-count');
+    if (slotEl) {
+      slotEl.textContent = `${partySize}/${MAX_PARTY_SIZE}`;
+    }
+
     this.friendlyFireToggle.hidden = !showHostControls;
     this.friendlyFireCheckbox.disabled = blockPartyActions;
     this.addBtn.disabled = false;
     this.input.disabled = false;
 
-    this.startBtn.hidden = !canStart && !this.launching;
+    this.startBtn.hidden = true;
     this.startBtn.disabled = !canStart;
-    this.startBtn.textContent = this.launching ? 'STARTING...' : 'START GAME';
 
     this.leaveBtn.hidden = !canLeave;
     this.leaveBtn.disabled = blockPartyActions || !canLeave;
+
+    this.syncListTabs();
+    this.updateLaunchButton();
+  }
+
+  private updateLaunchButton(): void {
+    const partySize = this.getPartySize();
+    const inParty = this.hasActiveParty();
+    const isHost = this.party?.isHost ?? false;
+    const canPartyLaunch = isHost && partySize >= 2 && !this.launching && !this.isBusy();
+
+    if (inParty) {
+      this.launchBtn.textContent = this.launching ? 'STARTING...' : 'LAUNCH';
+      this.launchBtn.classList.add('is-party-launch');
+
+      if (!isHost) {
+        this.launchBtn.disabled = true;
+        this.launchBtn.title = 'Only the party host can launch';
+      } else if (partySize < 2) {
+        this.launchBtn.disabled = true;
+        this.launchBtn.title = 'Need at least one party member';
+      } else {
+        this.launchBtn.disabled = !canPartyLaunch;
+        this.launchBtn.title = canPartyLaunch ? 'Start party match' : '';
+      }
+      return;
+    }
+
+    this.launchBtn.classList.remove('is-party-launch');
+    this.launchBtn.textContent = 'LAUNCH QUICK MATCH';
+    this.launchBtn.disabled = this.isBusy() || this.launching;
+    this.launchBtn.title = '';
+  }
+
+  private hasActiveParty(): boolean {
+    return this.getPartySize() >= 2;
+  }
+
+  private setListTab(tab: SocialListTab): void {
+    if (tab === 'party' && !this.hasActiveParty()) return;
+    this.activeListTab = tab;
+    this.syncListTabs();
+    this.refreshListPanel();
+  }
+
+  private syncListTabs(): void {
+    const partyAvailable = this.hasActiveParty();
+    if (!partyAvailable && this.activeListTab === 'party') {
+      this.activeListTab = 'friends';
+    }
+
+    this.friendsTabBtn.classList.toggle('is-active', this.activeListTab === 'friends');
+    this.partyTabBtn.classList.toggle('is-active', this.activeListTab === 'party');
+    this.partyTabBtn.disabled = !partyAvailable;
+    this.partyTabBtn.title = partyAvailable ? 'View party members' : 'Party members appear when someone joins';
+
+    this.friendsSection.hidden = this.activeListTab !== 'friends';
+    this.partyMembersSection.hidden = this.activeListTab !== 'party';
+  }
+
+  private refreshListPanel(): void {
+    if (this.activeListTab === 'party') {
+      this.renderPartyMembers();
+    } else {
+      this.renderFriends();
+    }
+  }
+
+  private getMemberDisplayName(userId: string, username: string): string {
+    return this.friends.find((friend) => friend.userId === userId)?.displayName ?? username;
+  }
+
+  private getMemberPresence(userId: string): FriendPresenceStatus {
+    return this.presenceByUserId.get(userId) ?? 'offline';
+  }
+
+  private renderPartyMembers(): void {
+    this.partyList.replaceChildren();
+
+    if (!this.party || this.party.members.length === 0) {
+      const empty = document.createElement('li');
+      empty.className = 'friends-empty';
+      empty.textContent = 'No party members';
+      this.partyList.appendChild(empty);
+      return;
+    }
+
+    const members = [...this.party.members].sort((a, b) => {
+      if (a.isHost !== b.isHost) return a.isHost ? -1 : 1;
+      return a.username.localeCompare(b.username);
+    });
+
+    for (const member of members) {
+      this.partyList.appendChild(this.createPartyMemberItem(member));
+    }
+
+    if (this.party.isHost) {
+      for (const userId of this.party.pendingInviteUserIds) {
+        this.partyList.appendChild(this.createPendingPartyItem(userId));
+      }
+    }
+  }
+
+  private createPartyMemberItem(member: PartySnapshotMessage['members'][number]): HTMLElement {
+    const item = document.createElement('li');
+    item.className = 'friends-item';
+
+    const identity = document.createElement('div');
+    identity.className = 'friends-item-identity';
+
+    const presence = this.getMemberPresence(member.userId);
+    const row = document.createElement('div');
+    row.className = 'friends-item-identity-row';
+
+    const dot = document.createElement('span');
+    dot.className = `friends-presence-dot friends-presence-dot--${presence}`;
+    dot.setAttribute('aria-hidden', 'true');
+
+    const name = document.createElement('span');
+    name.className = 'friends-item-name';
+    name.textContent = this.getMemberDisplayName(member.userId, member.username);
+
+    row.append(dot, name);
+
+    const status = document.createElement('span');
+    status.className = `friends-presence-status friends-presence-status--${presence}`;
+    status.textContent = member.isHost ? 'host' : this.presenceLabel(presence);
+
+    identity.append(row, status);
+
+    const role = document.createElement('span');
+    role.className = `party-member-role${member.isHost ? ' party-member-role--host' : ''}`;
+    role.textContent = member.isHost ? 'HOST' : 'MEMBER';
+
+    item.append(identity, role);
+    return item;
+  }
+
+  private createPendingPartyItem(userId: string): HTMLElement {
+    const friend = this.friends.find((entry) => entry.userId === userId);
+    const item = document.createElement('li');
+    item.className = 'friends-item';
+
+    const identity = document.createElement('div');
+    identity.className = 'friends-item-identity';
+
+    const row = document.createElement('div');
+    row.className = 'friends-item-identity-row';
+
+    const dot = document.createElement('span');
+    dot.className = 'friends-presence-dot friends-presence-dot--menus';
+    dot.setAttribute('aria-hidden', 'true');
+
+    const name = document.createElement('span');
+    name.className = 'friends-item-name';
+    name.textContent = friend?.displayName ?? 'Invited player';
+
+    row.append(dot, name);
+
+    const status = document.createElement('span');
+    status.className = 'friends-presence-status friends-presence-status--menus';
+    status.textContent = 'invite pending';
+
+    identity.append(row, status);
+
+    const role = document.createElement('span');
+    role.className = 'party-member-role party-member-role--pending';
+    role.textContent = 'PENDING';
+
+    item.append(identity, role);
+    return item;
   }
 
   private applyPresenceUpdate(update: FriendPresenceUpdate): void {
-    if (!this.friends.some((friend) => friend.userId === update.userId)) return;
     this.presenceByUserId.set(update.userId, update.presence);
 
     const friend = this.friends.find((entry) => entry.userId === update.userId);
@@ -561,7 +790,7 @@ export class FriendsPanel {
       friend.presence = update.presence;
     }
 
-    this.renderFriends();
+    this.refreshListPanel();
   }
 
   private getFriendPresence(userId: string): FriendPresenceStatus {
@@ -571,13 +800,13 @@ export class FriendsPanel {
   private presenceLabel(presence: FriendPresenceStatus): string {
     switch (presence) {
       case 'lobby':
-        return 'IN LOBBY';
+        return 'in lobby';
       case 'menus':
-        return 'IN MENUS';
+        return 'in menus';
       case 'game':
-        return 'IN GAME';
+        return 'in game';
       default:
-        return 'OFFLINE';
+        return 'offline';
     }
   }
 
@@ -605,20 +834,25 @@ export class FriendsPanel {
 
       const presence = this.getFriendPresence(friend.userId);
 
+      const row = document.createElement('div');
+      row.className = 'friends-item-identity-row';
+
       const dot = document.createElement('span');
       dot.className = `friends-presence-dot friends-presence-dot--${presence}`;
       dot.setAttribute('aria-hidden', 'true');
-
-      const status = document.createElement('span');
-      status.className = `friends-presence-status friends-presence-status--${presence}`;
-      status.textContent = this.presenceLabel(presence);
 
       const name = document.createElement('span');
       name.className = 'friends-item-name';
       name.textContent = friend.displayName;
       name.title = friend.email;
 
-      identity.append(dot, status, name);
+      row.append(dot, name);
+
+      const status = document.createElement('span');
+      status.className = `friends-presence-status friends-presence-status--${presence}`;
+      status.textContent = this.presenceLabel(presence);
+
+      identity.append(row, status);
 
       const inviteBtn = document.createElement('button');
       inviteBtn.type = 'button';

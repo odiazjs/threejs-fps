@@ -182,6 +182,7 @@ export class DroneField {
   readonly group = new THREE.Group();
   private readonly agents: DroneAgent[];
   private readonly lookResponse: DroneLookResponseConfig;
+  private anyInAudioView = false;
 
   constructor(lookResponse: DroneLookResponseConfig = DEFAULT_DRONE_LOOK_RESPONSE) {
     this.lookResponse = lookResponse;
@@ -210,6 +211,7 @@ export class DroneField {
   }
 
   update(worldTime: number, camera?: THREE.Camera, delta = 0.016): void {
+    this.anyInAudioView = false;
     let cameraReady = false;
     if (camera) {
       camera.getWorldPosition(_cameraPos);
@@ -255,6 +257,9 @@ export class DroneField {
         );
       }
       agent.wasInAudioView = inAudioView;
+      if (inAudioView) {
+        this.anyInAudioView = true;
+      }
 
       agent.escapeOffsetX += agent.escapeVelocityX * delta;
       agent.escapeOffsetY += agent.escapeVelocityY * delta;
@@ -297,6 +302,10 @@ export class DroneField {
           agent.lastPose.propellerSpin * (i % 2 === 0 ? 1 : -1);
       }
     }
+  }
+
+  hasAnyInAudioView(): boolean {
+    return this.anyInAudioView;
   }
 
   hasDroneInView(

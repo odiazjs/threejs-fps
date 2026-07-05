@@ -3,8 +3,10 @@ import { staticBodyPartPose, volumeToCapsulePose, type BodyPartCapsulePose } fro
 import type { BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { BODY_PARTS, type BodyPartId } from '../../shared/combat/bodyParts';
 
-/** Toggle translucent hit-capsule meshes on remote players. */
-export const SHOW_HIT_CAPSULE_DEBUG = true;
+/** Toggle translucent hit-capsule meshes on remote players (`?debugHitboxes` in URL). */
+export const SHOW_HIT_CAPSULE_DEBUG = new URLSearchParams(window.location.search).has(
+  'debugHitboxes',
+);
 
 /** Max capsules: feet + 2 legs + torso + up to 6 arm segments + head. */
 const MAX_DEBUG_VOLUMES = 11;

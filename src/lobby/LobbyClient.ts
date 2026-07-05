@@ -17,7 +17,7 @@ import type {
   GameInviteSentMessage,
   GameLaunchMessage,
 } from '../../shared/network/gameInvite';
-import type { PartySnapshotMessage } from '../../shared/network/party';
+import type { PartySnapshotMessage, RequestPartySnapshotMessage } from '../../shared/network/party';
 import { LobbyState } from '../../shared/schema/LobbyState';
 import { SERVER_URL } from '../config/serverUrl';
 
@@ -37,6 +37,7 @@ export class LobbyClient {
     const client = new Client(url);
     this.room = await client.joinOrCreate('lobby', options, LobbyState);
     this.bindMessages();
+    this.requestPartySnapshot();
   }
 
   async disconnect(): Promise<void> {
@@ -76,6 +77,11 @@ export class LobbyClient {
 
   requestFriendPresenceSnapshot(): void {
     this.room?.send('requestFriendPresenceSnapshot', {});
+  }
+
+  requestPartySnapshot(): void {
+    const payload: RequestPartySnapshotMessage = {};
+    this.room?.send('requestPartySnapshot', payload);
   }
 
   onFriendRequest(handler: (data: FriendRequestMessage) => void): void {

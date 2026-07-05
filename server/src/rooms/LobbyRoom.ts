@@ -38,6 +38,8 @@ import {
 
   type PartySnapshotMessage,
 
+  type RequestPartySnapshotMessage,
+
 } from '../../../shared/network/party.js';
 
 import type { SetAppViewMessage } from '../../../shared/network/appView.js';
@@ -642,6 +644,22 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       const userId = this.getUserId(client);
       if (!userId) return;
       void sendFriendPresenceSnapshot(client, userId);
+    },
+
+    requestPartySnapshot: (client: Client, _data: RequestPartySnapshotMessage) => {
+      const userId = this.getUserId(client);
+      if (!userId) return;
+
+      const party = this.getPartyForUser(userId);
+      if (party) {
+        this.sendPartySnapshot(client, party, userId);
+        return;
+      }
+
+      const username = this.getUsername(client);
+      if (username) {
+        this.createSoloParty(client, userId, username);
+      }
     },
 
   };

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { raycastLevel } from '../../shared/level/collision';
+import { raycastLevelBullets } from './levelBulletRaycast';
 import { PROJECTILE_MAX_AGE } from './projectileConfig';
 
 const PROJECTILE_COLOR = 0x00f0ff;
@@ -102,7 +102,7 @@ export class Projectile {
     const travel = Math.hypot(dx, dy, dz);
 
     const levelHit = travel > 1e-8
-      ? raycastLevel(
+      ? raycastLevelBullets(
         _segStart.x,
         _segStart.y,
         _segStart.z,

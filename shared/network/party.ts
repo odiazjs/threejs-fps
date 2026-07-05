@@ -17,3 +17,7 @@ export interface PartySnapshotMessage {
 export interface LeavePartyMessage {
   partyId: string;
 }
+
+export interface RequestPartySnapshotMessage {
+  /** Reserved for future filters; server always sends the viewer's current party. */
+}

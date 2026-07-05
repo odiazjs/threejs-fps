@@ -56,12 +56,10 @@ export function setLobbyAppView(
   client?: LobbyClient,
 ): void {
   const entry = presenceByUserId.get(userId);
-  if (!entry || entry.status === 'game') return;
-
-  const lobbyClient = client ?? entry.lobbyClient;
+  const lobbyClient = client ?? entry?.lobbyClient;
   if (!lobbyClient) return;
 
-  const statusChanged = entry.status !== view;
+  const statusChanged = !entry || entry.status !== view;
   presenceByUserId.set(userId, { status: view, lobbyClient });
 
   if (statusChanged) {
@@ -70,8 +68,35 @@ export function setLobbyAppView(
 }
 
 export function registerGameUser(userId: string): void {
-  presenceByUserId.set(userId, { status: 'game' });
-  emitPresenceChange(userId);
+  const existing = presenceByUserId.get(userId);
+  const statusChanged = existing?.status !== 'game';
+  presenceByUserId.set(userId, {
+    status: 'game',
+    lobbyClient: existing?.lobbyClient,
+  });
+  if (statusChanged) {
+    emitPresenceChange(userId);
+  }
+}
+
+/** Restore lobby/menus presence when leaving a match while the lobby tab stays open. */
+export function restoreLobbyPresenceAfterGame(
+  userId: string,
+  view: 'lobby' | 'menus' = 'lobby',
+): void {
+  const existing = presenceByUserId.get(userId);
+  if (existing?.lobbyClient) {
+    const statusChanged = existing.status !== view;
+    presenceByUserId.set(userId, { status: view, lobbyClient: existing.lobbyClient });
+    if (statusChanged) {
+      emitPresenceChange(userId);
+    }
+    return;
+  }
+
+  if (presenceByUserId.delete(userId)) {
+    emitPresenceChange(userId);
+  }
 }
 
 export function unregisterUser(userId: string): void {

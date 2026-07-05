@@ -10,18 +10,18 @@ export interface GrassQualityProfile {
 
 const PROFILES = {
   high: {
-    maxBlades: 700_000,
-    gridStep: 0.12,
-    bladeSegments: 4,
-    extraBladeChance: 0.72,
-    drawRadius: 95,
+    maxBlades: 450_000,
+    gridStep: 0.13,
+    bladeSegments: 3,
+    extraBladeChance: 0.55,
+    drawRadius: 88,
   },
   medium: {
-    maxBlades: 200_000,
-    gridStep: 0.17,
+    maxBlades: 160_000,
+    gridStep: 0.18,
     bladeSegments: 2,
-    extraBladeChance: 0.35,
-    drawRadius: 72,
+    extraBladeChance: 0.3,
+    drawRadius: 68,
   },
   low: {
     maxBlades: 75_000,

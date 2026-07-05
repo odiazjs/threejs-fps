@@ -3,10 +3,12 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 
 const LIFETIME_SEC = 1.5;
-const MAX_FLOAT_PX = 28;
+const MAX_FLOAT_PX = 7;
 const FLOAT_PX_PER_SEC = 18;
 const MAX_HORIZONTAL_OFFSET_PX = 52;
-const BASE_VERTICAL_OFFSET_PX = 16;
+const BASE_VERTICAL_OFFSET_PX = 4;
+/** World-space anchor height — 75% lower than the original pivot. */
+export const DAMAGE_NUMBER_HEIGHT_SCALE = 0.25;
 const REF_DISTANCE = 12;
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.5;
@@ -41,7 +43,7 @@ export class DamageNumberStack {
   private bump = 0;
   private layoutScale = 1;
   private offsetX = 0;
-  private headTopOffset = 0.22;
+  private headTopOffset = 0.22 * DAMAGE_NUMBER_HEIGHT_SCALE;
 
   constructor() {
     this.root = document.createElement('div');
@@ -86,7 +88,7 @@ export class DamageNumberStack {
   }
 
   setHeadTopOffset(offset: number): void {
-    this.headTopOffset = Math.max(0.12, offset);
+    this.headTopOffset = Math.max(0.03, offset);
     this.object.position.y = this.headTopOffset;
   }
 

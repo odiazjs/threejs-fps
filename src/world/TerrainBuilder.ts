@@ -4,7 +4,7 @@ import { sampleGroundHeight } from '../../shared/level/terrainHeight';
 import type { GrassQualityProfile } from '../render/grassQuality';
 import { GrassField, type GrassUpdateContext } from './GrassField';
 
-const GROUND_SEGMENTS = 200;
+const GROUND_SEGMENTS = 128;
 
 function createGroundTexture(): THREE.CanvasTexture {
   const size = 512;

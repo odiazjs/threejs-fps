@@ -7,6 +7,9 @@ import { TerrainBuilder } from './TerrainBuilder';
 import { DroneField } from './DroneField';
 import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
+import { KillhouseMazeWalls } from './KillhouseMazeWalls';
+import { KillhouseWall } from './KillhouseWall';
+import { KillhouseCenterProp } from './KillhouseCenterProp';
 import type { GrassQualityProfile } from '../render/grassQuality';
 import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
@@ -16,6 +19,10 @@ export class WorldBuilder {
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
   private platformParticles: PlatformLiftParticles | null = null;
+  private mapGroup: THREE.Object3D | null = null;
+  private killhouseWall: KillhouseWall | null = null;
+  private killhouseMazeWalls: KillhouseMazeWalls | null = null;
+  private killhouseCenterProp: KillhouseCenterProp | null = null;
   private readonly mapDef;
 
   constructor(mapId: MapId = 'kilo_sector') {
@@ -49,10 +56,42 @@ export class WorldBuilder {
   }
 
   withLevel(): this {
-    for (const object of new LevelBuilder().build(this.mapDef.id)) {
-      this.sceneBuilder.addObject(object);
+    const [mapGroup] = new LevelBuilder().build(this.mapDef.id);
+    this.mapGroup = mapGroup;
+    this.sceneBuilder.addObject(mapGroup);
+
+    if (this.mapDef.id === 'killhouse_small') {
+      this.killhouseWall = new KillhouseWall();
+      this.killhouseMazeWalls = new KillhouseMazeWalls();
+      this.killhouseCenterProp = new KillhouseCenterProp();
+      this.sceneBuilder
+        .addObject(this.killhouseWall.group)
+        .addObject(this.killhouseMazeWalls.group)
+        .addObject(this.killhouseCenterProp.group);
     }
     return this;
+  }
+
+  whenKillhouseBulletBvhReady(): Promise<void> {
+    if (this.mapDef.id !== 'killhouse_small') return Promise.resolve();
+    if (!this.killhouseWall || !this.killhouseMazeWalls || !this.killhouseCenterProp) {
+      return Promise.resolve();
+    }
+
+    return Promise.all([
+      this.killhouseWall.whenReady,
+      this.killhouseMazeWalls.whenReady,
+      this.killhouseCenterProp.whenReady,
+    ]).then(() => undefined);
+  }
+
+  getKillhouseBulletBvhRoots(): THREE.Object3D[] {
+    const roots: THREE.Object3D[] = [];
+    if (this.mapGroup) roots.push(this.mapGroup);
+    if (this.killhouseWall) roots.push(this.killhouseWall.group);
+    if (this.killhouseMazeWalls) roots.push(this.killhouseMazeWalls.group);
+    if (this.killhouseCenterProp) roots.push(this.killhouseCenterProp.group);
+    return roots;
   }
 
   withDrones(): this {

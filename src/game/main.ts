@@ -2,9 +2,11 @@ import { Game } from '../app/Game';
 import { consumeGameJoinIntent } from '../auth/gameJoin';
 import { apiGetMe } from '../auth/meApi';
 import { ensureSession } from '../auth/playerSession';
+import { bootstrapDebugFlags } from '../debug/debugQuery';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
 async function startGame(): Promise<void> {
+  bootstrapDebugFlags();
   const loading = LoadingOverlay.shared();
   loading.show('Joining game...');
 

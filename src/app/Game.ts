@@ -47,6 +47,8 @@ import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import { getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
+import { LevelMeshBvhBulletRaycast } from '../world/LevelMeshBvhBulletRaycast';
+import { setLevelMeshBvhBulletRaycast } from '../combat/levelBulletRaycast';
 import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
@@ -84,6 +86,8 @@ import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
+const MAX_FRAME_DELTA_SEC = 0.25;
+
 export class Game {
   private scene!: THREE.Scene;
   private player!: Player;
@@ -117,6 +121,8 @@ export class Game {
   private input = new KeyboardInput();
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
+  private worldBuilder: WorldBuilder | null = null;
+  private levelBulletBvh: LevelMeshBvhBulletRaycast | null = null;
   private shieldDomeManager!: ShieldDomeManager;
   private shieldDomeChargeManager!: ShieldDomeChargeManager;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
@@ -125,7 +131,8 @@ export class Game {
   private terrain: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
-  private clock = new THREE.Clock();
+  private lastFrameMs = 0;
+  private simElapsedSec = 0;
   private wasAlive = true;
   private running = false;
   private leaving = false;
@@ -317,6 +324,7 @@ export class Game {
     this.droneField = world.getDroneField();
     this.lightBeams = world.getLightBeams();
     this.scene = world.getScene();
+    this.worldBuilder = world;
     this.projectiles = new ProjectileManager(this.scene);
     this.shieldDomeManager = new ShieldDomeManager(this.scene);
     this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
@@ -324,6 +332,28 @@ export class Game {
     this.ammoPickups = new AmmoPickups(this.scene, getMapDef(mapId).ammoPositions);
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
+
+    if (mapId === 'killhouse_small') {
+      void this.initKillhouseBulletBvh();
+    }
+  }
+
+  private async initKillhouseBulletBvh(): Promise<void> {
+    const world = this.worldBuilder;
+    if (!world) return;
+
+    this.levelBulletBvh = new LevelMeshBvhBulletRaycast();
+    setLevelMeshBvhBulletRaycast(this.levelBulletBvh);
+
+    try {
+      await world.whenKillhouseBulletBvhReady();
+      this.levelBulletBvh.rebuild(world.getKillhouseBulletBvhRoots());
+    } catch (error) {
+      console.warn('[Game] Failed to build killhouse bullet BVH', error);
+      this.levelBulletBvh.dispose();
+      this.levelBulletBvh = null;
+      setLevelMeshBvhBulletRaycast(null);
+    }
   }
 
   private initPlayer(mapId: MapId): void {
@@ -649,8 +679,14 @@ export class Game {
   private loop = (): void => {
     if (!this.running) return;
 
-    requestAnimationFrame(this.loop);
-    const delta = Math.min(this.clock.getDelta(), 0.05);
+    const now = performance.now();
+    const rawDeltaSec =
+      this.lastFrameMs > 0 ? (now - this.lastFrameMs) / 1000 : 0;
+    this.lastFrameMs = now;
+    // Only clamp extreme hitches (tab away). A low cap (e.g. 0.05) makes movement
+    // run in slow motion whenever FPS drops below 20.
+    const delta = Math.min(rawDeltaSec, MAX_FRAME_DELTA_SEC);
+    this.simElapsedSec += delta;
 
     if (this.inventoryOpen && !this.playerControls.isPlaying) {
       this.closeInventory();
@@ -716,7 +752,6 @@ export class Game {
       canAct,
       this.projectiles,
     );
-    this.player.object.updateMatrixWorld(true);
     let camera = this.getActiveCamera();
     this.network?.syncShieldDomeCharges(
       this.shieldDomeChargeManager,
@@ -732,25 +767,18 @@ export class Game {
     this.shieldDomeManager.update(delta, camera, worldTime);
     this.projectiles.update(delta, worldTime);
     this.network?.update(delta, this.player, this.playerControls);
-    this.player.object.updateMatrixWorld(true);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);
-    this.terrain?.update(this.clock.getElapsedTime(), {
+    this.terrain?.update(this.simElapsedSec, {
       playerPos: this.player.object.position,
       cameraPos: camera?.position,
     });
     this.droneField?.update(this.network?.getWorldTime() ?? 0, camera ?? undefined, delta);
-    this.lightBeams?.update(this.clock.getElapsedTime());
+    this.lightBeams?.update(this.simElapsedSec);
 
-    if (this.audioUnlocked && this.droneField && camera) {
-      const droneInView = this.droneField.hasDroneInView(
-        camera,
-        this.network?.getWorldTime() ?? 0,
-        GAME_DRONE_PROXIMITY_AUDIO.maxDistance,
-        GAME_DRONE_PROXIMITY_AUDIO.lookAngleDeg,
-      );
-      this.droneProximitySounds.setActive(droneInView);
+    if (this.audioUnlocked && this.droneField) {
+      this.droneProximitySounds.setActive(this.droneField.hasAnyInAudioView());
     }
 
     if (this.playerControls.isPlaying && this.network) {
@@ -829,9 +857,11 @@ export class Game {
     }
 
     updateEdgeLinesForCamera(camera);
+    this.player.object.updateMatrixWorld(true);
     this.renderContext.render(this.scene, camera);
     this.performanceHud.update(delta, this.renderContext.renderer);
     this.input.endFrame();
     this.pointer.endFrame();
+    requestAnimationFrame(this.loop);
   };
 }

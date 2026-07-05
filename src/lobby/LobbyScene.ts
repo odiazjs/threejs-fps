@@ -15,7 +15,7 @@ import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { addEdgeLines, updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
 import { createDroneVisual } from '../world/DroneField';
-import { PerformanceHud } from '../ui/PerformanceHud';
+import { LobbyPerfHud } from '../ui/LobbyPerfHud';
 import { LobbyPartyAvatar, partyMemberOffsets } from './LobbyPartyAvatar';
 
 const BASE_CAMERA_Z = 3.2;
@@ -33,7 +33,7 @@ export class LobbyScene {
   private readonly droneRoot: THREE.Group;
   private readonly dronePropellers: THREE.Group[];
   private readonly clock = new THREE.Clock();
-  private readonly performanceHud = new PerformanceHud();
+  private readonly performanceHud = new LobbyPerfHud();
   private readonly localUserId: string;
   private readonly remoteAvatars = new Map<string, LobbyPartyAvatar>();
   private characterTemplate: CharacterTemplate | null = null;
@@ -235,7 +235,7 @@ export class LobbyScene {
     updateEdgeLinesForCamera(this.camera);
     this.renderer.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
-    this.performanceHud.update(delta, this.renderer);
+    this.performanceHud.update(delta);
   };
 
   private attachLobbyWeapon(template: CharacterTemplate): void {
@@ -294,7 +294,6 @@ export class LobbyScene {
     this.weaponMesh?.removeFromParent();
     this.weaponMesh = null;
     this.grassField.dispose();
-    this.performanceHud.dispose();
     this.labelRenderer.domElement.remove();
     this.renderer.dispose();
     this.renderer.domElement.remove();

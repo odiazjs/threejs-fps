@@ -98,7 +98,7 @@ import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
-import { registerGameUser, unregisterUser } from '../lobby/presence.js';
+import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
 
 interface MoveMessage {
   x: number;
@@ -1132,7 +1132,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.state.players.delete(client.sessionId);
     this.userIdBySession.delete(client.sessionId);
     if (userId) {
-      unregisterUser(userId);
+      restoreLobbyPresenceAfterGame(userId);
     }
 
     if (!this.inviteMatch || this.clients.length > 0) return;

@@ -11,13 +11,15 @@
     "install:all": "npm install && npm install --prefix server",
     "build": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite build",
     "build:client": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite build",
+    "bake:voxels": "node scripts/bake-voxel-colliders.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@colyseus/schema": "^4.0.26",
     "@colyseus/sdk": "^0.17.43",
-    "three": "^0.177.0"
+    "three": "^0.177.0",
+    "three-mesh-bvh": "^0.9.10"
   },
   "devDependencies": {
     "@types/three": "^0.177.0",

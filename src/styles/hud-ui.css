@@ -1,0 +1,448 @@
+/* ── Shared sci-fi HUD design system ── */
+:root {
+  --hud-cyan: #00f2ff;
+  --hud-cyan-soft: #82f0ff;
+  --hud-cyan-dim: rgba(0, 242, 255, 0.42);
+  --hud-cyan-border: rgba(0, 242, 255, 0.38);
+  --hud-cyan-glow: rgba(0, 242, 255, 0.22);
+  --hud-green: #3dffa8;
+  --hud-red: #ff5c6a;
+  --hud-amber: #ffb84d;
+  --hud-bg: rgba(6, 12, 20, 0.62);
+  --hud-bg-deep: rgba(4, 8, 14, 0.82);
+  --hud-bg-page: #04080e;
+  --hud-font: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
+  --hud-scrim: rgba(4, 8, 14, 0.78);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.hud-page,
+.lobby-page,
+.weapons-page,
+.leaderboard-page,
+.settings-page,
+.game-page,
+.auth-page {
+  font-family: var(--hud-font);
+  color: #fff;
+}
+
+.hud-page-bg,
+.lobby-page,
+.weapons-page,
+.leaderboard-page,
+.settings-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(0, 120, 140, 0.12), transparent 55%),
+    radial-gradient(circle at 15% 20%, rgba(0, 242, 255, 0.06), transparent 40%),
+    var(--hud-bg-page);
+}
+
+.auth-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(0, 242, 255, 0.08), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(0, 120, 140, 0.06), transparent 35%),
+    var(--hud-bg-page);
+}
+
+/* ── Glass panels with corner brackets ── */
+.hud-panel,
+.panel {
+  border: 1px solid var(--hud-cyan-border);
+  border-radius: 4px;
+  background: var(--hud-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 0 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* In-flow panels need a positioning context for bracket pseudo-elements.
+   Fixed HUD overlays set position in their layout sheets — do not force relative here. */
+.hud-panel--lg,
+.hud-panel--md,
+.panel.hud-brackets,
+.auth-panel.hud-panel,
+.weapons-picker.hud-panel,
+.global-loading-panel {
+  position: relative;
+}
+
+.hud-panel::before,
+.hud-panel::after,
+.panel.hud-brackets::before,
+.panel.hud-brackets::after {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+}
+
+.hud-panel::before,
+.panel.hud-brackets::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--hud-cyan);
+  border-left: 2px solid var(--hud-cyan);
+  box-shadow: -2px -2px 8px var(--hud-cyan-glow);
+}
+
+.hud-panel::after,
+.panel.hud-brackets::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--hud-cyan);
+  border-right: 2px solid var(--hud-cyan);
+  box-shadow: 2px 2px 8px var(--hud-cyan-glow);
+}
+
+.hud-panel--lg {
+  padding: 2.4rem 2.8rem 2rem;
+  border-radius: 6px;
+  min-width: min(34rem, calc(100vw - 2rem));
+  max-width: min(40rem, calc(100vw - 2rem));
+}
+
+.hud-panel--md {
+  padding: 2rem 2.5rem;
+  min-width: 16rem;
+}
+
+/* ── Typography ── */
+.hud-subtitle,
+.hud-eyebrow {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-cyan-dim);
+}
+
+.hud-subtitle--center {
+  text-align: center;
+  letter-spacing: 0.22em;
+}
+
+.hud-title {
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff;
+  text-shadow: 0 0 20px var(--hud-cyan-glow);
+  line-height: 1;
+}
+
+.hud-title--hero {
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  text-align: center;
+}
+
+.hud-title--countdown {
+  font-size: 5rem;
+  text-align: center;
+  text-shadow: 0 4px 24px var(--hud-cyan-glow);
+}
+
+.hud-title--countdown.go {
+  font-size: 4rem;
+  color: var(--hud-green);
+  text-shadow: 0 4px 24px rgba(61, 255, 168, 0.45);
+}
+
+.hud-title--victory {
+  color: var(--hud-green);
+  text-shadow: 0 8px 32px rgba(61, 255, 168, 0.35);
+}
+
+.hud-title--defeat {
+  color: var(--hud-red);
+  text-shadow: 0 8px 32px rgba(255, 92, 106, 0.28);
+}
+
+.hud-title--draw {
+  color: var(--hud-amber);
+  text-shadow: 0 8px 32px rgba(255, 184, 77, 0.28);
+}
+
+.hud-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-cyan-dim);
+}
+
+/* ── Buttons ── */
+.hud-btn,
+.primary-btn,
+.secondary-btn {
+  font-family: var(--hud-font);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 3px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    filter 140ms ease,
+    transform 140ms ease;
+}
+
+.hud-btn:disabled,
+.primary-btn:disabled,
+.secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.hud-btn--primary,
+.primary-btn {
+  padding: 0.75rem 1.25rem;
+  border: 1px solid rgba(0, 242, 255, 0.45);
+  background: linear-gradient(180deg, rgba(0, 242, 255, 0.5), rgba(0, 160, 180, 0.65));
+  color: #041018;
+  box-shadow: 0 0 14px var(--hud-cyan-glow);
+}
+
+.hud-btn--primary:hover:not(:disabled),
+.primary-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.hud-btn--launch {
+  width: 100%;
+  padding: 0.95rem 1.25rem;
+  border: 1px solid rgba(0, 242, 255, 0.5);
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(0, 242, 255, 0.35) 0%, rgba(0, 120, 150, 0.55) 100%);
+  color: #fff;
+  font-size: 0.95rem;
+  box-shadow:
+    0 0 24px rgba(0, 242, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.hud-btn--launch::before {
+  content: '>> ';
+  opacity: 0.85;
+}
+
+.hud-btn--secondary,
+.secondary-btn {
+  padding: 0.7rem 1.25rem;
+  border: 1px solid var(--hud-cyan-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.78rem;
+}
+
+.hud-btn--secondary:hover:not(:disabled),
+.secondary-btn:hover:not(:disabled) {
+  background: rgba(0, 242, 255, 0.1);
+  border-color: var(--hud-cyan);
+  color: #fff;
+}
+
+.hud-btn--danger {
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(255, 92, 106, 0.45);
+  background: rgba(0, 0, 0, 0.35);
+  color: #ff8a94;
+  font-size: 0.82rem;
+}
+
+.hud-btn--danger:hover:not(:disabled) {
+  background: rgba(255, 92, 106, 0.12);
+  border-color: var(--hud-red);
+}
+
+/* ── Inputs ── */
+.hud-input,
+.text-input,
+.hud-select {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 242, 255, 0.25);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-family: var(--hud-font);
+  font-size: 0.82rem;
+}
+
+.hud-input::placeholder,
+.text-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.hud-input:focus,
+.text-input:focus,
+.hud-select:focus {
+  outline: none;
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 0 1px var(--hud-cyan-glow);
+}
+
+.hud-input:disabled,
+.text-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ── Overlay scrim ── */
+.hud-overlay-scrim {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hud-scrim);
+  z-index: 20;
+}
+
+.hud-overlay-scrim--passive {
+  pointer-events: none;
+}
+
+/* ── Stat blocks (leaderboard / results) ── */
+.hud-stat-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.85rem 1rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(0, 242, 255, 0.12);
+}
+
+.hud-stat-block--winner {
+  background: rgba(0, 242, 255, 0.08);
+  border-color: rgba(0, 242, 255, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(0, 242, 255, 0.1);
+}
+
+.hud-stat-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid rgba(0, 242, 255, 0.12);
+}
+
+.hud-stat-block-label {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hud-stat-block-value {
+  font-size: 1.45rem;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+.hud-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 3px;
+}
+
+.hud-stat-row-name {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: rgba(244, 248, 255, 0.92);
+}
+
+.hud-stat-row-meta {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.78);
+  letter-spacing: 0.04em;
+}
+
+/* ── Swipe-in animation ── */
+.hud-swipe {
+  opacity: 0;
+  transform: translateX(-2.5rem);
+}
+
+.hud-swipe-visible .hud-swipe {
+  animation: hud-swipe-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--swipe-delay, 0ms);
+}
+
+@keyframes hud-swipe-in {
+  from {
+    opacity: 0;
+    transform: translateX(-2.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── Nav bracket tabs ── */
+.hud-nav-item {
+  margin: 0;
+  padding: 0.5rem 0.85rem;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-family: var(--hud-font);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 160ms ease, text-shadow 160ms ease;
+}
+
+.hud-nav-item::before {
+  content: '[ ';
+  color: var(--hud-cyan-dim);
+}
+
+.hud-nav-item::after {
+  content: ' ]';
+  color: var(--hud-cyan-dim);
+}
+
+.hud-nav-item:hover:not(:disabled),
+.hud-nav-item.is-active {
+  color: #fff;
+  text-shadow: 0 0 12px var(--hud-cyan-glow);
+}
+
+.hud-nav-item:hover:not(:disabled)::before,
+.hud-nav-item:hover:not(:disabled)::after,
+.hud-nav-item.is-active::before,
+.hud-nav-item.is-active::after {
+  color: var(--hud-cyan);
+}
+
+.hud-nav-item:disabled.is-active {
+  cursor: default;
+}
+
+.error-text {
+  color: #ff8a94;
+  font-size: 0.8rem;
+  min-height: 1.2em;
+}
