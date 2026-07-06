@@ -553,6 +553,37 @@ export class Player {
     };
   }
 
+  requestInventoryWeaponSwitch(slotIndex: number): boolean {
+    if (!this.loadout || !this.camera) return false;
+    if (!this.loadout.trySwitch(slotIndex)) return false;
+
+    this.stopWeaponAutoFire();
+    const active = this.loadout.getActive();
+    if (!active) return false;
+
+    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
+    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    const weaponId = this.loadout.getActiveWeaponId();
+    if (weaponId) this.onWeaponSwitchNetwork?.(slotIndex, weaponId);
+    return true;
+  }
+
+  requestInventoryMeleeEquip(): boolean {
+    if (!this.loadout || !this.camera || this.loadout.isMeleeEquipped()) return false;
+    if (!this.loadout.tryEquipMelee(true)) return false;
+
+    this.stopWeaponAutoFire();
+    const active = this.loadout.getActive();
+    if (!active) return false;
+
+    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
+    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    this.onMeleeEquipNetwork?.(true);
+    return true;
+  }
+
   applyLoadoutFromSnapshot(snapshot: PlayerSnapshot): void {
     if (!this.loadout || !this.camera) return;
 

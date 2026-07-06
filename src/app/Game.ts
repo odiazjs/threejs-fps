@@ -30,6 +30,7 @@ import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { TeamHud } from '../ui/TeamHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
+import { ControlsHelpHud } from '../ui/ControlsHelpHud';
 import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import { InventoryHud } from '../ui/InventoryHud';
@@ -99,6 +100,7 @@ export class Game {
   private teamHud = new TeamHud();
   private killFeedHud = new KillFeedHud();
   private crosshairHud = new CrosshairHud();
+  private controlsHelpHud = new ControlsHelpHud();
   private damageIndicatorHud = new DamageIndicatorHud();
   private inventoryHud = new InventoryHud(
     DEFAULT_LOADOUT_CONFIGS.map((config) => ({
@@ -402,6 +404,7 @@ export class Game {
     this.playerControls.setTeamHud(this.teamHud);
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
+    this.playerControls.setControlsHelpHud(this.controlsHelpHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
     this.playerControls.setShieldDomeHud(this.shieldDomeHud);
@@ -438,6 +441,16 @@ export class Game {
         return;
       }
       this.network.sendDropShieldCharge();
+    });
+
+    this.inventoryHud.setOnWeaponEquipRequest((slotIndex) => {
+      this.player.requestInventoryWeaponSwitch(slotIndex);
+      this.refreshInventoryHud();
+    });
+
+    this.inventoryHud.setOnMeleeEquipRequest(() => {
+      this.player.requestInventoryMeleeEquip();
+      this.refreshInventoryHud();
     });
 
     document.addEventListener('keydown', this.onTabKeyDown);
@@ -662,12 +675,23 @@ export class Game {
     }
   }
 
-  private refreshInventoryHud(): void {
-    this.inventoryHud.update({
-      weapons: this.player.getInventoryWeapons(),
-      melee: this.player.getInventoryMelee(),
-      shieldCharges: this.player.getInventory().getShieldCharges(),
-    });
+  private refreshInventoryHud(dropKeyHeld = false): void {
+    const snapshot = this.network?.getLocalSnapshot();
+    const players = this.network?.getAllPlayers() ?? [];
+    const unitsInField = players.filter((player) => player.alive).length;
+    const kills = snapshot?.matchKills ?? 0;
+
+    this.inventoryHud.update(
+      {
+        weapons: this.player.getInventoryWeapons(),
+        melee: this.player.getInventoryMelee(),
+        shieldCharges: this.player.getInventory().getShieldCharges(),
+        operatorName: this.localCombat.username,
+        killDeath: `${kills}/0`,
+        unitsInField,
+      },
+      dropKeyHeld,
+    );
   }
 
   private closeInventory(): void {
@@ -891,11 +915,7 @@ export class Game {
       }
 
       if (this.inventoryOpen) {
-        this.inventoryHud.update({
-          weapons: this.player.getInventoryWeapons(),
-          melee: this.player.getInventoryMelee(),
-          shieldCharges: this.player.getInventory().getShieldCharges(),
-        });
+        this.refreshInventoryHud(this.input.isPressed('KeyF'));
       }
     }
 

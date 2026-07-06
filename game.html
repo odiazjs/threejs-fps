@@ -54,6 +54,10 @@
       </div>
     </div>
     <div id="kill-feed" hidden></div>
+    <div id="controls-help-hud" class="hud-panel hud-brackets" hidden>
+      <div class="controls-help-title hud-label">CONTROLS</div>
+      <div class="controls-help-list"></div>
+    </div>
     <div id="health-hud" hidden>
       <div class="shield-hud">
         <div class="shield-label">SHIELD</div>
@@ -132,15 +136,34 @@
       <div class="shield-pickup-timer">Picking up shield charge</div>
     </div>
     <div id="inventory-overlay" hidden>
-      <div class="inventory-panel">
-        <div class="inventory-title">INVENTORY</div>
+      <div class="inventory-backdrop" aria-hidden="true"></div>
+      <div class="inventory-panel hud-panel hud-brackets">
+        <header class="inventory-header">
+          <div class="inventory-header-title">
+            <span class="inventory-header-label">INVENTORY</span>
+            <span class="inventory-header-operator"
+              >— OPERATOR: <span id="inventory-operator-name">Player</span></span
+            >
+          </div>
+          <div class="inventory-header-stats">
+            <div class="inventory-stat-pill">
+              <span class="inventory-stat-label">K/D</span>
+              <span id="inventory-kd" class="inventory-stat-value">0/0</span>
+            </div>
+            <div class="inventory-stat-pill inventory-stat-pill--alert">
+              <span class="inventory-stat-icon" aria-hidden="true">▲</span>
+              <span class="inventory-stat-label">Units In-Field</span>
+              <span id="inventory-units" class="inventory-stat-value">0</span>
+            </div>
+          </div>
+        </header>
         <section class="inventory-section">
-          <div class="inventory-section-label">LOADOUT</div>
-          <div id="inventory-loadout"></div>
+          <div class="inventory-section-label hud-label">LOADOUT</div>
+          <div id="inventory-loadout" class="inventory-loadout-grid"></div>
         </section>
-        <section class="inventory-section">
-          <div class="inventory-section-label">MELEE</div>
-          <div id="inventory-melee-row" class="inventory-melee-slot">
+        <section class="inventory-section inventory-section--melee">
+          <div class="inventory-section-label hud-label">MELEE</div>
+          <div id="inventory-melee-row" class="inventory-slot-frame inventory-melee-slot">
             <div class="inventory-slot-key">X</div>
             <div class="inventory-icon-wrap">
               <img id="inventory-melee-icon" class="inventory-weapon-icon" alt="" />
@@ -149,8 +172,8 @@
           </div>
         </section>
         <section class="inventory-section">
-          <div class="inventory-section-label">SHIELD RECHARGES</div>
-          <div id="inventory-shield-row" class="inventory-item-row">
+          <div class="inventory-section-label hud-label">SHIELD RECHARGES</div>
+          <div id="inventory-shield-row" class="inventory-slot-frame inventory-item-row">
             <div class="inventory-icon-wrap inventory-item-icon-wrap">
               <img id="inventory-shield-icon" class="inventory-item-icon" alt="" />
             </div>
@@ -159,6 +182,7 @@
               <div class="inventory-item-desc">Restores shield protection</div>
             </div>
             <div id="inventory-shield-count" class="inventory-item-count">0</div>
+            <div class="inventory-shield-deco" aria-hidden="true">✦</div>
             <div class="inventory-drop-overlay" hidden>
               <svg class="inventory-drop-spinner" viewBox="0 0 80 80" aria-hidden="true">
                 <circle class="inventory-drop-ring-bg" cx="40" cy="40" r="34" />
@@ -168,7 +192,13 @@
             </div>
           </div>
         </section>
-        <div class="inventory-hint">HOLD WEAPON OR SHIELD TO DROP · TAB — CLOSE</div>
+        <footer class="inventory-footer">
+          <div class="inventory-control"><kbd>TAB</kbd> CLOSE</div>
+          <div class="inventory-control"><kbd>HOLD F</kbd> DROP</div>
+          <div class="inventory-control"><kbd>LMB</kbd> EQUIP</div>
+          <div class="inventory-control"><kbd>RMB</kbd> EXAMINE</div>
+        </footer>
+        <div id="inventory-examine-tooltip" class="inventory-examine-tooltip" hidden></div>
       </div>
     </div>
     <script type="module" src="/src/game/main.ts"></script>
