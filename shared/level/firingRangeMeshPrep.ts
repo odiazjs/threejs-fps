@@ -15,11 +15,13 @@ import {
   insetCrateColliderAabb,
   registerFiringRangeCrateColliders,
 } from './firingRangeCrateColliders.js';
+import { collectLevelCollisionMeshes } from './levelMeshCollisionUtils.js';
 import type { Aabb } from './levelData.js';
 
 const _spawnWorldPos = new THREE.Vector3();
 const _crateBox = new THREE.Box3();
 const _crateCenter = new THREE.Vector3();
+const _structuralBox = new THREE.Box3();
 
 function findChildByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let found: THREE.Object3D | null = null;
@@ -155,6 +157,31 @@ export function extractFiringRangeCrateColliders(root: THREE.Object3D): Aabb[] {
   }
 
   return colliders;
+}
+
+/** World AABBs for non-crate collision meshes — lightweight server physics. */
+export function extractFiringRangeStructuralBoxes(root: THREE.Object3D): Aabb[] {
+  const meshes = collectLevelCollisionMeshes([root]);
+  const boxes: Aabb[] = [];
+
+  for (const mesh of meshes) {
+    if (isMeshUnderFiringRangeCrate(mesh)) continue;
+
+    mesh.updateWorldMatrix(true, false);
+    _structuralBox.setFromObject(mesh);
+    if (_structuralBox.isEmpty()) continue;
+
+    boxes.push({
+      minX: _structuralBox.min.x,
+      minY: _structuralBox.min.y,
+      minZ: _structuralBox.min.z,
+      maxX: _structuralBox.max.x,
+      maxY: _structuralBox.max.y,
+      maxZ: _structuralBox.max.z,
+    });
+  }
+
+  return boxes;
 }
 
 /** Reads `crate_box` anchors and assigns ammo / shield / weapon placements. */

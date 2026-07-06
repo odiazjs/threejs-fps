@@ -6,6 +6,7 @@
     "sync:sounds": "node scripts/sync-sounds.mjs",
     "sync:images": "node scripts/process-inventory-icons.mjs",
     "sync:3d": "node scripts/sync-3d.mjs",
+    "bake:firing-range": "tsx scripts/bake-firing-range.ts",
     "dev": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite",
     "dev:server": "npm run dev --prefix server",
     "install:all": "npm install && npm install --prefix server",
