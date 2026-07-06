@@ -1,9 +1,5 @@
 import * as THREE from 'three';
-
-/**
- * @see show only if we are in localhost url
- */
-export const SHOW_AXIS_DEBUG_ARROWS = window.location.hostname.includes('localhost');
+import { SHOW_AXIS_DEBUG_ARROWS } from './debugConfig';
 
 export interface AxisDebugArrowsOptions {
   /** Arrow length in the parent object's local space. */
@@ -32,8 +28,7 @@ const AXIS_SPEC = AXIS_DIRECTIONS.map((direction, index) => {
 
 export function isAxisDebugArrowsEnabled(): boolean {
   if (SHOW_AXIS_DEBUG_ARROWS) return true;
-  if (typeof window === 'undefined') return false;
-  return new URLSearchParams(window.location.search).has('axisDebug');
+  return false;
 }
 
 function disposeArrowHelper(arrow: THREE.ArrowHelper): void {

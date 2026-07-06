@@ -52,7 +52,7 @@ import { buildClientMapPhysics, disposeClientMapPhysics } from '../physics/build
 import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
-import { isValidDropSlot } from '../../shared/loadout/loadoutSlots';
+import { isValidDropSlot, canPickupWeaponDrop } from '../../shared/loadout/loadoutSlots';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -183,6 +183,9 @@ export class Game {
     this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
     this.weaponSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
     await Promise.all([
+      initialMapId === 'firing_range'
+        ? this.worldBuilder!.whenMeshCollisionReady()
+        : Promise.resolve(),
       preloadWeaponMeshes(),
       Player.preloadGameCharacterModels(),
       this.weaponSounds.preload([
@@ -202,7 +205,28 @@ export class Game {
       this.matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
       this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
       this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
+      this.shieldChargePickups.whenReady,
     ]);
+    if (initialMapId === 'firing_range') {
+      const mapDef = getMapDef('firing_range');
+      await this.ammoPickups.repopulate(mapDef.getAmmoPositions?.() ?? []);
+      mapDef.getShieldPositions?.().forEach((pos, index) => {
+        this.shieldChargePickups.applySnapshot(index, {
+          x: pos.x,
+          z: pos.z,
+          collected: false,
+        });
+      });
+      mapDef.getInitialWeaponSpawns?.().forEach((spawn, index) => {
+        this.weaponDrops.applySnapshot(index, {
+          x: spawn.x,
+          z: spawn.z,
+          yaw: spawn.yaw,
+          weaponId: spawn.weaponId,
+          collected: false,
+        });
+      });
+    }
     this.initPlayer(initialMapId, joinIntent?.gameMode);
     this.applyActiveMap();
     this.initResize();
@@ -328,7 +352,10 @@ export class Game {
     this.shieldDomeManager = new ShieldDomeManager(this.scene);
     this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
     this.projectiles.setShieldDomeManager(this.shieldDomeManager);
-    this.ammoPickups = new AmmoPickups(this.scene, getMapDef(mapId).ammoPositions);
+    this.ammoPickups = new AmmoPickups(
+      this.scene,
+      mapId === 'firing_range' ? [] : getMapDef(mapId).ammoPositions,
+    );
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
 
@@ -342,9 +369,9 @@ export class Game {
     const mapDef = getMapDef(mapId);
 
     try {
-      if (mapId === 'killhouse_small') {
-        await world.whenKillhousePhysicsReady();
-        await buildClientMapPhysics(mapDef, world.getKillhousePhysicsRoots(), this.scene);
+      if (mapDef.usesMeshCollision) {
+        await world.whenMeshCollisionReady();
+        await buildClientMapPhysics(mapDef, world.getMeshCollisionRoots(), this.scene);
       } else {
         await buildClientMapPhysics(mapDef, undefined, this.scene);
       }
@@ -357,6 +384,9 @@ export class Game {
   private initPlayer(mapId: MapId, gameMode?: GameMode): void {
     this.player = Player.createLocal();
     const mapDef = getMapDef(mapId);
+    if (mapDef.emptyStartingLoadout) {
+      this.player.applyEmptyLoadout();
+    }
     const mode = normalizeGameMode(gameMode);
     const spawn =
       mode === 'tdm' && mapDef.pickTeamSpawnPoint
@@ -486,7 +516,8 @@ export class Game {
       }
     });
     this.network.bindShoot(this.player, () => {
-      this.crosshairHud.onHit(this.player.getActiveWeaponId());
+      const weaponId = this.player.getActiveWeaponId();
+      if (weaponId) this.crosshairHud.onHit(weaponId);
     });
     this.player.setShieldRechargeNetworkCallback(() => {
       const snapshot = this.network.getLocalSnapshot();
@@ -823,10 +854,22 @@ export class Game {
 
       if (canAct && camera) {
         const weaponPickupHit = this.weaponDrops.raycastFromCamera(camera);
-        if (weaponPickupHit) {
+        const snapshot = this.network.getLocalSnapshot();
+        const pickupTarget =
+          weaponPickupHit &&
+          snapshot &&
+          canPickupWeaponDrop(
+            snapshot,
+            snapshot.activeWeaponId,
+            weaponPickupHit.weaponId,
+          )
+            ? { index: weaponPickupHit.index, weaponId: weaponPickupHit.weaponId }
+            : null;
+
+        if (pickupTarget) {
           this.shieldPickupHud.update(null, false, () => {});
           this.weaponPickupHud.update(
-            { index: weaponPickupHit.index, weaponId: weaponPickupHit.weaponId },
+            pickupTarget,
             this.input.isPressed('KeyF'),
             (target) => this.network.sendPickupWeaponDrop(target.index),
           );

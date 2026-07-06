@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { SHIELD_PICKUP_MAX_DISTANCE } from '../../shared/network/shieldPickup';
-import { getClientMapDef } from '../../shared/level/maps';
 import type { ShieldChargeSnapshot } from '../network/types';
-import { createShieldChargePickup } from './shieldChargeVisual';
+import { loadShieldChargeTemplate } from './shieldChargeVisual';
+import { resolvePickupSurfaceY } from './pickupSurface';
 
 export interface ShieldChargeRaycastHit {
   index: number;
@@ -15,11 +15,23 @@ export class ShieldChargePickups {
   private readonly root: THREE.Group;
   private readonly pickups = new Map<number, THREE.Group>();
   private readonly snapshots = new Map<number, ShieldChargeSnapshot>();
+  private template: THREE.Group | null = null;
+  readonly whenReady: Promise<void>;
 
   constructor(scene: THREE.Scene) {
     this.root = new THREE.Group();
     this.root.name = 'shield-charge-pickups';
     scene.add(this.root);
+    this.whenReady = loadShieldChargeTemplate()
+      .then((template) => {
+        this.template = template;
+        for (const index of this.snapshots.keys()) {
+          this.syncPickup(index);
+        }
+      })
+      .catch((error) => {
+        console.warn('[ShieldChargePickups] Failed to load shield recharge model', error);
+      });
   }
 
   applySnapshot(index: number, snapshot: ShieldChargeSnapshot): void {
@@ -29,18 +41,9 @@ export class ShieldChargePickups {
     }
 
     this.snapshots.set(index, snapshot);
-
-    let pickup = this.pickups.get(index);
-    if (!pickup) {
-      pickup = createShieldChargePickup();
-      pickup.userData.shieldChargeIndex = index;
-      this.pickups.set(index, pickup);
-      this.root.add(pickup);
+    if (this.template) {
+      this.syncPickup(index);
     }
-
-    const groundY = getClientMapDef().sampleGroundHeight(snapshot.x, snapshot.z);
-    pickup.position.set(snapshot.x, groundY, snapshot.z);
-    pickup.visible = true;
   }
 
   raycastFromCamera(
@@ -80,6 +83,25 @@ export class ShieldChargePickups {
     }
 
     return null;
+  }
+
+  private syncPickup(index: number): void {
+    if (!this.template) return;
+
+    const snapshot = this.snapshots.get(index);
+    if (!snapshot || snapshot.collected) return;
+
+    let pickup = this.pickups.get(index);
+    if (!pickup) {
+      pickup = this.template.clone(true);
+      pickup.userData.shieldChargeIndex = index;
+      this.pickups.set(index, pickup);
+      this.root.add(pickup);
+    }
+
+    const y = resolvePickupSurfaceY(snapshot.x, snapshot.z);
+    pickup.position.set(snapshot.x, y, snapshot.z);
+    pickup.visible = true;
   }
 
   private removePickup(index: number): void {

@@ -9,6 +9,8 @@ import { LevelPhysicsWorld } from '../../shared/physics/levelPhysicsWorld';
 import { initRapier } from '../../shared/physics/rapierInit';
 import { setMapPhysics } from '../../shared/level/mapMeshMovement';
 import { loadKillhouseGroundCollider } from '../../shared/level/killhouseGroundCollider';
+import { loadFiringRangeGroundCollider } from '../../shared/level/firingRangeGroundCollider';
+import { loadFiringRangeCrateColliders } from '../../shared/level/loadFiringRangeCrateColliders';
 import {
   createAabbColliderDebugGroup,
   createTrimeshColliderDebugMesh,
@@ -48,15 +50,25 @@ export async function buildClientMapPhysics(
   clientPhysics.init();
   clearPhysicsColliderDebug();
 
-  if (map.id === 'killhouse_small' && collisionRoots?.length) {
+  if (map.usesMeshCollision && collisionRoots?.length) {
     const meshes = collectLevelCollisionMeshes(collisionRoots);
     const geometry = buildMergedLevelCollisionGeometry(meshes);
     const positions = geometry.attributes.position.array as Float32Array;
     const indices = geometry.index!.array as Uint32Array;
     clientPhysics.loadTrimesh(positions, indices);
-    loadKillhouseGroundCollider(clientPhysics);
+
+    if (map.id === 'killhouse_small') {
+      loadKillhouseGroundCollider(clientPhysics);
+    } else if (map.id === 'firing_range') {
+      loadFiringRangeGroundCollider(clientPhysics);
+      const crateCount = loadFiringRangeCrateColliders(clientPhysics);
+      if (crateCount > 0) {
+        console.info(`[ClientPhysics] Firing Range crate cuboids (${crateCount})`);
+      }
+    }
+
     console.info(
-      `[ClientPhysics] Built Chrono-Bowl trimesh (${meshes.length} meshes, ${Math.round(indices.length / 3)} tris)`,
+      `[ClientPhysics] Built ${map.label} trimesh (${meshes.length} meshes, ${Math.round(indices.length / 3)} tris)`,
     );
 
     if (isPhysicsColliderDebugEnabled() && scene) {
@@ -64,6 +76,9 @@ export async function buildClientMapPhysics(
     } else {
       geometry.dispose();
     }
+  } else if (map.usesMeshCollision && map.id === 'firing_range') {
+    loadFiringRangeGroundCollider(clientPhysics);
+    console.info('[ClientPhysics] Firing Range ground-only collision (awaiting firing_range_map.glb)');
   } else {
     const boxes = getClientGameplayColliders(map);
     clientPhysics.loadAABBs(boxes);

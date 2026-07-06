@@ -68,15 +68,8 @@ const CARDINAL_90 = Math.PI / 2;
 const CARDINAL_180 = Math.PI;
 const CARDINAL_270 = -Math.PI / 2;
 
-/** Corners + center open areas — cardinal rotations only (90° steps). */
+/** Center open areas only — corner props removed (blocked spawns). */
 export const KILLHOUSE_LAYOUT_PINK_PROP_PLACEMENTS: readonly LayoutPropPlacement[] = [
-  // Map corners
-  { x: -17.5, z: -13.5, rotationY: CARDINAL_0 },
-  { x: 17.5, z: -13.5, rotationY: CARDINAL_90 },
-  { x: -17.5, z: 13.5, rotationY: CARDINAL_180 },
-  { x: 17.5, z: 13.5, rotationY: CARDINAL_270 },
-
-  // Center cross — evenly spaced in open lanes
   { x: 0, z: -9, rotationY: CARDINAL_0 },
   { x: 0, z: 9, rotationY: CARDINAL_180 },
   { x: -6.5, z: 0, rotationY: CARDINAL_90 },

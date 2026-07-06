@@ -1,13 +1,11 @@
 import * as THREE from 'three';
 import { raycastLevelBullets } from './levelBulletRaycast';
 import { PROJECTILE_MAX_AGE } from './projectileConfig';
-
-const PROJECTILE_COLOR = 0x00f0ff;
-const FORWARD = new THREE.Vector3(0, 0, -1);
-const PROJECTILE_SIZE_SCALE = 0.75;
+import { ProjectileBoltVisual } from './ProjectileBoltVisual';
 
 const _segStart = new THREE.Vector3();
 const _segEnd = new THREE.Vector3();
+const _posePos = new THREE.Vector3();
 
 export type ProjectileHit = {
   point: THREE.Vector3;
@@ -43,29 +41,29 @@ export interface ProjectileSpawnParams {
   speed: number;
 }
 
-export class Projectile {
-  readonly object = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      0.06 * PROJECTILE_SIZE_SCALE,
-      0.06 * PROJECTILE_SIZE_SCALE,
-      0.2 * PROJECTILE_SIZE_SCALE,
-    ),
-    new THREE.MeshBasicMaterial({ color: PROJECTILE_COLOR }),
-  );
+export interface ProjectileVisualOptions {
+  colors?: readonly [number, number, number];
+}
 
+export class Projectile {
+  readonly object = new THREE.Group();
+
+  private readonly bolt: ProjectileBoltVisual;
   private readonly aimOrigin = new THREE.Vector3();
   private readonly aimDir = new THREE.Vector3();
   private readonly speed: number;
   private distanceAlongRay = 0;
   private age = 0;
 
-  constructor(params: ProjectileSpawnParams) {
+  constructor(params: ProjectileSpawnParams, visualOptions: ProjectileVisualOptions = {}) {
     this.aimOrigin.copy(params.hitRayOrigin);
     this.aimDir.copy(params.hitRayDirection);
     this.speed = params.speed;
     this.distanceAlongRay = 0;
-    this.object.position.copy(params.visualOrigin);
-    this.object.quaternion.setFromUnitVectors(FORWARD, this.aimDir);
+
+    this.bolt = new ProjectileBoltVisual({ colors: visualOptions.colors });
+    this.object.add(this.bolt.object);
+    this.bolt.setPose(params.visualOrigin, this.aimDir);
   }
 
   getAimOrigin(target: THREE.Vector3): THREE.Vector3 {
@@ -81,6 +79,8 @@ export class Projectile {
     probe?: ProjectileSegmentProbe,
   ): ProjectileUpdateResult {
     this.age += delta;
+    this.bolt.tick(delta);
+
     if (this.age >= PROJECTILE_MAX_AGE) {
       return { alive: false };
     }
@@ -116,19 +116,26 @@ export class Projectile {
 
     const gameplayHit = probe?.(_segStart, _segEnd, levelHit);
     if (gameplayHit) {
-      this.distanceAlongRay = segStartDist + this.distanceAlongSegment(_segStart, dx / travel, dy / travel, dz / travel, gameplayHit);
-      this.object.position.copy(gameplayHit);
+      this.distanceAlongRay = segStartDist + this.distanceAlongSegment(
+        _segStart,
+        dx / travel,
+        dy / travel,
+        dz / travel,
+        gameplayHit,
+      );
+      this.bolt.setPose(gameplayHit, this.aimDir);
       return { alive: false };
     }
 
     if (levelHit) {
       this.distanceAlongRay = segStartDist + levelHit.distance;
-      this.object.position.set(levelHit.x, levelHit.y, levelHit.z);
-      return { alive: false, hit: { point: this.object.position.clone() } };
+      _posePos.set(levelHit.x, levelHit.y, levelHit.z);
+      this.bolt.setPose(_posePos, this.aimDir);
+      return { alive: false, hit: { point: _posePos.clone() } };
     }
 
     this.distanceAlongRay = segEndDist;
-    this.object.position.copy(_segEnd);
+    this.bolt.setPose(_segEnd, this.aimDir);
     return { alive: true };
   }
 
@@ -147,8 +154,7 @@ export class Projectile {
   }
 
   dispose(): void {
-    this.object.geometry.dispose();
-    (this.object.material as THREE.Material).dispose();
+    this.bolt.dispose();
     this.object.removeFromParent();
   }
 }

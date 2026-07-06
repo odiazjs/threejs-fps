@@ -5,7 +5,7 @@ import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
 import { raycastPlayerBodyPart } from '../../shared/combat/playerHitbox';
 import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
 import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
-import { HitSplash } from './HitSplash';
+import { HitSplash, type HitSplashKind } from './HitSplash';
 import { MuzzleFlash } from './MuzzleFlash';
 import {
   Projectile,
@@ -22,6 +22,7 @@ export interface ProjectileHitTarget extends PlayerHitTarget {
 
 interface ProjectileMeta {
   canHitPlayers: boolean;
+  visualOnly: boolean;
   ownerTeamId: number;
   ownerSessionId: string;
   shooterId?: string;
@@ -79,7 +80,7 @@ export class ProjectileManager {
     );
     if (!hit) return false;
 
-    this.spawnSplash(hit.point);
+    this.spawnSplash(hit.point, 'player');
     this.onPlayerHit(hit.sessionId, hit.point, hit.bodyPart);
     return true;
   }
@@ -88,11 +89,13 @@ export class ProjectileManager {
     params: ProjectileSpawnParams,
     options?: {
       canHitPlayers?: boolean;
+      visualOnly?: boolean;
       ownerTeamId?: number;
       ownerSessionId?: string;
       shooterId?: string;
       shooterWorldPos?: Vector3;
       muzzleFlash?: MuzzleFlashConfig;
+      boltColors?: readonly [number, number, number];
     },
   ): void {
     if (options?.muzzleFlash) {
@@ -105,11 +108,12 @@ export class ProjectileManager {
       this.muzzleFlashes.push(flash);
     }
 
-    const projectile = new Projectile(params);
+    const projectile = new Projectile(params, { colors: options?.boltColors });
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);
     this.meta.set(projectile, {
       canHitPlayers: options?.canHitPlayers ?? false,
+      visualOnly: options?.visualOnly ?? !(options?.canHitPlayers ?? false),
       ownerTeamId: options?.ownerTeamId ?? -1,
       ownerSessionId: options?.ownerSessionId ?? '',
       shooterId: options?.shooterId,
@@ -120,35 +124,38 @@ export class ProjectileManager {
   update(delta: number, worldTime = 0): void {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
-      let playerHitPoint: Vector3 | null = null;
+      const info = this.meta.get(projectile);
+      const impactRef: {
+        value: { point: THREE.Vector3; kind: HitSplashKind } | null;
+      } = { value: null };
 
-      const probe: ProjectileSegmentProbe = (from, to, levelHit) => {
-        const resolved = this.resolveGameplaySegmentHit(
-          projectile,
-          from,
-          to,
-          levelHit,
-          worldTime,
-        );
-        if (resolved?.isPlayer) {
-          playerHitPoint = resolved.point;
-        }
-        return resolved?.point ?? null;
-      };
+      const probe: ProjectileSegmentProbe | undefined = info?.visualOnly
+        ? undefined
+        : (from, to, levelHit) => {
+          const resolved = this.resolveGameplaySegmentHit(
+            projectile,
+            from,
+            to,
+            levelHit,
+            worldTime,
+          );
+          if (resolved) {
+            impactRef.value = {
+              point: resolved.point,
+              kind: resolved.isPlayer ? 'player' : 'world',
+            };
+          }
+          return resolved?.point ?? null;
+        };
 
       const result = projectile.update(delta, probe);
-
-      if (playerHitPoint) {
-        this.spawnSplash(playerHitPoint);
-        projectile.dispose();
-        this.projectiles.splice(i, 1);
-        continue;
-      }
 
       if (result.alive) continue;
 
       if (result.hit) {
-        this.spawnSplash(result.hit.point);
+        this.spawnSplash(result.hit.point, 'world');
+      } else if (impactRef.value) {
+        this.spawnSplash(impactRef.value.point, impactRef.value.kind);
       }
 
       projectile.dispose();
@@ -335,8 +342,9 @@ export class ProjectileManager {
     );
   }
 
-  private spawnSplash(point: Vector3): void {
-    const splash = new HitSplash(point);
+  private spawnSplash(point: Vector3, kind: HitSplashKind): void {
+    const splash = new HitSplash(point, kind);
+    splash.object.renderOrder = 20;
     this.scene.add(splash.object);
     this.splashes.push(splash);
   }

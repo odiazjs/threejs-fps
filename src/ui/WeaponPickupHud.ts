@@ -1,5 +1,5 @@
 import { getWeaponConfig } from '../content/weaponConfig';
-import { isWeaponId } from '../../shared/content/weaponIds';
+import { isPickableWeaponId } from '../../shared/content/weaponIds';
 
 export interface WeaponPickupTarget {
   index: number;
@@ -22,6 +22,8 @@ export class WeaponPickupHud {
   private holdTarget: WeaponPickupTarget | null = null;
   private hudVisible = false;
   private onComplete: ((target: WeaponPickupTarget) => void) | null = null;
+  /** After a hold completes, wait for F to be released before starting again. */
+  private awaitingKeyRelease = false;
 
   constructor() {
     this.promptRoot = document.getElementById('weapon-pickup-prompt')!;
@@ -54,9 +56,18 @@ export class WeaponPickupHud {
       return;
     }
 
-    if (!target || !keyHeld) {
+    if (!keyHeld) {
+      this.awaitingKeyRelease = false;
+    }
+
+    if (!target || !keyHeld || !isPickableWeaponId(target.weaponId)) {
       this.cancelHold();
       this.updatePrompt(target);
+      return;
+    }
+
+    if (this.awaitingKeyRelease) {
+      this.promptRoot.hidden = true;
       return;
     }
 
@@ -78,7 +89,7 @@ export class WeaponPickupHud {
       return;
     }
 
-    if (!target || !isWeaponId(target.weaponId)) {
+    if (!target || !isPickableWeaponId(target.weaponId)) {
       this.promptRoot.hidden = true;
       return;
     }
@@ -116,6 +127,7 @@ export class WeaponPickupHud {
     if (elapsed >= PICKUP_HOLD_MS) {
       const complete = this.onComplete;
       const target = this.holdTarget;
+      this.awaitingKeyRelease = true;
       this.cancelHold();
       if (complete && target) complete(target);
       return;

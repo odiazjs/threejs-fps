@@ -27,10 +27,28 @@ import {
   KILLHOUSE_SHIELD_POSITIONS,
   KILLHOUSE_WALL_THICK,
 } from './killhouseSmallColliders.js';
+import {
+  FLOOR_SIZE as FIRING_RANGE_FLOOR_SIZE,
+  MAP_HALF as FIRING_RANGE_MAP_HALF,
+  MAP_HALF_X as FIRING_RANGE_HALF_X,
+  MAP_HALF_Z as FIRING_RANGE_HALF_Z,
+  pickSpawnPoint as pickFiringRangeSpawnPoint,
+  pickTeamSpawnPoint as pickFiringRangeTeamSpawnPoint,
+  pickTeamSpawnBatch as pickFiringRangeTeamSpawnBatch,
+  pickTeamRespawnPoint as pickFiringRangeTeamRespawnPoint,
+  HUMAN_RESPAWN_POINT as FIRING_RANGE_RESPAWN_POINT,
+  sampleGroundHeight as firingRangeGroundHeight,
+} from './firingRangeColliders.js';
+import {
+  getFiringRangeAmmoPositions,
+  getFiringRangeShieldPositions,
+  getFiringRangeWeaponSpawns,
+  type FiringRangeWeaponSpawn,
+} from './firingRangePickups.js';
 import { sampleGroundHeight as kiloGroundHeight } from './terrainHeight.js';
 import { getMapPhysics } from './mapMeshMovement.js';
 
-export type MapId = 'kilo_sector' | 'killhouse_small';
+export type MapId = 'kilo_sector' | 'killhouse_small' | 'firing_range';
 
 export const DEFAULT_MAP_ID: MapId = 'kilo_sector';
 
@@ -51,7 +69,14 @@ export const MAP_OPTIONS: readonly MapOption[] = [
     label: 'Chrono-Bowl',
     description: 'Compact 2v2 killhouse',
   },
+  {
+    id: 'firing_range',
+    label: 'Firing Range',
+    description: 'Sandbox range — editor map (firing_range_map.glb)',
+  },
 ] as const;
+
+export type { FiringRangeWeaponSpawn as MapWeaponSpawn };
 
 export interface MapCollisionDef {
   id: MapId;
@@ -87,7 +112,13 @@ export interface MapCollisionDef {
   humanRespawnPoint: { x: number; z: number };
   ammoPositions: ReadonlyArray<{ x: number; z: number }>;
   shieldPositions: ReadonlyArray<{ x: number; z: number }>;
+  /** When set, overrides `ammoPositions` (e.g. GLB crate anchors loaded at runtime). */
+  getAmmoPositions?: () => ReadonlyArray<{ x: number; z: number }>;
+  getShieldPositions?: () => ReadonlyArray<{ x: number; z: number }>;
+  getInitialWeaponSpawns?: () => ReadonlyArray<FiringRangeWeaponSpawn>;
   spawnTrainingBots: boolean;
+  /** Join and respawn with no weapons — players must pick them up. */
+  emptyStartingLoadout?: boolean;
 }
 
 const MAPS: Record<MapId, MapCollisionDef> = {
@@ -133,10 +164,36 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     shieldPositions: KILLHOUSE_SHIELD_POSITIONS,
     spawnTrainingBots: false,
   },
+  firing_range: {
+    id: 'firing_range',
+    label: 'Firing Range',
+    floorSize: FIRING_RANGE_FLOOR_SIZE,
+    mapHalf: FIRING_RANGE_MAP_HALF,
+    mapHalfX: FIRING_RANGE_HALF_X,
+    mapHalfZ: FIRING_RANGE_HALF_Z,
+    wallThickness: 0,
+    outdoor: false,
+    usesMeshCollision: true,
+    getLevelColliders: () => [],
+    getClientGameplayColliders: () => [],
+    sampleGroundHeight: firingRangeGroundHeight,
+    pickSpawnPoint: pickFiringRangeSpawnPoint,
+    pickTeamSpawnPoint: pickFiringRangeTeamSpawnPoint,
+    pickTeamSpawnBatch: pickFiringRangeTeamSpawnBatch,
+    pickTeamRespawnPoint: pickFiringRangeTeamRespawnPoint,
+    humanRespawnPoint: FIRING_RANGE_RESPAWN_POINT,
+    ammoPositions: [],
+    shieldPositions: [],
+    getAmmoPositions: getFiringRangeAmmoPositions,
+    getShieldPositions: getFiringRangeShieldPositions,
+    getInitialWeaponSpawns: getFiringRangeWeaponSpawns,
+    spawnTrainingBots: false,
+    emptyStartingLoadout: true,
+  },
 };
 
 export function isValidMapId(value: string | null | undefined): value is MapId {
-  return value === 'kilo_sector' || value === 'killhouse_small';
+  return value === 'kilo_sector' || value === 'killhouse_small' || value === 'firing_range';
 }
 
 export function normalizeMapId(value: string | null | undefined): MapId {

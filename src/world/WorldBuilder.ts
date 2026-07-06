@@ -11,6 +11,7 @@ import { KillhouseWall } from './KillhouseWall';
 import { KillhouseLayoutHouses } from './KillhouseLayoutHouses';
 import { KillhouseLayoutWalls } from './KillhouseLayoutWalls';
 import { KillhousePinkProps } from './KillhousePinkProps';
+import { FiringRangeMap } from './FiringRangeMap';
 import type { GrassQualityProfile } from '../render/grassQuality';
 import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
@@ -25,6 +26,7 @@ export class WorldBuilder {
   private killhouseLayoutHouses: KillhouseLayoutHouses | null = null;
   private killhouseLayoutWalls: KillhouseLayoutWalls | null = null;
   private killhousePinkProps: KillhousePinkProps | null = null;
+  private firingRangeMap: FiringRangeMap | null = null;
   private readonly mapDef;
 
   constructor(mapId: MapId = 'kilo_sector') {
@@ -33,10 +35,23 @@ export class WorldBuilder {
 
   build(): this {
     const isKillhouse = this.mapDef.id === 'killhouse_small';
-    const skybox = isKillhouse ? createKillhouseSkyboxTexture() : createSkyboxTexture();
-    const fogColor = isKillhouse ? 0xc8a060 : this.mapDef.outdoor ? 0x88d4f0 : 0x1a2228;
-    const fogNear = isKillhouse ? this.mapDef.mapHalf * 1.4 : this.mapDef.mapHalf * 0.5;
-    const fogFar = isKillhouse ? this.mapDef.mapHalf * 5 : this.mapDef.mapHalf * 2.2;
+    const isFiringRange = this.mapDef.id === 'firing_range';
+    const skybox = isKillhouse
+      ? createKillhouseSkyboxTexture()
+      : isFiringRange
+        ? createKillhouseSkyboxTexture()
+        : createSkyboxTexture();
+    const fogColor = isKillhouse || isFiringRange
+      ? 0xc8a060
+      : this.mapDef.outdoor
+        ? 0x88d4f0
+        : 0x1a2228;
+    const fogNear = isKillhouse || isFiringRange
+      ? this.mapDef.mapHalf * 1.4
+      : this.mapDef.mapHalf * 0.5;
+    const fogFar = isKillhouse || isFiringRange
+      ? this.mapDef.mapHalf * 5
+      : this.mapDef.mapHalf * 2.2;
     this.sceneBuilder
       .build()
       .addBackground(skybox)
@@ -76,7 +91,32 @@ export class WorldBuilder {
       }
       this.sceneBuilder.addObject(this.killhousePinkProps.collisionGroup);
     }
+
+    if (this.mapDef.id === 'firing_range') {
+      this.firingRangeMap = new FiringRangeMap();
+      this.sceneBuilder.addObject(this.firingRangeMap.group);
+    }
     return this;
+  }
+
+  whenMeshCollisionReady(): Promise<void> {
+    if (this.mapDef.id === 'killhouse_small') {
+      return this.whenKillhousePhysicsReady();
+    }
+    if (this.mapDef.id === 'firing_range' && this.firingRangeMap) {
+      return this.firingRangeMap.whenReady;
+    }
+    return Promise.resolve();
+  }
+
+  getMeshCollisionRoots(): THREE.Object3D[] {
+    if (this.mapDef.id === 'killhouse_small') {
+      return this.getKillhousePhysicsRoots();
+    }
+    if (this.mapDef.id === 'firing_range' && this.firingRangeMap) {
+      return this.firingRangeMap.getPhysicsRoots();
+    }
+    return [];
   }
 
   whenKillhousePhysicsReady(): Promise<void> {

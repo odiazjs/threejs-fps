@@ -3,7 +3,6 @@ import {
   appendTrianglesToBuffers,
   countMergedTriangleCapacity,
   extractWorldTriangles,
-  filterInteriorHorizontalSlabs,
   filterShellCollisionTriangles,
   isThreeMesh,
 } from './collisionMeshPrep.js';
@@ -16,6 +15,7 @@ const _mergeVertex = new THREE.Vector3();
 /** Decorative meshes (energy fields, glass) should not block bullets or movement. */
 function meshMaterialBlocksCollision(mesh: THREE.Mesh): boolean {
   if (mesh.userData.skipCollision === true) return false;
+  if (mesh.userData.collisionMesh === true) return true;
 
   const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   for (const material of materials) {
@@ -104,9 +104,10 @@ export function buildMergedLevelCollisionGeometry(meshes: readonly THREE.Mesh[])
 
     if (mesh.userData.collisionMesh === true) {
       const worldTriangles = extractWorldTriangles(mesh);
-      const hullTriangles = filterInteriorHorizontalSlabs(worldTriangles);
+      // Editor-exported map meshes are solid collision as authored — do not strip
+      // interior horizontal faces (that pass is for hollow FBX LOD props only).
       ({ vertexOffset, indexOffset } = appendTrianglesToBuffers(
-        hullTriangles,
+        worldTriangles,
         positions,
         indexData,
         vertexOffset,

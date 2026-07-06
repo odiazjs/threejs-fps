@@ -67,6 +67,7 @@ import {
 import { applyDamageWithShield, applyShieldChargeRecharge, canUseShieldCharge, getShieldCapacity, resetPlayerShield } from '../../../shared/combat/shield.js';
 import { SHIELD_CHARGE_TIME_SEC } from '../../../shared/combat/shieldRecharge.js';
 import {
+  isPickableWeaponId,
   isWeaponId,
   LOADOUT_WEAPON_IDS,
   MELEE_WEAPON_ID,
@@ -97,14 +98,17 @@ import type { PickupWeaponDropMessage } from '../../../shared/network/weaponPick
 import { WEAPON_PICKUP_MAX_DISTANCE } from '../../../shared/network/weaponPickup.js';
 import {
   EMPTY_WEAPON_SLOT,
+  clearLoadoutSlots,
   findLowestOccupiedLoadoutSlot,
   getLoadoutSlotWeapon,
   initDefaultLoadoutSlots,
   isValidDropSlot,
   resolveWeaponPickup,
+  sanitizeLoadoutSlots,
   setLoadoutSlotWeapon,
 } from '../../../shared/loadout/loadoutSlots.js';
 import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js';
+import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupRespawn.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
@@ -156,6 +160,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly userIdBySession = new Map<string, string>();
   private readonly lastShotOriginBySession = new Map<string, LastShotOrigin>();
   private readonly autoFiringSessions = new Set<string>();
+  private readonly holsteredWeaponIdBySession = new Map<string, string>();
+  private readonly ammoRespawnAt = new Map<number, number>();
+  private readonly shieldRespawnAt = new Map<number, number>();
 
   async onCreate(options: JoinOptions = {}): Promise<void> {
     this.inviteMatch = options.inviteMatch === true;
@@ -187,18 +194,22 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
     this.patchRate = 50;
 
-    for (const pos of this.mapDef.ammoPositions) {
+    for (const pos of this.mapDef.getAmmoPositions?.() ?? this.mapDef.ammoPositions) {
       const box = new AmmoBoxState();
       box.x = pos.x;
       box.z = pos.z;
       this.state.ammoBoxes.push(box);
     }
 
-    for (const pos of this.mapDef.shieldPositions) {
+    for (const pos of this.mapDef.getShieldPositions?.() ?? this.mapDef.shieldPositions) {
       const charge = new ShieldChargeState();
       charge.x = pos.x;
       charge.z = pos.z;
       this.state.shieldCharges.push(charge);
+    }
+
+    for (const spawn of this.mapDef.getInitialWeaponSpawns?.() ?? []) {
+      this.spawnWeaponDrop(spawn.x, spawn.z, spawn.yaw, spawn.weaponId);
     }
 
     if (this.mapDef.spawnTrainingBots) {
@@ -213,7 +224,34 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.tickShieldDomeCharges();
       this.tickTrainingBots(deltaSec);
       this.tickMatchState();
+      this.tickWorldPickupRespawns();
     });
+  }
+
+  private tickWorldPickupRespawns(): void {
+    const now = this.state.worldTime;
+
+    for (const [index, respawnAt] of this.ammoRespawnAt) {
+      if (now < respawnAt) continue;
+      const box = this.state.ammoBoxes.at(index);
+      if (box) box.collected = false;
+      this.ammoRespawnAt.delete(index);
+    }
+
+    for (const [index, respawnAt] of this.shieldRespawnAt) {
+      if (now < respawnAt) continue;
+      const charge = this.state.shieldCharges.at(index);
+      if (charge) charge.collected = false;
+      this.shieldRespawnAt.delete(index);
+    }
+  }
+
+  private scheduleAmmoRespawn(index: number): void {
+    this.ammoRespawnAt.set(index, this.state.worldTime + WORLD_PICKUP_RESPAWN_SEC);
+  }
+
+  private scheduleShieldRespawn(index: number): void {
+    this.shieldRespawnAt.set(index, this.state.worldTime + WORLD_PICKUP_RESPAWN_SEC);
   }
 
   private isTdm(): boolean {
@@ -564,6 +602,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     yaw: number,
     weaponId: string,
   ): number {
+    if (!isPickableWeaponId(weaponId)) return -1;
+
     const drop = new WeaponDropState();
     drop.x = x;
     drop.z = z;
@@ -758,6 +798,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!getLoadoutSlotWeapon(player, slot)) return;
 
       const nextWeapon = getLoadoutSlotWeapon(player, slot)!;
+      if (nextWeapon === MELEE_WEAPON_ID) return;
       if (player.activeWeaponId === nextWeapon) return;
 
       player.activeWeaponId = nextWeapon;
@@ -771,12 +812,16 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       if (data.equipped) {
         if (player.activeWeaponId === MELEE_WEAPON_ID) return;
+        if (isWeaponId(player.activeWeaponId)) {
+          this.holsteredWeaponIdBySession.set(client.sessionId, player.activeWeaponId);
+        }
         player.activeWeaponId = MELEE_WEAPON_ID;
       } else {
         if (player.activeWeaponId !== MELEE_WEAPON_ID) return;
         const nextSlot = findLowestOccupiedLoadoutSlot(player);
         if (nextSlot < 0) return;
         player.activeWeaponId = getLoadoutSlotWeapon(player, nextSlot)!;
+        this.holsteredWeaponIdBySession.delete(client.sessionId);
       }
 
       this.startWeaponSwitchAnim(player);
@@ -810,7 +855,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!isValidDropSlot(player, slot)) return;
 
       const weaponId = getLoadoutSlotWeapon(player, slot);
-      if (!isWeaponId(weaponId)) return;
+      if (!isPickableWeaponId(weaponId)) return;
 
       setLoadoutSlotWeapon(player, slot, EMPTY_WEAPON_SLOT);
       this.spawnWeaponDrop(player.x, player.z, player.yaw, weaponId);
@@ -848,7 +893,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       const drop = this.state.weaponDrops.at(index);
       if (!drop || drop.collected) return;
-      if (!isWeaponId(drop.weaponId)) return;
+      if (!isPickableWeaponId(drop.weaponId)) return;
 
       const distance = Math.hypot(player.x - drop.x, player.z - drop.z);
       if (distance > WEAPON_PICKUP_MAX_DISTANCE) return;
@@ -857,17 +902,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         player,
         player.activeWeaponId,
         drop.weaponId,
+        this.holsteredWeaponIdBySession.get(client.sessionId),
       );
       if (!resolution) return;
 
-      drop.collected = true;
-      setLoadoutSlotWeapon(player, resolution.targetSlot, drop.weaponId);
-      player.activeWeaponId = drop.weaponId;
-      this.startWeaponSwitchAnim(player);
-
       if (
         resolution.replacedWeaponId &&
-        isWeaponId(resolution.replacedWeaponId)
+        isPickableWeaponId(resolution.replacedWeaponId)
       ) {
         this.spawnWeaponDrop(
           player.x,
@@ -875,7 +916,19 @@ export class FpsRoom extends Room<{ state: FpsState }> {
           player.yaw,
           resolution.replacedWeaponId,
         );
+        if (
+          this.holsteredWeaponIdBySession.get(client.sessionId)
+          === resolution.replacedWeaponId
+        ) {
+          this.holsteredWeaponIdBySession.delete(client.sessionId);
+        }
       }
+
+      drop.collected = true;
+      setLoadoutSlotWeapon(player, resolution.targetSlot, drop.weaponId);
+      sanitizeLoadoutSlots(player);
+      player.activeWeaponId = drop.weaponId;
+      this.startWeaponSwitchAnim(player);
 
       player.reloading = false;
       player.reloadEndAt = 0;
@@ -889,6 +942,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (!isWeaponId(player.activeWeaponId)) return;
       if (!this.isMatchCombatAllowed()) return;
       this.cancelShieldRecharge(player);
 
@@ -984,6 +1038,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       }
 
       box.collected = true;
+      this.scheduleAmmoRespawn(index);
       client.send('ammoPickupGranted', { index });
     },
 
@@ -1003,6 +1058,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       charge.collected = true;
       player.shieldCharges += 1;
+      this.scheduleShieldRespawn(index);
       client.send('shieldChargePickupGranted', { index });
     },
 
@@ -1152,11 +1208,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
+    this.initPlayerLoadout(player);
     this.state.players.set(client.sessionId, player);
   }
 
   onLeave(client: Client): void {
     this.stopAutoFireSound(client.sessionId);
+    this.holsteredWeaponIdBySession.delete(client.sessionId);
     const userId = this.userIdBySession.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.userIdBySession.delete(client.sessionId);
@@ -1371,7 +1429,19 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.walking = false;
     player.jumping = false;
     player.crouching = false;
-    initDefaultLoadoutSlots(player);
-    player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
+    this.holsteredWeaponIdBySession.delete(sessionId);
+    this.initPlayerLoadout(player);
+  }
+
+  private initPlayerLoadout(player: PlayerState): void {
+    if (this.mapDef.emptyStartingLoadout) {
+      clearLoadoutSlots(player);
+      player.activeWeaponId = EMPTY_WEAPON_SLOT;
+    } else {
+      initDefaultLoadoutSlots(player);
+      player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;
+    }
+
+    sanitizeLoadoutSlots(player);
   }
 }

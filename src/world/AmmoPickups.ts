@@ -4,9 +4,9 @@ import {
   sweptOverlapsAmmoBox,
 } from '../../shared/level/ammoBoxSpawns';
 import { PLAYER_HALF_WIDTH } from '../../shared/level/levelData';
-import { getClientMapDef } from '../../shared/level/maps';
 import type { AmmoBoxSnapshot } from '../network/types';
 import { loadAmmoBoxTemplate } from './ammoBoxVisual';
+import { resolvePickupSurfaceY } from './pickupSurface';
 
 export type LocalPickupHandler = () => void;
 type SendPickup = (index: number, feetX: number, feetZ: number) => void;
@@ -33,14 +33,28 @@ export class AmmoPickups {
     this.whenReady = this.build(spawnPositions);
   }
 
+  /** Replace spawn layout after runtime map data loads (Firing Range crates). */
+  async repopulate(spawnPositions: ReadonlyArray<{ x: number; z: number }>): Promise<void> {
+    for (const box of this.boxes) {
+      box.removeFromParent();
+    }
+    this.boxes.length = 0;
+    this.positions.length = 0;
+    this.collected.clear();
+    this.pickupRetryAt.clear();
+    this.hasLastFeet = false;
+    await this.build(spawnPositions);
+  }
+
   private async build(spawnPositions: ReadonlyArray<{ x: number; z: number }>): Promise<void> {
+    if (spawnPositions.length === 0) return;
+
     try {
       const template = await loadAmmoBoxTemplate();
-      const groundY = getClientMapDef().sampleGroundHeight;
 
       for (const pos of spawnPositions) {
         const box = template.clone(true);
-        const y = groundY(pos.x, pos.z);
+        const y = resolvePickupSurfaceY(pos.x, pos.z);
         box.position.set(pos.x, y, pos.z);
         this.boxes.push(box);
         this.positions.push({ x: pos.x, z: pos.z });
@@ -62,8 +76,8 @@ export class AmmoPickups {
   applySnapshot(index: number, snapshot: AmmoBoxSnapshot): void {
     const box = this.boxes[index];
     if (box) {
-      const groundY = getClientMapDef().sampleGroundHeight(snapshot.x, snapshot.z);
-      box.position.set(snapshot.x, groundY, snapshot.z);
+      const y = resolvePickupSurfaceY(snapshot.x, snapshot.z);
+      box.position.set(snapshot.x, y, snapshot.z);
       const stored = this.positions[index];
       if (stored) {
         stored.x = snapshot.x;
@@ -71,9 +85,19 @@ export class AmmoPickups {
       }
     }
 
-    if (!snapshot.collected) return;
+    if (!snapshot.collected) {
+      this.restoreCollected(index);
+      return;
+    }
+
     this.markCollected(index);
     this.pickupRetryAt.delete(index);
+  }
+
+  private restoreCollected(index: number): void {
+    this.collected.delete(index);
+    const box = this.boxes[index];
+    if (box) box.visible = true;
   }
 
   tryPickup(feetX: number, feetZ: number, delta: number): void {

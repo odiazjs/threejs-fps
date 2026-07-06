@@ -7,6 +7,13 @@
 body.game-page {
   overflow: hidden;
   background: var(--hud-bg-page);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.game-page * {
+  -webkit-user-select: none;
+  user-select: none;
 }
 #blocker {
   position: fixed;

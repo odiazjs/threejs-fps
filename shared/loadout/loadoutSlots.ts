@@ -1,4 +1,4 @@
-import { LOADOUT_SIZE, LOADOUT_WEAPON_IDS, isWeaponId } from '../content/weaponIds.js';
+import { LOADOUT_SIZE, LOADOUT_WEAPON_IDS, isPickableWeaponId, isWeaponId, MELEE_WEAPON_ID } from '../content/weaponIds.js';
 
 export const EMPTY_WEAPON_SLOT = '';
 
@@ -50,12 +50,31 @@ export function initDefaultLoadoutSlots(
   slots.weaponSlot2 = LOADOUT_WEAPON_IDS[2]!;
 }
 
+export function clearLoadoutSlots(
+  slots: { weaponSlot0: string; weaponSlot1: string; weaponSlot2: string },
+): void {
+  slots.weaponSlot0 = EMPTY_WEAPON_SLOT;
+  slots.weaponSlot1 = EMPTY_WEAPON_SLOT;
+  slots.weaponSlot2 = EMPTY_WEAPON_SLOT;
+}
+
+/** Melee is equipped via X only — never stored in numbered slots. */
+export function sanitizeLoadoutSlots(
+  slots: { weaponSlot0: string; weaponSlot1: string; weaponSlot2: string },
+): void {
+  for (let i = 0; i < LOADOUT_SIZE; i++) {
+    if (getLoadoutSlotWeapon(slots, i) === MELEE_WEAPON_ID) {
+      setLoadoutSlotWeapon(slots, i, EMPTY_WEAPON_SLOT);
+    }
+  }
+}
+
 export function isLoadoutSlotOccupied(
   slots: LoadoutSlotSnapshot,
   index: number,
 ): boolean {
   const weaponId = getLoadoutSlotWeapon(slots, index);
-  return isWeaponId(weaponId);
+  return isPickableWeaponId(weaponId);
 }
 
 export function countOccupiedLoadoutSlots(slots: LoadoutSlotSnapshot): number {
@@ -78,7 +97,8 @@ export function isValidDropSlot(
   slotIndex: number,
 ): boolean {
   if (slotIndex < 0 || slotIndex >= LOADOUT_SIZE) return false;
-  if (!isLoadoutSlotOccupied(slots, slotIndex)) return false;
+  const weaponId = getLoadoutSlotWeapon(slots, slotIndex);
+  if (!isPickableWeaponId(weaponId)) return false;
   return countOccupiedLoadoutSlots(slots) > 1;
 }
 
@@ -111,28 +131,61 @@ export interface WeaponPickupResolution {
   replacedWeaponId: string | null;
 }
 
-/** Decide which loadout slot receives a picked-up weapon. */
+/**
+ * Loadout slot for the gun the player is currently holding.
+ * When melee is toggled on, uses the holstered gun's slot.
+ */
+export function resolveEquippedLoadoutSlot(
+  slots: LoadoutSlotSnapshot,
+  activeWeaponId: string,
+  holsteredWeaponId?: string | null,
+): number {
+  const activeSlot = findActiveWeaponSlot(slots, activeWeaponId);
+  if (activeSlot >= 0) return activeSlot;
+
+  if (activeWeaponId === MELEE_WEAPON_ID) {
+    if (holsteredWeaponId) {
+      const holsteredSlot = findActiveWeaponSlot(slots, holsteredWeaponId);
+      if (holsteredSlot >= 0) return holsteredSlot;
+    }
+  }
+
+  return findLowestOccupiedLoadoutSlot(slots);
+}
+
+/** Decide which loadout slot receives a picked-up gun. */
 export function resolveWeaponPickup(
   slots: LoadoutSlotSnapshot,
   activeWeaponId: string,
   weaponId: string,
+  holsteredWeaponId?: string | null,
 ): WeaponPickupResolution | null {
-  if (!isWeaponId(weaponId)) return null;
-
-  const existingSlot = findLoadoutSlotForWeaponId(slots, weaponId);
-  if (existingSlot >= 0) {
-    return { targetSlot: existingSlot, replacedWeaponId: null };
-  }
+  if (!isPickableWeaponId(weaponId)) return null;
 
   const emptySlot = findLowestEmptyLoadoutSlot(slots);
   if (emptySlot >= 0) {
     return { targetSlot: emptySlot, replacedWeaponId: null };
   }
 
-  const activeSlot = findActiveWeaponSlot(slots, activeWeaponId);
-  const targetSlot = activeSlot >= 0 ? activeSlot : 0;
+  // Loadout full — drop the equipped weapon from its slot, then take the pickup.
+  const targetSlot = resolveEquippedLoadoutSlot(
+    slots,
+    activeWeaponId,
+    holsteredWeaponId,
+  );
+  if (targetSlot < 0) return null;
+
   const replacedWeaponId = getLoadoutSlotWeapon(slots, targetSlot);
-  if (!replacedWeaponId) return null;
+  if (!isPickableWeaponId(replacedWeaponId)) return null;
 
   return { targetSlot, replacedWeaponId };
+}
+
+export function canPickupWeaponDrop(
+  slots: LoadoutSlotSnapshot,
+  activeWeaponId: string,
+  weaponId: string,
+  holsteredWeaponId?: string | null,
+): boolean {
+  return resolveWeaponPickup(slots, activeWeaponId, weaponId, holsteredWeaponId) !== null;
 }

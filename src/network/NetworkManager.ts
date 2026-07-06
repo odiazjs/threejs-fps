@@ -93,6 +93,7 @@ export class NetworkManager {
     this.roomClient.onProjectileSpawn((spawn) => {
       _direction.set(spawn.dirX, spawn.dirY, spawn.dirZ).normalize();
       const weaponConfig = getWeaponConfig(spawn.weaponId ?? 'plasma_rifle');
+      const boltColors = weaponConfig?.muzzleFlash?.colors;
 
       const shooter = spawn.shooterId
         ? this.remotePlayers.getPlayer(spawn.shooterId)
@@ -113,7 +114,9 @@ export class NetworkManager {
           speed: weaponConfig?.projectileSpeed ?? 100,
         },
         {
+          visualOnly: true,
           muzzleFlash: weaponConfig?.muzzleFlash,
+          boltColors,
           shooterId: spawn.shooterId,
           shooterWorldPos: _shooterWorldPos,
         },
@@ -243,6 +246,7 @@ export class NetworkManager {
         this.impactSounds?.playEnemyHit();
         this.recordLocalHit(targetId);
         const weaponId = player.getActiveWeaponId();
+        if (!weaponId) return;
         if (weaponId === MELEE_WEAPON_ID) {
           this.remotePlayers.getPlayer(targetId)?.playMeleeHitFx(point);
         }
@@ -253,6 +257,8 @@ export class NetworkManager {
 
     player.setShootCallback((origin, direction) => {
       if (!this.roomClient.connected) return;
+      const weaponId = player.getActiveWeaponId();
+      if (!weaponId) return;
       const feet = player.object.position;
       this.roomClient.sendShoot({
         x: origin.x,
@@ -261,7 +267,7 @@ export class NetworkManager {
         dirX: direction.x,
         dirY: direction.y,
         dirZ: direction.z,
-        weaponId: player.getActiveWeaponId(),
+        weaponId,
         shooterWorldX: feet.x,
         shooterWorldY: feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
         shooterWorldZ: feet.z,
@@ -543,7 +549,7 @@ export class NetworkManager {
       if (!remote) return null;
 
       const weaponId = remote.getActiveWeaponId();
-      if (remote.readActiveMuzzleWorldPosition(_muzzlePos, weaponId)) {
+      if (remote.readActiveMuzzleWorldPosition(_muzzlePos, weaponId ?? undefined)) {
         return _muzzlePos;
       }
 

@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { sampleGroundHeight } from '../../shared/level/terrainHeight';
 import { WEAPON_PICKUP_MAX_DISTANCE } from '../../shared/network/weaponPickup';
+import { isPickableWeaponId } from '../../shared/content/weaponIds';
 import type { WeaponDropSnapshot } from '../network/types';
 import { createWeaponDropMesh } from './weaponDropVisual';
+import { resolvePickupSurfaceY } from './pickupSurface';
 
 export interface WeaponDropRaycastHit {
   index: number;
@@ -39,8 +40,8 @@ export class WeaponDrops {
       this.root.add(drop);
     }
 
-    const groundY = sampleGroundHeight(snapshot.x, snapshot.z);
-    drop.position.set(snapshot.x, groundY + 0.02, snapshot.z);
+    const groundY = resolvePickupSurfaceY(snapshot.x, snapshot.z);
+    drop.position.set(snapshot.x, groundY, snapshot.z);
     drop.rotation.y = snapshot.yaw;
   }
 
@@ -71,6 +72,7 @@ export class WeaponDrops {
         if (index !== undefined) {
           const snapshot = this.snapshots.get(index);
           if (!snapshot || snapshot.collected) return null;
+          if (!isPickableWeaponId(snapshot.weaponId)) return null;
           return {
             index,
             weaponId: snapshot.weaponId,

@@ -16,6 +16,11 @@ export function isWeaponId(value: string): value is WeaponId {
   );
 }
 
+/** Guns that can occupy numbered loadout slots or be picked up / dropped. */
+export function isPickableWeaponId(value: string): value is WeaponId {
+  return isWeaponId(value) && value !== MELEE_WEAPON_ID;
+}
+
 export function loadoutSlotFromKey(code: string): number | null {
   if (code === 'Digit1') return 0;
   if (code === 'Digit2') return 1;
