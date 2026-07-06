@@ -20,8 +20,8 @@ export const GAME_MODE_OPTIONS = [
 ] as const;
 
 export const TDM_COUNTDOWN_SEC = 10;
-export const TDM_MATCH_DURATION_SEC = 30;
-export const TDM_KILL_POINTS = 10;
+export const TDM_MATCH_DURATION_SEC = 180; // 3 minutes
+export const TDM_KILL_POINTS = 50;
 export const MAX_TDM_TEAMS = 4;
 
 export function isValidGameMode(value: string | null | undefined): value is GameMode {
