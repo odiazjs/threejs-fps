@@ -16,46 +16,28 @@ export const KILLHOUSE_LAYOUT_HOUSE_COLLISION_MODEL = 'lod_house_flat.fbx';
 export const KILLHOUSE_LAYOUT_HOUSE_VISUAL_LOD = 0;
 export const KILLHOUSE_LAYOUT_HOUSE_COLLISION_LOD = 0;
 
-/** Blue (SW) + red (east) enterable buildings. */
+/** West / east enterable buildings — mid-lane, away from corner team spawns. */
 export const KILLHOUSE_LAYOUT_HOUSE_PLACEMENTS: readonly KillhouseHousePlacement[] = [
-  { id: 'blue', x: -10.5, z: 10, rotationY: 0 },
-  { id: 'red', x: 10.5, z: 0.5, rotationY: Math.PI },
+  { id: 'blue', x: -7.5, z: -3, rotationY: 0 },
+  { id: 'red', x: 7.5, z: 3, rotationY: Math.PI },
 ] as const;
 
 export const KILLHOUSE_LAYOUT_MEDIUM_WALL_SCALE = 0.02;
 export const KILLHOUSE_LAYOUT_MEDIUM_WALL_MODEL = 'bio_wall_medium.fbx';
 
-/** Interior bio_wall_medium cover — matches concept map wall segments. */
+/** Interior bio_wall_medium cover — center lanes only (corners kept clear for TDM spawns). */
 export const KILLHOUSE_LAYOUT_MEDIUM_WALL_PLACEMENTS: readonly LayoutPropPlacement[] = [
-  // Top-left L (B1 lane)
-  { x: -17.1, z: -13.5, rotationY: 0 },
-  { x: -13.3, z: -13.5, rotationY: 0 },
-  { x: -18.5, z: -11.5, rotationY: Math.PI / 2 },
-  { x: -18.5, z: -7.7, rotationY: Math.PI / 2 },
+  // North center lane split
+  { x: -1.9, z: -10, rotationY: 0 },
+  { x: 1.9, z: -10, rotationY: 0 },
 
-  // Top-center lane divider
-  { x: -1.9, z: -14.2, rotationY: 0 },
-  { x: 1.9, z: -14.2, rotationY: 0 },
+  // West mid cover
+  { x: -5.5, z: -1, rotationY: Math.PI / 2 },
+  { x: -5.5, z: 2.5, rotationY: Math.PI / 2 },
 
-  // Top-right T (R1 approach)
-  { x: 13.3, z: -13.5, rotationY: 0 },
-  { x: 17.1, z: -13.5, rotationY: 0 },
-  { x: 15.2, z: -15.3, rotationY: Math.PI / 2 },
-  { x: 15.2, z: -11.5, rotationY: Math.PI / 2 },
-
-  // Center-left L (B2)
-  { x: -8.7, z: -2.5, rotationY: Math.PI / 2 },
-  { x: -8.7, z: 1.3, rotationY: Math.PI / 2 },
-  { x: -10.5, z: -0.6, rotationY: 0 },
-
-  // Center-right L (R3)
-  { x: 9.5, z: 1.3, rotationY: Math.PI / 2 },
-  { x: 9.5, z: -2.5, rotationY: Math.PI / 2 },
-  { x: 7.7, z: -0.6, rotationY: 0 },
-
-  // Bottom-right (R6)
-  { x: 15.2, z: 14.3, rotationY: 0 },
-  { x: 19.0, z: 14.3, rotationY: 0 },
+  // East mid cover
+  { x: 5.5, z: 2.5, rotationY: Math.PI / 2 },
+  { x: 5.5, z: -1, rotationY: Math.PI / 2 },
 ] as const;
 
 export const KILLHOUSE_LAYOUT_PINK_PROP_SCALE = 0.018;

@@ -54,10 +54,22 @@ const CORNER_NE = { x: 17, z: 12 } as const;
 const CORNER_NW = { x: -17, z: 12 } as const;
 const CORNER_SE = { x: 17, z: -12 } as const;
 
-const CORNER_SPAWN_SPREAD = { spreadX: 2.5, spreadZ: 2.5 } as const;
+const CORNER_SPAWN_SPREAD = { spreadX: 3, spreadZ: 3 } as const;
+
+/** Inset from arena edge so spawns stay clear of perimeter bio walls. */
+const TDM_SPAWN_INSET_X = 5.5;
+const TDM_SPAWN_INSET_Z = 5;
 
 function cornerZone(x: number, z: number): SpawnZone {
   return { x, z, ...CORNER_SPAWN_SPREAD };
+}
+
+function tdmTeamCornerZone(signX: -1 | 1, signZ: -1 | 1): SpawnZone {
+  return {
+    x: signX * (MAP_HALF_X - TDM_SPAWN_INSET_X),
+    z: signZ * (MAP_HALF_Z - TDM_SPAWN_INSET_Z),
+    ...CORNER_SPAWN_SPREAD,
+  };
 }
 
 /** Module span along its long edge after scale — matches 12 × length = width, 10 × length = depth. */
@@ -130,17 +142,17 @@ const PLAYGROUND_SPAWN_POOL: readonly SpawnZone[] = [
   cornerZone(CORNER_SE.x, CORNER_SE.z),
 ];
 
-/** TDM — blue west, red east (Chrono-Bowl 2v2 layout). */
+/** TDM — blue west corners, red east corners (inset from perimeter cover). */
 const BLUE_SPAWN_POOL: readonly SpawnZone[] = [
-  cornerZone(-18, -14),
-  cornerZone(-14, 10),
+  tdmTeamCornerZone(-1, -1),
+  tdmTeamCornerZone(-1, 1),
 ];
 const RED_SPAWN_POOL: readonly SpawnZone[] = [
-  cornerZone(18, -14),
-  cornerZone(14, 10),
+  tdmTeamCornerZone(1, -1),
+  tdmTeamCornerZone(1, 1),
 ];
-const GREEN_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_NW.x, CORNER_NW.z)];
-const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [cornerZone(CORNER_SE.x, CORNER_SE.z)];
+const GREEN_SPAWN_POOL: readonly SpawnZone[] = [tdmTeamCornerZone(-1, 1)];
+const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [tdmTeamCornerZone(1, -1)];
 
 export const HUMAN_RESPAWN_POINT = CORNER_SW;
 
