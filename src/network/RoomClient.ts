@@ -16,7 +16,11 @@ import {
 } from '../../shared/schema/FpsState';
 import { getServerUrl } from '../config/serverUrl';
 import { DEFAULT_MAP_ID, isValidMapId, normalizeMapId, type MapId } from '../../shared/level/maps';
-import { normalizeGameMode, normalizeMatchPhase } from '../../shared/combat/match';
+import {
+  normalizeGameMode,
+  normalizeMatchPhase,
+  TDM_MATCH_DURATION_SEC,
+} from '../../shared/combat/match';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { WeaponId } from '../../shared/content/weaponIds';
@@ -175,7 +179,7 @@ export class RoomClient {
     if (!this.room) return null;
     const state = this.room.state as FpsState;
     const gameMode = normalizeGameMode(state.gameMode);
-    const duration = state.matchDurationSec > 0 ? state.matchDurationSec : 120;
+    const duration = state.matchDurationSec > 0 ? state.matchDurationSec : TDM_MATCH_DURATION_SEC;
     return {
       gameMode,
       phase: normalizeMatchPhase(state.matchPhase),

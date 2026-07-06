@@ -1,6 +1,7 @@
 import { Schema, type, MapSchema, ArraySchema } from '@colyseus/schema';
 import { PLAYER_MAX_HP } from '../combat/damage.js';
 import { DEFAULT_SHIELD_CHARGES } from '../inventory/inventoryLimits.js';
+import { TDM_MATCH_DURATION_SEC } from '../combat/match.js';
 import { SHIELD_DEFAULT_LEVEL, getDefaultShieldPoints } from '../combat/shield.js';
 
 export class PlayerState extends Schema {
@@ -83,7 +84,7 @@ export class FpsState extends Schema {
   @type('number') matchCountdownEndAt = 0;
   @type('number') matchStartAt = 0;
   @type('number') matchEndAt = 0;
-  @type('number') matchDurationSec = 120;
+  @type('number') matchDurationSec = TDM_MATCH_DURATION_SEC;
   /** -1 = tie or not decided yet. */
   @type('number') winningTeamId = -1;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
