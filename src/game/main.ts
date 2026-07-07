@@ -26,6 +26,7 @@ async function startGame(): Promise<void> {
       { userId: session.userId, username: session.username },
       joinIntent,
       () => loading.hide(),
+      (message) => loading.setMessage(message),
     );
   } catch (error) {
     loading.reset();

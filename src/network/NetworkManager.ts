@@ -115,10 +115,10 @@ export class NetworkManager {
         },
         {
           visualOnly: true,
-          muzzleFlash: weaponConfig?.muzzleFlash,
           boltColors,
           shooterId: spawn.shooterId,
           shooterWorldPos: _shooterWorldPos,
+          weaponId: weaponId ?? 'plasma_rifle',
         },
       );
     });

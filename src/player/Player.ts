@@ -154,6 +154,7 @@ export class Player {
   private muzzleOrigin = new THREE.Vector3();
   private aimDirection = new THREE.Vector3();
   private hitRayOrigin = new THREE.Vector3();
+  private readonly shooterWorldPos = new THREE.Vector3();
   private hitRayDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSway | null = null;
@@ -207,6 +208,7 @@ export class Player {
   private shieldPoints = getDefaultShieldPoints();
   private hitCapsuleDebug: THREE.Group | null = null;
   private bodyPartBones: BodyPartBones | null = null;
+  private readonly bodyHitVolumes: BodyPartVolume[] = [];
 
   private constructor(local: boolean) {
     this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG);
@@ -285,7 +287,9 @@ export class Player {
   }
 
   static createRemote(_color = 0x6a9fd4): Player {
-    return new Player(false);
+    const player = new Player(false);
+    player.prepareShieldBreakFx();
+    return player;
   }
 
   static async preloadGameCharacterModels(): Promise<void> {
@@ -750,13 +754,24 @@ export class Player {
     return this.currentPitch;
   }
 
-  /** Bone-driven world-space hit capsules (updated each remote frame). */
-  getBodyHitVolumes(): BodyPartVolume[] | null {
-    if (!this.bodyPartBones || !this.characterInstance) return null;
-    this.characterInstance.update(0);
+  /** Cached bone-driven hit capsules — refreshed once per remote frame. */
+  getBodyHitVolumes(): readonly BodyPartVolume[] | null {
+    return this.bodyHitVolumes.length > 0 ? this.bodyHitVolumes : null;
+  }
+
+  refreshCombatHitVolumes(): void {
+    if (!this.bodyPartBones || !this.characterInstance) {
+      this.bodyHitVolumes.length = 0;
+      return;
+    }
+
     this.object.updateMatrixWorld(true);
     const boneRefs = readBodyPartBoneRefsWorld(this.bodyPartBones);
-    return bodyPartVolumesFromBoneRefs(boneRefs);
+    const next = bodyPartVolumesFromBoneRefs(boneRefs);
+    this.bodyHitVolumes.length = 0;
+    for (const volume of next) {
+      this.bodyHitVolumes.push(volume);
+    }
   }
 
   /** Third-person active weapon muzzle in world space (remote observers). */
@@ -933,6 +948,7 @@ export class Player {
     this.applyRemoteAim();
     this.characterInstance?.update(delta);
     this.applyRemoteSpinePitch();
+    this.refreshCombatHitVolumes();
     this.syncHitCapsuleDebug();
   }
 
@@ -940,7 +956,7 @@ export class Player {
     if (!this.hitCapsuleDebug) return;
 
     const space = this.bodyRoot ?? this.object;
-    const volumes = this.getBodyHitVolumes();
+    const volumes = this.bodyHitVolumes.length > 0 ? this.bodyHitVolumes : null;
     updateHitCapsuleDebugMesh(this.hitCapsuleDebug, volumes, space);
   }
 
@@ -990,23 +1006,21 @@ export class Player {
     this.onShieldBreakListener = listener;
   }
 
+  private prepareShieldBreakFx(): void {
+    if (this.camera || this.shieldBreakFx) return;
+    this.shieldBreakFx = new ShieldBreakFx();
+    this.object.add(this.shieldBreakFx.object);
+  }
+
   private playShieldBreakFx(): void {
     if (this.camera) return;
-    if (!this.shieldBreakFx) {
-      this.shieldBreakFx = new ShieldBreakFx();
-      this.object.add(this.shieldBreakFx.object);
-    }
-    this.shieldBreakFx.play();
+    this.prepareShieldBreakFx();
+    this.shieldBreakFx!.play();
   }
 
   updateDamageNumbers(delta: number, camera: THREE.Camera): void {
     this.damageNumberStack?.update(delta, camera);
-    if (this.shieldBreakFx) {
-      if (!this.shieldBreakFx.update(delta, camera)) {
-        this.shieldBreakFx.dispose();
-        this.shieldBreakFx = null;
-      }
-    }
+    this.shieldBreakFx?.update(delta, camera);
     this.meleeHitFx?.update(delta, camera);
   }
 
@@ -1200,7 +1214,6 @@ export class Player {
       );
       this.weaponSway?.apply(
         active.mesh,
-        this.weaponPose!.hipOffset,
         weaponRotation,
       );
 
@@ -1547,6 +1560,11 @@ export class Player {
     );
 
     const feet = this.object.position;
+    this.shooterWorldPos.set(
+      feet.x,
+      feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
+      feet.z,
+    );
     projectiles.spawn(
       {
         hitRayOrigin: this.hitRayOrigin,
@@ -1557,12 +1575,9 @@ export class Player {
       {
       ...this.projectileSpawnOptions,
       shooterId: this.projectileSpawnOptions.ownerSessionId || undefined,
-      shooterWorldPos: new THREE.Vector3(
-        feet.x,
-        feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
-        feet.z,
-      ),
-      muzzleFlash: active.config.muzzleFlash,
+      shooterWorldPos: this.shooterWorldPos,
+      weaponId: active.config.id,
+      muzzleFlash: active.config.fireMode === 'auto' ? undefined : active.config.muzzleFlash,
       boltColors: active.config.muzzleFlash?.colors,
       },
     );

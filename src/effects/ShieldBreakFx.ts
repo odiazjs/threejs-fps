@@ -1,20 +1,17 @@
 import * as THREE from 'three';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
+import {
+  createShieldBreakRimMaterial,
+  createShieldBreakShardMaterial,
+  createShieldBreakShellMaterial,
+} from './shieldBreakFxShared';
 
 const DURATION_SEC = 1.35;
 const SHARD_COUNT = 18;
 const SHIELD_RADIUS = 0.94;
 const CENTER_Y = PLAYER_HIT_CAPSULE_HEIGHT * 0.56;
 
-const CYAN = new THREE.Color(0x00d8ff);
 const CYAN_BRIGHT = new THREE.Color(0x9afbff);
-
-const FX = {
-  transparent: true,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-  toneMapped: false,
-} as const;
 
 // Shared GPU resources — one copy for all shield-break instances.
 const SHELL_GEOMETRY = new THREE.SphereGeometry(SHIELD_RADIUS, 14, 10);
@@ -53,21 +50,11 @@ export class ShieldBreakFx {
     this.object.visible = false;
     this.object.frustumCulled = true;
 
-    this.shellMaterial = new THREE.MeshBasicMaterial({
-      color: CYAN,
-      ...FX,
-      opacity: 0.55,
-      side: THREE.DoubleSide,
-    });
+    this.shellMaterial = createShieldBreakShellMaterial();
     this.shell = new THREE.Mesh(SHELL_GEOMETRY, this.shellMaterial);
     this.object.add(this.shell);
 
-    this.rimMaterial = new THREE.MeshBasicMaterial({
-      color: CYAN_BRIGHT,
-      ...FX,
-      opacity: 0.85,
-      side: THREE.BackSide,
-    });
+    this.rimMaterial = createShieldBreakRimMaterial();
     this.rim = new THREE.Mesh(RIM_GEOMETRY, this.rimMaterial);
     this.object.add(this.rim);
 
@@ -94,13 +81,7 @@ export class ShieldBreakFx {
     shardGeometry.setAttribute('position', new THREE.BufferAttribute(this.shardPositions, 3));
     shardGeometry.setAttribute('color', new THREE.BufferAttribute(shardColors, 3));
 
-    this.shardMaterial = new THREE.PointsMaterial({
-      size: 0.11,
-      vertexColors: true,
-      ...FX,
-      opacity: 0.95,
-      sizeAttenuation: true,
-    });
+    this.shardMaterial = createShieldBreakShardMaterial();
     this.shards = new THREE.Points(shardGeometry, this.shardMaterial);
     this.object.add(this.shards);
   }

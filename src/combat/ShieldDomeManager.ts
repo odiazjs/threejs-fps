@@ -72,6 +72,10 @@ export class ShieldDomeManager {
     );
   }
 
+  hasAnyActiveDome(worldTime: number): boolean {
+    return this.domes.some((dome) => worldTime < dome.expiresAtWorldTime);
+  }
+
   testProjectileSegment(
     from: Vector3,
     to: Vector3,

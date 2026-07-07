@@ -58,8 +58,11 @@ export class RemotePlayers {
     return this.players;
   }
 
+  private readonly enemyHitTargetScratch: ProjectileHitTarget[] = [];
+
   getEnemyHitTargets(localTeamId: number, localSessionId: string): ProjectileHitTarget[] {
-    const targets: ProjectileHitTarget[] = [];
+    const targets = this.enemyHitTargetScratch;
+    targets.length = 0;
     const friendlyFire = this.roomClient.getFriendlyFire();
 
     for (const [sessionId, player] of this.players) {

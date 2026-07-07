@@ -12,45 +12,56 @@ interface SwayProfile {
 const SWAY_IDLE: SwayProfile = { pos: 0.002, rot: 0.0028, freq: 0.42 };
 const SWAY_WALK: SwayProfile = { pos: 0.0055, rot: 0.0065, freq: 1.15 };
 
-/** Snappy blends for locomotion + carry pose. */
 const SWAY_BLEND_SPEED = 12;
-const CARRY_BLEND_SPEED = 16;
+const CARRY_BLEND_IN_SPEED = 14;
+const CARRY_BLEND_OUT_SPEED = 9;
 const ADS_SWAY_REDUCTION = 0.42;
+
+/** Hold carry briefly so grounded / input flicker does not retrigger sway. */
+const CARRY_GROUNDED_GRACE_SEC = 0.14;
+const CARRY_SHOOTING_GRACE_SEC = 0.1;
+const ADS_BLOCK_CARRY_BLEND = 0.16;
+const ADS_ALLOW_CARRY_BLEND = 0.1;
 
 /** Right-side high carry — muzzle toward the sky while sprinting. */
 const SPRINT_CARRY = {
   position: { x: 0.12, y: 0.05, z: -0.1 },
   rotation: { x: 1.48, y: -0.1, z: -0.32 },
-  bobAmp: 0.016,
-  bobFreq: 3.1,
 } as const;
 
-const _combatPos = new THREE.Vector3();
-const _combatRot = new THREE.Euler();
-const _combatQuat = new THREE.Quaternion();
+const _basePos = new THREE.Vector3();
+const _baseRot = new THREE.Euler();
+const _baseQuat = new THREE.Quaternion();
+const _carryOffset = new THREE.Vector3();
+const _carryRot = new THREE.Euler();
+const _carryQuat = new THREE.Quaternion();
 const _targetPos = new THREE.Vector3();
-const _targetRot = new THREE.Euler();
 const _targetQuat = new THREE.Quaternion();
-const _lerpQuat = new THREE.Quaternion();
 
 /**
  * Idle / walk weapon sway plus sprint high-carry pose when not firing.
  */
 export class WeaponSway {
   private phase = 0;
-  private carryPhase = 0;
   private adsDamp = 1;
   private posAmp = SWAY_IDLE.pos;
   private rotAmp = SWAY_IDLE.rot;
   private freq = SWAY_IDLE.freq;
   private walkBlend = 0;
   private carryBlend = 0;
+  private carryGroundedGrace = 0;
+  private carryShootingGrace = 0;
+  private adsBlocksCarry = false;
+  private wasShooting = false;
 
   reset(): void {
     this.phase = 0;
-    this.carryPhase = 0;
     this.walkBlend = 0;
     this.carryBlend = 0;
+    this.carryGroundedGrace = 0;
+    this.carryShootingGrace = 0;
+    this.adsBlocksCarry = false;
+    this.wasShooting = false;
     this.adsDamp = 1;
     this.posAmp = SWAY_IDLE.pos;
     this.rotAmp = SWAY_IDLE.rot;
@@ -72,55 +83,79 @@ export class WeaponSway {
   ): void {
     const weaponScale = config?.intensity ?? 1;
     const walkActive = grounded && walking && !sprinting;
-    const carryWanted =
-      grounded && sprinting && !shooting && adsBlend < 0.12;
 
-    const walkBlend = 1 - Math.exp(-SWAY_BLEND_SPEED * delta);
-    const carryStep = 1 - Math.exp(-CARRY_BLEND_SPEED * delta);
-
-    this.walkBlend += ((walkActive ? 1 : 0) - this.walkBlend) * walkBlend;
-    this.carryBlend += ((carryWanted ? 1 : 0) - this.carryBlend) * carryStep;
-
-    const idleWeight = (1 - this.walkBlend) * (1 - this.carryBlend);
-    const walkWeight = this.walkBlend * (1 - this.carryBlend);
-
-    this.posAmp = (SWAY_IDLE.pos * idleWeight + SWAY_WALK.pos * walkWeight) * weaponScale;
-    this.rotAmp = (SWAY_IDLE.rot * idleWeight + SWAY_WALK.rot * walkWeight) * weaponScale;
-    this.freq = SWAY_IDLE.freq * idleWeight + SWAY_WALK.freq * walkWeight;
-
-    this.phase += delta * this.freq;
-    if (this.carryBlend > 0.01) {
-      this.carryPhase += delta * SPRINT_CARRY.bobFreq;
-    } else if (this.carryPhase !== 0) {
-      this.carryPhase = 0;
+    if (grounded && sprinting) {
+      this.carryGroundedGrace = CARRY_GROUNDED_GRACE_SEC;
+    } else {
+      this.carryGroundedGrace = Math.max(0, this.carryGroundedGrace - delta);
     }
 
+    if (shooting) {
+      if (this.carryShootingGrace > 0) {
+        this.carryShootingGrace = Math.max(0, this.carryShootingGrace - delta);
+      }
+    } else if (this.wasShooting) {
+      this.carryShootingGrace = CARRY_SHOOTING_GRACE_SEC;
+    } else if (this.carryShootingGrace > 0) {
+      this.carryShootingGrace = Math.max(0, this.carryShootingGrace - delta);
+    }
+    this.wasShooting = shooting;
+
+    if (this.adsBlocksCarry) {
+      if (adsBlend < ADS_ALLOW_CARRY_BLEND) {
+        this.adsBlocksCarry = false;
+      }
+    } else if (adsBlend > ADS_BLOCK_CARRY_BLEND) {
+      this.adsBlocksCarry = true;
+    }
+
+    const carryRaw =
+      (grounded || this.carryGroundedGrace > 0)
+      && sprinting
+      && (this.carryShootingGrace > 0 || !shooting)
+      && !this.adsBlocksCarry;
+
+    const walkStep = 1 - Math.exp(-SWAY_BLEND_SPEED * delta);
+    const carryStep = 1 - Math.exp(
+      -(carryRaw ? CARRY_BLEND_IN_SPEED : CARRY_BLEND_OUT_SPEED) * delta,
+    );
+
+    this.walkBlend += ((walkActive ? 1 : 0) - this.walkBlend) * walkStep;
+    this.carryBlend += ((carryRaw ? 1 : 0) - this.carryBlend) * carryStep;
+
+    const locomotionBlend = this.walkBlend * (1 - this.carryBlend);
+    const idleWeight = (1 - locomotionBlend) * (1 - this.carryBlend);
+
+    this.posAmp = (SWAY_IDLE.pos * idleWeight + SWAY_WALK.pos * locomotionBlend) * weaponScale;
+    this.rotAmp = (SWAY_IDLE.rot * idleWeight + SWAY_WALK.rot * locomotionBlend) * weaponScale;
+    this.freq = SWAY_IDLE.freq * idleWeight + SWAY_WALK.freq * locomotionBlend;
+
+    this.phase += delta * this.freq;
     this.adsDamp = 1 - adsBlend * ADS_SWAY_REDUCTION;
   }
 
-  apply(weapon: THREE.Object3D, hip: THREE.Vector3, baseRotation: THREE.Euler): void {
-    _combatPos.copy(weapon.position);
-    _combatRot.copy(weapon.rotation);
-    _combatQuat.setFromEuler(_combatRot);
+  apply(weapon: THREE.Object3D, baseRotation: THREE.Euler): void {
+    _basePos.copy(weapon.position);
+    _baseRot.copy(baseRotation);
+    _baseQuat.setFromEuler(_baseRot);
 
     if (this.carryBlend > 0.001) {
-      const bobY = Math.sin(this.carryPhase * TAU) * SPRINT_CARRY.bobAmp;
-
-      _targetPos.set(
-        hip.x + SPRINT_CARRY.position.x,
-        hip.y + SPRINT_CARRY.position.y + bobY,
-        hip.z + SPRINT_CARRY.position.z,
+      _carryOffset.set(
+        SPRINT_CARRY.position.x,
+        SPRINT_CARRY.position.y,
+        SPRINT_CARRY.position.z,
       );
+      _targetPos.copy(_basePos).add(_carryOffset);
 
-      _targetRot.copy(baseRotation);
-      _targetRot.x += SPRINT_CARRY.rotation.x;
-      _targetRot.y += SPRINT_CARRY.rotation.y;
-      _targetRot.z += SPRINT_CARRY.rotation.z;
-      _targetQuat.setFromEuler(_targetRot);
+      _carryRot.copy(_baseRot);
+      _carryRot.x += SPRINT_CARRY.rotation.x;
+      _carryRot.y += SPRINT_CARRY.rotation.y;
+      _carryRot.z += SPRINT_CARRY.rotation.z;
+      _carryQuat.setFromEuler(_carryRot);
 
-      weapon.position.lerpVectors(_combatPos, _targetPos, this.carryBlend);
-      _lerpQuat.copy(_combatQuat).slerp(_targetQuat, this.carryBlend);
-      weapon.rotation.setFromQuaternion(_lerpQuat);
+      weapon.position.lerpVectors(_basePos, _targetPos, this.carryBlend);
+      _targetQuat.copy(_baseQuat).slerp(_carryQuat, this.carryBlend);
+      weapon.rotation.setFromQuaternion(_targetQuat);
     }
 
     const swayScale = (1 - this.carryBlend) * this.adsDamp;

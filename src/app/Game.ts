@@ -54,6 +54,7 @@ import { AmmoPickups } from '../world/AmmoPickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
 import { isValidDropSlot, canPickupWeaponDrop } from '../../shared/loadout/loadoutSlots';
+import { runShaderPrewarm } from '../combat/prewarmCombatFx';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -175,6 +176,7 @@ export class Game {
     credentials: FpsJoinCredentials,
     joinIntent?: GameJoinIntent | null,
     onConnected?: () => void,
+    onLoadingMessage?: (message: string) => void,
   ): Promise<void> {
     const initialMapId = normalizeMapId(joinIntent?.mapId ?? getSelectedMapId());
     this.worldMapId = initialMapId;
@@ -184,6 +186,7 @@ export class Game {
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
     this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
     this.weaponSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
+    onLoadingMessage?.('Loading game assets...');
     await Promise.all([
       initialMapId === 'firing_range'
         ? this.worldBuilder!.whenMeshCollisionReady()
@@ -232,6 +235,13 @@ export class Game {
     this.initPlayer(initialMapId, joinIntent?.gameMode);
     this.applyActiveMap();
     this.initResize();
+    onLoadingMessage?.('Compiling shaders...');
+    await runShaderPrewarm(
+      this.renderContext.renderer,
+      this.scene,
+      this.getActiveCamera(),
+    );
+    this.impactSounds.primeEnemyHit();
     await this.initNetwork(credentials, joinIntent);
     this.applyActiveMap();
     onConnected?.();

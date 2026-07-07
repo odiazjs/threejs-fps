@@ -61,6 +61,37 @@ export class ImpactSoundService {
     this.play(this.shieldChargeEnd);
   }
 
+  /** Play at zero gain so the first audible hit does not hitch the audio graph. */
+  primeEnemyHit(): void {
+    this.playAtGain(this.enemyHit, 0);
+  }
+
+  private play(sound: LoadedGlobalSound | null): void {
+    if (!sound) return;
+    this.playAtGain(sound, sound.config.volume);
+  }
+
+  private playAtGain(sound: LoadedGlobalSound | null, gainValue: number): void {
+    if (!sound) return;
+
+    this.ensureContext();
+    if (!this.context || !this.masterGain) return;
+
+    if (this.context.state === 'suspended') {
+      void this.context.resume();
+    }
+
+    const source = this.context.createBufferSource();
+    source.buffer = sound.buffer;
+
+    const gain = this.context.createGain();
+    gain.gain.value = gainValue;
+
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.start();
+  }
+
   private async loadSound(config: GlobalAudioConfig): Promise<LoadedGlobalSound> {
     this.ensureContext();
     if (!this.context) {
@@ -75,27 +106,6 @@ export class ImpactSoundService {
     const data = await response.arrayBuffer();
     const buffer = await this.context.decodeAudioData(data);
     return { config, buffer };
-  }
-
-  private play(sound: LoadedGlobalSound | null): void {
-    if (!sound) return;
-
-    this.ensureContext();
-    if (!this.context || !this.masterGain) return;
-
-    if (this.context.state === 'suspended') {
-      void this.context.resume();
-    }
-
-    const source = this.context.createBufferSource();
-    source.buffer = sound.buffer;
-
-    const gain = this.context.createGain();
-    gain.gain.value = sound.config.volume;
-
-    source.connect(gain);
-    gain.connect(this.masterGain);
-    source.start();
   }
 
   private ensureContext(): void {

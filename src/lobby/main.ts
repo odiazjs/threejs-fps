@@ -1,6 +1,8 @@
 import { handoffPageBoot } from '../app/pageBoot';
 import { AppShell, parseShellViewFromUrl } from '../app/AppShell';
 import { initAppSession } from '../app/bootstrap';
+import { runClientAssetPrewarm } from '../assets/clientAssetPrewarm';
+import { isClientAssetPrewarmComplete } from '../assets/clientAssetPrewarmState';
 import { logout } from '../auth/playerSession';
 import { bootstrapDebugFlags } from '../debug/debugQuery';
 import { FriendsPanel } from './FriendsPanel';
@@ -15,7 +17,7 @@ import { onGameOverlayClosed, setGameOverlayBackgroundHooks } from './launchGame
 import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
-loading.show('Loading lobby...');
+loading.show(isClientAssetPrewarmComplete() ? 'Loading lobby...' : 'Loading assets...');
 bootstrapDebugFlags();
 handoffPageBoot();
 
@@ -29,6 +31,11 @@ async function startLobby(): Promise<void> {
   const initialView = parseShellViewFromUrl();
 
   try {
+    if (!isClientAssetPrewarmComplete()) {
+      await runClientAssetPrewarm((message) => loading.setMessage(message));
+      loading.setMessage('Loading lobby...');
+    }
+
     const session = await initAppSession();
     const scene = new LobbyScene(document.getElementById('lobby-canvas')!, session.userId);
     setGameOverlayBackgroundHooks(

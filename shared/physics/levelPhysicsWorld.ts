@@ -30,6 +30,7 @@ export class LevelPhysicsWorld {
   private controller: RAPIER.KinematicCharacterController | null = null;
   private probeBody: RAPIER.RigidBody | null = null;
   private probeCollider: RAPIER.Collider | null = null;
+  private bulletRay: RAPIER.Ray | null = null;
   private ready = false;
 
   get isReady(): boolean {
@@ -62,6 +63,7 @@ export class LevelPhysicsWorld {
     this.controller.setMaxSlopeClimbAngle(MAX_SLOPE_RAD);
     this.controller.setMinSlopeSlideAngle((28 * Math.PI) / 180);
 
+    this.bulletRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
     this.ready = true;
   }
 
@@ -129,10 +131,9 @@ export class LevelPhysicsWorld {
     const len = Math.hypot(dx, dy, dz);
     if (len < 1e-8) return null;
 
-    const ray = new RAPIER.Ray(
-      { x: ox, y: oy, z: oz },
-      { x: dx / len, y: dy / len, z: dz / len },
-    );
+    const ray = this.bulletRay ?? new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+    ray.origin = { x: ox, y: oy, z: oz };
+    ray.dir = { x: dx / len, y: dy / len, z: dz / len };
 
     const hit = this.world.castRay(
       ray,
@@ -300,6 +301,7 @@ export class LevelPhysicsWorld {
     this.controller = null;
     this.probeBody = null;
     this.probeCollider = null;
+    this.bulletRay = null;
     this.ready = false;
   }
 

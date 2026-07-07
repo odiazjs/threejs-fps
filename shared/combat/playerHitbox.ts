@@ -121,6 +121,7 @@ export function raycastCapsuleSegment(
   by: number,
   bz: number,
   radius: number,
+  allowGrazingFallback = true,
 ): number | null {
   if (maxDist <= 0) return null;
 
@@ -206,8 +207,10 @@ export function raycastCapsuleSegment(
 
   if (best !== null) return best;
 
+  if (!allowGrazingFallback) return null;
+
   // Forward scan fallback for grazing hits on thin limb capsules.
-  const steps = Math.max(16, Math.ceil(maxDist / 0.04));
+  const steps = Math.min(24, Math.max(8, Math.ceil(maxDist / 0.25)));
   const radiusSq = radius * radius;
   for (let i = 0; i <= steps; i++) {
     const t = (i / steps) * maxDist;
@@ -288,9 +291,9 @@ function resolveBodyPartVolumes(
     pitch?: number;
     volumes?: readonly BodyPartVolume[];
   },
-): BodyPartVolume[] {
+): readonly BodyPartVolume[] {
   if (target.volumes && target.volumes.length > 0) {
-    return [...target.volumes];
+    return target.volumes;
   }
   return buildStaticBodyPartVolumes(target);
 }
@@ -316,8 +319,11 @@ export function raycastBodyPartVolumes(
   dirZ: number,
   maxDist: number,
   volumes: readonly BodyPartVolume[],
+  allowGrazingFallback = false,
 ): BodyPartHitResult | null {
-  const hits: BodyPartHitResult[] = [];
+  let bestPart: BodyPartId | null = null;
+  let bestDist = Infinity;
+  let bestPriority = Infinity;
 
   for (const vol of volumes) {
     const distance = raycastCapsuleSegment(
@@ -335,22 +341,29 @@ export function raycastBodyPartVolumes(
       vol.by,
       vol.bz,
       vol.radius,
+      allowGrazingFallback,
     );
     if (distance === null) continue;
-    hits.push({ part: vol.part, distance });
+
+    const priority = PART_HIT_PRIORITY[vol.part];
+    if (distance < bestDist - CLOSE_HIT_EPS) {
+      bestDist = distance;
+      bestPart = vol.part;
+      bestPriority = priority;
+      continue;
+    }
+
+    if (distance <= bestDist + CLOSE_HIT_EPS) {
+      if (priority < bestPriority || (priority === bestPriority && distance < bestDist)) {
+        bestDist = distance;
+        bestPart = vol.part;
+        bestPriority = priority;
+      }
+    }
   }
 
-  if (hits.length === 0) return null;
-
-  const closestDist = Math.min(...hits.map((hit) => hit.distance));
-  const closeHits = hits.filter((hit) => hit.distance <= closestDist + CLOSE_HIT_EPS);
-  closeHits.sort((a, b) => {
-    const priorityDelta = PART_HIT_PRIORITY[a.part] - PART_HIT_PRIORITY[b.part];
-    if (priorityDelta !== 0) return priorityDelta;
-    return a.distance - b.distance;
-  });
-
-  return closeHits[0]!;
+  if (bestPart === null) return null;
+  return { part: bestPart, distance: bestDist };
 }
 
 /** Returns the closest struck body part along the ray/segment, if any. */
