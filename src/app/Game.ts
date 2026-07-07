@@ -31,6 +31,8 @@ import { HealthHud } from '../ui/HealthHud';
 import { TeamHud } from '../ui/TeamHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
 import { ControlsHelpHud } from '../ui/ControlsHelpHud';
+import { MinimapHud } from '../ui/MinimapHud';
+import { TacticalMapOverlay } from '../ui/TacticalMapOverlay';
 import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import { InventoryHud } from '../ui/InventoryHud';
@@ -40,12 +42,14 @@ import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { getCountdownDisplayValue, type MatchPhase } from '../../shared/combat/match';
+import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { isWeaponId } from '../../shared/content/weaponIds';
 import type { GameJoinIntent } from '../auth/gameJoin';
+import type { MinimapUpdateState } from '../ui/minimapTypes';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import { getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
@@ -102,6 +106,8 @@ export class Game {
   private killFeedHud = new KillFeedHud();
   private crosshairHud = new CrosshairHud();
   private controlsHelpHud = new ControlsHelpHud();
+  private minimapHud = new MinimapHud();
+  private tacticalMapOverlay = new TacticalMapOverlay();
   private damageIndicatorHud = new DamageIndicatorHud();
   private inventoryHud = new InventoryHud(
     DEFAULT_LOADOUT_CONFIGS.map((config) => ({
@@ -214,6 +220,17 @@ export class Game {
     ]);
     if (initialMapId === 'firing_range') {
       const mapDef = getMapDef('firing_range');
+      try {
+        const minimapLayout = await loadFiringRangeMinimapLayout();
+        this.minimapHud.setLayout(minimapLayout);
+        this.tacticalMapOverlay.setLayout(minimapLayout);
+        this.minimapHud.setMapActive(true);
+        this.tacticalMapOverlay.setMapActive(true);
+      } catch (error) {
+        console.warn('[Game] Failed to load firing range minimap', error);
+        this.minimapHud.setMapActive(false);
+        this.tacticalMapOverlay.setMapActive(false);
+      }
       await this.ammoPickups.repopulate(mapDef.getAmmoPositions?.() ?? []);
       mapDef.getShieldPositions?.().forEach((pos, index) => {
         this.shieldChargePickups.applySnapshot(index, {
@@ -231,6 +248,9 @@ export class Game {
           collected: false,
         });
       });
+    } else {
+      this.minimapHud.setMapActive(false);
+      this.tacticalMapOverlay.setMapActive(false);
     }
     this.initPlayer(initialMapId, joinIntent?.gameMode);
     this.applyActiveMap();
@@ -415,6 +435,7 @@ export class Game {
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
     this.playerControls.setControlsHelpHud(this.controlsHelpHud);
+    this.playerControls.setMinimapHud(this.minimapHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
     this.playerControls.setShieldDomeHud(this.shieldDomeHud);
@@ -704,6 +725,52 @@ export class Game {
     );
   }
 
+  private closeTacticalMap(): void {
+    if (!this.tacticalMapOverlay.isOpen()) return;
+    this.tacticalMapOverlay.setOpen(false);
+    this.playerControls.setTacticalMapOpen(false);
+    if (this.playerControls.isPlaying && this.localCombat.alive && !this.inventoryOpen) {
+      this.playerControls.controls.lock();
+      this.crosshairHud.setVisible(true);
+    }
+  }
+
+  private toggleTacticalMap(): void {
+    if (this.worldMapId !== 'firing_range') return;
+
+    const willOpen = !this.tacticalMapOverlay.isOpen();
+    this.tacticalMapOverlay.setOpen(willOpen);
+    this.playerControls.setTacticalMapOpen(willOpen);
+
+    if (willOpen) {
+      this.playerControls.controls.unlockSoft();
+      this.crosshairHud.setVisible(false);
+      const mapState = this.getFiringRangeMapState();
+      if (mapState) {
+        this.tacticalMapOverlay.update(mapState);
+      }
+      return;
+    }
+
+    if (this.playerControls.isPlaying && this.localCombat.alive) {
+      this.playerControls.controls.lock();
+      this.crosshairHud.setVisible(true);
+    }
+  }
+
+  private getFiringRangeMapState(): MinimapUpdateState | null {
+    if (this.worldMapId !== 'firing_range' || !this.network) return null;
+
+    const playerPos = this.player.object.position;
+    const { yaw } = this.player.getNetworkAim();
+    return {
+      x: playerPos.x,
+      z: playerPos.z,
+      yaw,
+      blips: this.network.getMinimapBlips(),
+    };
+  }
+
   private closeInventory(): void {
     if (!this.inventoryOpen) return;
     this.inventoryOpen = false;
@@ -716,6 +783,10 @@ export class Game {
   }
 
   private toggleInventory(): void {
+    if (!this.inventoryOpen) {
+      this.closeTacticalMap();
+    }
+
     this.inventoryOpen = !this.inventoryOpen;
     this.inventoryHud.setOpen(this.inventoryOpen);
     this.playerControls.setInventoryOpen(this.inventoryOpen);
@@ -757,12 +828,26 @@ export class Game {
       this.closeInventory();
     }
 
+    if (this.tacticalMapOverlay.isOpen() && !this.playerControls.isPlaying) {
+      this.closeTacticalMap();
+    }
+
     if (
       this.input.isJustPressed('Tab') &&
       this.playerControls.isPlaying &&
       this.localCombat.alive
     ) {
       this.toggleInventory();
+    }
+
+    if (
+      this.input.isJustPressed('KeyM') &&
+      this.playerControls.isPlaying &&
+      this.localCombat.alive &&
+      !this.inventoryOpen &&
+      this.worldMapId === 'firing_range'
+    ) {
+      this.toggleTacticalMap();
     }
 
     const match = resolveMatchSnapshot(this.network?.getMatchState() ?? null);
@@ -788,6 +873,7 @@ export class Game {
     if (match?.gameMode === 'tdm' && match.phase === 'ended' && !this.matchEndHandled) {
       this.matchEndHandled = true;
       this.closeInventory();
+      this.closeTacticalMap();
       this.playerControls.controls.unlockSoft();
       this.environmentSounds.stop();
       this.droneProximitySounds.stop();
@@ -802,7 +888,8 @@ export class Game {
       !tdmBlocksInput &&
       this.playerControls.isLocked &&
       this.localCombat.alive &&
-      !this.inventoryOpen;
+      !this.inventoryOpen &&
+      !this.tacticalMapOverlay.isOpen();
 
     if (this.playerControls.isPlaying) {
       this.unlockGameAudio();
@@ -856,6 +943,16 @@ export class Game {
       this.staminaHud.update(this.player.getSprintState());
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
+
+      if (this.worldMapId === 'firing_range') {
+        const mapState = this.getFiringRangeMapState();
+        if (mapState) {
+          this.minimapHud.update(mapState);
+          if (this.tacticalMapOverlay.isOpen()) {
+            this.tacticalMapOverlay.update(mapState);
+          }
+        }
+      }
 
       this.player.updateCrosshairAim(
         this.crosshairHud,

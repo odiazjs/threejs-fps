@@ -98,6 +98,31 @@
     <div id="team-hud" hidden>
       <div class="team-hud-list"></div>
     </div>
+    <div id="minimap-hud" class="hud-panel" hidden>
+      <div class="minimap-label">FIRING RANGE</div>
+      <canvas class="minimap-canvas" width="204" height="204" aria-hidden="true"></canvas>
+    </div>
+    <div id="tactical-map-overlay" hidden>
+      <div class="tactical-map-backdrop" aria-hidden="true"></div>
+      <div class="tactical-map-panel hud-panel hud-brackets">
+        <header class="tactical-map-header">
+          <div class="tactical-map-label">FIRING RANGE</div>
+          <div class="tactical-map-hint"><kbd>M</kbd> CLOSE</div>
+        </header>
+        <canvas class="tactical-map-canvas" width="560" height="560" aria-hidden="true"></canvas>
+        <footer class="tactical-map-legend">
+          <div class="tactical-map-legend-item tactical-map-legend-item--self">
+            <span class="tactical-map-legend-dot"></span> You
+          </div>
+          <div class="tactical-map-legend-item tactical-map-legend-item--teammate">
+            <span class="tactical-map-legend-dot"></span> Teammate
+          </div>
+          <div class="tactical-map-legend-item tactical-map-legend-item--enemy">
+            <span class="tactical-map-legend-dot"></span> Enemy
+          </div>
+        </footer>
+      </div>
+    </div>
     <div id="ammo-hud" hidden>
       <div class="ammo-weapon-name">Pistol [1]</div>
       <div class="ammo-clip">12 / 48</div>

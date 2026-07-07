@@ -21,6 +21,7 @@ import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
 import type { LocalCombatState, LocalDamagedHandler, PlayerSnapshot } from './types';
 import type { TeammateHudEntry } from '../ui/TeamHud';
+import type { MinimapBlip } from '../ui/minimapTypes';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { MapId } from '../../shared/level/maps';
@@ -451,6 +452,26 @@ export class NetworkManager {
     }
 
     return entries.sort((a, b) => a.username.localeCompare(b.username));
+  }
+
+  getMinimapBlips(): MinimapBlip[] {
+    const localTeamId = this.localCombat.teamId;
+    const localSessionId = this.roomClient.sessionId;
+    const blips: MinimapBlip[] = [];
+
+    for (const [sessionId, player] of this.remotePlayers.getAllPlayers()) {
+      if (sessionId === localSessionId) continue;
+      if (!player.isAlive()) continue;
+
+      const feet = player.getFeetPosition();
+      blips.push({
+        x: feet.x,
+        z: feet.z,
+        kind: player.getTeamId() === localTeamId ? 'teammate' : 'enemy',
+      });
+    }
+
+    return blips;
   }
 
   playLocalShieldBreak(): void {

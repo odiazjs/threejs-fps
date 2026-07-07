@@ -11,6 +11,7 @@ import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import type { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import type { TeamHud } from '../ui/TeamHud';
+import type { MinimapHud } from '../ui/MinimapHud';
 
 export class PlayerControls {
   readonly controls: PointerAimControls;
@@ -25,12 +26,14 @@ export class PlayerControls {
   private shieldPickupHud: ShieldPickupHud | null = null;
   private teamHud: TeamHud | null = null;
   private controlsHelpHud: ControlsHelpHud | null = null;
+  private minimapHud: MinimapHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
   private onEngage: (() => void) | null = null;
   private hasLockedOnce = false;
   private isPaused = false;
   private inventoryOpen = false;
+  private tacticalMapOpen = false;
 
   private readonly blocker: HTMLElement;
   private readonly instructionsTitle: HTMLElement;
@@ -93,6 +96,10 @@ export class PlayerControls {
     this.controlsHelpHud = hud;
   }
 
+  setMinimapHud(hud: MinimapHud): void {
+    this.minimapHud = hud;
+  }
+
   setLeaveHandler(handler: () => void): void {
     this.onLeave = handler;
   }
@@ -104,6 +111,10 @@ export class PlayerControls {
 
   setInventoryOpen(open: boolean): void {
     this.inventoryOpen = open;
+  }
+
+  setTacticalMapOpen(open: boolean): void {
+    this.tacticalMapOpen = open;
   }
 
   get isLocked(): boolean {
@@ -124,7 +135,7 @@ export class PlayerControls {
     });
 
     document.body.addEventListener('click', (event) => {
-      if (this.inventoryOpen) return;
+      if (this.inventoryOpen || this.tacticalMapOpen) return;
       if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
       if (event.target === this.leaveButton) return;
       this.onEngage?.();
@@ -156,6 +167,7 @@ export class PlayerControls {
       this.damageIndicatorHud?.setVisible(true);
       this.teamHud?.setVisible(true);
       this.controlsHelpHud?.setVisible(true);
+      this.minimapHud?.setVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
@@ -174,6 +186,7 @@ export class PlayerControls {
       this.damageIndicatorHud?.setVisible(false);
       this.teamHud?.setVisible(false);
       this.controlsHelpHud?.setVisible(false);
+      this.minimapHud?.setVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
 
       if (this.hasLockedOnce) {

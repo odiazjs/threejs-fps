@@ -19,6 +19,7 @@ export const GAME_CONTROLS_HELP: readonly ControlHelpEntry[] = [
   { keys: 'Q', description: 'Deploy shield dome' },
   { keys: 'Hold F', description: 'Pick up items' },
   { keys: 'Tab', description: 'Open inventory' },
+  { keys: 'M', description: 'Toggle tactical map' },
   { keys: '5', description: 'Release mouse' },
   { keys: 'Esc', description: 'Pause game' },
 ];
