@@ -162,3 +162,23 @@ export const STATS_INCOMING_AUDIO: GlobalAudioConfig = {
   src: '/sounds/stats_incoming.wav',
   volume: 0.05,
 };
+
+export const GAME_GRENADE_EQUIP_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/granade_equip.wav',
+  volume: 0.38,
+};
+
+export const GAME_GRENADE_THROW_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/granade_throw_2.wav',
+  volume: 0.42,
+};
+
+export const GAME_GRENADE_BOUNCE_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/granade_bounce.wav',
+  volume: 0.48,
+};
+
+export const GAME_GRENADE_EXPLOSION_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/granade_explosion.wav',
+  volume: 0.62,
+};

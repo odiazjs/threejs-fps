@@ -246,6 +246,56 @@ body.game-page * {
 #stamina-hud.exhausted .stamina-label {
   color: #e5a088;
 }
+#throwable-hud {
+  position: fixed;
+  left: 1.5rem;
+  bottom: 7.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.45rem;
+  background: rgba(12, 16, 14, 0.62);
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+#throwable-hud .throwable-key {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0.25rem;
+  padding: 0.12rem 0.28rem;
+}
+#throwable-hud .throwable-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #7a9a52, #3f5228 70%);
+  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.35);
+}
+#throwable-hud .throwable-name {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+#throwable-hud .throwable-count {
+  color: #c8f0a8;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+#throwable-hud.equipped {
+  border-color: rgba(136, 255, 170, 0.55);
+  box-shadow: 0 0 14px rgba(100, 220, 130, 0.25);
+}
+#throwable-hud.empty .throwable-count {
+  color: rgba(255, 255, 255, 0.35);
+}
 #shield-dome-hud {
   position: fixed;
   left: 50%;
@@ -1661,6 +1711,13 @@ body.game-page * {
   color: rgba(255, 255, 255, 0.22);
   font-size: 0.85rem;
   pointer-events: none;
+}
+.inventory-grenade-icon {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #7a9a52, #3f5228 70%);
+  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.35);
 }
 .inventory-footer {
   display: flex;

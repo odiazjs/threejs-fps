@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
 import { ImpactSoundService } from '../audio/ImpactSoundService';
+import { GrenadeSoundService } from '../audio/GrenadeSoundService';
 import { LoopingSoundService } from '../audio/LoopingSoundService';
 import { MatchSoundService } from '../audio/MatchSoundService';
 import { WeaponSoundService, collectWeaponSoundUrls } from '../audio/WeaponSoundService';
@@ -9,6 +10,10 @@ import {
   GAME_ENEMY_HIT_IMPACT_AUDIO,
   GAME_ENVIRONMENT_AUDIO,
   GAME_FOOTSTEP_AUDIO,
+  GAME_GRENADE_EQUIP_AUDIO,
+  GAME_GRENADE_THROW_AUDIO,
+  GAME_GRENADE_BOUNCE_AUDIO,
+  GAME_GRENADE_EXPLOSION_AUDIO,
   GAME_KILL_CONFIRM_AUDIO,
   GAME_OUT_OF_AMMO_AUDIO,
   GAME_SHIELD_BREAK_AUDIO,
@@ -25,7 +30,7 @@ import {
   STATS_INCOMING_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
-import { preloadWeaponMeshes } from '../content/weaponMeshes';
+import { preloadGrenadeModel } from '../content/grenadeModel';
 import { runShaderPrewarm } from '../combat/prewarmCombatFx';
 import { warmHitSplashPool } from '../combat/hitSplashPool';
 import { initUiSounds } from '../audio/initMenuAudio';
@@ -44,6 +49,8 @@ export type ClientAssetPrewarmProgress = (message: string) => void;
 async function preloadAllGameAudio(): Promise<void> {
   const weaponSounds = new WeaponSoundService();
   weaponSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
+  const grenadeSounds = new GrenadeSoundService();
+  grenadeSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
   const environmentSounds = new LoopingSoundService();
   const droneProximitySounds = new LoopingSoundService();
   const shieldChargeSounds = new LoopingSoundService();
@@ -66,6 +73,10 @@ async function preloadAllGameAudio(): Promise<void> {
     impactSounds.preloadShieldBreak(GAME_SHIELD_BREAK_AUDIO),
     impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
     impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
+    grenadeSounds.preloadEquip(GAME_GRENADE_EQUIP_AUDIO),
+    grenadeSounds.preloadThrow(GAME_GRENADE_THROW_AUDIO),
+    grenadeSounds.preloadBounce(GAME_GRENADE_BOUNCE_AUDIO),
+    grenadeSounds.preloadExplosion(GAME_GRENADE_EXPLOSION_AUDIO),
     matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
     matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
     matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
@@ -96,6 +107,7 @@ export async function runClientAssetPrewarm(
 
   onProgress('Loading weapon models...');
   await preloadWeaponMeshes();
+  await preloadGrenadeModel();
 
   onProgress('Loading character models...');
   await Promise.all([

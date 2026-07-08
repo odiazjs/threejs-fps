@@ -7,6 +7,10 @@ import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { PointerInput } from '../input/PointerInput';
 import { ProjectileManager } from '../combat/ProjectileManager';
+import { GrenadeManager } from '../combat/GrenadeManager';
+import { GrenadeArcPreview } from '../combat/GrenadeArcPreview';
+import { computeGrenadeThrowVelocity } from '../../shared/combat/grenadePhysics';
+import { GRENADE_FUSE_SEC } from '../../shared/throwables/grenadeConfig';
 import { ShieldDomeAbility } from '../combat/ShieldDomeAbility';
 import { ShieldDomeManager } from '../combat/ShieldDomeManager';
 import { ShieldDomeChargeManager } from '../combat/ShieldDomeChargeManager';
@@ -16,7 +20,7 @@ import type { PlayerDamagedMessage } from '../../shared/network/damage';
 import { getShieldCapacity, canUseShieldCharge } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import { getShieldDomeHudState } from '../../shared/combat/shieldDomeAbility';
-import { DEFAULT_SHIELD_CHARGES, MAX_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
+import { DEFAULT_SHIELD_CHARGES, DEFAULT_GRENADES, MAX_GRENADES, MAX_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
 import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
@@ -25,6 +29,7 @@ import { resolveGrassQuality } from '../render/grassQuality';
 import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
 import type { LightBeams } from '../world/LightBeams';
 import { StaminaHud } from '../ui/StaminaHud';
+import { ThrowableHud } from '../ui/ThrowableHud';
 import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
@@ -55,14 +60,17 @@ import { getSession } from '../auth/playerSession';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { buildClientMapPhysics, disposeClientMapPhysics } from '../physics/buildMapPhysics';
 import { AmmoPickups } from '../world/AmmoPickups';
+import { GrenadePickups } from '../world/GrenadePickups';
 import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
 import { isValidDropSlot, canPickupWeaponDrop } from '../../shared/loadout/loadoutSlots';
 import { runShaderPrewarm } from '../combat/prewarmCombatFx';
+import { preloadGrenadeModel } from '../content/grenadeModel';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
 import { ImpactSoundService } from '../audio/ImpactSoundService';
+import { GrenadeSoundService } from '../audio/GrenadeSoundService';
 import { EnvironmentSoundService } from '../audio/EnvironmentSoundService';
 import { LoopingSoundService } from '../audio/LoopingSoundService';
 import { MatchSoundService } from '../audio/MatchSoundService';
@@ -76,6 +84,10 @@ import {
   GAME_ENEMY_HIT_IMPACT_AUDIO,
   GAME_ENVIRONMENT_AUDIO,
   GAME_FOOTSTEP_AUDIO,
+  GAME_GRENADE_EQUIP_AUDIO,
+  GAME_GRENADE_THROW_AUDIO,
+  GAME_GRENADE_BOUNCE_AUDIO,
+  GAME_GRENADE_EXPLOSION_AUDIO,
   GAME_KILL_CONFIRM_AUDIO,
   GAME_OUT_OF_AMMO_AUDIO,
   GAME_SHIELD_BREAK_AUDIO,
@@ -100,6 +112,7 @@ export class Game {
   private playerControls!: PlayerControls;
   private network!: NetworkManager;
   private staminaHud = new StaminaHud();
+  private throwableHud = new ThrowableHud();
   private ammoHud = new AmmoHud();
   private healthHud = new HealthHud();
   private teamHud = new TeamHud();
@@ -125,8 +138,11 @@ export class Game {
   private matchResultsOverlay = new MatchResultsOverlay();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
+  private grenadePickups!: GrenadePickups;
   private shieldChargePickups!: ShieldChargePickups;
   private weaponDrops!: WeaponDrops;
+  private grenadeManager!: GrenadeManager;
+  private grenadeArcPreview!: GrenadeArcPreview;
   private input = new KeyboardInput();
   private pointer = new PointerInput();
   private projectiles!: ProjectileManager;
@@ -150,6 +166,7 @@ export class Game {
   private readonly shieldChargeSounds = new LoopingSoundService();
   private readonly footstepSounds = new FootstepSoundService();
   private readonly impactSounds = new ImpactSoundService();
+  private readonly grenadeSounds = new GrenadeSoundService();
   private readonly matchSounds = new MatchSoundService();
   private audioUnlocked = false;
   private inventoryOpen = false;
@@ -168,6 +185,7 @@ export class Game {
     shieldPoints: getShieldCapacity(1),
     shieldCapacity: getShieldCapacity(1),
     shieldCharges: DEFAULT_SHIELD_CHARGES,
+    grenadeCount: DEFAULT_GRENADES,
     shieldRecharging: false,
     shieldRechargeEndAt: 0,
     shieldDomeChargeEndAt: 0,
@@ -192,12 +210,14 @@ export class Game {
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
     this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
     this.weaponSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
+    this.grenadeSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
     onLoadingMessage?.('Loading game assets...');
     await Promise.all([
       initialMapId === 'firing_range'
         ? this.worldBuilder!.whenMeshCollisionReady()
         : Promise.resolve(),
       preloadWeaponMeshes(),
+      preloadGrenadeModel(),
       Player.preloadGameCharacterModels(),
       this.weaponSounds.preload([
         ...collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS),
@@ -213,10 +233,16 @@ export class Game {
       this.impactSounds.preloadShieldBreak(GAME_SHIELD_BREAK_AUDIO),
       this.impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
       this.impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
+      this.grenadeSounds.preloadEquip(GAME_GRENADE_EQUIP_AUDIO),
+      this.grenadeSounds.preloadThrow(GAME_GRENADE_THROW_AUDIO),
+      this.grenadeSounds.preloadBounce(GAME_GRENADE_BOUNCE_AUDIO),
+      this.grenadeSounds.preloadExplosion(GAME_GRENADE_EXPLOSION_AUDIO),
       this.matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
       this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
       this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
       this.shieldChargePickups.whenReady,
+      this.grenadePickups.whenReady,
+      this.grenadeManager.whenReady,
     ]);
     if (initialMapId === 'firing_range') {
       const mapDef = getMapDef('firing_range');
@@ -232,6 +258,7 @@ export class Game {
         this.tacticalMapOverlay.setMapActive(false);
       }
       await this.ammoPickups.repopulate(mapDef.getAmmoPositions?.() ?? []);
+      await this.grenadePickups.repopulate(mapDef.getGrenadePositions?.() ?? []);
       mapDef.getShieldPositions?.().forEach((pos, index) => {
         this.shieldChargePickups.applySnapshot(index, {
           x: pos.x,
@@ -354,6 +381,7 @@ export class Game {
     this.weaponSounds.unlock();
     this.footstepSounds.unlock();
     this.impactSounds.unlock();
+    this.grenadeSounds.unlock();
     this.matchSounds.unlock();
     this.environmentSounds.unlock();
     this.droneProximitySounds.unlock();
@@ -381,12 +409,18 @@ export class Game {
     this.scene = world.getScene();
     this.worldBuilder = world;
     this.projectiles = new ProjectileManager(this.scene);
+    this.grenadeManager = new GrenadeManager(this.scene);
+    this.grenadeArcPreview = new GrenadeArcPreview(this.scene);
     this.shieldDomeManager = new ShieldDomeManager(this.scene);
     this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
     this.projectiles.setShieldDomeManager(this.shieldDomeManager);
     this.ammoPickups = new AmmoPickups(
       this.scene,
       mapId === 'firing_range' ? [] : getMapDef(mapId).ammoPositions,
+    );
+    this.grenadePickups = new GrenadePickups(
+      this.scene,
+      mapId === 'firing_range' ? [] : [],
     );
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
@@ -429,6 +463,7 @@ export class Game {
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
     this.player.bindAimControls(this.playerControls.controls);
     this.playerControls.setStaminaHud(this.staminaHud);
+    this.playerControls.setThrowableHud(this.throwableHud);
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setTeamHud(this.teamHud);
@@ -447,10 +482,16 @@ export class Game {
     this.playerControls.setEngageHandler(() => {
       this.unlockGameAudio();
     });
+    this.grenadeManager.setExplosionListener((x, y, z) => {
+      this.player.triggerExplosionShake(x, y, z);
+    });
+    this.grenadeManager.setGrenadeSoundService(this.grenadeSounds);
+    this.grenadeManager.setShieldDomeManager(this.shieldDomeManager);
     this.matchResultsOverlay.setLeaveHandler(() => {
       void this.leaveGame();
     });
     this.player.setWeaponSoundService(this.weaponSounds);
+    this.player.setGrenadeSoundService(this.grenadeSounds);
     this.player.setFootstepSoundService(this.footstepSounds);
 
     this.inventoryHud.setOnWeaponDropRequest((slotIndex) => {
@@ -503,9 +544,17 @@ export class Game {
       this.ammoPickups,
       this.shieldChargePickups,
       this.weaponDrops,
+      this.grenadePickups,
+      this.grenadeManager,
       () => {
         this.player.addReserveClip();
         this.messageHud.push('Picked up some ammo');
+      },
+      () => {
+        this.messageHud.push('Picked up grenades');
+        if (this.inventoryOpen) {
+          this.refreshInventoryHud();
+        }
       },
       () => {
         this.shieldPickupHud.cancelHold();
@@ -545,6 +594,7 @@ export class Game {
     });
     this.network.onWeaponPickupGranted((data) => {
       this.weaponPickupHud.cancelHold();
+      this.player.unequipThrowable();
       if (isWeaponId(data.weaponId)) {
         const name = getWeaponConfig(data.weaponId)?.name ?? data.weaponId;
         this.messageHud.push(`Picked up ${name}`);
@@ -634,6 +684,7 @@ export class Game {
       state.shieldDomeChargeEndAt,
     );
     this.player.getInventory().setShieldCharges(state.shieldCharges);
+    this.player.getInventory().setGrenadeCount(state.grenadeCount);
     this.player.setProjectileSpawnOptions(state.teamId, this.network?.getSessionId() ?? '');
     this.healthHud.update(state);
   }
@@ -717,6 +768,8 @@ export class Game {
         weapons: this.player.getInventoryWeapons(),
         melee: this.player.getInventoryMelee(),
         shieldCharges: this.player.getInventory().getShieldCharges(),
+        grenadeCount: this.player.getInventory().getGrenadeCount(),
+        grenadeEquipped: this.player.isThrowableEquipped(),
         operatorName: this.localCombat.username,
         killDeath: `${kills}/0`,
         unitsInField,
@@ -918,6 +971,16 @@ export class Game {
     }
     this.shieldDomeManager.update(delta, camera, worldTime);
     this.projectiles.update(delta, worldTime);
+    this.grenadeManager.update(delta, worldTime);
+    if (camera) {
+      this.grenadeSounds.updateListener(camera);
+    }
+    this.grenadeArcPreview.update(
+      this.player.isThrowableEquipped(),
+      this.player.getThrowableArcPreview(),
+      camera?.position ?? null,
+      delta,
+    );
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
@@ -939,8 +1002,17 @@ export class Game {
         this.player.object.position.z,
         delta,
       );
+      this.grenadePickups.tryPickup(
+        this.player.object.position.x,
+        this.player.object.position.z,
+        delta,
+      );
 
       this.staminaHud.update(this.player.getSprintState());
+      this.throwableHud.update(
+        this.player.getInventory().getGrenadeCount(),
+        this.player.isThrowableEquipped(),
+      );
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
 

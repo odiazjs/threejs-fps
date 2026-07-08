@@ -10,6 +10,13 @@ import {
 /** Half-angle of the melee hit cone around the look direction (radians). */
 export const MELEE_AIM_HALF_ANGLE_RAD = (40 * Math.PI) / 180;
 
+/** Slash progress window where melee hits are resolved (0 = start, 1 = end). */
+export const MELEE_IMPACT_PROGRESS_START = 0.08;
+export const MELEE_IMPACT_PROGRESS_END = 0.72;
+
+/** Horizontal feet separation treated as a guaranteed melee connect (sprint overlap). */
+export const MELEE_OVERLAP_HORIZONTAL_RANGE = 1.05;
+
 export interface MeleeAim {
   readonly eyeX: number;
   readonly eyeY: number;
@@ -46,6 +53,28 @@ export function aimDirectionFromYawPitch(
 
 function targetCenterY(feetY: number): number {
   return feetY + PLAYER_HIT_CAPSULE_HEIGHT * 0.55;
+}
+
+function horizontalDistanceSq(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+): number {
+  const dx = bx - ax;
+  const dz = bz - az;
+  return dx * dx + dz * dz;
+}
+
+function isTargetInMeleeOverlap(
+  aim: MeleeAim,
+  target: PlayerHitTarget,
+  overlapHorizontalRange: number,
+): boolean {
+  return (
+    horizontalDistanceSq(aim.eyeX, aim.eyeZ, target.feetX, target.feetZ) <=
+    overlapHorizontalRange * overlapHorizontalRange
+  );
 }
 
 function isTargetInMeleeCone(
@@ -85,7 +114,15 @@ export function findMeleeHitTarget(
 
   for (const target of targets) {
     if (excludeSessionId && target.sessionId === excludeSessionId) continue;
-    if (!isTargetInMeleeCone(aim, target, range, aimHalfAngleRad)) continue;
+
+    const inOverlap = isTargetInMeleeOverlap(
+      aim,
+      target,
+      MELEE_OVERLAP_HORIZONTAL_RANGE,
+    );
+    if (!inOverlap && !isTargetInMeleeCone(aim, target, range, aimHalfAngleRad)) {
+      continue;
+    }
 
     const bodyHit = raycastPlayerBodyPart(
       aim.eyeX,
@@ -150,19 +187,19 @@ export function isMeleeHitValid(
   aimHalfAngleRad = MELEE_AIM_HALF_ANGLE_RAD,
 ): boolean {
   const dir = aimDirectionFromYawPitch(shooterYaw, shooterPitch);
-  return isTargetInMeleeCone(
-    {
-      eyeX: shooterEyeX,
-      eyeY: shooterEyeY,
-      eyeZ: shooterEyeZ,
-      dirX: dir.x,
-      dirY: dir.y,
-      dirZ: dir.z,
-    },
-    { feetX: targetFeetX, feetY: targetFeetY, feetZ: targetFeetZ },
-    range,
-    aimHalfAngleRad,
-  );
+  const aim: MeleeAim = {
+    eyeX: shooterEyeX,
+    eyeY: shooterEyeY,
+    eyeZ: shooterEyeZ,
+    dirX: dir.x,
+    dirY: dir.y,
+    dirZ: dir.z,
+  };
+  const target = { feetX: targetFeetX, feetY: targetFeetY, feetZ: targetFeetZ };
+  if (isTargetInMeleeOverlap(aim, target, MELEE_OVERLAP_HORIZONTAL_RANGE)) {
+    return true;
+  }
+  return isTargetInMeleeCone(aim, target, range, aimHalfAngleRad);
 }
 
 export function feetYFromEyeY(eyeY: number): number {

@@ -97,3 +97,28 @@ export function projectMuzzleAimToScreenOffset(
   target.x = (_aimPoint.x * 0.5 + 0.5) * width - width * 0.5;
   target.y = (-_aimPoint.y * 0.5 + 0.5) * height - height * 0.5;
 }
+
+/**
+ * World position for an object held at a screen offset (e.g. grenade lower-left).
+ * Aim direction is unchanged — only the spawn point moves on screen.
+ */
+export function readScreenHoldWorldPosition(
+  camera: THREE.Camera,
+  viewportWidth: number,
+  viewportHeight: number,
+  screenOffsetX: number,
+  screenOffsetY: number,
+  armDepth: number,
+  position: THREE.Vector3,
+): void {
+  readCrosshairWorldRay(
+    camera,
+    viewportWidth,
+    viewportHeight,
+    screenOffsetX,
+    screenOffsetY,
+    _ndcNear,
+    _muzzleDir,
+  );
+  position.copy(_ndcNear).addScaledVector(_muzzleDir, armDepth);
+}

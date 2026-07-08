@@ -4,6 +4,8 @@ import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
+import type { GrenadeThrowRequest } from '../../shared/network/grenade';
+import type { PickupGrenadeMessage } from '../../shared/network/grenadePickup';
 import type { ShieldChargeSpawnMessage } from '../../shared/network/shieldDrop';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
@@ -11,6 +13,7 @@ import {
   FpsState,
   type AmmoBoxState,
   type PlayerState,
+  type GrenadePickupState,
   type ShieldChargeState,
   type WeaponDropState,
 } from '../../shared/schema/FpsState';
@@ -29,6 +32,11 @@ import type {
   AmmoBoxChangeHandler,
   AmmoBoxSnapshot,
   AmmoPickupGrantedHandler,
+  GrenadeExplosionHandler,
+  GrenadePickupChangeHandler,
+  GrenadePickupGrantedHandler,
+  GrenadePickupSnapshot,
+  GrenadeThrownHandler,
   KillFeedHandler,
   LocalDamagedHandler,
   LocalPlayerChangeHandler,
@@ -61,6 +69,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     shieldLevel: player.shieldLevel,
     shieldPoints: player.shieldPoints,
     shieldCharges: player.shieldCharges,
+    grenadeCount: player.grenadeCount,
     shieldRecharging: player.shieldRecharging,
     shieldRechargeEndAt: player.shieldRechargeEndAt,
     alive: player.alive,
@@ -103,6 +112,15 @@ function toShieldChargeSnapshot(charge: ShieldChargeState): ShieldChargeSnapshot
   };
 }
 
+function toGrenadePickupSnapshot(pickup: GrenadePickupState): GrenadePickupSnapshot {
+  return {
+    x: pickup.x,
+    z: pickup.z,
+    collected: pickup.collected,
+    count: pickup.count,
+  };
+}
+
 function toWeaponDropSnapshot(drop: WeaponDropState): WeaponDropSnapshot {
   return {
     x: drop.x,
@@ -117,6 +135,7 @@ export class RoomClient {
   private room: Room | null = null;
   private readonly boundAmmoBoxes = new Set<number>();
   private readonly boundShieldCharges = new Set<number>();
+  private readonly boundGrenadePickups = new Set<number>();
   private readonly boundWeaponDrops = new Set<number>();
   private readonly boundPlayers = new Set<string>();
   private syncedWorldTime = 0;
@@ -134,6 +153,10 @@ export class RoomClient {
   private onShieldChargeChangeHandlers: ShieldChargeChangeHandler[] = [];
   private onShieldChargePickupGrantedHandlers: ShieldChargePickupGrantedHandler[] = [];
   private onShieldChargeDropGrantedHandlers: ShieldChargeDropGrantedHandler[] = [];
+  private onGrenadePickupChangeHandlers: GrenadePickupChangeHandler[] = [];
+  private onGrenadePickupGrantedHandlers: GrenadePickupGrantedHandler[] = [];
+  private onGrenadeThrownHandlers: GrenadeThrownHandler[] = [];
+  private onGrenadeExplosionHandlers: GrenadeExplosionHandler[] = [];
   private onWeaponDropChangeHandlers: WeaponDropChangeHandler[] = [];
   private onWeaponPickupGrantedHandlers: WeaponPickupGrantedHandler[] = [];
   private onKillFeedHandlers: KillFeedHandler[] = [];
@@ -236,6 +259,8 @@ export class RoomClient {
     this.bindWeaponShotMessages();
     this.bindAmmoPickupMessages();
     this.bindShieldChargePickupMessages();
+    this.bindGrenadePickupMessages();
+    this.bindGrenadeCombatMessages();
     this.bindWeaponDropMessages();
     this.bindKillMessages();
     this.bindDamagedMessages();
@@ -327,6 +352,22 @@ export class RoomClient {
 
   onShieldChargeDropGranted(handler: ShieldChargeDropGrantedHandler): void {
     this.onShieldChargeDropGrantedHandlers.push(handler);
+  }
+
+  onGrenadePickupChange(handler: GrenadePickupChangeHandler): void {
+    this.onGrenadePickupChangeHandlers.push(handler);
+  }
+
+  onGrenadePickupGranted(handler: GrenadePickupGrantedHandler): void {
+    this.onGrenadePickupGrantedHandlers.push(handler);
+  }
+
+  onGrenadeThrown(handler: GrenadeThrownHandler): void {
+    this.onGrenadeThrownHandlers.push(handler);
+  }
+
+  onGrenadeExplosion(handler: GrenadeExplosionHandler): void {
+    this.onGrenadeExplosionHandlers.push(handler);
   }
 
   onWeaponDropChange(handler: WeaponDropChangeHandler): void {
@@ -452,6 +493,15 @@ export class RoomClient {
     this.room?.send('meleeAttack', {});
   }
 
+  sendThrowGrenade(data: GrenadeThrowRequest): void {
+    this.room?.send('throwGrenade', data);
+  }
+
+  sendPickupGrenade(index: number, feetX: number, feetZ: number): void {
+    const payload: PickupGrenadeMessage = { index, x: feetX, z: feetZ };
+    this.room?.send('pickupGrenade', payload);
+  }
+
   async disconnect(): Promise<void> {
     if (!this.room) return;
 
@@ -460,6 +510,7 @@ export class RoomClient {
     this.boundPlayers.clear();
     this.boundAmmoBoxes.clear();
     this.boundShieldCharges.clear();
+    this.boundGrenadePickups.clear();
     this.boundWeaponDrops.clear();
 
     try {
@@ -550,6 +601,22 @@ export class RoomClient {
     });
   }
 
+  private bindGrenadePickupMessages(): void {
+    this.room?.onMessage('grenadePickupGranted', (data: { index: number; count: number }) => {
+      this.onGrenadePickupGrantedHandlers.forEach((handler) => handler(data));
+    });
+  }
+
+  private bindGrenadeCombatMessages(): void {
+    this.room?.onMessage('grenadeThrown', (data) => {
+      this.onGrenadeThrownHandlers.forEach((handler) => handler(data));
+    });
+
+    this.room?.onMessage('grenadeExplosion', (data) => {
+      this.onGrenadeExplosionHandlers.forEach((handler) => handler(data));
+    });
+  }
+
   private bindStateCallbacks(): void {
     if (!this.room) return;
 
@@ -608,6 +675,22 @@ export class RoomClient {
         callbacks,
         index as number,
         charge as ShieldChargeState,
+      );
+    });
+
+    callbacks.onAdd('grenadePickups', (pickup, index) => {
+      this.bindGrenadePickupCallbacks(
+        callbacks,
+        index as number,
+        pickup as GrenadePickupState,
+      );
+    });
+
+    state.grenadePickups?.forEach((pickup, index) => {
+      this.bindGrenadePickupCallbacks(
+        callbacks,
+        index as number,
+        pickup as GrenadePickupState,
       );
     });
 
@@ -698,6 +781,25 @@ export class RoomClient {
     callbacks.onChange(charge, () => {
       this.onShieldChargeChangeHandlers.forEach((handler) =>
         handler(index, toShieldChargeSnapshot(charge)),
+      );
+    });
+  }
+
+  private bindGrenadePickupCallbacks(
+    callbacks: ReturnType<typeof Callbacks.get>,
+    index: number,
+    pickup: GrenadePickupState,
+  ): void {
+    if (this.boundGrenadePickups.has(index)) return;
+    this.boundGrenadePickups.add(index);
+
+    this.onGrenadePickupChangeHandlers.forEach((handler) =>
+      handler(index, toGrenadePickupSnapshot(pickup)),
+    );
+
+    callbacks.onChange(pickup, () => {
+      this.onGrenadePickupChangeHandlers.forEach((handler) =>
+        handler(index, toGrenadePickupSnapshot(pickup)),
       );
     });
   }

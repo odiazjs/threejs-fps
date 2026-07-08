@@ -2,6 +2,7 @@ import type { Scene, Vector3 } from 'three';
 import * as THREE from 'three';
 import { segmentHitsUpperHemisphere } from '../../shared/combat/shieldDomeCollision';
 import { SHIELD_DOME_RADIUS } from '../../shared/combat/shieldDomeAbility';
+import type { GrenadeShieldDome } from '../../shared/combat/grenadeShieldDome';
 import { ShieldDomeFx } from '../effects/ShieldDomeFx';
 
 interface ActiveDome {
@@ -74,6 +75,22 @@ export class ShieldDomeManager {
 
   hasAnyActiveDome(worldTime: number): boolean {
     return this.domes.some((dome) => worldTime < dome.expiresAtWorldTime);
+  }
+
+  getActiveDomesForPhysics(worldTime: number): GrenadeShieldDome[] {
+    const active: GrenadeShieldDome[] = [];
+
+    for (const dome of this.domes) {
+      if (worldTime >= dome.expiresAtWorldTime) continue;
+      active.push({
+        centerX: dome.centerX,
+        centerY: dome.centerY,
+        centerZ: dome.centerZ,
+        endAt: dome.expiresAtWorldTime,
+      });
+    }
+
+    return active;
   }
 
   testProjectileSegment(

@@ -6,6 +6,9 @@ export const SHIELD_DOME_COOLDOWN_SEC = 45;
 export const SHIELD_DOME_CHARGE_SEC = 1.5;
 export const SHIELD_DOME_ACTIVATE_KEY = 'KeyQ' as const;
 
+/** Flat dome duration reduction per grenade that hits an opponent's dome. */
+export const GRENADE_SHIELD_DOME_TIMER_PENALTY_SEC = 5;
+
 export type ShieldDomeHudState =
   | { mode: 'ready' }
   | { mode: 'charging'; remaining: number; duration: number }

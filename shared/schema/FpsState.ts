@@ -1,6 +1,6 @@
 import { Schema, type, MapSchema, ArraySchema } from '@colyseus/schema';
 import { PLAYER_MAX_HP } from '../combat/damage.js';
-import { DEFAULT_SHIELD_CHARGES } from '../inventory/inventoryLimits.js';
+import { DEFAULT_SHIELD_CHARGES, DEFAULT_GRENADES } from '../inventory/inventoryLimits.js';
 import { TDM_MATCH_DURATION_SEC } from '../combat/match.js';
 import { SHIELD_DEFAULT_LEVEL, getDefaultShieldPoints } from '../combat/shield.js';
 
@@ -11,6 +11,7 @@ export class PlayerState extends Schema {
   @type('number') shieldLevel = SHIELD_DEFAULT_LEVEL;
   @type('number') shieldPoints = getDefaultShieldPoints(SHIELD_DEFAULT_LEVEL);
   @type('number') shieldCharges = DEFAULT_SHIELD_CHARGES;
+  @type('number') grenadeCount = DEFAULT_GRENADES;
   @type('boolean') shieldRecharging = false;
   /** Server world time when the current shield recharge finishes (0 when idle). */
   @type('number') shieldRechargeEndAt = 0;
@@ -61,6 +62,13 @@ export class ShieldChargeState extends Schema {
   @type('boolean') collected = false;
 }
 
+export class GrenadePickupState extends Schema {
+  @type('number') x = 0;
+  @type('number') z = 0;
+  @type('boolean') collected = false;
+  @type('number') count = 4;
+}
+
 export class WeaponDropState extends Schema {
   @type('number') x = 0;
   @type('number') z = 0;
@@ -90,5 +98,6 @@ export class FpsState extends Schema {
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type([AmmoBoxState]) ammoBoxes = new ArraySchema<AmmoBoxState>();
   @type([ShieldChargeState]) shieldCharges = new ArraySchema<ShieldChargeState>();
+  @type([GrenadePickupState]) grenadePickups = new ArraySchema<GrenadePickupState>();
   @type([WeaponDropState]) weaponDrops = new ArraySchema<WeaponDropState>();
 }

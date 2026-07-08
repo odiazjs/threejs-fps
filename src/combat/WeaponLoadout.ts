@@ -248,9 +248,7 @@ export class WeaponLoadout {
   }
 
   applyServerSlots(snapshot: LoadoutSlotSnapshot, activeWeaponId: string): void {
-    this.slotAssignments[0] = parseSlotWeaponId(snapshot.weaponSlot0);
-    this.slotAssignments[1] = parseSlotWeaponId(snapshot.weaponSlot1);
-    this.slotAssignments[2] = parseSlotWeaponId(snapshot.weaponSlot2);
+    this.applyServerSlotAssignments(snapshot);
 
     const activeWeapon = isWeaponId(activeWeaponId) ? activeWeaponId : null;
     if (activeWeapon === MELEE_WEAPON_ID) {
@@ -270,6 +268,13 @@ export class WeaponLoadout {
     }
 
     this.syncMeshVisibility();
+  }
+
+  /** Sync numbered slots only — used while a throwable is equipped locally. */
+  applyServerSlotAssignments(snapshot: LoadoutSlotSnapshot): void {
+    this.slotAssignments[0] = parseSlotWeaponId(snapshot.weaponSlot0);
+    this.slotAssignments[1] = parseSlotWeaponId(snapshot.weaponSlot1);
+    this.slotAssignments[2] = parseSlotWeaponId(snapshot.weaponSlot2);
   }
 
   getAmmoState(): LoadoutAmmoState | null {
@@ -310,10 +315,10 @@ export class WeaponLoadout {
     }
   }
 
-  tryEquipMelee(equip: boolean): boolean {
+  tryEquipMelee(equip: boolean, options?: { bypassCooldown?: boolean }): boolean {
     if (!this.meleeSlot) return false;
     if (equip === this.meleeEquipped) return false;
-    if (this.switchCooldown > 0) return false;
+    if (!options?.bypassCooldown && this.switchCooldown > 0) return false;
 
     if (!equip) {
       this.meleeEquipped = false;

@@ -19,6 +19,8 @@ export interface InventoryViewState {
   weapons: readonly InventoryWeaponEntry[];
   melee: InventoryMeleeEntry;
   shieldCharges: number;
+  grenadeCount: number;
+  grenadeEquipped: boolean;
   operatorName: string;
   killDeath: string;
   unitsInField: number;
@@ -43,6 +45,8 @@ export class InventoryHud {
   private readonly meleeNameEl: HTMLElement;
   private readonly shieldRow: HTMLElement;
   private readonly shieldCountEl: HTMLElement;
+  private readonly grenadeRow: HTMLElement;
+  private readonly grenadeCountEl: HTMLElement;
   private readonly examineTooltip: HTMLElement;
   private readonly weaponSlots: HTMLElement[] = [];
   private dropHoldTarget: DropTarget | null = null;
@@ -68,6 +72,8 @@ export class InventoryHud {
     this.meleeNameEl = document.getElementById('inventory-melee-name')!;
     this.shieldRow = document.getElementById('inventory-shield-row')!;
     this.shieldCountEl = document.getElementById('inventory-shield-count')!;
+    this.grenadeRow = document.getElementById('inventory-grenade-row')!;
+    this.grenadeCountEl = document.getElementById('inventory-grenade-count')!;
     this.examineTooltip = document.getElementById('inventory-examine-tooltip')!;
 
     for (let i = 0; i < weaponOrder.length; i++) {
@@ -235,6 +241,10 @@ export class InventoryHud {
     this.shieldDroppable = state.shieldCharges > 0;
     this.shieldRow.classList.toggle('droppable', this.shieldDroppable);
     this.shieldCountEl.textContent = String(state.shieldCharges);
+
+    this.grenadeRow.classList.toggle('active', state.grenadeEquipped);
+    this.grenadeRow.classList.toggle('empty', state.grenadeCount <= 0);
+    this.grenadeCountEl.textContent = String(state.grenadeCount);
 
     if (dropKeyHeld && this.hoveredDropTarget) {
       this.syncDropHold(this.hoveredDropTarget);

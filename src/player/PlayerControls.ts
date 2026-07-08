@@ -2,6 +2,7 @@ import type * as THREE from 'three';
 import { PointerAimControls } from './PointerAimControls';
 import type { ControlsHelpHud } from '../ui/ControlsHelpHud';
 import type { CrosshairHud } from '../ui/CrosshairHud';
+import type { ThrowableHud } from '../ui/ThrowableHud';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
@@ -16,6 +17,7 @@ import type { MinimapHud } from '../ui/MinimapHud';
 export class PlayerControls {
   readonly controls: PointerAimControls;
   private staminaHud: StaminaHud | null = null;
+  private throwableHud: ThrowableHud | null = null;
   private ammoHud: AmmoHud | null = null;
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
@@ -50,6 +52,10 @@ export class PlayerControls {
 
   setStaminaHud(hud: StaminaHud): void {
     this.staminaHud = hud;
+  }
+
+  setThrowableHud(hud: ThrowableHud): void {
+    this.throwableHud = hud;
   }
 
   setAmmoHud(hud: AmmoHud): void {
@@ -157,6 +163,7 @@ export class PlayerControls {
       this.leaveButton.hidden = true;
       this.crosshairHud?.setVisible(true);
       this.staminaHud?.setVisible(true);
+      this.throwableHud?.setVisible(true);
       this.ammoHud?.setVisible(true);
       this.healthHud?.setVisible(true);
       this.shieldRechargeHud?.setVisible(true);
@@ -176,6 +183,7 @@ export class PlayerControls {
       this.blocker.style.display = 'flex';
       this.crosshairHud?.setVisible(false);
       this.staminaHud?.setVisible(false);
+      this.throwableHud?.setVisible(false);
       this.ammoHud?.setVisible(false);
       this.healthHud?.setVisible(false);
       this.shieldRechargeHud?.setVisible(false);

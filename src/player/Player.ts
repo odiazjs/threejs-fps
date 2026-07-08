@@ -1,7 +1,18 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT, type PlayerPhysicsState } from '../../shared/level/collision';
 import { stepPlayerPhysicsClient } from './levelMovement';
-import { DEFAULT_MAP_ID, getMapDef, type MapCollisionDef } from '../../shared/level/maps';
+import { DEFAULT_MAP_ID, getClientMapDef, getMapDef, type MapCollisionDef } from '../../shared/level/maps';
+import {
+  computeGrenadeThrowVelocity,
+  predictGrenadeArcPreview,
+  type GrenadeArcPreviewResult,
+} from '../../shared/combat/grenadePhysics';
+import type { GrenadeThrowRequest } from '../../shared/network/grenade';
+import {
+  GRENADE_THROW_ARM_DEPTH,
+  GRENADE_THROW_SCREEN_OFFSET_X,
+  GRENADE_THROW_SCREEN_OFFSET_Y,
+} from '../../shared/throwables/grenadeConfig';
 import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import {
   isWeaponId,
@@ -14,14 +25,20 @@ import type { WeaponFireMode } from '../../shared/content/weaponConfig';
 import type { ProjectileManager } from '../combat/ProjectileManager';
 import { ShieldDomeAbility } from '../combat/ShieldDomeAbility';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
+import {
+  MELEE_IMPACT_PROGRESS_END,
+  MELEE_IMPACT_PROGRESS_START,
+} from '../../shared/combat/meleeHit';
 import { bodyPartVolumesFromBoneRefs, type BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
-import { readCrosshairWorldRay, readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset } from '../combat/aiming';
+import { readCrosshairWorldRay, readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset, readScreenHoldWorldPosition } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
 import { EMPTY_WEAPON_SLOT } from '../../shared/loadout/loadoutSlots';
 import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
+import { GrenadeThrowKick } from './GrenadeThrowKick';
+import { ExplosionCameraShake } from './ExplosionCameraShake';
 import { HeadBob } from './HeadBob';
 import {
   createCharacterInstance,
@@ -58,6 +75,7 @@ import {
 } from '../debug/AxisDebugArrows';
 import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
+import type { GrenadeSoundService } from '../audio/GrenadeSoundService';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import { getReloadState } from '../../shared/combat/reload';
 import {
@@ -127,6 +145,8 @@ export class Player {
   private mapCollisionDef: MapCollisionDef = getMapDef(DEFAULT_MAP_ID);
   private sprint = new SprintStamina();
   private headBob = new HeadBob();
+  private readonly grenadeThrowKick = new GrenadeThrowKick();
+  private readonly explosionCameraShake = new ExplosionCameraShake();
   private footstepSounds: FootstepSoundService | null = null;
   private headRig: THREE.Group | null = null;
   private yawRecoilRig: THREE.Group | null = null;
@@ -141,6 +161,7 @@ export class Player {
   private characterInstance: CharacterInstance | null = null;
   private displayedCharacterModelFile: string | null = null;
   private meleeAttackAnimConsumed = false;
+  private meleeHitResolved = false;
   private weaponSwitchAnimConsumed = false;
   private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteKatanaAxisDebug: AxisDebugArrows | null = null;
@@ -165,6 +186,7 @@ export class Player {
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
   private onMeleeEquipNetwork: MeleeEquipCallback | null = null;
   private onMeleeAttackNetwork: MeleeAttackNetworkCallback | null = null;
+  private onGrenadeThrowNetwork: ((request: GrenadeThrowRequest) => void) | null = null;
   private onShieldRechargeNetwork: ShieldRechargeNetworkCallback | null = null;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
   private shieldDomeWorldTime: (() => number) | null = null;
@@ -189,8 +211,10 @@ export class Player {
   private readonly remoteWeaponBaseRotation = new THREE.Euler();
   private readonly activeMeshBaseRotation = new THREE.Euler();
   private fireCooldown = 0;
+  private throwableEquipped = false;
   private localAutoFiring = false;
   private weaponSounds: WeaponSoundService | null = null;
+  private grenadeSounds: GrenadeSoundService | null = null;
   private projectileSpawnOptions: {
     canHitPlayers: boolean;
     ownerTeamId: number;
@@ -532,11 +556,52 @@ export class Player {
     return this.inventory;
   }
 
+  isThrowableEquipped(): boolean {
+    return this.throwableEquipped;
+  }
+
+  unequipThrowable(): void {
+    if (!this.throwableEquipped) return;
+    this.throwableEquipped = false;
+    this.syncThrowableHolster();
+  }
+
+  triggerExplosionShake(explosionX: number, explosionY: number, explosionZ: number): void {
+    if (!this.camera) return;
+    this.camera.getWorldPosition(this.muzzleOrigin);
+    this.explosionCameraShake.trigger(
+      explosionX,
+      explosionY,
+      explosionZ,
+      this.muzzleOrigin.x,
+      this.muzzleOrigin.y,
+      this.muzzleOrigin.z,
+    );
+  }
+
+  getThrowableArcPreview(): GrenadeArcPreviewResult | null {
+    if (!this.throwableEquipped || !this.camera) return null;
+    const pose = this.computeGrenadeThrowPose();
+    if (!pose) return null;
+    return predictGrenadeArcPreview(
+      pose.x,
+      pose.y,
+      pose.z,
+      pose.velX,
+      pose.velY,
+      pose.velZ,
+      (x, z) => getClientMapDef().sampleGroundHeight(x, z),
+      4,
+      0.04,
+    );
+  }
+
   getInventoryWeapons(): InventoryWeaponEntry[] {
     if (!this.loadout) return [];
 
     const activeIndex = this.loadout.getActiveIndex();
     const meleeEquipped = this.loadout.isMeleeEquipped();
+    const throwableEquipped = this.throwableEquipped;
     return Array.from({ length: LOADOUT_SIZE }, (_, slotIndex) => {
       const weaponId = this.loadout!.getSlotWeaponId(slotIndex);
       const occupied = weaponId !== null;
@@ -544,7 +609,11 @@ export class Player {
         slotIndex,
         weaponId,
         name: occupied ? (getWeaponConfig(weaponId)!.name) : 'Empty',
-        active: occupied && !meleeEquipped && slotIndex === activeIndex,
+        active:
+          occupied &&
+          !meleeEquipped &&
+          !throwableEquipped &&
+          slotIndex === activeIndex,
         occupied,
       };
     });
@@ -553,30 +622,20 @@ export class Player {
   getInventoryMelee(): InventoryMeleeEntry {
     return {
       name: KATANA_CONFIG.name,
-      active: this.loadout?.isMeleeEquipped() ?? false,
+      active: (this.loadout?.isMeleeEquipped() ?? false) && !this.throwableEquipped,
     };
   }
 
   requestInventoryWeaponSwitch(slotIndex: number): boolean {
-    if (!this.loadout || !this.camera) return false;
-    if (!this.loadout.trySwitch(slotIndex)) return false;
-
-    this.stopWeaponAutoFire();
-    const active = this.loadout.getActive();
-    if (!active) return false;
-
-    this.weaponPose?.setViewConfig(active.config.view);
-    this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
-    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
-    const weaponId = this.loadout.getActiveWeaponId();
-    if (weaponId) this.onWeaponSwitchNetwork?.(slotIndex, weaponId);
-    return true;
+    return this.tryResumeWeaponSlot(slotIndex, true);
   }
 
   requestInventoryMeleeEquip(): boolean {
-    if (!this.loadout || !this.camera || this.loadout.isMeleeEquipped()) return false;
-    if (!this.loadout.tryEquipMelee(true)) return false;
+    if (!this.loadout || !this.camera) return false;
+    if (this.loadout.isMeleeEquipped() && !this.throwableEquipped) return false;
+    if (!this.loadout.tryEquipMelee(true, { bypassCooldown: true })) return false;
 
+    this.unequipThrowable();
     this.stopWeaponAutoFire();
     const active = this.loadout.getActive();
     if (!active) return false;
@@ -591,6 +650,13 @@ export class Player {
   applyLoadoutFromSnapshot(snapshot: PlayerSnapshot): void {
     if (!this.loadout || !this.camera) return;
 
+    if (this.throwableEquipped) {
+      this.loadout.applyServerSlotAssignments(snapshot);
+      return;
+    }
+
+    const prevActiveWeaponId = this.loadout.getActiveWeaponId();
+
     this.loadout.applyServerSlots(snapshot, snapshot.activeWeaponId);
     if (isWeaponId(snapshot.activeWeaponId)) {
       this.targetActiveWeaponId = snapshot.activeWeaponId;
@@ -599,6 +665,14 @@ export class Player {
       if (active) this.weaponPose?.setViewConfig(active.config.view);
     } else {
       this.stopWeaponAutoFire();
+    }
+
+    if (
+      this.throwableEquipped &&
+      isWeaponId(snapshot.activeWeaponId) &&
+      snapshot.activeWeaponId !== prevActiveWeaponId
+    ) {
+      this.unequipThrowable();
     }
   }
 
@@ -648,6 +722,10 @@ export class Player {
     this.weaponSounds = service;
   }
 
+  setGrenadeSoundService(service: GrenadeSoundService | null): void {
+    this.grenadeSounds = service;
+  }
+
   setFootstepSoundService(service: FootstepSoundService | null): void {
     this.footstepSounds = service;
   }
@@ -666,6 +744,12 @@ export class Player {
 
   setMeleeAttackNetworkCallback(callback: MeleeAttackNetworkCallback | null): void {
     this.onMeleeAttackNetwork = callback;
+  }
+
+  setGrenadeThrowNetworkCallback(
+    callback: ((request: GrenadeThrowRequest) => void) | null,
+  ): void {
+    this.onGrenadeThrowNetwork = callback;
   }
 
   setShieldRechargeNetworkCallback(callback: ShieldRechargeNetworkCallback | null): void {
@@ -812,6 +896,9 @@ export class Player {
   private resetLocalView(): void {
     if (!this.camera) return;
 
+    this.unequipThrowable();
+    this.grenadeThrowKick.reset();
+    this.explosionCameraShake.reset();
     this.headBob.reset();
     this.footstepSounds?.reset();
     this.crouchBlend = 0;
@@ -863,7 +950,9 @@ export class Player {
     this.targetMeleeAttackEndAt = snapshot.meleeAttackEndAt;
     if (isWeaponId(snapshot.activeWeaponId)) {
       this.targetActiveWeaponId = snapshot.activeWeaponId;
-      this.loadout?.setRemoteActiveWeapon(snapshot.activeWeaponId);
+      if (!this.throwableEquipped) {
+        this.loadout?.setRemoteActiveWeapon(snapshot.activeWeaponId);
+      }
     }
     this.targetSprinting = snapshot.sprinting;
     this.targetWalking = snapshot.walking;
@@ -1106,17 +1195,23 @@ export class Player {
     if (!this.camera || !this.loadout) return;
 
     this.katanaSlashFx?.update(delta);
+    this.grenadeThrowKick.update(delta);
+    this.explosionCameraShake.update(delta);
 
     if (!canAct) {
       this.stopWeaponAutoFire();
       this.headBob.update(delta, false, false);
       if (this.headRig) this.headBob.apply(this.headRig, false);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
+      if (this.yawRecoilRig && this.pitchRecoilRig) {
+        this.applyActiveRecoilAim();
+      }
       return;
     }
 
     this.trySwitchWeapon(input);
     this.tryToggleMeleeEquip(input);
+    this.updateThrowableInput(input, pointer);
 
     const wantsCrouch = input.isPressed('KeyC');
     const isCrouching = wantsCrouch && this.physics.grounded;
@@ -1148,7 +1243,7 @@ export class Player {
     let ammoReloadProgress = 0;
     let ads = false;
 
-    if (active) {
+    if (active && !this.throwableEquipped) {
       if (input.isJustPressed('KeyR')) {
         if (
           !meleeEquipped &&
@@ -1172,9 +1267,11 @@ export class Player {
         this.stopWeaponAutoFire();
       }
       shooting =
-        active.config.fireMode === 'melee'
-          ? this.weaponPose?.isSlashing() ?? false
-          : this.isFiring(pointer, active.config.fireMode);
+        this.throwableEquipped
+          ? false
+          : active.config.fireMode === 'melee'
+            ? this.weaponPose?.isSlashing() ?? false
+            : this.isFiring(pointer, active.config.fireMode);
 
       this.weaponPose?.setViewConfig(active.config.view);
       this.weaponPose?.update(
@@ -1199,10 +1296,6 @@ export class Player {
         active.config.sway,
       );
       active.recoil.update(delta, shooting, ads);
-      if (this.yawRecoilRig && this.pitchRecoilRig) {
-        this.applyActiveRecoilAim();
-      }
-      this.stabilizeCameraPitch();
       this.applyActiveWeaponPose();
       this.weaponPose?.applyCamera(this.camera);
       const baseRotation = this.getActiveMeshBaseRotation();
@@ -1219,11 +1312,21 @@ export class Player {
 
       this.updateFire(delta, pointer, projectiles);
       this.updateMeleeAttack(delta, input, pointer, projectiles);
+    } else if (this.throwableEquipped) {
+      this.stopWeaponAutoFire();
+      this.tryStartShieldRecharge(input);
+      if (this.aimControls) this.aimControls.pointerSpeed = 1;
+      this.weaponPose?.applyCamera(this.camera);
     } else {
       this.stopWeaponAutoFire();
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
     }
+
+    if (this.yawRecoilRig && this.pitchRecoilRig) {
+      this.applyActiveRecoilAim();
+    }
+    this.stabilizeCameraPitch();
 
     const moveMultiplier =
       active && meleeEquipped && isSprinting
@@ -1308,6 +1411,10 @@ export class Player {
     this.object.position.x = cleared.x;
     this.object.position.z = cleared.z;
 
+    if (active && meleeEquipped) {
+      this.resolveActiveMeleeHit(projectiles);
+    }
+
     this.tryDeployShieldDome(input, {
       isSprinting,
       isJumping: !this.physics.grounded,
@@ -1365,11 +1472,117 @@ export class Player {
     this.object.removeFromParent();
   }
 
+  private updateThrowableInput(input: KeyboardInput, pointer: PointerInput): void {
+    if (input.isJustPressed('KeyG')) {
+      if (!this.throwableEquipped) {
+        this.tryEquipThrowable();
+        return;
+      }
+      this.tryThrowGrenade();
+      return;
+    }
+
+    if (this.throwableEquipped && pointer.isJustPressed(POINTER_SHOOT)) {
+      this.tryThrowGrenade();
+    }
+  }
+
+  private tryEquipThrowable(): void {
+    if (this.inventory.getGrenadeCount() <= 0) return;
+
+    this.stopWeaponAutoFire();
+    this.loadout?.getActive()?.ammo.cancelReload();
+
+    if (this.loadout?.isMeleeEquipped()) {
+      if (!this.loadout.tryEquipMelee(false, { bypassCooldown: true })) return;
+      this.onMeleeEquipNetwork?.(false);
+    }
+
+    this.throwableEquipped = true;
+    this.syncThrowableHolster();
+    this.grenadeSounds?.playEquip();
+  }
+
+  private syncThrowableHolster(): void {
+    if (!this.loadout || !this.camera) return;
+    this.loadout.setMeshesVisible(!this.throwableEquipped);
+  }
+
+  private tryThrowGrenade(): void {
+    if (!this.throwableEquipped || !this.camera) return;
+
+    const pose = this.computeGrenadeThrowPose();
+    if (!pose) return;
+    if (!this.inventory.trySpendGrenade()) {
+      this.unequipThrowable();
+      return;
+    }
+
+    this.grenadeThrowKick.trigger();
+    this.grenadeSounds?.playThrow();
+
+    this.onGrenadeThrowNetwork?.({
+      x: pose.x,
+      y: pose.y,
+      z: pose.z,
+      dirX: pose.dirX,
+      dirY: pose.dirY,
+      dirZ: pose.dirZ,
+    });
+
+    if (this.inventory.getGrenadeCount() <= 0) {
+      this.unequipThrowable();
+    }
+  }
+
+  private computeGrenadeThrowPose(): (GrenadeThrowRequest & {
+    velX: number;
+    velY: number;
+    velZ: number;
+  }) | null {
+    if (!this.camera) return null;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    this.camera.getWorldDirection(this.aimDirection);
+
+    readScreenHoldWorldPosition(
+      this.camera,
+      viewportWidth,
+      viewportHeight,
+      GRENADE_THROW_SCREEN_OFFSET_X * viewportWidth * 0.5,
+      GRENADE_THROW_SCREEN_OFFSET_Y * viewportHeight * 0.5,
+      GRENADE_THROW_ARM_DEPTH,
+      this.muzzleOrigin,
+    );
+
+    const vel = computeGrenadeThrowVelocity(
+      this.aimDirection.x,
+      this.aimDirection.y,
+      this.aimDirection.z,
+    );
+
+    return {
+      x: this.muzzleOrigin.x,
+      y: this.muzzleOrigin.y,
+      z: this.muzzleOrigin.z,
+      dirX: this.aimDirection.x,
+      dirY: this.aimDirection.y,
+      dirZ: this.aimDirection.z,
+      velX: vel.velX,
+      velY: vel.velY,
+      velZ: vel.velZ,
+    };
+  }
+
   private tryToggleMeleeEquip(input: KeyboardInput): void {
     if (!this.loadout || !input.isJustPressed('KeyX')) return;
 
     const equip = !this.loadout.isMeleeEquipped();
-    if (!this.loadout.tryEquipMelee(equip)) return;
+    if (!this.loadout.tryEquipMelee(equip, { bypassCooldown: this.throwableEquipped })) return;
+
+    if (equip) this.unequipThrowable();
 
     this.stopWeaponAutoFire();
     const active = this.loadout.getActive();
@@ -1387,19 +1600,49 @@ export class Player {
     for (let slot = 0; slot < LOADOUT_SIZE; slot++) {
       const code = `Digit${slot + 1}`;
       if (!input.isJustPressed(code)) continue;
-      if (!this.loadout.trySwitch(slot)) continue;
+      if (this.tryResumeWeaponSlot(slot, true)) break;
+    }
+  }
 
+  /** Switch to a weapon slot, or holster a throwable back to the already-active slot. */
+  private tryResumeWeaponSlot(slotIndex: number, sendNetwork: boolean): boolean {
+    if (!this.loadout || !this.camera) return false;
+
+    const weaponId = this.loadout.getSlotWeaponId(slotIndex);
+    if (!weaponId || weaponId === MELEE_WEAPON_ID) return false;
+
+    const resumingFromThrowable =
+      this.throwableEquipped &&
+      !this.loadout.isMeleeEquipped() &&
+      slotIndex === this.loadout.getActiveIndex();
+
+    if (resumingFromThrowable) {
+      this.unequipThrowable();
       this.stopWeaponAutoFire();
       const active = this.loadout.getActive();
-      if (!active) continue;
-
-      this.weaponPose?.setViewConfig(active.config.view);
-      this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
-      this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
-      const weaponId = this.loadout.getActiveWeaponId();
-      if (weaponId) this.onWeaponSwitchNetwork?.(slot, weaponId);
-      break;
+      if (active) {
+        this.weaponPose?.setViewConfig(active.config.view);
+        this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
+        this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+      }
+      return true;
     }
+
+    if (!this.loadout.trySwitch(slotIndex)) return false;
+
+    this.unequipThrowable();
+    this.stopWeaponAutoFire();
+    const active = this.loadout.getActive();
+    if (!active) return true;
+
+    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
+    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    if (sendNetwork) {
+      const switchedWeaponId = this.loadout.getActiveWeaponId();
+      if (switchedWeaponId) this.onWeaponSwitchNetwork?.(slotIndex, switchedWeaponId);
+    }
+    return true;
   }
 
   private tryStartShieldRecharge(input: KeyboardInput): void {
@@ -1458,14 +1701,31 @@ export class Player {
     this.weaponPose?.startSlash(KATANA_SLASH_DURATION_SEC);
     this.katanaSlashFx?.play(active.mesh);
     this.fireCooldown += active.fireInterval;
+    this.meleeHitResolved = false;
     this.onMeleeAttackNetwork?.();
+  }
 
-    if (projectiles) {
-      projectiles.tryMeleeHit(
+  /** Resolve melee hits during the slash impact window, after movement for sprint closes. */
+  private resolveActiveMeleeHit(projectiles: ProjectileManager | null): void {
+    if (!this.loadout?.isMeleeEquipped() || !this.camera || !this.weaponPose) return;
+    if (this.meleeHitResolved || !this.weaponPose.isSlashing()) return;
+    if (!projectiles) return;
+
+    const progress = this.weaponPose.getSlashProgress();
+    if (progress < MELEE_IMPACT_PROGRESS_START) return;
+    if (progress > MELEE_IMPACT_PROGRESS_END) return;
+
+    const active = this.loadout.getActive();
+    if (!active) return;
+
+    const range = active.config.meleeRange ?? 2.8;
+    if (projectiles.tryMeleeHit(
         this.camera,
-        active.config.meleeRange ?? 2.8,
+        range,
         this.projectileSpawnOptions.ownerSessionId,
-      );
+      )
+    ) {
+      this.meleeHitResolved = true;
     }
   }
 
@@ -1474,7 +1734,7 @@ export class Player {
     pointer: PointerInput,
     projectiles: ProjectileManager | null,
   ): void {
-    if (!this.loadout) return;
+    if (!this.loadout || this.throwableEquipped) return;
 
     const active = this.loadout.getActive();
     if (!active || active.config.fireMode === 'melee') return;
@@ -1590,10 +1850,21 @@ export class Player {
   }
 
   private applyActiveRecoilAim(): void {
-    const recoil = this.getActiveRecoil();
-    if (!recoil || !this.yawRecoilRig || !this.pitchRecoilRig || !this.pitchRig) return;
+    if (!this.yawRecoilRig || !this.pitchRecoilRig || !this.pitchRig) return;
     const basePitch = this.aimControls?.lookPitch ?? this.pitchRig.rotation.x;
-    recoil.applyAim(this.yawRecoilRig, this.pitchRecoilRig, basePitch);
+    const recoil = this.getActiveRecoil();
+    if (recoil) {
+      recoil.applyAim(this.yawRecoilRig, this.pitchRecoilRig, basePitch);
+    } else {
+      this.yawRecoilRig.rotation.set(0, 0, 0);
+      this.pitchRecoilRig.rotation.set(0, 0, 0);
+    }
+    if (this.grenadeThrowKick.isActive()) {
+      this.grenadeThrowKick.applyAdditive(this.yawRecoilRig, this.pitchRecoilRig);
+    }
+    if (this.explosionCameraShake.isActive()) {
+      this.explosionCameraShake.applyAdditive(this.yawRecoilRig, this.pitchRecoilRig);
+    }
   }
 
   /** Corrects euler drift so world pitch never flips past vertical. */

@@ -1,5 +1,6 @@
 import { Client, Room } from 'colyseus';
 import { overlapsAmmoBox } from '../../../shared/level/ammoBoxSpawns.js';
+import { overlapsGrenadePickup } from '../../../shared/network/grenadePickup.js';
 import type { PlayerPhysicsState } from '../../../shared/level/collision.js';
 import {
   clampEyeYForMap,
@@ -55,6 +56,25 @@ import {
   WEAPON_FIRE_MODE,
 } from '../../../shared/content/weaponStats.js';
 import {
+  computeGrenadeThrowVelocity,
+  createGrenadeMotionState,
+  grenadeDamageAtDistance,
+  stepGrenadeMotion,
+} from '../../../shared/combat/grenadePhysics.js';
+import { createGrenadeWorldRaycast } from '../../../shared/combat/grenadeWorldCollision.js';
+import {
+  GRENADE_BLAST_RADIUS,
+  GRENADE_COLLISION_RADIUS,
+  GRENADE_FUSE_SEC,
+  GRENADE_MAX_DAMAGE,
+  GRENADE_PICKUP_GRANT,
+  GRENADE_PICKUP_RESPAWN_SEC,
+  GRENADE_THROW_AIM_HALF_ANGLE_RAD,
+  GRENADE_THROW_ORIGIN_MAX_OFFSET,
+} from '../../../shared/throwables/grenadeConfig.js';
+import type { GrenadeThrowRequest } from '../../../shared/network/grenade.js';
+import type { PickupGrenadeMessage } from '../../../shared/network/grenadePickup.js';
+import {
   aimDirectionFromYawPitch,
   feetYFromEyeY,
   isMeleeHitValid,
@@ -91,8 +111,14 @@ import {
   SHIELD_DOME_CHARGE_SEC,
   SHIELD_DOME_COOLDOWN_SEC,
   SHIELD_DOME_DURATION_SEC,
+  GRENADE_SHIELD_DOME_TIMER_PENALTY_SEC,
   shieldDomeCenterYFromFeet,
 } from '../../../shared/combat/shieldDomeAbility.js';
+import {
+  grenadeBlastBlockedByShieldDome,
+  grenadeExplosionHitsShieldDome,
+  type GrenadeShieldDome,
+} from '../../../shared/combat/grenadeShieldDome.js';
 import type { DropWeaponMessage } from '../../../shared/network/weaponDrop.js';
 import type { PickupWeaponDropMessage } from '../../../shared/network/weaponPickup.js';
 import { WEAPON_PICKUP_MAX_DISTANCE } from '../../../shared/network/weaponPickup.js';
@@ -107,10 +133,10 @@ import {
   sanitizeLoadoutSlots,
   setLoadoutSlotWeapon,
 } from '../../../shared/loadout/loadoutSlots.js';
-import { MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js';
+import { MAX_SHIELD_CHARGES, MAX_GRENADES } from '../../../shared/inventory/inventoryLimits.js';
 import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupRespawn.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
-import { AmmoBoxState, FpsState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
+import { AmmoBoxState, FpsState, GrenadePickupState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
 import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
 import { loadMapPhysicsForServer } from '../level/loadMapPhysics.js';
@@ -146,6 +172,21 @@ interface LastShotOrigin {
   time: number;
 }
 
+interface ActiveServerGrenade {
+  id: string;
+  throwerId: string;
+  throwerTeamId: number;
+  x: number;
+  y: number;
+  z: number;
+  velX: number;
+  velY: number;
+  velZ: number;
+  fuseEndAt: number;
+  grounded: boolean;
+  bounceCount: number;
+}
+
 export class FpsRoom extends Room<{ state: FpsState }> {
   state = new FpsState();
   maxClients = 8;
@@ -163,6 +204,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly holsteredWeaponIdBySession = new Map<string, string>();
   private readonly ammoRespawnAt = new Map<number, number>();
   private readonly shieldRespawnAt = new Map<number, number>();
+  private readonly grenadeRespawnAt = new Map<number, number>();
+  private readonly activeGrenades = new Map<string, ActiveServerGrenade>();
+  private grenadeIdCounter = 0;
 
   async onCreate(options: JoinOptions = {}): Promise<void> {
     this.inviteMatch = options.inviteMatch === true;
@@ -208,6 +252,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.state.shieldCharges.push(charge);
     }
 
+    for (const pos of this.mapDef.getGrenadePositions?.() ?? []) {
+      const pickup = new GrenadePickupState();
+      pickup.x = pos.x;
+      pickup.z = pos.z;
+      pickup.count = GRENADE_PICKUP_GRANT;
+      this.state.grenadePickups.push(pickup);
+    }
+
     for (const spawn of this.mapDef.getInitialWeaponSpawns?.() ?? []) {
       this.spawnWeaponDrop(spawn.x, spawn.z, spawn.yaw, spawn.weaponId);
     }
@@ -225,7 +277,207 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.tickTrainingBots(deltaSec);
       this.tickMatchState();
       this.tickWorldPickupRespawns();
+      this.tickGrenades(deltaSec);
     });
+  }
+
+  private sampleGrenadeGround(x: number, z: number): number {
+    return this.mapDef.sampleGroundHeight(x, z);
+  }
+
+  private tickGrenades(deltaSec: number): void {
+    const now = this.state.worldTime;
+    const shieldDomes = this.getActiveShieldDomes(now);
+
+    for (const [id, grenade] of this.activeGrenades) {
+      stepGrenadeMotion(
+        grenade,
+        deltaSec,
+        (x, z) => this.sampleGrenadeGround(x, z),
+        createGrenadeWorldRaycast(),
+        shieldDomes,
+        now,
+      );
+
+      if (now >= grenade.fuseEndAt) {
+        this.detonateGrenade(id, grenade);
+      }
+    }
+  }
+
+  private getActiveShieldDomes(worldTime: number): GrenadeShieldDome[] {
+    const domes: GrenadeShieldDome[] = [];
+
+    for (const player of this.state.players.values()) {
+      if (player.shieldDomeEndAt <= worldTime) continue;
+      domes.push({
+        centerX: player.shieldDomeCenterX,
+        centerY: player.shieldDomeCenterY,
+        centerZ: player.shieldDomeCenterZ,
+        endAt: player.shieldDomeEndAt,
+      });
+    }
+
+    return domes;
+  }
+
+  private applyGrenadeShieldDomePenalty(
+    grenade: ActiveServerGrenade,
+    thrower: PlayerState,
+    now: number,
+  ): void {
+    for (const [ownerId, owner] of this.state.players) {
+      if (ownerId === grenade.throwerId) continue;
+      if (
+        !this.state.friendlyFire &&
+        thrower.teamId === owner.teamId &&
+        !isTrainingBotSessionId(ownerId)
+      ) {
+        continue;
+      }
+      if (owner.shieldDomeEndAt <= now) continue;
+
+      const dome: GrenadeShieldDome = {
+        centerX: owner.shieldDomeCenterX,
+        centerY: owner.shieldDomeCenterY,
+        centerZ: owner.shieldDomeCenterZ,
+        endAt: owner.shieldDomeEndAt,
+      };
+      if (!grenadeExplosionHitsShieldDome(grenade.x, grenade.y, grenade.z, dome, now)) {
+        continue;
+      }
+
+      const newEndAt = owner.shieldDomeEndAt - GRENADE_SHIELD_DOME_TIMER_PENALTY_SEC;
+      owner.shieldDomeEndAt = newEndAt <= now ? 0 : newEndAt;
+    }
+  }
+
+  private detonateGrenade(id: string, grenade: ActiveServerGrenade): void {
+    this.activeGrenades.delete(id);
+
+    this.broadcast('grenadeExplosion', {
+      id,
+      throwerId: grenade.throwerId,
+      x: grenade.x,
+      y: grenade.y,
+      z: grenade.z,
+    });
+
+    if (!this.isMatchCombatAllowed()) return;
+
+    const thrower = this.state.players.get(grenade.throwerId);
+    if (!thrower) return;
+
+    const now = this.state.worldTime;
+    this.applyGrenadeShieldDomePenalty(grenade, thrower, now);
+    const shieldDomes = this.getActiveShieldDomes(now);
+
+    const blastCenterY = grenade.y;
+    const feetBlastY = blastCenterY - GRENADE_COLLISION_RADIUS;
+
+    for (const [targetId, target] of this.state.players) {
+      if (!target.alive) continue;
+      if (targetId === grenade.throwerId) continue;
+
+      if (
+        !this.state.friendlyFire &&
+        thrower.teamId === target.teamId &&
+        !isTrainingBotSessionId(targetId)
+      ) {
+        continue;
+      }
+
+      const targetFeetY = feetYFromEyeY(target.y);
+      const targetCenterY = targetFeetY + PLAYER_HIT_CAPSULE_HEIGHT * 0.55;
+      if (
+        grenadeBlastBlockedByShieldDome(
+          grenade.x,
+          blastCenterY,
+          grenade.z,
+          target.x,
+          targetCenterY,
+          target.z,
+          shieldDomes,
+          now,
+        )
+      ) {
+        continue;
+      }
+
+      const dx = target.x - grenade.x;
+      const dy = targetCenterY - blastCenterY;
+      const dz = target.z - grenade.z;
+      const distance = Math.hypot(dx, dy, dz);
+      const damage = grenadeDamageAtDistance(distance, GRENADE_MAX_DAMAGE, GRENADE_BLAST_RADIUS);
+      if (damage <= 0) continue;
+
+      const prevShieldPoints = target.shieldPoints;
+      const result = applyDamageWithShield(target.hp, target.shieldPoints, damage);
+      target.shieldPoints = result.shieldPoints;
+      target.hp = result.hp;
+
+      if (result.absorbedByShield > 0 || result.dealtToHealth > 0) {
+        const victimClient = this.clients.find((c) => c.sessionId === targetId);
+        if (victimClient) {
+          victimClient.send('damaged', {
+            shooterId: grenade.throwerId,
+            shooterWorldX: grenade.x,
+            shooterWorldY: feetBlastY,
+            shooterWorldZ: grenade.z,
+            absorbedByShield: result.absorbedByShield,
+            dealtToHealth: result.dealtToHealth,
+            shieldBroken: prevShieldPoints > 0 && result.shieldPoints <= 0,
+          } satisfies PlayerDamagedMessage);
+        }
+      }
+
+      if (target.hp > 0) continue;
+
+      target.hp = 0;
+      target.alive = false;
+      target.reloading = false;
+      target.reloadEndAt = 0;
+      target.weaponSwitchEndAt = 0;
+      target.meleeAttackEndAt = 0;
+      this.stopAutoFireSound(targetId);
+      this.cancelShieldRecharge(target);
+      this.cancelShieldDome(target);
+
+      const killFeed: KillFeedMessage = {
+        killerId: grenade.throwerId,
+        killerName: thrower.username,
+        victimName: target.username,
+      };
+      this.broadcast('kill', killFeed);
+      thrower.matchKills += 1;
+
+      if (this.isTdm() && isValidTdmTeamId(thrower.teamId, this.state.teamCount)) {
+        this.addTeamScore(thrower.teamId, TDM_KILL_POINTS);
+      }
+
+      this.persistKillStats(grenade.throwerId, targetId);
+
+      this.clock.setTimeout(() => {
+        if (this.isTdm() && this.state.matchPhase === 'ended') return;
+        this.respawnPlayer(targetId);
+      }, RESPAWN_DELAY_SEC * 1000);
+    }
+  }
+
+  private isThrowDirectionValid(
+    player: PlayerState,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+  ): boolean {
+    const aim = aimDirectionFromYawPitch(player.yaw, player.pitch);
+    const len = Math.hypot(dirX, dirY, dirZ);
+    if (len <= 1e-8) return false;
+    const nx = dirX / len;
+    const ny = dirY / len;
+    const nz = dirZ / len;
+    const dot = aim.x * nx + aim.y * ny + aim.z * nz;
+    return dot >= Math.cos(GRENADE_THROW_AIM_HALF_ANGLE_RAD);
   }
 
   private tickWorldPickupRespawns(): void {
@@ -244,6 +496,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (charge) charge.collected = false;
       this.shieldRespawnAt.delete(index);
     }
+
+    for (const [index, respawnAt] of this.grenadeRespawnAt) {
+      if (now < respawnAt) continue;
+      const pickup = this.state.grenadePickups.at(index);
+      if (pickup) pickup.collected = false;
+      this.grenadeRespawnAt.delete(index);
+    }
   }
 
   private scheduleAmmoRespawn(index: number): void {
@@ -252,6 +511,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   private scheduleShieldRespawn(index: number): void {
     this.shieldRespawnAt.set(index, this.state.worldTime + WORLD_PICKUP_RESPAWN_SEC);
+  }
+
+  private scheduleGrenadeRespawn(index: number): void {
+    this.grenadeRespawnAt.set(index, this.state.worldTime + GRENADE_PICKUP_RESPAWN_SEC);
   }
 
   private isTdm(): boolean {
@@ -1060,6 +1323,102 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.shieldCharges += 1;
       this.scheduleShieldRespawn(index);
       client.send('shieldChargePickupGranted', { index });
+    },
+
+    throwGrenade: (client: Client, data: GrenadeThrowRequest) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (!this.isMatchCombatAllowed()) return;
+      if (player.grenadeCount <= 0) return;
+
+      const originOffset = Math.hypot(data.x - player.x, data.y - player.y, data.z - player.z);
+      if (originOffset > GRENADE_THROW_ORIGIN_MAX_OFFSET) return;
+      if (!this.isThrowDirectionValid(player, data.dirX, data.dirY, data.dirZ)) return;
+
+      const dirLen = Math.hypot(data.dirX, data.dirY, data.dirZ);
+      if (dirLen <= 1e-8) return;
+      const vel = computeGrenadeThrowVelocity(data.dirX, data.dirY, data.dirZ);
+
+      player.grenadeCount -= 1;
+      this.cancelShieldRecharge(player);
+
+      const id = `grenade-${++this.grenadeIdCounter}`;
+      const fuseEndAt = this.state.worldTime + GRENADE_FUSE_SEC;
+      const grenade: ActiveServerGrenade = {
+        ...createGrenadeMotionState(
+          data.x,
+          data.y,
+          data.z,
+          vel.velX,
+          vel.velY,
+          vel.velZ,
+        ),
+        id,
+        throwerId: client.sessionId,
+        throwerTeamId: player.teamId,
+        fuseEndAt,
+      };
+      this.activeGrenades.set(id, grenade);
+
+      const payload = {
+        id,
+        throwerId: client.sessionId,
+        x: data.x,
+        y: data.y,
+        z: data.z,
+        velX: vel.velX,
+        velY: vel.velY,
+        velZ: vel.velZ,
+        fuseEndAt,
+      };
+
+      client.send('grenadeThrown', payload);
+      this.broadcast('grenadeThrown', payload, { except: client });
+    },
+
+    pickupGrenade: (client: Client, data: PickupGrenadeMessage) => {
+      const index = data.index;
+      if (index < 0 || index >= this.state.grenadePickups.length) return;
+
+      const pickup = this.state.grenadePickups.at(index);
+      if (!pickup || pickup.collected) return;
+
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (player.grenadeCount >= MAX_GRENADES) return;
+
+      const serverOverlap = overlapsGrenadePickup(
+        player.x,
+        player.z,
+        pickup.x,
+        pickup.z,
+        PLAYER_HALF_WIDTH,
+      );
+
+      if (!serverOverlap) {
+        const desync = Math.hypot(data.x - player.x, data.z - player.z);
+        if (desync > PICKUP_MAX_DESYNC) return;
+
+        if (
+          !overlapsGrenadePickup(
+            data.x,
+            data.z,
+            pickup.x,
+            pickup.z,
+            PLAYER_HALF_WIDTH,
+          )
+        ) {
+          return;
+        }
+      }
+
+      const grant = Math.min(GRENADE_PICKUP_GRANT, MAX_GRENADES - player.grenadeCount);
+      if (grant <= 0) return;
+
+      pickup.collected = true;
+      player.grenadeCount += grant;
+      this.scheduleGrenadeRespawn(index);
+      client.send('grenadePickupGranted', { index, count: grant });
     },
 
     hit: (client: Client, data: PlayerHitMessage) => {

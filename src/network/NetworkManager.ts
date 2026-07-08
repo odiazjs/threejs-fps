@@ -9,11 +9,14 @@ import { CROUCH_EYE_HEIGHT } from '../../shared/combat/crouch';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
-import { DEFAULT_SHIELD_CHARGES } from '../../shared/inventory/inventoryLimits';
+import { DEFAULT_SHIELD_CHARGES, DEFAULT_GRENADES } from '../../shared/inventory/inventoryLimits';
+import { computeGrenadeThrowVelocity } from '../../shared/combat/grenadePhysics';
+import { GRENADE_FUSE_SEC } from '../../shared/throwables/grenadeConfig';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
 import type { ShieldChargePickups } from '../world/ShieldChargePickups';
-import type { WeaponDrops } from '../world/WeaponDrops';
+import type { GrenadePickups } from '../world/GrenadePickups';
+import type { GrenadeManager } from '../combat/GrenadeManager';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -54,6 +57,7 @@ export class NetworkManager {
     shieldPoints: getShieldCapacity(1),
     shieldCapacity: getShieldCapacity(1),
     shieldCharges: DEFAULT_SHIELD_CHARGES,
+    grenadeCount: DEFAULT_GRENADES,
     shieldRecharging: false,
     shieldRechargeEndAt: 0,
     alive: true,
@@ -73,7 +77,10 @@ export class NetworkManager {
     private readonly ammoPickups: AmmoPickups,
     private readonly shieldChargePickups: ShieldChargePickups,
     private readonly weaponDrops: WeaponDrops,
+    private readonly grenadePickups: GrenadePickups | null,
+    private readonly grenadeManager: GrenadeManager | null,
     private readonly onLocalAmmoPickup: LocalPickupHandler,
+    private readonly onLocalGrenadePickup: () => void,
     private readonly onLocalShieldPickup: () => void,
     private readonly onLocalPlayerChange: (state: LocalCombatState) => void,
     private readonly onKillFeed: (
@@ -160,6 +167,30 @@ export class NetworkManager {
     this.roomClient.onShieldChargeChange((index, snapshot) => {
       this.shieldChargePickups.applySnapshot(index, snapshot);
     });
+    this.roomClient.onGrenadePickupChange((index, snapshot) => {
+      this.grenadePickups?.applySnapshot(index, snapshot);
+    });
+    this.roomClient.onGrenadePickupGranted((data) => {
+      const snapshot = this.roomClient.getLocalSnapshot();
+      if (snapshot) {
+        this.localCombat = {
+          ...this.localCombat,
+          grenadeCount: snapshot.grenadeCount,
+        };
+        this.onLocalPlayerChange(this.localCombat);
+      }
+      this.onLocalGrenadePickup();
+    });
+    this.roomClient.onGrenadeThrown((data) => {
+      if (data.throwerId === this.roomClient.sessionId) {
+        this.grenadeManager?.reconcileLocalThrow(data);
+        return;
+      }
+      this.grenadeManager?.spawnFromNetwork(data);
+    });
+    this.roomClient.onGrenadeExplosion((data) => {
+      this.grenadeManager?.detonateFromNetwork(data.x, data.y, data.z, data.id);
+    });
     this.roomClient.onWeaponDropChange((index, snapshot) => {
       this.weaponDrops.applySnapshot(index, snapshot);
     });
@@ -191,6 +222,7 @@ export class NetworkManager {
         shieldPoints: snapshot.shieldPoints,
         shieldCapacity: getShieldCapacity(snapshot.shieldLevel),
         shieldCharges: snapshot.shieldCharges,
+        grenadeCount: snapshot.grenadeCount,
         shieldRecharging: snapshot.shieldRecharging,
         shieldRechargeEndAt: snapshot.shieldRechargeEndAt,
         alive: snapshot.alive,
@@ -209,6 +241,10 @@ export class NetworkManager {
       (index, feetX, feetZ) => this.roomClient.sendPickupAmmo(index, feetX, feetZ),
       this.onLocalAmmoPickup,
     );
+    this.grenadePickups?.bindNetwork(
+      (index, feetX, feetZ) => this.roomClient.sendPickupGrenade(index, feetX, feetZ),
+      this.onLocalGrenadePickup,
+    );
     this.roomClient.bindState();
 
     const snapshot = this.roomClient.getLocalSnapshot();
@@ -220,6 +256,7 @@ export class NetworkManager {
         shieldPoints: snapshot.shieldPoints,
         shieldCapacity: getShieldCapacity(snapshot.shieldLevel),
         shieldCharges: snapshot.shieldCharges,
+        grenadeCount: snapshot.grenadeCount,
         shieldRecharging: snapshot.shieldRecharging,
         shieldRechargeEndAt: snapshot.shieldRechargeEndAt,
         alive: snapshot.alive,
@@ -294,6 +331,22 @@ export class NetworkManager {
     player.setMeleeAttackNetworkCallback(() => {
       if (!this.roomClient.connected) return;
       this.roomClient.sendMeleeAttack();
+    });
+    player.setGrenadeThrowNetworkCallback((request) => {
+      if (!this.roomClient.connected) return;
+      const vel = computeGrenadeThrowVelocity(request.dirX, request.dirY, request.dirZ);
+      const fuseEndAt = this.getWorldTime() + GRENADE_FUSE_SEC;
+      this.grenadeManager?.spawnLocalThrow(
+        this.roomClient.sessionId ?? '',
+        request.x,
+        request.y,
+        request.z,
+        vel.velX,
+        vel.velY,
+        vel.velZ,
+        fuseEndAt,
+      );
+      this.roomClient.sendThrowGrenade(request);
     });
   }
 
@@ -404,6 +457,10 @@ export class NetworkManager {
     return this.roomClient.getWorldTime();
   }
 
+  sendThrowGrenade(request: import('../../shared/network/grenade').GrenadeThrowRequest): void {
+    this.roomClient.sendThrowGrenade(request);
+  }
+
   getSessionId(): string {
     return this.roomClient.sessionId ?? '';
   }
@@ -462,12 +519,13 @@ export class NetworkManager {
     for (const [sessionId, player] of this.remotePlayers.getAllPlayers()) {
       if (sessionId === localSessionId) continue;
       if (!player.isAlive()) continue;
+      if (player.getTeamId() !== localTeamId) continue;
 
       const feet = player.getFeetPosition();
       blips.push({
         x: feet.x,
         z: feet.z,
-        kind: player.getTeamId() === localTeamId ? 'teammate' : 'enemy',
+        kind: 'teammate',
       });
     }
 

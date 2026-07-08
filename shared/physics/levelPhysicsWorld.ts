@@ -6,7 +6,7 @@ import {
   PLAYER_HEIGHT,
   type Aabb,
 } from '../level/levelData.js';
-import type { RaycastHit, PlayerPhysicsState } from '../level/collision.js';
+import type { RaycastHit, RaycastHitWithNormal, PlayerPhysicsState } from '../level/collision.js';
 import type { OrientedBoxCollider } from '../level/killhouseServerColliders.js';
 import type { MapCollisionDef } from '../level/maps.js';
 import {
@@ -152,6 +152,49 @@ export class LevelPhysicsWorld {
       y: point.y,
       z: point.z,
       distance: hit.timeOfImpact,
+    };
+  }
+
+  raycastWithNormal(
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    maxDistance: number,
+    minDistance = 0,
+    solid = true,
+  ): RaycastHitWithNormal | null {
+    if (!this.world) return null;
+
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-8) return null;
+
+    const ray = this.bulletRay ?? new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+    ray.origin = { x: ox, y: oy, z: oz };
+    ray.dir = { x: dx / len, y: dy / len, z: dz / len };
+
+    const hit = this.world.castRayAndGetNormal(
+      ray,
+      maxDistance,
+      solid,
+      undefined,
+      undefined,
+      this.probeCollider ?? undefined,
+    );
+
+    if (!hit || hit.timeOfImpact < minDistance) return null;
+
+    const point = ray.pointAt(hit.timeOfImpact);
+    return {
+      x: point.x,
+      y: point.y,
+      z: point.z,
+      distance: hit.timeOfImpact,
+      nx: hit.normal.x,
+      ny: hit.normal.y,
+      nz: hit.normal.z,
     };
   }
 

@@ -19,6 +19,12 @@ export interface RaycastHit {
   distance: number;
 }
 
+export interface RaycastHitWithNormal extends RaycastHit {
+  nx: number;
+  ny: number;
+  nz: number;
+}
+
 const DEFAULT_RAYCAST_DISTANCE = 1000;
 
 const EPS = 1e-4;

@@ -29,6 +29,7 @@ export interface PlayerSnapshot {
   shieldLevel: number;
   shieldPoints: number;
   shieldCharges: number;
+  grenadeCount: number;
   shieldRecharging: boolean;
   shieldRechargeEndAt: number;
   alive: boolean;
@@ -68,6 +69,13 @@ export interface ShieldChargeSnapshot {
   collected: boolean;
 }
 
+export interface GrenadePickupSnapshot {
+  x: number;
+  z: number;
+  collected: boolean;
+  count: number;
+}
+
 export interface WeaponDropSnapshot {
   x: number;
   z: number;
@@ -83,6 +91,7 @@ export interface LocalCombatState {
   shieldPoints: number;
   shieldCapacity: number;
   shieldCharges: number;
+  grenadeCount: number;
   shieldRecharging: boolean;
   shieldRechargeEndAt: number;
   alive: boolean;
@@ -102,7 +111,11 @@ export type WeaponShotSoundHandler = (shot: WeaponShotSoundMessage) => void;
 export type AmmoBoxChangeHandler = (index: number, box: AmmoBoxSnapshot) => void;
 export type AmmoPickupGrantedHandler = () => void;
 export type ShieldChargeChangeHandler = (index: number, charge: ShieldChargeSnapshot) => void;
+export type GrenadePickupChangeHandler = (index: number, pickup: GrenadePickupSnapshot) => void;
 export type ShieldChargePickupGrantedHandler = () => void;
+export type GrenadePickupGrantedHandler = (data: { index: number; count: number }) => void;
+export type GrenadeThrownHandler = (data: import('../../shared/network/grenade').GrenadeThrowBroadcast) => void;
+export type GrenadeExplosionHandler = (data: import('../../shared/network/grenade').GrenadeExplosionBroadcast) => void;
 export type ShieldChargeDropGrantedHandler = (data: { index: number }) => void;
 export type WeaponDropChangeHandler = (index: number, drop: WeaponDropSnapshot) => void;
 export type WeaponPickupGrantedHandler = (data: {

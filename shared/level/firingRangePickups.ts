@@ -1,5 +1,7 @@
 import type { WeaponId } from '../content/weaponIds.js';
 
+import { GRENADE_PICKUP_GRANT } from '../throwables/grenadeConfig.js';
+
 export interface FiringRangeCrateTop {
   x: number;
   z: number;
@@ -37,6 +39,7 @@ let crateSurfaces: FiringRangeCrateTop[] = [];
 let ammoPositions: MapPickupXZ[] = [];
 let shieldPositions: MapPickupXZ[] = [];
 let weaponSpawns: FiringRangeWeaponSpawn[] = [];
+let grenadePositions: MapPickupXZ[] = [];
 
 /** World Y for a pickup on a crate (nearest crate top within match radius). */
 export function getFiringRangePickupY(x: number, z: number): number | undefined {
@@ -69,6 +72,10 @@ export function getFiringRangeWeaponSpawns(): readonly FiringRangeWeaponSpawn[] 
   return weaponSpawns;
 }
 
+export function getFiringRangeGrenadePositions(): readonly MapPickupXZ[] {
+  return grenadePositions;
+}
+
 function pushSurface(crate: FiringRangeCrateTop): void {
   crateSurfaces.push(crate);
 }
@@ -93,6 +100,11 @@ function assignWeapon(crate: FiringRangeCrateTop, weaponId: WeaponId): void {
   });
 }
 
+function assignGrenades(crate: FiringRangeCrateTop): void {
+  pushSurface(crate);
+  grenadePositions.push({ x: crate.x, z: crate.z });
+}
+
 /**
  * One pickup per crate (sorted by Z, then X):
  * - 2 shield recharge batteries
@@ -104,6 +116,7 @@ export function registerFiringRangePickupsFromCrates(crates: readonly FiringRang
   ammoPositions = [];
   shieldPositions = [];
   weaponSpawns = [];
+  grenadePositions = [];
 
   const sorted = [...crates].sort((a, b) => a.z - b.z || a.x - b.x);
   const expected =
@@ -131,10 +144,16 @@ export function registerFiringRangePickupsFromCrates(crates: readonly FiringRang
     assignAmmo(sorted[index]!);
   }
 
+  while (index < sorted.length) {
+    assignGrenades(sorted[index]!);
+    index += 1;
+  }
+
   console.info(
     `[FiringRange] Pickups on crates — `
     + `${shieldPositions.length} shields, `
     + `${weaponSpawns.length} weapons, `
-    + `${ammoPositions.length} ammo`,
+    + `${ammoPositions.length} ammo, `
+    + `${grenadePositions.length} grenade stacks (${GRENADE_PICKUP_GRANT} each)`,
   );
 }

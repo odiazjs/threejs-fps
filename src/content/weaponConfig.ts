@@ -2,6 +2,7 @@ import type { RecoilKick, WeaponConfig } from '../../shared/content/weaponConfig
 import type { WeaponId } from '../../shared/content/weaponIds';
 import {
   WEAPON_DAMAGE,
+  WEAPON_MAX_HIT_DISTANCE,
   WEAPON_RELOAD_SEC,
 } from '../../shared/content/weaponStats';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
@@ -176,7 +177,7 @@ export const KATANA_CONFIG: WeaponConfig = {
   damage: WEAPON_DAMAGE.katana,
   projectileSpeed: 0,
   moveSpeedMultiplier: 1.15,
-  meleeRange: 2.25,
+  meleeRange: WEAPON_MAX_HIT_DISTANCE.katana,
   view: {
     hip: { x: 0.12, y: -0.13, z: -0.3 },
     ads: { x: 0.12, y: -0.2, z: -0.3 },

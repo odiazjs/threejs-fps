@@ -89,6 +89,14 @@
         <div class="stamina-cooldown"></div>
       </div>
     </div>
+    <div id="throwable-hud" hidden>
+      <div class="throwable-key">G</div>
+      <div class="throwable-icon" aria-hidden="true"></div>
+      <div class="throwable-meta">
+        <div class="throwable-name">Grenade</div>
+        <div id="throwable-count" class="throwable-count">0</div>
+      </div>
+    </div>
     <div id="shield-dome-hud" hidden>
       <div class="shield-dome-label">SHIELD DOME [Q]</div>
       <div class="shield-dome-track">
@@ -215,6 +223,20 @@
               </svg>
               <div class="inventory-drop-timer">Dropping in 3.0s</div>
             </div>
+          </div>
+        </section>
+        <section class="inventory-section">
+          <div class="inventory-section-label hud-label">THROWABLES</div>
+          <div id="inventory-grenade-row" class="inventory-slot-frame inventory-item-row">
+            <div class="inventory-slot-key">G</div>
+            <div class="inventory-icon-wrap inventory-item-icon-wrap">
+              <div id="inventory-grenade-icon" class="inventory-grenade-icon" aria-hidden="true"></div>
+            </div>
+            <div class="inventory-item-details">
+              <div class="inventory-item-name">Frag Grenade</div>
+              <div class="inventory-item-desc">Arc throw · 4s fuse · area damage</div>
+            </div>
+            <div id="inventory-grenade-count" class="inventory-item-count">0</div>
           </div>
         </section>
         <footer class="inventory-footer">

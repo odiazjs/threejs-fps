@@ -41,6 +41,7 @@ import {
 } from './firingRangeColliders.js';
 import {
   getFiringRangeAmmoPositions,
+  getFiringRangeGrenadePositions,
   getFiringRangeShieldPositions,
   getFiringRangeWeaponSpawns,
   type FiringRangeWeaponSpawn,
@@ -115,6 +116,7 @@ export interface MapCollisionDef {
   /** When set, overrides `ammoPositions` (e.g. GLB crate anchors loaded at runtime). */
   getAmmoPositions?: () => ReadonlyArray<{ x: number; z: number }>;
   getShieldPositions?: () => ReadonlyArray<{ x: number; z: number }>;
+  getGrenadePositions?: () => ReadonlyArray<{ x: number; z: number }>;
   getInitialWeaponSpawns?: () => ReadonlyArray<FiringRangeWeaponSpawn>;
   spawnTrainingBots: boolean;
   /** Join and respawn with no weapons — players must pick them up. */
@@ -186,6 +188,7 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     shieldPositions: [],
     getAmmoPositions: getFiringRangeAmmoPositions,
     getShieldPositions: getFiringRangeShieldPositions,
+    getGrenadePositions: getFiringRangeGrenadePositions,
     getInitialWeaponSpawns: getFiringRangeWeaponSpawns,
     spawnTrainingBots: false,
     emptyStartingLoadout: true,
