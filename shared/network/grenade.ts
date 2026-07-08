@@ -26,3 +26,11 @@ export interface GrenadeExplosionBroadcast {
   y: number;
   z: number;
 }
+
+/** Client-reported authoritative detonation position for one of its grenades. */
+export interface GrenadeDetonateRequest {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+}

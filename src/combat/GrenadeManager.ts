@@ -23,11 +23,24 @@ interface ActiveGrenade extends GrenadeMotionState {
   restQuaternion: THREE.Quaternion;
   hasRestPose: boolean;
   lastBounceSoundAt: number;
+  /** True for grenades this client threw — it owns their flight + detonation. */
+  isOwn: boolean;
+  /** Set on non-owned grenades once the fuse elapses while awaiting the relay. */
+  fallbackDetonateAt?: number;
 }
 
 type ExplosionListener = (x: number, y: number, z: number) => void;
+type DetonateReporter = (id: string, x: number, y: number, z: number) => void;
 
 const BOUNCE_SOUND_COOLDOWN_SEC = 0.07;
+
+/**
+ * For grenades thrown by *other* players this client waits this long after the
+ * local fuse elapses for the server-relayed explosion (carrying the thrower's
+ * authoritative position) before detonating at its own prediction as a safety
+ * net for a dropped/absent relay.
+ */
+const RELAY_DETONATION_GRACE_MS = 400;
 
 const _velocity = new THREE.Vector3();
 const _tumbleAxis = new THREE.Vector3();
@@ -100,6 +113,7 @@ export class GrenadeManager {
   private readonly detonatedIds = new Set<string>();
   private readonly explosionFx: ExplosionFx;
   private explosionListener: ExplosionListener | null = null;
+  private detonateReporter: DetonateReporter | null = null;
   private grenadeSounds: GrenadeSoundService | null = null;
   private shieldDomeManager: ShieldDomeManager | null = null;
   private grenadeIdCounter = 0;
@@ -115,6 +129,11 @@ export class GrenadeManager {
 
   setExplosionListener(listener: ExplosionListener | null): void {
     this.explosionListener = listener;
+  }
+
+  /** Reports the authoritative detonation position of an owned grenade to the server. */
+  setDetonateReporter(reporter: DetonateReporter | null): void {
+    this.detonateReporter = reporter;
   }
 
   setGrenadeSoundService(service: GrenadeSoundService | null): void {
@@ -136,7 +155,7 @@ export class GrenadeManager {
     fuseEndAt: number,
   ): string {
     const id = `local-${++this.grenadeIdCounter}`;
-    void this.addGrenade(id, x, y, z, velX, velY, velZ, fuseEndAt);
+    void this.addGrenade(id, x, y, z, velX, velY, velZ, fuseEndAt, true);
     return id;
   }
 
@@ -158,13 +177,25 @@ export class GrenadeManager {
       grenade.hasRestPose = false;
       grenade.lastFuseTick = -1;
       grenade.lastBounceSoundAt = -1;
+      grenade.isOwn = true;
       grenade.object.position.set(data.x, data.y, data.z);
       grenade.object.quaternion.identity();
       this.grenades.set(data.id, grenade);
       return;
     }
 
-    this.spawnFromNetwork(data);
+    // No local prediction to reconcile — still an owned throw, so spawn it owned.
+    void this.addGrenade(
+      data.id,
+      data.x,
+      data.y,
+      data.z,
+      data.velX,
+      data.velY,
+      data.velZ,
+      data.fuseEndAt,
+      true,
+    );
   }
 
   spawnFromNetwork(data: GrenadeThrowBroadcast): void {
@@ -178,6 +209,7 @@ export class GrenadeManager {
       data.velY,
       data.velZ,
       data.fuseEndAt,
+      false,
     );
   }
 
@@ -197,6 +229,16 @@ export class GrenadeManager {
     const shieldDomes = this.shieldDomeManager?.getActiveDomesForPhysics(worldTime) ?? [];
 
     for (const [id, grenade] of this.grenades) {
+      // Non-owned grenade whose fuse already elapsed: it is hidden and waiting
+      // for the thrower's server-relayed explosion. Fall back to the local
+      // prediction only if the relay never arrives.
+      if (grenade.fallbackDetonateAt !== undefined) {
+        if (performance.now() >= grenade.fallbackDetonateAt) {
+          this.detonateFromNetwork(grenade.x, grenade.y, grenade.z, id);
+        }
+        continue;
+      }
+
       const prevBounceCount = grenade.bounceCount;
       const prevSpeed = Math.hypot(grenade.velX, grenade.velY, grenade.velZ);
 
@@ -223,7 +265,16 @@ export class GrenadeManager {
       grenade.fuseFx.update(delta, grenade.fuseEndAt, worldTime);
 
       if (worldTime >= grenade.fuseEndAt) {
-        this.detonateFromNetwork(grenade.x, grenade.y, grenade.z, id);
+        if (grenade.isOwn) {
+          // This client owns the grenade: detonate at the position it simulated
+          // (matching what the player saw), and report it so the server applies
+          // the blast damage there and relays the explosion to everyone else.
+          this.detonateReporter?.(id, grenade.x, grenade.y, grenade.z);
+          this.detonateFromNetwork(grenade.x, grenade.y, grenade.z, id);
+        } else {
+          grenade.object.visible = false;
+          grenade.fallbackDetonateAt = performance.now() + RELAY_DETONATION_GRACE_MS;
+        }
       }
     }
   }
@@ -237,6 +288,7 @@ export class GrenadeManager {
     velY: number,
     velZ: number,
     fuseEndAt: number,
+    isOwn: boolean,
   ): Promise<void> {
     const object = await createGrenadeMesh();
     const fuseFx = new GrenadeFuseFx();
@@ -255,6 +307,7 @@ export class GrenadeManager {
       restQuaternion: new THREE.Quaternion(),
       hasRestPose: false,
       lastBounceSoundAt: -1,
+      isOwn,
     });
   }
 

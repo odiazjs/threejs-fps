@@ -13,6 +13,7 @@ import {
   GRENADE_THROW_SCREEN_OFFSET_X,
   GRENADE_THROW_SCREEN_OFFSET_Y,
 } from '../../shared/throwables/grenadeConfig';
+import { GrenadeViewModel } from './GrenadeViewModel';
 import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import {
   isWeaponId,
@@ -179,6 +180,7 @@ export class Player {
   private hitRayDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSway | null = null;
+  private grenadeViewModel: GrenadeViewModel | null = null;
   private katanaSlashFx: KatanaSlashTrailFx | null = null;
   private onShoot: ShootCallback | null = null;
   private onAutoFireStopNetwork: AutoFireStopCallback | null = null;
@@ -266,6 +268,7 @@ export class Player {
       this.weaponPose = new WeaponPose();
       this.weaponPose.setViewConfig(this.loadout.getActive()!.config.view);
       this.weaponSway = new WeaponSway();
+      this.grenadeViewModel = new GrenadeViewModel(this.camera);
       this.katanaSlashFx = new KatanaSlashTrailFx();
       this.katanaSlashFx.attachToCamera(this.camera);
       this.loadout.attach(this.camera, LOCAL_WEAPON_ROTATION, 'local');
@@ -1317,6 +1320,7 @@ export class Player {
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
       this.weaponPose?.applyCamera(this.camera);
+      this.grenadeViewModel?.update(delta, isWalking, isSprinting, this.physics.grounded);
     } else {
       this.stopWeaponAutoFire();
       this.tryStartShieldRecharge(input);
@@ -1459,6 +1463,8 @@ export class Player {
     this.lookRigFollowsHead = false;
     this.loadout?.dispose();
     this.loadout = null;
+    this.grenadeViewModel?.dispose();
+    this.grenadeViewModel = null;
     this.katanaSlashFx?.dispose();
     this.katanaSlashFx = null;
     this.hitCapsuleDebug = null;
@@ -1506,6 +1512,7 @@ export class Player {
   private syncThrowableHolster(): void {
     if (!this.loadout || !this.camera) return;
     this.loadout.setMeshesVisible(!this.throwableEquipped);
+    this.grenadeViewModel?.setVisible(this.throwableEquipped);
   }
 
   private tryThrowGrenade(): void {
@@ -1532,6 +1539,8 @@ export class Player {
 
     if (this.inventory.getGrenadeCount() <= 0) {
       this.unequipThrowable();
+    } else {
+      this.grenadeViewModel?.triggerThrow();
     }
   }
 

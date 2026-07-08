@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
-import { GRENADE_BLAST_RADIUS } from '../../shared/throwables/grenadeConfig';
 import type { ArcPoint, GrenadeArcPreviewResult } from '../../shared/combat/grenadePhysics';
 
 const MAX_CAPSULES = 64;
@@ -149,7 +148,6 @@ export class GrenadeArcPreview {
 
   private readonly capsuleMesh: THREE.InstancedMesh;
   private readonly capsuleGlowMesh: THREE.InstancedMesh;
-  private readonly impactRings: THREE.Mesh[] = [];
   private readonly impactDot: THREE.Mesh;
   private readonly impactCrossH: THREE.Mesh;
   private readonly impactCrossV: THREE.Mesh;
@@ -192,31 +190,6 @@ export class GrenadeArcPreview {
     this.capsuleGlowMesh.count = 0;
     this.capsuleGlowMesh.frustumCulled = false;
     this.capsuleGlowMesh.renderOrder = 13;
-
-    const blastR = GRENADE_BLAST_RADIUS;
-    const ringDefs = [
-      { inner: blastR * 0.86, outer: blastR * 0.9, opacity: 0.42 },
-      { inner: blastR * 0.58, outer: blastR * 0.62, opacity: 0.55 },
-      { inner: blastR * 0.3, outer: blastR * 0.34, opacity: 0.72 },
-    ];
-
-    for (const def of ringDefs) {
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(def.inner, def.outer, 72),
-        new THREE.MeshBasicMaterial({
-          color: CYAN,
-          ...HOLO,
-          opacity: def.opacity,
-          side: THREE.DoubleSide,
-        }),
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.renderOrder = 10;
-      ring.frustumCulled = false;
-      (ring.material as THREE.MeshBasicMaterial).userData.baseOpacity = def.opacity;
-      this.impactRings.push(ring);
-      this.object.add(ring);
-    }
 
     const crossMat = new THREE.MeshBasicMaterial({
       color: CYAN_SOFT,
@@ -280,12 +253,6 @@ export class GrenadeArcPreview {
 
     const { impactX, impactZ, floorY } = preview;
 
-    for (const ring of this.impactRings) {
-      ring.position.set(impactX, floorY, impactZ);
-      const mat = ring.material as THREE.MeshBasicMaterial;
-      mat.opacity = (mat.userData.baseOpacity as number) * pulse;
-    }
-
     this.impactCrossH.position.set(impactX, floorY + 0.008, impactZ);
     this.impactCrossV.position.set(impactX, floorY + 0.008, impactZ);
     (this.impactCrossH.material as THREE.MeshBasicMaterial).opacity = 0.9 * pulse;
@@ -340,10 +307,6 @@ export class GrenadeArcPreview {
     (this.impactCrossV.material as THREE.Material).dispose();
     this.impactDot.geometry.dispose();
     (this.impactDot.material as THREE.Material).dispose();
-    for (const ring of this.impactRings) {
-      ring.geometry.dispose();
-      (ring.material as THREE.Material).dispose();
-    }
     this.object.removeFromParent();
   }
 }

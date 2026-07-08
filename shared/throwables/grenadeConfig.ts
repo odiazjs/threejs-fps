@@ -14,10 +14,10 @@ export const GRENADE_GRAVITY = 34;
 export const GRENADE_AIR_DRAG = 0.12;
 
 /** Blast radius for damage falloff (m). */
-export const GRENADE_BLAST_RADIUS = 5.75;
+export const GRENADE_BLAST_RADIUS = 6.00;
 
 /** Damage at explosion center. */
-export const GRENADE_MAX_DAMAGE = 85;
+export const GRENADE_MAX_DAMAGE = 150;
 
 /** Grenades granted per world pickup stack. */
 export const GRENADE_PICKUP_GRANT = 4;
@@ -33,7 +33,7 @@ export const GRENADE_THROW_SCREEN_OFFSET_X = 0.48;
 export const GRENADE_THROW_SCREEN_OFFSET_Y = 0.58;
 
 /** Distance along the hold-screen ray to place the throw origin (m). */
-export const GRENADE_THROW_ARM_DEPTH = 0.48;
+export const GRENADE_THROW_ARM_DEPTH = 0.58;
 
 /** Max angle between reported throw dir and player aim (radians). */
 export const GRENADE_THROW_AIM_HALF_ANGLE_RAD = (55 * Math.PI) / 180;
@@ -55,6 +55,10 @@ export const GRENADE_ROLL_STOP_SPEED = 0.55;
 
 /** Bounces allowed before the grenade is forced to rest. */
 export const GRENADE_MAX_BOUNCES = 10;
+
+/** Grace after the fuse before the server force-detonates a grenade whose
+ *  thrower never reported a detonation position (disconnect / dropped message). */
+export const GRENADE_SERVER_FALLBACK_GRACE_SEC = 0.75;
 
 /** Max distance integrated per physics sub-step (m) — prevents tunneling through walls. */
 export const GRENADE_MAX_PHYSICS_STEP = 0.09;

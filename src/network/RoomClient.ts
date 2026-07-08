@@ -4,7 +4,7 @@ import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
-import type { GrenadeThrowRequest } from '../../shared/network/grenade';
+import type { GrenadeDetonateRequest, GrenadeThrowRequest } from '../../shared/network/grenade';
 import type { PickupGrenadeMessage } from '../../shared/network/grenadePickup';
 import type { ShieldChargeSpawnMessage } from '../../shared/network/shieldDrop';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
@@ -495,6 +495,10 @@ export class RoomClient {
 
   sendThrowGrenade(data: GrenadeThrowRequest): void {
     this.room?.send('throwGrenade', data);
+  }
+
+  sendGrenadeDetonate(data: GrenadeDetonateRequest): void {
+    this.room?.send('grenadeDetonate', data);
   }
 
   sendPickupGrenade(index: number, feetX: number, feetZ: number): void {

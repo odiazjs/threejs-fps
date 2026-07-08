@@ -157,6 +157,18 @@ export const MATCH_RESULTS_MUSIC_AUDIO: GlobalAudioConfig = {
   volume: 0.1,
 };
 
+/** Plays once when a TDM match has 30 seconds remaining. */
+export const MATCH_END_30_SECS_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/match_end_30_secs.wav',
+  volume: 0.6,
+};
+
+/** Plays once when a TDM match has 10 seconds remaining. */
+export const MATCH_END_10_SECS_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/match_end_10_secs.wav',
+  volume: 0.6,
+};
+
 /** Soft cue while stats swipe in (leaderboard / match results). */
 export const STATS_INCOMING_AUDIO: GlobalAudioConfig = {
   src: '/sounds/stats_incoming.wav',

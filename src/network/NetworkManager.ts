@@ -191,6 +191,9 @@ export class NetworkManager {
     this.roomClient.onGrenadeExplosion((data) => {
       this.grenadeManager?.detonateFromNetwork(data.x, data.y, data.z, data.id);
     });
+    this.grenadeManager?.setDetonateReporter((id, x, y, z) => {
+      this.roomClient.sendGrenadeDetonate({ id, x, y, z });
+    });
     this.roomClient.onWeaponDropChange((index, snapshot) => {
       this.weaponDrops.applySnapshot(index, snapshot);
     });

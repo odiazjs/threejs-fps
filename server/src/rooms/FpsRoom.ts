@@ -59,9 +59,7 @@ import {
   computeGrenadeThrowVelocity,
   createGrenadeMotionState,
   grenadeDamageAtDistance,
-  stepGrenadeMotion,
 } from '../../../shared/combat/grenadePhysics.js';
-import { createGrenadeWorldRaycast } from '../../../shared/combat/grenadeWorldCollision.js';
 import {
   GRENADE_BLAST_RADIUS,
   GRENADE_COLLISION_RADIUS,
@@ -69,10 +67,14 @@ import {
   GRENADE_MAX_DAMAGE,
   GRENADE_PICKUP_GRANT,
   GRENADE_PICKUP_RESPAWN_SEC,
+  GRENADE_SERVER_FALLBACK_GRACE_SEC,
   GRENADE_THROW_AIM_HALF_ANGLE_RAD,
   GRENADE_THROW_ORIGIN_MAX_OFFSET,
 } from '../../../shared/throwables/grenadeConfig.js';
-import type { GrenadeThrowRequest } from '../../../shared/network/grenade.js';
+import type {
+  GrenadeDetonateRequest,
+  GrenadeThrowRequest,
+} from '../../../shared/network/grenade.js';
 import type { PickupGrenadeMessage } from '../../../shared/network/grenadePickup.js';
 import {
   aimDirectionFromYawPitch,
@@ -277,29 +279,19 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.tickTrainingBots(deltaSec);
       this.tickMatchState();
       this.tickWorldPickupRespawns();
-      this.tickGrenades(deltaSec);
+      this.tickGrenades();
     });
   }
 
-  private sampleGrenadeGround(x: number, z: number): number {
-    return this.mapDef.sampleGroundHeight(x, z);
-  }
-
-  private tickGrenades(deltaSec: number): void {
+  private tickGrenades(): void {
     const now = this.state.worldTime;
-    const shieldDomes = this.getActiveShieldDomes(now);
 
+    // Grenades are client-authoritative: the thrower simulates flight/bounces
+    // and reports the detonation position (see `grenadeDetonate`). This tick is
+    // only a safety net — if a thrower never reports (disconnect / dropped
+    // message), force-detonate at the throw origin shortly after the fuse.
     for (const [id, grenade] of this.activeGrenades) {
-      stepGrenadeMotion(
-        grenade,
-        deltaSec,
-        (x, z) => this.sampleGrenadeGround(x, z),
-        createGrenadeWorldRaycast(),
-        shieldDomes,
-        now,
-      );
-
-      if (now >= grenade.fuseEndAt) {
+      if (now >= grenade.fuseEndAt + GRENADE_SERVER_FALLBACK_GRACE_SEC) {
         this.detonateGrenade(id, grenade);
       }
     }
@@ -377,9 +369,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     for (const [targetId, target] of this.state.players) {
       if (!target.alive) continue;
-      if (targetId === grenade.throwerId) continue;
 
+      // A grenade always hurts its thrower; only teammates are exempt with FF off.
+      const isSelfDamage = targetId === grenade.throwerId;
       if (
+        !isSelfDamage &&
         !this.state.friendlyFire &&
         thrower.teamId === target.teamId &&
         !isTrainingBotSessionId(targetId)
@@ -449,10 +443,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         victimName: target.username,
       };
       this.broadcast('kill', killFeed);
-      thrower.matchKills += 1;
 
-      if (this.isTdm() && isValidTdmTeamId(thrower.teamId, this.state.teamCount)) {
-        this.addTeamScore(thrower.teamId, TDM_KILL_POINTS);
+      if (!isSelfDamage) {
+        thrower.matchKills += 1;
+
+        if (this.isTdm() && isValidTdmTeamId(thrower.teamId, this.state.teamCount)) {
+          this.addTeamScore(thrower.teamId, TDM_KILL_POINTS);
+        }
       }
 
       this.persistKillStats(grenade.throwerId, targetId);
@@ -1376,6 +1373,26 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.broadcast('grenadeThrown', payload, { except: client });
     },
 
+    grenadeDetonate: (client: Client, data: GrenadeDetonateRequest) => {
+      const grenade = this.activeGrenades.get(data.id);
+      if (!grenade) return;
+      // Only the thrower's client is authoritative for its grenade's position.
+      if (grenade.throwerId !== client.sessionId) return;
+
+      if (
+        !Number.isFinite(data.x) ||
+        !Number.isFinite(data.y) ||
+        !Number.isFinite(data.z)
+      ) {
+        return;
+      }
+
+      grenade.x = data.x;
+      grenade.y = data.y;
+      grenade.z = data.z;
+      this.detonateGrenade(data.id, grenade);
+    },
+
     pickupGrenade: (client: Client, data: PickupGrenadeMessage) => {
       const index = data.index;
       if (index < 0 || index >= this.state.grenadePickups.length) return;
@@ -1631,7 +1648,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   private persistKillStats(killerSessionId: string, victimSessionId: string): void {
-    if (!isTrainingBotSessionId(killerSessionId)) {
+    const isSuicide = killerSessionId === victimSessionId;
+    if (!isSuicide && !isTrainingBotSessionId(killerSessionId)) {
       const killerUserId = this.userIdBySession.get(killerSessionId);
       if (killerUserId) {
         void incrementKills(killerUserId).catch((error) => {

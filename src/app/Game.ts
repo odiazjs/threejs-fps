@@ -46,7 +46,11 @@ import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
-import { getCountdownDisplayValue, type MatchPhase } from '../../shared/combat/match';
+import {
+  getCountdownDisplayValue,
+  getMatchTimeRemaining,
+  type MatchPhase,
+} from '../../shared/combat/match';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
@@ -96,6 +100,8 @@ import {
   GAME_SHIELD_CHARGE_END_AUDIO,
   GAME_WEAPON_SPATIAL_AUDIO,
   MATCH_COUNTDOWN_TICK_AUDIO,
+  MATCH_END_10_SECS_AUDIO,
+  MATCH_END_30_SECS_AUDIO,
   MATCH_GAME_START_AUDIO,
   MATCH_RESULTS_MUSIC_AUDIO,
 } from '../content/audioConfig';
@@ -171,6 +177,8 @@ export class Game {
   private audioUnlocked = false;
   private inventoryOpen = false;
   private matchEndHandled = false;
+  private matchEnd30Played = false;
+  private matchEnd10Played = false;
   private prevMatchPhase: MatchPhase | null = null;
   private lastCountdownTickSec: number | null = null;
   private gameStartSoundPlayed = false;
@@ -205,6 +213,8 @@ export class Game {
     const initialMapId = normalizeMapId(joinIntent?.mapId ?? getSelectedMapId());
     this.worldMapId = initialMapId;
     this.prevMatchPhase = null;
+    this.matchEnd30Played = false;
+    this.matchEnd10Played = false;
     this.initWorld(initialMapId);
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
@@ -239,6 +249,8 @@ export class Game {
       this.grenadeSounds.preloadExplosion(GAME_GRENADE_EXPLOSION_AUDIO),
       this.matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
       this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
+      this.matchSounds.preloadEnd30(MATCH_END_30_SECS_AUDIO),
+      this.matchSounds.preloadEnd10(MATCH_END_10_SECS_AUDIO),
       this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
       this.shieldChargePickups.whenReady,
       this.grenadePickups.whenReady,
@@ -568,10 +580,11 @@ export class Game {
         this.killFeedHud.addKill(killerName, victimName);
         const session = getSession();
         if (!session) return;
-        if (victimName === session.username) {
+        const isSuicide = killerName === victimName;
+        if (victimName === session.username && !isSuicide) {
           this.pendingKillerId = killerId;
         }
-        if (killerName === session.username) {
+        if (killerName === session.username && !isSuicide) {
           this.messageHud.pushKill(victimName);
           this.impactSounds.playKillConfirm();
         }
@@ -921,7 +934,33 @@ export class Game {
     ) {
       this.network?.applyLocalSpawn(this.player);
     }
+    if (matchPhase === 'countdown' || matchPhase === 'waiting') {
+      this.matchEnd30Played = false;
+      this.matchEnd10Played = false;
+    }
     this.prevMatchPhase = matchPhase;
+
+    if (
+      match?.gameMode === 'tdm' &&
+      match.phase === 'playing' &&
+      (!this.matchEnd30Played || !this.matchEnd10Played)
+    ) {
+      const remaining = getMatchTimeRemaining(
+        match.phase as MatchPhase,
+        worldTime,
+        match.matchStartAt,
+        match.matchEndAt,
+        match.matchDurationSec,
+      );
+      if (remaining > 0 && remaining <= 10 && !this.matchEnd10Played) {
+        this.matchEnd10Played = true;
+        this.matchEnd30Played = true;
+        this.matchSounds.playEnd10();
+      } else if (remaining > 10 && remaining <= 30 && !this.matchEnd30Played) {
+        this.matchEnd30Played = true;
+        this.matchSounds.playEnd30();
+      }
+    }
 
     if (match?.gameMode === 'tdm' && match.phase === 'ended' && !this.matchEndHandled) {
       this.matchEndHandled = true;

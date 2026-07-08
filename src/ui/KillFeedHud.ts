@@ -51,19 +51,34 @@ export class KillFeedHud {
       const row = document.createElement('div');
       row.className = 'kill-feed-entry';
 
-      const killer = document.createElement('span');
-      killer.className = 'kill-feed-killer';
-      killer.textContent = entry.killerName;
+      const isSuicide = entry.killerName === entry.victimName;
 
-      const icon = document.createElement('span');
-      icon.className = 'kill-feed-icon';
-      icon.textContent = ' killed ';
+      if (isSuicide) {
+        const icon = document.createElement('span');
+        icon.className = 'kill-feed-icon';
+        icon.textContent = ' blew up ';
 
-      const victim = document.createElement('span');
-      victim.className = 'kill-feed-victim';
-      victim.textContent = entry.victimName;
+        const victim = document.createElement('span');
+        victim.className = 'kill-feed-victim';
+        victim.textContent = entry.victimName;
 
-      row.append(killer, icon, victim);
+        row.append(icon, victim);
+      } else {
+        const killer = document.createElement('span');
+        killer.className = 'kill-feed-killer';
+        killer.textContent = entry.killerName;
+
+        const icon = document.createElement('span');
+        icon.className = 'kill-feed-icon';
+        icon.textContent = ' killed ';
+
+        const victim = document.createElement('span');
+        victim.className = 'kill-feed-victim';
+        victim.textContent = entry.victimName;
+
+        row.append(killer, icon, victim);
+      }
+
       this.root.appendChild(row);
     }
   }

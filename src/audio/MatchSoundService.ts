@@ -16,6 +16,10 @@ export class MatchSoundService {
   private tickVolume = 1;
   private gameStartUrl: string | null = null;
   private gameStartVolume = 1;
+  private end30Url: string | null = null;
+  private end30Volume = 1;
+  private end10Url: string | null = null;
+  private end10Volume = 1;
   private tickPrimed = false;
   private resultsMusic: LoadedSound | null = null;
   private resultsSource: AudioBufferSourceNode | null = null;
@@ -29,6 +33,18 @@ export class MatchSoundService {
   async preloadGameStart(config: GlobalAudioConfig): Promise<void> {
     this.gameStartUrl = config.src;
     this.gameStartVolume = config.volume;
+    await this.warmUrl(config.src);
+  }
+
+  async preloadEnd30(config: GlobalAudioConfig): Promise<void> {
+    this.end30Url = config.src;
+    this.end30Volume = config.volume;
+    await this.warmUrl(config.src);
+  }
+
+  async preloadEnd10(config: GlobalAudioConfig): Promise<void> {
+    this.end10Url = config.src;
+    this.end10Volume = config.volume;
     await this.warmUrl(config.src);
   }
 
@@ -51,6 +67,14 @@ export class MatchSoundService {
 
   playGameStart(): void {
     this.playHtml(this.gameStartUrl, this.gameStartVolume);
+  }
+
+  playEnd30(): void {
+    this.playHtml(this.end30Url, this.end30Volume);
+  }
+
+  playEnd10(): void {
+    this.playHtml(this.end10Url, this.end10Volume);
   }
 
   private playHtml(url: string | null, volume: number): void {
