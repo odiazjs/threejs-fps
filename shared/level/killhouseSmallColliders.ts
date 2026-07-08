@@ -1,7 +1,7 @@
 import type { SpawnPickContext, SpawnZone } from './spawnPick.js';
 import {
   pickBatchTeamSpawns,
-  pickRandomTeamRespawn,
+  pickFarthestTeamRespawn,
   pickRandomTeamSpawn,
 } from './spawnPick.js';
 
@@ -154,6 +154,23 @@ const RED_SPAWN_POOL: readonly SpawnZone[] = [
 const GREEN_SPAWN_POOL: readonly SpawnZone[] = [tdmTeamCornerZone(-1, 1)];
 const PURPLE_SPAWN_POOL: readonly SpawnZone[] = [tdmTeamCornerZone(1, -1)];
 
+/**
+ * Respawn pools spread across each team's half (far corners + inner mid-field)
+ * so respawns can land far from the death spot without being predictable.
+ */
+const BLUE_RESPAWN_POOL: readonly SpawnZone[] = [
+  tdmTeamCornerZone(-1, 1),
+  tdmTeamCornerZone(-1, -1),
+  cornerZone(-9, 7),
+  cornerZone(-9, -7),
+];
+const RED_RESPAWN_POOL: readonly SpawnZone[] = [
+  tdmTeamCornerZone(1, 1),
+  tdmTeamCornerZone(1, -1),
+  cornerZone(9, 7),
+  cornerZone(9, -7),
+];
+
 export const HUMAN_RESPAWN_POINT = CORNER_SW;
 
 const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
@@ -163,8 +180,19 @@ const TEAM_SPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
   PURPLE_SPAWN_POOL,
 ];
 
+const TEAM_RESPAWN_POOLS: ReadonlyArray<ReadonlyArray<SpawnZone>> = [
+  BLUE_RESPAWN_POOL,
+  RED_RESPAWN_POOL,
+  GREEN_SPAWN_POOL,
+  PURPLE_SPAWN_POOL,
+];
+
 function teamPool(teamId: number): readonly SpawnZone[] {
   return TEAM_SPAWN_POOLS[teamId % TEAM_SPAWN_POOLS.length] ?? BLUE_SPAWN_POOL;
+}
+
+function teamRespawnPool(teamId: number): readonly SpawnZone[] {
+  return TEAM_RESPAWN_POOLS[teamId % TEAM_RESPAWN_POOLS.length] ?? BLUE_RESPAWN_POOL;
 }
 
 export function pickTeamSpawnPoint(
@@ -190,7 +218,7 @@ export function pickTeamRespawnPoint(
   deathPosition: { x: number; z: number },
   context: SpawnPickContext = {},
 ): { x: number; z: number } {
-  return pickRandomTeamRespawn(teamPool(teamId), deathPosition, context);
+  return pickFarthestTeamRespawn(teamRespawnPool(teamId), deathPosition, context);
 }
 
 export function pickSpawnPoint(
@@ -224,4 +252,16 @@ export const KILLHOUSE_AMMO_POSITIONS = [
 export const KILLHOUSE_SHIELD_POSITIONS = [
   { x: -6, z: 5 },
   { x: 6, z: -5 },
+] as const;
+
+/** Eight grenade pickups distributed around the arena (edges + inner ring). */
+export const KILLHOUSE_GRENADE_POSITIONS = [
+  { x: 0, z: 13 },
+  { x: 0, z: -13 },
+  { x: -16, z: 0 },
+  { x: 16, z: 0 },
+  { x: -11, z: 9 },
+  { x: 11, z: 9 },
+  { x: -11, z: -9 },
+  { x: 11, z: -9 },
 ] as const;

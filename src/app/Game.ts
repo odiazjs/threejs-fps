@@ -432,7 +432,7 @@ export class Game {
     );
     this.grenadePickups = new GrenadePickups(
       this.scene,
-      mapId === 'firing_range' ? [] : [],
+      mapId === 'firing_range' ? [] : (getMapDef(mapId).getGrenadePositions?.() ?? []),
     );
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);

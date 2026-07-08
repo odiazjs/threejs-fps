@@ -511,7 +511,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   private scheduleGrenadeRespawn(index: number): void {
-    this.grenadeRespawnAt.set(index, this.state.worldTime + GRENADE_PICKUP_RESPAWN_SEC);
+    const respawnDelay = this.mapDef.grenadePickupRespawnSec ?? GRENADE_PICKUP_RESPAWN_SEC;
+    this.grenadeRespawnAt.set(index, this.state.worldTime + respawnDelay);
   }
 
   private isTdm(): boolean {
@@ -1808,6 +1809,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.crouching = false;
     this.holsteredWeaponIdBySession.delete(sessionId);
     this.initPlayerLoadout(player);
+    if (this.mapDef.respawnGrenadeCount !== undefined) {
+      player.grenadeCount = this.mapDef.respawnGrenadeCount;
+    }
   }
 
   private initPlayerLoadout(player: PlayerState): void {

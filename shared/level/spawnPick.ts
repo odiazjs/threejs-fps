@@ -214,6 +214,42 @@ export function pickFarthestSpawn(
 }
 
 /**
+ * Respawn as far as possible from the death location: only the farthest half of
+ * the pool is considered, randomized among those to avoid being predictable.
+ */
+export function pickFarthestTeamRespawn(
+  pool: ReadonlyArray<SpawnZone>,
+  deathPosition: SpawnXZ,
+  context: SpawnPickContext = {},
+): SpawnXZ {
+  if (pool.length === 0) {
+    return { x: deathPosition.x, z: deathPosition.z };
+  }
+
+  const occupied = context.occupied ?? [];
+  const zonesByDistance = [...pool].sort(
+    (a, b) =>
+      distSq(b.x, b.z, deathPosition.x, deathPosition.z) -
+      distSq(a.x, a.z, deathPosition.x, deathPosition.z),
+  );
+
+  const farCount = Math.max(1, Math.ceil(zonesByDistance.length / 2));
+  const farZones = shuffle(zonesByDistance.slice(0, farCount));
+
+  for (const zone of farZones) {
+    const point = tryRandomInZone(zone, occupied, context);
+    if (point) return point;
+  }
+
+  for (const zone of farZones) {
+    const point = tryRandomInZone(zone, occupied, { ...context, minSeparation: 1.6 });
+    if (point) return point;
+  }
+
+  return randomPointInZone(zonesByDistance[0]!);
+}
+
+/**
  * Respawn: prefer zones far from the death location, random sub-point inside zone,
  * with separation from living players and geometry checks.
  */

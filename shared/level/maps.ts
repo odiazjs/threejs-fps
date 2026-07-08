@@ -25,6 +25,7 @@ import {
   sampleGroundHeight as killhouseGroundHeight,
   KILLHOUSE_AMMO_POSITIONS,
   KILLHOUSE_SHIELD_POSITIONS,
+  KILLHOUSE_GRENADE_POSITIONS,
   KILLHOUSE_WALL_THICK,
 } from './killhouseSmallColliders.js';
 import {
@@ -117,6 +118,10 @@ export interface MapCollisionDef {
   getAmmoPositions?: () => ReadonlyArray<{ x: number; z: number }>;
   getShieldPositions?: () => ReadonlyArray<{ x: number; z: number }>;
   getGrenadePositions?: () => ReadonlyArray<{ x: number; z: number }>;
+  /** Overrides the global grenade pickup respawn delay (seconds) for this map. */
+  grenadePickupRespawnSec?: number;
+  /** When set, a player's grenade count is reset to this on death-respawn. */
+  respawnGrenadeCount?: number;
   getInitialWeaponSpawns?: () => ReadonlyArray<FiringRangeWeaponSpawn>;
   spawnTrainingBots: boolean;
   /** Join and respawn with no weapons — players must pick them up. */
@@ -164,6 +169,9 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     humanRespawnPoint: KILLHOUSE_RESPAWN_POINT,
     ammoPositions: KILLHOUSE_AMMO_POSITIONS,
     shieldPositions: KILLHOUSE_SHIELD_POSITIONS,
+    getGrenadePositions: () => KILLHOUSE_GRENADE_POSITIONS,
+    grenadePickupRespawnSec: 10,
+    respawnGrenadeCount: 1,
     spawnTrainingBots: false,
   },
   firing_range: {
