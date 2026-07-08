@@ -11,7 +11,7 @@ import { keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils';
 const ASSET_BASE = '/3d/';
 
 let templatePromise: Promise<THREE.Group> | null = null;
-let pickupStackPromise: Promise<THREE.Group> | null = null;
+const pickupStackPromises = new Map<number, Promise<THREE.Group>>();
 
 function prepareGrenadeModel(model: THREE.Group): THREE.Group {
   keepSingleFbxLodMesh(model, GRENADE_VISUAL_LOD);
@@ -62,25 +62,30 @@ export async function createGrenadeMesh(): Promise<THREE.Group> {
   return template.clone(true);
 }
 
-export function loadGrenadePickupStackTemplate(): Promise<THREE.Group> {
-  if (!pickupStackPromise) {
-    pickupStackPromise = (async () => {
-      const grenade = await loadGrenadeTemplate();
-      const stack = new THREE.Group();
-      stack.name = 'grenade-pickup-stack';
+export function loadGrenadePickupStackTemplate(
+  grant = GRENADE_PICKUP_GRANT,
+): Promise<THREE.Group> {
+  const count = Math.min(Math.max(1, grant), 4);
+  const cached = pickupStackPromises.get(count);
+  if (cached) return cached;
 
-      const count = Math.min(GRENADE_PICKUP_GRANT, 4);
-      const restY = GRENADE_TARGET_SIZE * 0.5;
-      for (let i = 0; i < count; i++) {
-        const copy = grenade.clone(true);
-        copy.position.set((i % 2) * 0.12 - 0.06, restY + Math.floor(i / 2) * 0.1, 0);
-        stack.add(copy);
-      }
+  const promise = (async () => {
+    const grenade = await loadGrenadeTemplate();
+    const stack = new THREE.Group();
+    stack.name = 'grenade-pickup-stack';
 
-      return stack;
-    })();
-  }
-  return pickupStackPromise;
+    const restY = GRENADE_TARGET_SIZE * 0.5;
+    for (let i = 0; i < count; i++) {
+      const copy = grenade.clone(true);
+      copy.position.set((i % 2) * 0.12 - 0.06, restY + Math.floor(i / 2) * 0.1, 0);
+      stack.add(copy);
+    }
+
+    return stack;
+  })();
+
+  pickupStackPromises.set(count, promise);
+  return promise;
 }
 
 export function disposeGrenadeObject(object: THREE.Object3D): void {

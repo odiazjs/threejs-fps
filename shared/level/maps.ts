@@ -120,6 +120,8 @@ export interface MapCollisionDef {
   getGrenadePositions?: () => ReadonlyArray<{ x: number; z: number }>;
   /** Overrides the global grenade pickup respawn delay (seconds) for this map. */
   grenadePickupRespawnSec?: number;
+  /** Grenades granted per world pickup stack on this map (default 4). */
+  grenadePickupGrant?: number;
   /** When set, a player's grenade count is reset to this on death-respawn. */
   respawnGrenadeCount?: number;
   getInitialWeaponSpawns?: () => ReadonlyArray<FiringRangeWeaponSpawn>;
@@ -171,6 +173,7 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     shieldPositions: KILLHOUSE_SHIELD_POSITIONS,
     getGrenadePositions: () => KILLHOUSE_GRENADE_POSITIONS,
     grenadePickupRespawnSec: 10,
+    grenadePickupGrant: 1,
     respawnGrenadeCount: 1,
     spawnTrainingBots: false,
   },
@@ -209,6 +212,10 @@ export function isValidMapId(value: string | null | undefined): value is MapId {
 
 export function normalizeMapId(value: string | null | undefined): MapId {
   return isValidMapId(value) ? value : DEFAULT_MAP_ID;
+}
+
+export function mapHasMinimap(mapId: MapId): boolean {
+  return mapId === 'firing_range' || mapId === 'killhouse_small';
 }
 
 export function getMapDef(mapId: MapId): MapCollisionDef {

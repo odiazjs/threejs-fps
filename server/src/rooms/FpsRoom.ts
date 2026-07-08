@@ -258,7 +258,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const pickup = new GrenadePickupState();
       pickup.x = pos.x;
       pickup.z = pos.z;
-      pickup.count = GRENADE_PICKUP_GRANT;
+      pickup.count = this.mapDef.grenadePickupGrant ?? GRENADE_PICKUP_GRANT;
       this.state.grenadePickups.push(pickup);
     }
 
@@ -1430,7 +1430,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         }
       }
 
-      const grant = Math.min(GRENADE_PICKUP_GRANT, MAX_GRENADES - player.grenadeCount);
+      const grant = Math.min(pickup.count, MAX_GRENADES - player.grenadeCount);
       if (grant <= 0) return;
 
       pickup.collected = true;

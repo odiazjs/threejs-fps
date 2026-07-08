@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
-import { DEFAULT_MAP_ID, getMapDef, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
+import { DEFAULT_MAP_ID, getMapDef, mapHasMinimap, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
 import { normalizeGameMode, type GameMode } from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
@@ -52,6 +52,7 @@ import {
   type MatchPhase,
 } from '../../shared/combat/match';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
+import { buildKillhouseMinimapLayout } from '../content/killhouseMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
@@ -287,6 +288,12 @@ export class Game {
           collected: false,
         });
       });
+    } else if (initialMapId === 'killhouse_small') {
+      const minimapLayout = buildKillhouseMinimapLayout();
+      this.minimapHud.setLayout(minimapLayout);
+      this.tacticalMapOverlay.setLayout(minimapLayout);
+      this.minimapHud.setMapActive(true);
+      this.tacticalMapOverlay.setMapActive(true);
     } else {
       this.minimapHud.setMapActive(false);
       this.tacticalMapOverlay.setMapActive(false);
@@ -426,13 +433,15 @@ export class Game {
     this.shieldDomeManager = new ShieldDomeManager(this.scene);
     this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
     this.projectiles.setShieldDomeManager(this.shieldDomeManager);
+    const mapDef = getMapDef(mapId);
     this.ammoPickups = new AmmoPickups(
       this.scene,
-      mapId === 'firing_range' ? [] : getMapDef(mapId).ammoPositions,
+      mapId === 'firing_range' ? [] : mapDef.ammoPositions,
     );
     this.grenadePickups = new GrenadePickups(
       this.scene,
-      mapId === 'firing_range' ? [] : (getMapDef(mapId).getGrenadePositions?.() ?? []),
+      mapId === 'firing_range' ? [] : (mapDef.getGrenadePositions?.() ?? []),
+      mapDef.grenadePickupGrant,
     );
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
@@ -802,7 +811,7 @@ export class Game {
   }
 
   private toggleTacticalMap(): void {
-    if (this.worldMapId !== 'firing_range') return;
+    if (!mapHasMinimap(this.worldMapId)) return;
 
     const willOpen = !this.tacticalMapOverlay.isOpen();
     this.tacticalMapOverlay.setOpen(willOpen);
@@ -811,7 +820,7 @@ export class Game {
     if (willOpen) {
       this.playerControls.controls.unlockSoft();
       this.crosshairHud.setVisible(false);
-      const mapState = this.getFiringRangeMapState();
+      const mapState = this.getMinimapState();
       if (mapState) {
         this.tacticalMapOverlay.update(mapState);
       }
@@ -824,8 +833,8 @@ export class Game {
     }
   }
 
-  private getFiringRangeMapState(): MinimapUpdateState | null {
-    if (this.worldMapId !== 'firing_range' || !this.network) return null;
+  private getMinimapState(): MinimapUpdateState | null {
+    if (!mapHasMinimap(this.worldMapId) || !this.network) return null;
 
     const playerPos = this.player.object.position;
     const { yaw } = this.player.getNetworkAim();
@@ -911,7 +920,7 @@ export class Game {
       this.playerControls.isPlaying &&
       this.localCombat.alive &&
       !this.inventoryOpen &&
-      this.worldMapId === 'firing_range'
+      mapHasMinimap(this.worldMapId)
     ) {
       this.toggleTacticalMap();
     }
@@ -1055,8 +1064,8 @@ export class Game {
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
 
-      if (this.worldMapId === 'firing_range') {
-        const mapState = this.getFiringRangeMapState();
+      if (mapHasMinimap(this.worldMapId)) {
+        const mapState = this.getMinimapState();
         if (mapState) {
           this.minimapHud.update(mapState);
           if (this.tacticalMapOverlay.isOpen()) {

@@ -4,6 +4,7 @@ import {
 } from '../../shared/network/grenadePickup';
 import { PLAYER_HALF_WIDTH } from '../../shared/level/levelData';
 import type { GrenadePickupSnapshot } from '../network/types';
+import { GRENADE_PICKUP_GRANT } from '../../shared/throwables/grenadeConfig';
 import { loadGrenadePickupStackTemplate } from '../content/grenadeModel';
 import { resolvePickupSurfaceY } from './pickupSurface';
 
@@ -24,15 +25,24 @@ export class GrenadePickups {
   private lastFeetZ = 0;
   private hasLastFeet = false;
   private elapsed = 0;
+  private pickupGrant = GRENADE_PICKUP_GRANT;
   readonly whenReady: Promise<void>;
 
-  constructor(scene: THREE.Scene, spawnPositions: ReadonlyArray<{ x: number; z: number }>) {
+  constructor(
+    scene: THREE.Scene,
+    spawnPositions: ReadonlyArray<{ x: number; z: number }>,
+    pickupGrant = GRENADE_PICKUP_GRANT,
+  ) {
     this.root.name = 'grenade-pickups';
     scene.add(this.root);
+    this.pickupGrant = pickupGrant;
     this.whenReady = this.build(spawnPositions);
   }
 
-  async repopulate(spawnPositions: ReadonlyArray<{ x: number; z: number }>): Promise<void> {
+  async repopulate(
+    spawnPositions: ReadonlyArray<{ x: number; z: number }>,
+    pickupGrant = this.pickupGrant,
+  ): Promise<void> {
     for (const stack of this.stacks) {
       stack.removeFromParent();
     }
@@ -41,6 +51,7 @@ export class GrenadePickups {
     this.collected.clear();
     this.pickupRetryAt.clear();
     this.hasLastFeet = false;
+    this.pickupGrant = pickupGrant;
     await this.build(spawnPositions);
   }
 
@@ -48,7 +59,7 @@ export class GrenadePickups {
     if (spawnPositions.length === 0) return;
 
     try {
-      const template = await loadGrenadePickupStackTemplate();
+      const template = await loadGrenadePickupStackTemplate(this.pickupGrant);
 
       for (const pos of spawnPositions) {
         const stack = template.clone(true);
