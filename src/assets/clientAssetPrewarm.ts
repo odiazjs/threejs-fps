@@ -30,6 +30,7 @@ import {
   STATS_INCOMING_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
+import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { preloadGrenadeModel } from '../content/grenadeModel';
 import { runShaderPrewarm } from '../combat/prewarmCombatFx';
 import { warmHitSplashPool } from '../combat/hitSplashPool';
