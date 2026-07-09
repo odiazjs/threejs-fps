@@ -24,7 +24,7 @@ export const CHARACTER_MODEL_FILES = {
   reloadWalk: 'Reload Walk.fbx',
   reloadSprint: 'Reload Sprint.fbx',
   meleeIdle: 'Standing Idle Melee.fbx',
-  meleeAttack: 'Standing Melee Attack Horizontal 100.fbx',
+  meleeAttack: 'melee_attack_2.fbx',
   meleeWalkForward: 'Melee Standing Walk Forward.fbx',
   meleeWalkBack: 'Melee Standing Walk Back.fbx',
   meleeRun: 'Melee Run.fbx',

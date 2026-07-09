@@ -1,8 +1,8 @@
 /** Third-person equip / holster clip length (`weapon_swtich_2.fbx`). */
 export const WEAPON_SWITCH_ANIM_SEC = 0.44;
 
-/** Third-person katana slash clip length (`Standing Melee Attack Horizontal 100.fbx`). */
-export const MELEE_ATTACK_ANIM_SEC = 1.2000000476837158;
+/** Third-person katana slash clip length (`melee_attack_2.fbx`). */
+export const MELEE_ATTACK_ANIM_SEC = 0.60;
 
 /** How long remote corpses stay visible after death before hiding the model. */
 export const REMOTE_DEATH_DISPLAY_SEC = 4;
