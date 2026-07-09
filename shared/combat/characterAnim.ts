@@ -1,5 +1,5 @@
-/** Third-person equip / holster clip length (`Unarmed Equip Over Shoulder.fbx`). */
-export const WEAPON_SWITCH_ANIM_SEC = 0.8833333253860474;
+/** Third-person equip / holster clip length (`weapon_swtich_2.fbx`). */
+export const WEAPON_SWITCH_ANIM_SEC = 0.44;
 
 /** Third-person katana slash clip length (`Standing Melee Attack Horizontal 100.fbx`). */
 export const MELEE_ATTACK_ANIM_SEC = 1.2000000476837158;

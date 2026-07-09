@@ -29,7 +29,7 @@ export const CHARACTER_MODEL_FILES = {
   meleeWalkBack: 'Melee Standing Walk Back.fbx',
   meleeRun: 'Melee Run.fbx',
   meleeJump: 'Melee Standing Jump 2.fbx',
-  weaponEquip: 'Unarmed Equip Over Shoulder.fbx',
+  weaponEquip: 'weapon_swtich_2.fbx',
   crouchIdle: 'Idle Crouching Aiming.fbx',
   crouchWalk: 'Crouched Walking.fbx',
   death: 'Player Death.fbx',
