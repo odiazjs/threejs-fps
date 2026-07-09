@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createGrenadeMesh, disposeGrenadeObject } from '../content/grenadeModel';
+import { GrenadeFuseFx } from '../effects/GrenadeFuseFx';
 
 /** First-person grenade hold pose (right / down / forward from camera). */
 const BASE_POSITION = new THREE.Vector3(0.26, -0.28, -0.52);
@@ -100,11 +101,15 @@ function sampleThrowDraw(t: number): ThrowDrawPose {
 export class GrenadeViewModel {
   private rig: THREE.Group | null = null;
   private mesh: THREE.Group | null = null;
+  private fuseFx: GrenadeFuseFx | null = null;
   private loading = false;
   private wantVisible = false;
   private animTime = -1;
   private swayPhase = 0;
   private walkBlend = 0;
+  private cooking = false;
+  private cookFuseEndAt = 0;
+  private lastCookTick = -1;
 
   constructor(private readonly camera: THREE.PerspectiveCamera) {}
 
@@ -114,6 +119,7 @@ export class GrenadeViewModel {
       this.ensureLoaded();
     } else {
       this.animTime = -1;
+      this.stopCooking();
     }
     if (this.rig) {
       this.rig.visible = visible;
@@ -121,13 +127,37 @@ export class GrenadeViewModel {
     }
   }
 
+  /** Begin fuse countdown FX on the held grenade. */
+  startCooking(fuseEndAt: number, worldTime: number): void {
+    this.cooking = true;
+    this.cookFuseEndAt = fuseEndAt;
+    this.lastCookTick = -1;
+    this.pulseCookTick(worldTime);
+  }
+
+  stopCooking(): void {
+    this.cooking = false;
+    this.cookFuseEndAt = 0;
+    this.lastCookTick = -1;
+    if (this.fuseFx) {
+      this.fuseFx.object.visible = false;
+    }
+  }
+
   /** Play the release follow-through and pull a fresh grenade from the belt. */
   triggerThrow(): void {
     if (!this.wantVisible) return;
+    this.stopCooking();
     this.animTime = 0;
   }
 
-  update(delta: number, walking: boolean, sprinting: boolean, grounded: boolean): void {
+  update(
+    delta: number,
+    walking: boolean,
+    sprinting: boolean,
+    grounded: boolean,
+    worldTime = 0,
+  ): void {
     if (!this.rig || !this.wantVisible) return;
 
     const walkActive = grounded && (walking || sprinting);
@@ -169,15 +199,38 @@ export class GrenadeViewModel {
     this.rig.position.copy(_pos);
     this.rig.rotation.copy(_rot);
     if (this.mesh) this.mesh.visible = meshVisible;
+
+    if (this.fuseFx) {
+      if (this.cooking && meshVisible) {
+        this.pulseCookTick(worldTime);
+        this.fuseFx.update(delta, this.cookFuseEndAt, worldTime);
+      } else {
+        this.fuseFx.object.visible = false;
+      }
+    }
   }
 
   dispose(): void {
+    this.stopCooking();
+    this.fuseFx?.dispose();
+    this.fuseFx = null;
     if (this.rig) {
       disposeGrenadeObject(this.rig);
       this.rig.removeFromParent();
     }
     this.rig = null;
     this.mesh = null;
+  }
+
+  private pulseCookTick(worldTime: number): void {
+    if (!this.fuseFx || !this.cooking) return;
+    const remaining = this.cookFuseEndAt - worldTime;
+    if (remaining <= 0) return;
+
+    const tickBucket = Math.ceil(Math.max(0, remaining - 0.001));
+    if (tickBucket === this.lastCookTick || tickBucket <= 0) return;
+    this.lastCookTick = tickBucket;
+    this.fuseFx.pulse(tickBucket);
   }
 
   private ensureLoaded(): void {
@@ -187,6 +240,10 @@ export class GrenadeViewModel {
     void createGrenadeMesh()
       .then((mesh) => {
         this.loading = false;
+
+        const fuseFx = new GrenadeFuseFx();
+        fuseFx.object.visible = false;
+        mesh.add(fuseFx.object);
 
         const rig = new THREE.Group();
         rig.name = 'grenade-viewmodel';
@@ -203,6 +260,7 @@ export class GrenadeViewModel {
         this.camera.add(rig);
         this.rig = rig;
         this.mesh = mesh;
+        this.fuseFx = fuseFx;
       })
       .catch(() => {
         this.loading = false;

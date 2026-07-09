@@ -1374,22 +1374,50 @@ body.game-page * {
 }
 #damage-indicator-hud .damage-direction-marker {
   position: absolute;
-  width: 2.4rem;
-  height: 2.4rem;
+  width: 6.25vmin;
+  height: 6.25vmin;
   opacity: 0;
   pointer-events: none;
 }
 #damage-indicator-hud .damage-arrow-icon {
   width: 100%;
   height: 100%;
-  fill: rgba(255, 58, 58, 0.95);
-  filter: drop-shadow(0 0 10px rgba(255, 50, 50, 0.95))
-    drop-shadow(0 0 4px rgba(255, 200, 200, 0.8));
+  fill: rgba(255, 48, 48, 1);
+  filter: drop-shadow(0 0 18px rgba(255, 40, 40, 1))
+    drop-shadow(0 0 8px rgba(255, 220, 220, 1))
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
 }
 #damage-indicator-hud .damage-direction-marker.shield-marker .damage-arrow-icon {
-  fill: rgba(0, 240, 255, 0.98);
-  filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.95))
-    drop-shadow(0 0 5px rgba(180, 255, 255, 0.85));
+  fill: rgba(0, 245, 255, 1);
+  filter: drop-shadow(0 0 20px rgba(0, 240, 255, 1))
+    drop-shadow(0 0 10px rgba(200, 255, 255, 1))
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
+}
+#grenade-threat-hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  overflow: hidden;
+}
+#grenade-threat-hud .grenade-threat-markers {
+  position: absolute;
+  inset: 0;
+}
+#grenade-threat-hud .grenade-threat-marker {
+  position: absolute;
+  width: 6.25vmin;
+  height: 6.25vmin;
+  opacity: 0;
+  pointer-events: none;
+}
+#grenade-threat-hud .grenade-threat-arrow-icon {
+  width: 100%;
+  height: 100%;
+  fill: rgba(255, 220, 40, 1);
+  filter: drop-shadow(0 0 18px rgba(255, 210, 30, 1))
+    drop-shadow(0 0 8px rgba(255, 245, 160, 1))
+    drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
 }
 #inventory-overlay {
   position: fixed;

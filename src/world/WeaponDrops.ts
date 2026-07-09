@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { WEAPON_PICKUP_MAX_DISTANCE } from '../../shared/network/weaponPickup';
+import { WEAPON_PICKUP_AIM_MAX_DISTANCE, WEAPON_PICKUP_MAX_DISTANCE } from '../../shared/network/weaponPickup';
 import { isPickableWeaponId } from '../../shared/content/weaponIds';
 import type { WeaponDropSnapshot } from '../network/types';
 import { createWeaponDropMesh } from './weaponDropVisual';
@@ -9,6 +9,8 @@ export interface WeaponDropRaycastHit {
   index: number;
   weaponId: string;
   distance: number;
+  x: number;
+  z: number;
 }
 
 const _raycaster = new THREE.Raycaster();
@@ -45,9 +47,17 @@ export class WeaponDrops {
     drop.rotation.y = snapshot.yaw;
   }
 
+  /**
+   * Aim-ray hit against a drop that is also within feet pickup range.
+   * Matches the server's horizontal feet-distance check so the hold spinner
+   * cannot complete for a pickup the server will reject.
+   */
   raycastFromCamera(
     camera: THREE.Camera,
-    maxDistance = WEAPON_PICKUP_MAX_DISTANCE,
+    feetX: number,
+    feetZ: number,
+    aimMaxDistance = WEAPON_PICKUP_AIM_MAX_DISTANCE,
+    feetMaxDistance = WEAPON_PICKUP_MAX_DISTANCE,
   ): WeaponDropRaycastHit | null {
     _raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
@@ -64,7 +74,7 @@ export class WeaponDrops {
 
     const hits = _raycaster.intersectObjects(meshes, false);
     for (const hit of hits) {
-      if (hit.distance > maxDistance) continue;
+      if (hit.distance > aimMaxDistance) continue;
 
       let node: THREE.Object3D | null = hit.object;
       while (node && node !== this.root) {
@@ -73,10 +83,16 @@ export class WeaponDrops {
           const snapshot = this.snapshots.get(index);
           if (!snapshot || snapshot.collected) return null;
           if (!isPickableWeaponId(snapshot.weaponId)) return null;
+
+          const feetDist = Math.hypot(feetX - snapshot.x, feetZ - snapshot.z);
+          if (feetDist > feetMaxDistance) return null;
+
           return {
             index,
             weaponId: snapshot.weaponId,
             distance: hit.distance,
+            x: snapshot.x,
+            z: snapshot.z,
           };
         }
         node = node.parent;

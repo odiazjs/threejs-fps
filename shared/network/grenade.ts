@@ -5,11 +5,17 @@ export interface GrenadeThrowRequest {
   dirX: number;
   dirY: number;
   dirZ: number;
+  /**
+   * Seconds of fuse remaining when the grenade leaves the hand (after cooking).
+   * Omitted / undefined = full fuse. Clamped server-side to [0, GRENADE_FUSE_SEC].
+   */
+  fuseRemainingSec?: number;
 }
 
 export interface GrenadeThrowBroadcast {
   id: string;
   throwerId: string;
+  throwerTeamId?: number;
   x: number;
   y: number;
   z: number;

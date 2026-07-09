@@ -73,6 +73,15 @@ export class WeaponPickupHud {
 
     this.promptRoot.hidden = true;
 
+    if (
+      this.holding &&
+      this.holdTarget &&
+      (this.holdTarget.index !== target.index ||
+        this.holdTarget.weaponId !== target.weaponId)
+    ) {
+      this.cancelHold();
+    }
+
     if (!this.holding) {
       this.holdTarget = target;
       this.onComplete = onComplete;

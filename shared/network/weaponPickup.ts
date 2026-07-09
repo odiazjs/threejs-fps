@@ -10,4 +10,7 @@ export interface WeaponPickupGrantedMessage {
 }
 
 /** Max distance from player feet to weapon drop for pickup (meters). */
-export const WEAPON_PICKUP_MAX_DISTANCE = 4;
+export const WEAPON_PICKUP_MAX_DISTANCE = 5;
+
+/** Max aim-ray distance to start a weapon pickup hold (meters). */
+export const WEAPON_PICKUP_AIM_MAX_DISTANCE = 5;

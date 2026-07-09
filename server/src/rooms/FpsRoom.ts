@@ -64,6 +64,7 @@ import {
   GRENADE_BLAST_RADIUS,
   GRENADE_COLLISION_RADIUS,
   GRENADE_FUSE_SEC,
+  GRENADE_MAX_COOK_SEC,
   GRENADE_MAX_DAMAGE,
   GRENADE_PICKUP_GRANT,
   GRENADE_PICKUP_RESPAWN_SEC,
@@ -1157,7 +1158,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!isPickableWeaponId(drop.weaponId)) return;
 
       const distance = Math.hypot(player.x - drop.x, player.z - drop.z);
-      if (distance > WEAPON_PICKUP_MAX_DISTANCE) return;
+      // Small slack for network position lag vs the client's hold completion.
+      if (distance > WEAPON_PICKUP_MAX_DISTANCE + 0.75) return;
 
       const resolution = resolveWeaponPickup(
         player,
@@ -1341,7 +1343,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.cancelShieldRecharge(player);
 
       const id = `grenade-${++this.grenadeIdCounter}`;
-      const fuseEndAt = this.state.worldTime + GRENADE_FUSE_SEC;
+      const fuseRemaining =
+        typeof data.fuseRemainingSec === 'number' && Number.isFinite(data.fuseRemainingSec)
+          ? Math.min(GRENADE_MAX_COOK_SEC, Math.max(0, data.fuseRemainingSec))
+          : GRENADE_FUSE_SEC;
+      const fuseEndAt = this.state.worldTime + fuseRemaining;
       const grenade: ActiveServerGrenade = {
         ...createGrenadeMotionState(
           data.x,
@@ -1361,6 +1367,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const payload = {
         id,
         throwerId: client.sessionId,
+        throwerTeamId: player.teamId,
         x: data.x,
         y: data.y,
         z: data.z,
@@ -1509,19 +1516,36 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       target.hp = result.hp;
 
       if (result.absorbedByShield > 0 || result.dealtToHealth > 0) {
-        const lastShot = this.lastShotOriginBySession.get(client.sessionId);
         const victimClient = this.clients.find((c) => c.sessionId === data.targetId);
-        if (victimClient && lastShot) {
-          victimClient.send('damaged', {
-            shooterId: client.sessionId,
-            shooterWorldX: lastShot.x,
-            shooterWorldY: lastShot.y,
-            shooterWorldZ: lastShot.z,
-            absorbedByShield: result.absorbedByShield,
-            dealtToHealth: result.dealtToHealth,
-            shieldBroken: prevShieldPoints > 0 && result.shieldPoints <= 0,
-          } satisfies PlayerDamagedMessage);
+        if (!victimClient) return;
+
+        let shooterWorldX: number;
+        let shooterWorldY: number;
+        let shooterWorldZ: number;
+
+        if (data.weaponId === MELEE_WEAPON_ID) {
+          // Melee has no projectile — point the indicator at the attacker when the hit lands.
+          shooterWorldX = shooter.x;
+          shooterWorldY = shooter.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5;
+          shooterWorldZ = shooter.z;
+        } else {
+          const lastShot = this.lastShotOriginBySession.get(client.sessionId);
+          if (!lastShot) return;
+
+          shooterWorldX = lastShot.x;
+          shooterWorldY = lastShot.y;
+          shooterWorldZ = lastShot.z;
         }
+
+        victimClient.send('damaged', {
+          shooterId: client.sessionId,
+          shooterWorldX,
+          shooterWorldY,
+          shooterWorldZ,
+          absorbedByShield: result.absorbedByShield,
+          dealtToHealth: result.dealtToHealth,
+          shieldBroken: prevShieldPoints > 0 && result.shieldPoints <= 0,
+        } satisfies PlayerDamagedMessage);
       }
 
       if (target.hp > 0) return;
@@ -1753,6 +1777,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     } satisfies WeaponShotSoundMessage);
   }
 
+  private resetPlayerWeaponTiming(player: PlayerState): void {
+    player.reloading = false;
+    player.reloadEndAt = 0;
+    player.weaponSwitchEndAt = 0;
+    player.meleeAttackEndAt = 0;
+  }
+
   private respawnPlayer(sessionId: string): void {
     const player = this.state.players.get(sessionId);
     if (!player) return;
@@ -1767,10 +1798,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.shieldPoints = botShield.shieldPoints;
       player.alive = true;
       player.pitch = 0;
-      player.reloading = false;
-      player.reloadEndAt = 0;
-      player.weaponSwitchEndAt = 0;
-      player.meleeAttackEndAt = 0;
+      this.resetPlayerWeaponTiming(player);
       player.sprinting = false;
       player.walking = false;
       this.placeTrainingBot(sessionId, player, spawn);
@@ -1799,16 +1827,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.z = spawn.z;
     player.yaw = 0;
     player.pitch = 0;
-    player.reloading = false;
-    player.reloadEndAt = 0;
-    player.weaponSwitchEndAt = 0;
-    player.meleeAttackEndAt = 0;
+    this.resetPlayerWeaponTiming(player);
     player.sprinting = false;
     player.walking = false;
     player.jumping = false;
     player.crouching = false;
     this.holsteredWeaponIdBySession.delete(sessionId);
     this.initPlayerLoadout(player);
+    this.resetPlayerWeaponTiming(player);
     if (this.mapDef.respawnGrenadeCount !== undefined) {
       player.grenadeCount = this.mapDef.respawnGrenadeCount;
     }

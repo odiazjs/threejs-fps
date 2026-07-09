@@ -1,11 +1,15 @@
 import * as THREE from 'three';
 import type { GrenadeThrowBroadcast } from '../../shared/network/grenade';
-import { GRENADE_FUSE_SEC } from '../../shared/throwables/grenadeConfig';
+import {
+  GRENADE_FUSE_SEC,
+  GRENADE_THROWER_COLLISION_GRACE_SEC,
+} from '../../shared/throwables/grenadeConfig';
 import {
   createGrenadeMotionState,
   stepGrenadeMotion,
   type GrenadeMotionState,
 } from '../../shared/combat/grenadePhysics';
+import type { GrenadePlayerCollider } from '../../shared/combat/grenadePlayerCollision';
 import { createGrenadeWorldRaycast } from '../../shared/combat/grenadeWorldCollision';
 import { getClientMapDef } from '../../shared/level/maps';
 import { createGrenadeMesh, disposeGrenadeObject, loadGrenadeTemplate } from '../content/grenadeModel';
@@ -16,7 +20,11 @@ import type { ShieldDomeManager } from './ShieldDomeManager';
 
 interface ActiveGrenade extends GrenadeMotionState {
   id: string;
+  throwerId: string;
+  throwerTeamId: number | null;
   fuseEndAt: number;
+  /** World time when this grenade was spawned — used for thrower collision grace. */
+  spawnedAt: number;
   object: THREE.Group;
   fuseFx: GrenadeFuseFx;
   lastFuseTick: number;
@@ -29,10 +37,21 @@ interface ActiveGrenade extends GrenadeMotionState {
   fallbackDetonateAt?: number;
 }
 
-type ExplosionListener = (x: number, y: number, z: number) => void;
+type ExplosionListener = (x: number, y: number, z: number, grenadeId?: string) => void;
 type DetonateReporter = (id: string, x: number, y: number, z: number) => void;
+type PlayerColliderProvider = () => readonly GrenadePlayerCollider[];
 
 const BOUNCE_SOUND_COOLDOWN_SEC = 0.07;
+
+export interface ActiveGrenadeSnapshot {
+  id: string;
+  throwerId: string;
+  throwerTeamId: number | null;
+  x: number;
+  y: number;
+  z: number;
+  isOwn: boolean;
+}
 
 /**
  * For grenades thrown by *other* players this client waits this long after the
@@ -116,6 +135,7 @@ export class GrenadeManager {
   private detonateReporter: DetonateReporter | null = null;
   private grenadeSounds: GrenadeSoundService | null = null;
   private shieldDomeManager: ShieldDomeManager | null = null;
+  private playerColliderProvider: PlayerColliderProvider | null = null;
   private grenadeIdCounter = 0;
   readonly whenReady: Promise<void>;
 
@@ -144,8 +164,13 @@ export class GrenadeManager {
     this.shieldDomeManager = manager;
   }
 
+  setPlayerColliderProvider(provider: PlayerColliderProvider | null): void {
+    this.playerColliderProvider = provider;
+  }
+
   spawnLocalThrow(
-    _throwerId: string,
+    throwerId: string,
+    throwerTeamId: number,
     x: number,
     y: number,
     z: number,
@@ -153,18 +178,34 @@ export class GrenadeManager {
     velY: number,
     velZ: number,
     fuseEndAt: number,
+    worldTime = 0,
   ): string {
     const id = `local-${++this.grenadeIdCounter}`;
-    void this.addGrenade(id, x, y, z, velX, velY, velZ, fuseEndAt, true);
+    void this.addGrenade(
+      id,
+      throwerId,
+      throwerTeamId,
+      x,
+      y,
+      z,
+      velX,
+      velY,
+      velZ,
+      fuseEndAt,
+      true,
+      worldTime,
+    );
     return id;
   }
 
-  reconcileLocalThrow(data: GrenadeThrowBroadcast): void {
+  reconcileLocalThrow(data: GrenadeThrowBroadcast, worldTime = 0): void {
     for (const [id, grenade] of this.grenades) {
       if (!id.startsWith('local-')) continue;
 
       this.grenades.delete(id);
       grenade.id = data.id;
+      grenade.throwerId = data.throwerId;
+      grenade.throwerTeamId = data.throwerTeamId ?? grenade.throwerTeamId;
       grenade.x = data.x;
       grenade.y = data.y;
       grenade.z = data.z;
@@ -172,6 +213,7 @@ export class GrenadeManager {
       grenade.velY = data.velY;
       grenade.velZ = data.velZ;
       grenade.fuseEndAt = data.fuseEndAt;
+      grenade.spawnedAt = worldTime || grenade.spawnedAt;
       grenade.grounded = false;
       grenade.bounceCount = 0;
       grenade.hasRestPose = false;
@@ -187,6 +229,8 @@ export class GrenadeManager {
     // No local prediction to reconcile — still an owned throw, so spawn it owned.
     void this.addGrenade(
       data.id,
+      data.throwerId,
+      data.throwerTeamId ?? null,
       data.x,
       data.y,
       data.z,
@@ -195,13 +239,16 @@ export class GrenadeManager {
       data.velZ,
       data.fuseEndAt,
       true,
+      worldTime,
     );
   }
 
-  spawnFromNetwork(data: GrenadeThrowBroadcast): void {
+  spawnFromNetwork(data: GrenadeThrowBroadcast, worldTime = 0): void {
     if (this.grenades.has(data.id)) return;
     void this.addGrenade(
       data.id,
+      data.throwerId,
+      data.throwerTeamId ?? null,
       data.x,
       data.y,
       data.z,
@@ -210,6 +257,7 @@ export class GrenadeManager {
       data.velZ,
       data.fuseEndAt,
       false,
+      worldTime,
     );
   }
 
@@ -221,12 +269,27 @@ export class GrenadeManager {
     }
     this.explosionFx.play(x, y, z);
     this.grenadeSounds?.playExplosion(x, y, z);
-    this.explosionListener?.(x, y, z);
+    this.explosionListener?.(x, y, z, grenadeId);
+  }
+
+  forEachActiveGrenade(visitor: (grenade: ActiveGrenadeSnapshot) => void): void {
+    for (const grenade of this.grenades.values()) {
+      visitor({
+        id: grenade.id,
+        throwerId: grenade.throwerId,
+        throwerTeamId: grenade.throwerTeamId,
+        x: grenade.x,
+        y: grenade.y,
+        z: grenade.z,
+        isOwn: grenade.isOwn,
+      });
+    }
   }
 
   update(delta: number, worldTime: number): void {
     this.explosionFx.update(delta);
     const shieldDomes = this.shieldDomeManager?.getActiveDomesForPhysics(worldTime) ?? [];
+    const players = this.playerColliderProvider?.() ?? [];
 
     for (const [id, grenade] of this.grenades) {
       // Non-owned grenade whose fuse already elapsed: it is hidden and waiting
@@ -241,6 +304,10 @@ export class GrenadeManager {
 
       const prevBounceCount = grenade.bounceCount;
       const prevSpeed = Math.hypot(grenade.velX, grenade.velY, grenade.velZ);
+      const ignoreThrower =
+        worldTime - grenade.spawnedAt < GRENADE_THROWER_COLLISION_GRACE_SEC
+          ? grenade.throwerId
+          : undefined;
 
       stepGrenadeMotion(
         grenade,
@@ -249,6 +316,8 @@ export class GrenadeManager {
         createGrenadeWorldRaycast(),
         shieldDomes,
         worldTime,
+        players,
+        ignoreThrower,
       );
 
       if (
@@ -281,6 +350,8 @@ export class GrenadeManager {
 
   private async addGrenade(
     id: string,
+    throwerId: string,
+    throwerTeamId: number | null,
     x: number,
     y: number,
     z: number,
@@ -289,6 +360,7 @@ export class GrenadeManager {
     velZ: number,
     fuseEndAt: number,
     isOwn: boolean,
+    worldTime = 0,
   ): Promise<void> {
     const object = await createGrenadeMesh();
     const fuseFx = new GrenadeFuseFx();
@@ -300,7 +372,10 @@ export class GrenadeManager {
     this.grenades.set(id, {
       ...createGrenadeMotionState(x, y, z, velX, velY, velZ),
       id,
+      throwerId,
+      throwerTeamId,
       fuseEndAt,
+      spawnedAt: worldTime,
       object,
       fuseFx,
       lastFuseTick: -1,

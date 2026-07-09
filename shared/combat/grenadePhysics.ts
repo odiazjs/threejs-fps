@@ -7,6 +7,7 @@ import {
   GRENADE_MAX_BOUNCES,
   GRENADE_MAX_PHYSICS_STEP,
   GRENADE_MAX_PHYSICS_SUBSTEPS,
+  GRENADE_PLAYER_RESTITUTION,
   GRENADE_ROLL_STOP_SPEED,
   GRENADE_THROW_SPEED,
   GRENADE_THROW_UPWARD,
@@ -17,6 +18,10 @@ import {
   testGrenadeSegmentAgainstShieldDomes,
   type GrenadeShieldDome,
 } from './grenadeShieldDome.js';
+import {
+  testGrenadeSegmentAgainstPlayers,
+  type GrenadePlayerCollider,
+} from './grenadePlayerCollision.js';
 
 export interface GrenadeMotionState {
   x: number;
@@ -119,13 +124,20 @@ function isWallLikeNormal(ny: number): boolean {
   return Math.abs(ny) < 0.55;
 }
 
+export interface GrenadeMotionCollisionOptions {
+  worldRaycast?: GrenadeWorldRaycast | null;
+  shieldDomes?: readonly GrenadeShieldDome[];
+  worldTime?: number;
+  players?: readonly GrenadePlayerCollider[];
+  /** Skip this player (usually the thrower) for a short grace after release. */
+  ignorePlayerSessionId?: string;
+}
+
 function integrateGrenadeMotion(
   state: GrenadeMotionState,
   delta: number,
   sampleGround: GroundHeightSampler,
-  worldRaycast?: GrenadeWorldRaycast | null,
-  shieldDomes?: readonly GrenadeShieldDome[],
-  worldTime?: number,
+  options?: GrenadeMotionCollisionOptions,
 ): void {
   applyAirDrag(state, delta);
   state.velY -= GRENADE_GRAVITY * delta;
@@ -142,16 +154,36 @@ function integrateGrenadeMotion(
   let nextZ = prevZ + moveZ;
 
   const moveLen = Math.hypot(moveX, moveY, moveZ);
-  let surfaceHit: { distance: number; nx: number; ny: number; nz: number } | null = null;
+  let surfaceHit: {
+    distance: number;
+    nx: number;
+    ny: number;
+    nz: number;
+    restitution: number;
+  } | null = null;
 
-  if (worldRaycast && moveLen > 1e-5) {
-    const hit = worldRaycast.raycastSegment(prevX, prevY, prevZ, moveX, moveY, moveZ, moveLen);
+  if (options?.worldRaycast && moveLen > 1e-5) {
+    const hit = options.worldRaycast.raycastSegment(
+      prevX,
+      prevY,
+      prevZ,
+      moveX,
+      moveY,
+      moveZ,
+      moveLen,
+    );
     if (hit && hit.distance <= moveLen && isWallLikeNormal(hit.ny)) {
-      surfaceHit = { distance: hit.distance, nx: hit.nx, ny: hit.ny, nz: hit.nz };
+      surfaceHit = {
+        distance: hit.distance,
+        nx: hit.nx,
+        ny: hit.ny,
+        nz: hit.nz,
+        restitution: GRENADE_WALL_RESTITUTION,
+      };
     }
   }
 
-  if (shieldDomes && worldTime !== undefined && moveLen > 1e-5) {
+  if (options?.shieldDomes && options.worldTime !== undefined && moveLen > 1e-5) {
     const domeHit = testGrenadeSegmentAgainstShieldDomes(
       prevX,
       prevY,
@@ -159,11 +191,27 @@ function integrateGrenadeMotion(
       nextX,
       nextY,
       nextZ,
-      shieldDomes,
-      worldTime,
+      options.shieldDomes,
+      options.worldTime,
     );
     if (domeHit && (!surfaceHit || domeHit.distance < surfaceHit.distance)) {
-      surfaceHit = domeHit;
+      surfaceHit = { ...domeHit, restitution: GRENADE_WALL_RESTITUTION };
+    }
+  }
+
+  if (options?.players && options.players.length > 0 && moveLen > 1e-5) {
+    const playerHit = testGrenadeSegmentAgainstPlayers(
+      prevX,
+      prevY,
+      prevZ,
+      nextX,
+      nextY,
+      nextZ,
+      options.players,
+      { ignoreSessionId: options.ignorePlayerSessionId },
+    );
+    if (playerHit && (!surfaceHit || playerHit.distance < surfaceHit.distance)) {
+      surfaceHit = { ...playerHit, restitution: GRENADE_PLAYER_RESTITUTION };
     }
   }
 
@@ -172,7 +220,7 @@ function integrateGrenadeMotion(
     nextX = prevX + moveX * travelT;
     nextY = prevY + moveY * travelT;
     nextZ = prevZ + moveZ * travelT;
-    reflectVelocity(state, surfaceHit.nx, surfaceHit.ny, surfaceHit.nz, GRENADE_WALL_RESTITUTION);
+    reflectVelocity(state, surfaceHit.nx, surfaceHit.ny, surfaceHit.nz, surfaceHit.restitution);
     const pushOut = GRENADE_COLLISION_RADIUS * 0.5;
     nextX += surfaceHit.nx * pushOut;
     nextY += surfaceHit.ny * pushOut;
@@ -205,7 +253,7 @@ function integrateGrenadeMotion(
   }
 }
 
-/** Integrate one grenade physics step with ground + world collision. */
+/** Integrate one grenade physics step with ground + world + player collision. */
 export function stepGrenadeMotion(
   state: GrenadeMotionState,
   delta: number,
@@ -213,8 +261,18 @@ export function stepGrenadeMotion(
   worldRaycast?: GrenadeWorldRaycast | null,
   shieldDomes?: readonly GrenadeShieldDome[],
   worldTime?: number,
+  players?: readonly GrenadePlayerCollider[],
+  ignorePlayerSessionId?: string,
 ): void {
   if (state.grounded) return;
+
+  const options: GrenadeMotionCollisionOptions = {
+    worldRaycast,
+    shieldDomes,
+    worldTime,
+    players,
+    ignorePlayerSessionId,
+  };
 
   let remaining = delta;
   let subSteps = 0;
@@ -226,7 +284,7 @@ export function stepGrenadeMotion(
         ? Math.min(remaining, GRENADE_MAX_PHYSICS_STEP / speed)
         : remaining;
 
-    integrateGrenadeMotion(state, stepDelta, sampleGround, worldRaycast, shieldDomes, worldTime);
+    integrateGrenadeMotion(state, stepDelta, sampleGround, options);
     remaining -= stepDelta;
     subSteps += 1;
 

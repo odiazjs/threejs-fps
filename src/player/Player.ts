@@ -9,6 +9,8 @@ import {
 } from '../../shared/combat/grenadePhysics';
 import type { GrenadeThrowRequest } from '../../shared/network/grenade';
 import {
+  GRENADE_COOK_HOLD_GRACE_SEC,
+  GRENADE_FUSE_SEC,
   GRENADE_THROW_ARM_DEPTH,
   GRENADE_THROW_SCREEN_OFFSET_X,
   GRENADE_THROW_SCREEN_OFFSET_Y,
@@ -214,6 +216,14 @@ export class Player {
   private readonly activeMeshBaseRotation = new THREE.Euler();
   private fireCooldown = 0;
   private throwableEquipped = false;
+  /** World time when the held grenade's fuse started (0 = not cooking). */
+  private grenadeCookStartAt = 0;
+  private grenadeCookFuseEndAt = 0;
+  /**
+   * Wall-clock ms when cook/throw input (G or LMB) was pressed while equipped.
+   * Used to distinguish a tap (throw) from a hold (start cooking).
+   */
+  private grenadeThrowHoldStartedAtMs = 0;
   private localAutoFiring = false;
   private weaponSounds: WeaponSoundService | null = null;
   private grenadeSounds: GrenadeSoundService | null = null;
@@ -563,10 +573,33 @@ export class Player {
     return this.throwableEquipped;
   }
 
-  unequipThrowable(): void {
+  unequipThrowable(options?: { discardCook?: boolean }): void {
     if (!this.throwableEquipped) return;
+    if (this.isCookingGrenade() && !options?.discardCook) {
+      // Pin already pulled — switching away throws with remaining fuse.
+      this.tryThrowGrenade();
+      if (!this.throwableEquipped) return;
+    }
+    this.clearGrenadeCook();
     this.throwableEquipped = false;
     this.syncThrowableHolster();
+  }
+
+  private isCookingGrenade(): boolean {
+    return this.grenadeCookStartAt > 0;
+  }
+
+  private clearGrenadeCook(): void {
+    this.grenadeCookStartAt = 0;
+    this.grenadeCookFuseEndAt = 0;
+    this.grenadeThrowHoldStartedAtMs = 0;
+    this.grenadeViewModel?.stopCooking();
+  }
+
+  private getGrenadeFuseRemainingSec(): number {
+    if (!this.isCookingGrenade()) return GRENADE_FUSE_SEC;
+    const worldTime = this.shieldDomeWorldTime?.() ?? 0;
+    return Math.max(0, this.grenadeCookFuseEndAt - worldTime);
   }
 
   triggerExplosionShake(explosionX: number, explosionY: number, explosionZ: number): void {
@@ -655,6 +688,11 @@ export class Player {
 
     if (this.throwableEquipped) {
       this.loadout.applyServerSlotAssignments(snapshot);
+      // Keep numbered slots in sync, but don't leave a newly granted gun unequipped
+      // if the throwable is put away on the same frame as the pickup grant.
+      if (isWeaponId(snapshot.activeWeaponId)) {
+        this.targetActiveWeaponId = snapshot.activeWeaponId;
+      }
       return;
     }
 
@@ -665,7 +703,10 @@ export class Player {
       this.targetActiveWeaponId = snapshot.activeWeaponId;
       this.loadout.setRemoteActiveWeapon(snapshot.activeWeaponId);
       const active = this.loadout.getActive();
-      if (active) this.weaponPose?.setViewConfig(active.config.view);
+      if (active) {
+        this.weaponPose?.setViewConfig(active.config.view);
+        this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+      }
     } else {
       this.stopWeaponAutoFire();
     }
@@ -711,6 +752,28 @@ export class Player {
 
   refillAmmo(): void {
     this.loadout?.refillAllAmmo();
+  }
+
+  applyRespawnFromServer(snapshot: PlayerSnapshot): void {
+    if (!this.loadout || !this.camera) return;
+
+    this.unequipThrowable({ discardCook: true });
+    this.applyLoadoutFromSnapshot(snapshot);
+    this.loadout.resetForRespawn();
+    this.targetReloadEndAt = 0;
+    this.targetWeaponSwitchEndAt = 0;
+    this.targetMeleeAttackEndAt = 0;
+    this.weaponSwitchAnimConsumed = false;
+    this.meleeAttackAnimConsumed = false;
+    this.fireCooldown = 0;
+    this.stopWeaponAutoFire();
+    this.weaponPose?.reset();
+
+    const active = this.loadout.getActive();
+    if (active) {
+      this.weaponPose?.setViewConfig(active.config.view);
+      this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    }
   }
 
   setShootCallback(callback: ShootCallback | null): void {
@@ -885,21 +948,31 @@ export class Player {
 
   getNetworkAim(): { yaw: number; pitch: number } {
     if (!this.camera) return { yaw: 0, pitch: 0 };
+    // Use pointer-lock aim state — decomposing the world camera quaternion near
+    // vertical pitch (gimbal lock) can yield unstable yaw/pitch spikes.
+    if (this.aimControls) {
+      return {
+        yaw: this.aimControls.lookYaw,
+        pitch: this.aimControls.lookPitch,
+      };
+    }
     this.object.updateMatrixWorld(true);
     return readWorldPlayerAim(this.camera);
   }
 
-  setEyePosition(x: number, y: number, z: number): void {
+  setEyePosition(x: number, y: number, z: number, resetLook = true): void {
     this.object.position.set(x, y - EYE_HEIGHT, z);
     this.object.rotation.set(0, 0, 0);
     this.physics = { verticalVelocity: 0, grounded: true };
-    this.resetLocalView();
+    if (resetLook) {
+      this.resetLocalView();
+    }
   }
 
   private resetLocalView(): void {
     if (!this.camera) return;
 
-    this.unequipThrowable();
+    this.unequipThrowable({ discardCook: true });
     this.grenadeThrowKick.reset();
     this.explosionCameraShake.reset();
     this.headBob.reset();
@@ -968,6 +1041,11 @@ export class Player {
     const wasAlive = this.alive;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
+
+    if (this.camera && wasAlive && !snapshot.alive) {
+      this.loadout?.cancelAllReloads();
+      this.stopWeaponAutoFire();
+    }
 
     if (!this.camera) {
       if (wasAlive && !snapshot.alive) {
@@ -1320,7 +1398,13 @@ export class Player {
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
       this.weaponPose?.applyCamera(this.camera);
-      this.grenadeViewModel?.update(delta, isWalking, isSprinting, this.physics.grounded);
+      this.grenadeViewModel?.update(
+        delta,
+        isWalking,
+        isSprinting,
+        this.physics.grounded,
+        this.shieldDomeWorldTime?.() ?? 0,
+      );
     } else {
       this.stopWeaponAutoFire();
       this.tryStartShieldRecharge(input);
@@ -1479,18 +1563,61 @@ export class Player {
   }
 
   private updateThrowableInput(input: KeyboardInput, pointer: PointerInput): void {
-    if (input.isJustPressed('KeyG')) {
-      if (!this.throwableEquipped) {
-        this.tryEquipThrowable();
-        return;
+    // Tap G while unequipped → equip only (do not start cooking on this press).
+    if (input.isJustPressed('KeyG') && !this.throwableEquipped) {
+      this.tryEquipThrowable();
+      this.grenadeThrowHoldStartedAtMs = 0;
+      return;
+    }
+
+    if (!this.throwableEquipped) {
+      this.grenadeThrowHoldStartedAtMs = 0;
+      return;
+    }
+
+    const gPressed = input.isPressed('KeyG');
+    const shootPressed = pointer.isPressed(POINTER_SHOOT);
+    const throwHeld = gPressed || shootPressed;
+
+    if (
+      (input.isJustPressed('KeyG') || pointer.isJustPressed(POINTER_SHOOT)) &&
+      this.grenadeThrowHoldStartedAtMs <= 0
+    ) {
+      // Start measuring hold length; cooking waits for the grace threshold.
+      this.grenadeThrowHoldStartedAtMs = performance.now();
+    }
+
+    if (throwHeld) {
+      if (
+        this.grenadeThrowHoldStartedAtMs > 0 &&
+        !this.isCookingGrenade() &&
+        (performance.now() - this.grenadeThrowHoldStartedAtMs) / 1000 >= GRENADE_COOK_HOLD_GRACE_SEC
+      ) {
+        this.beginGrenadeCook();
       }
+    } else if (this.grenadeThrowHoldStartedAtMs > 0) {
+      // Released before / after grace: tap throws uncooked; hold-release throws cooked.
+      this.grenadeThrowHoldStartedAtMs = 0;
+      this.tryThrowGrenade();
+      return;
+    } else if (this.isCookingGrenade()) {
       this.tryThrowGrenade();
       return;
     }
 
-    if (this.throwableEquipped && pointer.isJustPressed(POINTER_SHOOT)) {
+    if (this.isCookingGrenade() && this.getGrenadeFuseRemainingSec() <= 0) {
       this.tryThrowGrenade();
     }
+  }
+
+  private beginGrenadeCook(): void {
+    if (!this.throwableEquipped || this.isCookingGrenade()) return;
+    if (this.inventory.getGrenadeCount() <= 0) return;
+
+    const worldTime = this.shieldDomeWorldTime?.() ?? 0;
+    this.grenadeCookStartAt = worldTime;
+    this.grenadeCookFuseEndAt = worldTime + GRENADE_FUSE_SEC;
+    this.grenadeViewModel?.startCooking(this.grenadeCookFuseEndAt, worldTime);
   }
 
   private tryEquipThrowable(): void {
@@ -1521,9 +1648,14 @@ export class Player {
     const pose = this.computeGrenadeThrowPose();
     if (!pose) return;
     if (!this.inventory.trySpendGrenade()) {
-      this.unequipThrowable();
+      this.clearGrenadeCook();
+      this.throwableEquipped = false;
+      this.syncThrowableHolster();
       return;
     }
+
+    const fuseRemainingSec = this.getGrenadeFuseRemainingSec();
+    this.clearGrenadeCook();
 
     this.grenadeThrowKick.trigger();
     this.grenadeSounds?.playThrow();
@@ -1535,10 +1667,12 @@ export class Player {
       dirX: pose.dirX,
       dirY: pose.dirY,
       dirZ: pose.dirZ,
+      fuseRemainingSec,
     });
 
     if (this.inventory.getGrenadeCount() <= 0) {
-      this.unequipThrowable();
+      this.throwableEquipped = false;
+      this.syncThrowableHolster();
     } else {
       this.grenadeViewModel?.triggerThrow();
     }
@@ -1859,7 +1993,13 @@ export class Player {
   }
 
   private applyActiveRecoilAim(): void {
-    if (!this.yawRecoilRig || !this.pitchRecoilRig || !this.pitchRig) return;
+    if (!this.yawRecoilRig || !this.pitchRecoilRig || !this.pitchRig || !this.aimRig) return;
+
+    if (this.aimControls) {
+      applyLookYaw(this.aimRig, this.aimControls.lookYaw);
+      applyLookPitch(this.pitchRig, this.aimControls.lookPitch);
+    }
+
     const basePitch = this.aimControls?.lookPitch ?? this.pitchRig.rotation.x;
     const recoil = this.getActiveRecoil();
     if (recoil) {
@@ -1876,25 +2016,25 @@ export class Player {
     }
   }
 
-  /** Corrects euler drift so world pitch never flips past vertical. */
+  /** Keeps total pitch inside the vertical limit without euler gimbal spikes. */
   private stabilizeCameraPitch(): void {
-    if (!this.camera || !this.aimControls || !this.pitchRig || !this.pitchRecoilRig) return;
+    if (!this.aimControls || !this.pitchRig || !this.pitchRecoilRig) return;
 
-    this.object.updateMatrixWorld(true);
-    const { pitch } = readWorldPlayerAim(this.camera);
-    if (Math.abs(pitch) <= AIM_PITCH_LIMIT) return;
+    const offsetPitch = this.pitchRecoilRig.rotation.x;
+    const combinedPitch = this.aimControls.lookPitch + offsetPitch;
+    if (Math.abs(combinedPitch) <= AIM_PITCH_LIMIT) return;
 
-    const clamped = THREE.MathUtils.clamp(pitch, -AIM_PITCH_LIMIT, AIM_PITCH_LIMIT);
-    const recoilPitch = this.pitchRecoilRig.rotation.x;
+    const clamped = THREE.MathUtils.clamp(combinedPitch, -AIM_PITCH_LIMIT, AIM_PITCH_LIMIT);
     const lookPitch = THREE.MathUtils.clamp(
-      clamped - recoilPitch,
+      clamped - offsetPitch,
       -AIM_PITCH_LIMIT,
       AIM_PITCH_LIMIT,
     );
 
+    if (Math.abs(lookPitch - this.aimControls.lookPitch) < 1e-5) return;
+
     this.aimControls.lookPitch = lookPitch;
     applyLookPitch(this.pitchRig, lookPitch);
-    this.pitchRecoilRig.rotation.set(clamped - lookPitch, 0, 0);
   }
 
   private applyActiveWeaponPose(): void {

@@ -1,5 +1,14 @@
-/** Seconds after throw before the grenade detonates. */
+/** Seconds after the fuse starts (cook begin / throw) before the grenade detonates. */
 export const GRENADE_FUSE_SEC = 4;
+
+/** Max accepted cook time reported by clients (must match GRENADE_FUSE_SEC). */
+export const GRENADE_MAX_COOK_SEC = GRENADE_FUSE_SEC;
+
+/**
+ * Hold G or LMB at least this long (seconds) before cooking starts.
+ * Shorter presses are taps: equip with G when unequipped; throw when equipped.
+ */
+export const GRENADE_COOK_HOLD_GRACE_SEC = 0.22;
 
 /** Horizontal throw speed (m/s). */
 export const GRENADE_THROW_SPEED = 40;
@@ -28,6 +37,9 @@ export const GRENADE_PICKUP_RESPAWN_SEC = 2;
 /** Max distance from thrower eye to reported throw origin (m). */
 export const GRENADE_THROW_ORIGIN_MAX_OFFSET = 1.15;
 
+/** Ignore the thrower's body for this long after release so the grenade clears the hand. */
+export const GRENADE_THROWER_COLLISION_GRACE_SEC = 0.22;
+
 /** Hold position: fraction of half-viewport from screen center (X: + right / − left, Y: + down / − up). */
 export const GRENADE_THROW_SCREEN_OFFSET_X = 0.48;
 export const GRENADE_THROW_SCREEN_OFFSET_Y = 0.58;
@@ -46,6 +58,9 @@ export const GRENADE_GROUND_RESTITUTION = 0.42;
 
 /** Wall / prop bounce restitution (0–1). */
 export const GRENADE_WALL_RESTITUTION = 0.46;
+
+/** Player body bounce restitution (0–1). Zero = no bounce, just deflect/slide. */
+export const GRENADE_PLAYER_RESTITUTION = 0.1;
 
 /** Horizontal speed retained per ground contact. */
 export const GRENADE_GROUND_FRICTION = 0.66;

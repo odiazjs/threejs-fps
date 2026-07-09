@@ -122,6 +122,8 @@ export class WeaponSlot {
   }
 
   get fireInterval(): number {
+    // fireRate <= 0 means uncapped (click-limited for semi).
+    if (this.config.fireRate <= 0) return 0;
     return 1 / this.config.fireRate;
   }
 
@@ -372,6 +374,23 @@ export class WeaponLoadout {
     for (const slot of this.weaponsById.values()) {
       slot.ammo.refill(reserveRounds);
     }
+  }
+
+  cancelAllReloads(): void {
+    for (const slot of this.allWeaponSlots()) {
+      slot.ammo.cancelReload();
+    }
+  }
+
+  /** Full ammo + combat timing reset when the server respawns the player. */
+  resetForRespawn(reserveRounds?: number): void {
+    for (const slot of this.allWeaponSlots()) {
+      slot.ammo.refill(reserveRounds);
+      slot.recoil.reset();
+    }
+    this.meleeEquipped = false;
+    this.switchCooldown = 0;
+    this.syncMeshVisibility();
   }
 
   setRemoteActiveWeapon(weaponId: WeaponId): void {

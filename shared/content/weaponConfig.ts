@@ -123,7 +123,7 @@ export interface WeaponConfig {
   readonly clipSize: number;
   readonly reloadSec: number;
   readonly reserveClips: number;
-  /** Shots per second (semi-auto still respects one shot per trigger pull). */
+  /** Shots per second. Use 0 for uncapped (semi: as fast as the player can click). */
   readonly fireRate: number;
   readonly fireMode: WeaponFireMode;
   readonly damage: number;

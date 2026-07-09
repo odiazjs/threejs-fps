@@ -58,3 +58,21 @@ for (const file of ICON_FILES) {
   stripCheckerboard(source, source);
   console.log(`[inventory-icons] processed ${file}`);
 }
+
+const MAP_PREVIEW_FILES = [
+  'kilo_sector.png',
+  'firing_range.png',
+  'chrono_bowl.png',
+];
+
+for (const file of MAP_PREVIEW_FILES) {
+  const source = path.join(root, 'images', file);
+  const publicDest = path.join(root, 'public', 'images', file);
+  if (!fs.existsSync(source)) {
+    console.warn(`[map-previews] missing ${file}`);
+    continue;
+  }
+  fs.mkdirSync(path.dirname(publicDest), { recursive: true });
+  fs.copyFileSync(source, publicDest);
+  console.log(`[map-previews] copied ${file}`);
+}

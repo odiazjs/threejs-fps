@@ -115,10 +115,10 @@ export class ProjectileManager {
       this.evictOldestProjectile();
     }
 
-    if (
-      options?.muzzleFlash
-      && this.muzzleFlashes.length < MAX_CONCURRENT_MUZZLE_FLASHES
-    ) {
+    if (options?.muzzleFlash) {
+      while (this.muzzleFlashes.length >= MAX_CONCURRENT_MUZZLE_FLASHES) {
+        this.evictOldestMuzzleFlash();
+      }
       const flash = new MuzzleFlash(
         params.visualOrigin,
         params.hitRayDirection,
@@ -234,6 +234,12 @@ export class ProjectileManager {
     const oldest = this.projectiles.shift();
     if (!oldest) return;
     this.releaseProjectile(oldest);
+  }
+
+  private evictOldestMuzzleFlash(): void {
+    const oldest = this.muzzleFlashes.shift();
+    if (!oldest) return;
+    oldest.dispose();
   }
 
   private spawnSplash(point: Vector3, kind: HitSplashKind): void {

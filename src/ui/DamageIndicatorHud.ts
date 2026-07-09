@@ -1,14 +1,14 @@
 import * as THREE from 'three';
 import { computeDamageIndicatorAngle } from '../combat/damageIndicatorMath';
 
-const INDICATOR_LIFETIME_SEC = 1.35;
+const INDICATOR_LIFETIME_SEC = 1.55;
 const VIGNETTE_DECAY_PER_SEC = 2.8;
 const SHIELD_BREAK_FLASH_SEC = 0.95;
 const MAX_MARKERS = 8;
-const MARKER_RADIUS_VMIN = 44;
+const MARKER_RADIUS_VMIN = 38;
 
 const ARROW_SVG = `<svg class="damage-arrow-icon" viewBox="0 0 32 32" aria-hidden="true">
-  <path d="M16 3 L28 27 L16 21 L4 27 Z" />
+  <path d="M16 1 L31 29 L16 23 L1 29 Z" />
 </svg>`;
 
 export type DamageIndicatorKind = 'health' | 'shield';
@@ -65,7 +65,7 @@ export class DamageIndicatorHud {
 
     if (!shooterWorldPos) return;
 
-    const intensity = 0.55 + normalized * 0.45;
+    const intensity = 0.88 + normalized * 0.12;
 
     const element = document.createElement('div');
     element.className = 'damage-direction-marker';
@@ -149,7 +149,7 @@ export class DamageIndicatorHud {
       }
 
       const fade = marker.remaining / INDICATOR_LIFETIME_SEC;
-      marker.element.style.opacity = `${marker.intensity * Math.pow(fade, 0.65)}`;
+      marker.element.style.opacity = `${marker.intensity * Math.pow(fade, 0.5)}`;
       return true;
     });
 
@@ -163,9 +163,12 @@ export class DamageIndicatorHud {
     const cos = Math.cos(angle);
     const angleDeg = (angle * 180) / Math.PI;
 
+    const scale = 1.05 + marker.intensity * 0.55;
+
     marker.element.style.left = `calc(50% + ${sin * MARKER_RADIUS_VMIN}vmin)`;
     marker.element.style.top = `calc(50% - ${cos * MARKER_RADIUS_VMIN}vmin)`;
-    marker.element.style.transform = `translate(-50%, -50%) rotate(${angleDeg}deg)`;
+    marker.element.style.transform =
+      `translate(-50%, -50%) rotate(${angleDeg}deg) scale(${scale})`;
   }
 
   private clear(): void {

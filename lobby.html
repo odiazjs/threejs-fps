@@ -190,23 +190,66 @@
         </aside>
 
         <aside class="lobby-match-panel hud-panel">
-          <div class="lobby-match-setup panel">
-            <div class="lobby-match-setup-row">
-              <label class="lobby-match-setup-label" for="lobby-map-select">CURRENT MAP</label>
-              <select
-                id="lobby-map-select"
-                class="lobby-match-setup-input text-input"
-                aria-label="Select map"
-              ></select>
-            </div>
-            <div class="lobby-match-setup-row">
-              <label class="lobby-match-setup-label" for="lobby-mode-select">SELECTED MODE</label>
-              <select
-                id="lobby-mode-select"
-                class="lobby-match-setup-input text-input"
-                aria-label="Select game mode"
-              ></select>
-            </div>
+          <div class="lobby-match-setup">
+            <section class="lobby-select-section" aria-label="Map selection">
+              <h2 class="lobby-select-section-label">MAP SELECTION</h2>
+              <div class="lobby-select-carousel">
+                <button
+                  type="button"
+                  class="lobby-select-arrow"
+                  id="lobby-map-prev"
+                  aria-label="Previous maps"
+                >
+                  ‹
+                </button>
+                <div class="lobby-select-viewport">
+                  <div
+                    id="lobby-map-track"
+                    class="lobby-select-track"
+                    role="listbox"
+                    aria-label="Maps"
+                  ></div>
+                </div>
+                <button
+                  type="button"
+                  class="lobby-select-arrow"
+                  id="lobby-map-next"
+                  aria-label="Next maps"
+                >
+                  ›
+                </button>
+              </div>
+            </section>
+
+            <section class="lobby-select-section" aria-label="Game mode selection">
+              <h2 class="lobby-select-section-label">GAME MODE SELECTION</h2>
+              <div class="lobby-select-carousel">
+                <button
+                  type="button"
+                  class="lobby-select-arrow"
+                  id="lobby-mode-prev"
+                  aria-label="Previous modes"
+                >
+                  ‹
+                </button>
+                <div class="lobby-select-viewport">
+                  <div
+                    id="lobby-mode-track"
+                    class="lobby-select-track"
+                    role="listbox"
+                    aria-label="Game modes"
+                  ></div>
+                </div>
+                <button
+                  type="button"
+                  class="lobby-select-arrow"
+                  id="lobby-mode-next"
+                  aria-label="Next modes"
+                >
+                  ›
+                </button>
+              </div>
+            </section>
           </div>
           <p class="lobby-queue-estimate">QUEUE ESTIMATE: <strong>~ INSTANT</strong></p>
           <button id="lobby-join-btn" class="primary-btn" type="button">LAUNCH QUICK MATCH</button>

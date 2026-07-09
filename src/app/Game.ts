@@ -40,6 +40,13 @@ import { MinimapHud } from '../ui/MinimapHud';
 import { TacticalMapOverlay } from '../ui/TacticalMapOverlay';
 import { CrosshairHud } from '../ui/CrosshairHud';
 import { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
+import { GrenadeThreatIndicatorHud } from '../ui/GrenadeThreatIndicatorHud';
+import {
+  collectNearbyEnemyGrenades,
+  type NearbyGrenadeThreat,
+} from '../combat/grenadeThreatIndicator';
+import type { ActiveGrenadeSnapshot } from '../combat/GrenadeManager';
+import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { InventoryHud } from '../ui/InventoryHud';
 import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import { ShieldDomeHud } from '../ui/ShieldDomeHud';
@@ -112,6 +119,7 @@ import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
 const MAX_FRAME_DELTA_SEC = 0.25;
+const _grenadeThreatPlayerCenter = new THREE.Vector3();
 
 export class Game {
   private scene!: THREE.Scene;
@@ -129,6 +137,7 @@ export class Game {
   private minimapHud = new MinimapHud();
   private tacticalMapOverlay = new TacticalMapOverlay();
   private damageIndicatorHud = new DamageIndicatorHud();
+  private grenadeThreatHud = new GrenadeThreatIndicatorHud();
   private inventoryHud = new InventoryHud(
     DEFAULT_LOADOUT_CONFIGS.map((config) => ({
       id: config.id,
@@ -185,6 +194,8 @@ export class Game {
   private gameStartSoundPlayed = false;
   private pendingKillerId: string | null = null;
   private lastCombatShooterId: string | null = null;
+  private readonly activeGrenadesScratch: ActiveGrenadeSnapshot[] = [];
+  private readonly nearbyGrenadeThreatsScratch: NearbyGrenadeThreat[] = [];
   /** Collision + visuals map; never overwritten by server schema defaults after load. */
   private worldMapId: MapId = DEFAULT_MAP_ID;
   private localCombat: LocalCombatState = {
@@ -493,6 +504,7 @@ export class Game {
     this.playerControls.setControlsHelpHud(this.controlsHelpHud);
     this.playerControls.setMinimapHud(this.minimapHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
+    this.playerControls.setGrenadeThreatIndicatorHud(this.grenadeThreatHud);
     this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
     this.playerControls.setShieldDomeHud(this.shieldDomeHud);
     this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
@@ -508,6 +520,9 @@ export class Game {
     });
     this.grenadeManager.setGrenadeSoundService(this.grenadeSounds);
     this.grenadeManager.setShieldDomeManager(this.shieldDomeManager);
+    this.grenadeManager.setPlayerColliderProvider(() =>
+      this.network?.getGrenadePlayerColliders(this.player) ?? [],
+    );
     this.matchResultsOverlay.setLeaveHandler(() => {
       void this.leaveGame();
     });
@@ -616,7 +631,13 @@ export class Game {
     });
     this.network.onWeaponPickupGranted((data) => {
       this.weaponPickupHud.cancelHold();
-      this.player.unequipThrowable();
+      this.player.unequipThrowable({ discardCook: true });
+      const snapshot = this.network.getLocalSnapshot();
+      if (snapshot) {
+        // Re-apply after unequipping throwable — a schema sync that arrived while
+        // the grenade was out only updated slots and skipped equipping the gun.
+        this.player.applyLoadoutFromSnapshot(snapshot);
+      }
       if (isWeaponId(data.weaponId)) {
         const name = getWeaponConfig(data.weaponId)?.name ?? data.weaponId;
         this.messageHud.push(`Picked up ${name}`);
@@ -777,6 +798,45 @@ export class Game {
         'health',
       );
     }
+  }
+
+  private updateGrenadeThreatIndicators(camera: THREE.Camera | null): void {
+    if (!this.playerControls.isPlaying || !this.localCombat.alive || !this.network) {
+      this.grenadeThreatHud.sync(camera, []);
+      return;
+    }
+
+    this.activeGrenadesScratch.length = 0;
+    this.grenadeManager.forEachActiveGrenade((grenade) => {
+      let throwerTeamId = grenade.throwerTeamId;
+      if (throwerTeamId === null) {
+        throwerTeamId =
+          this.network.getRemotePlayer(grenade.throwerId)?.getTeamId()
+          ?? this.network.getPlayerSnapshot(grenade.throwerId)?.teamId
+          ?? null;
+      }
+      this.activeGrenadesScratch.push({ ...grenade, throwerTeamId });
+    });
+
+    const feet = this.player.getFeetPosition();
+    _grenadeThreatPlayerCenter.set(
+      feet.x,
+      feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
+      feet.z,
+    );
+
+    collectNearbyEnemyGrenades(
+      _grenadeThreatPlayerCenter,
+      this.activeGrenadesScratch,
+      {
+        localSessionId: this.network.getSessionId(),
+        localTeamId: this.localCombat.teamId,
+        friendlyFire: this.network.getFriendlyFire(),
+      },
+      this.nearbyGrenadeThreatsScratch,
+    );
+
+    this.grenadeThreatHud.sync(camera, this.nearbyGrenadeThreatsScratch);
   }
 
   private refreshInventoryHud(dropKeyHeld = false): void {
@@ -941,7 +1001,7 @@ export class Game {
       this.prevMatchPhase !== matchPhase &&
       (matchPhase === 'countdown' || matchPhase === 'playing')
     ) {
-      this.network?.applyLocalSpawn(this.player);
+      this.network?.applyLocalSpawn(this.player, { resetLook: false });
     }
     if (matchPhase === 'countdown' || matchPhase === 'waiting') {
       this.matchEnd30Played = false;
@@ -1033,6 +1093,7 @@ export class Game {
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);
+    this.updateGrenadeThreatIndicators(camera ?? null);
     this.terrain?.update(this.simElapsedSec, {
       playerPos: this.player.object.position,
       cameraPos: camera?.position,
@@ -1104,7 +1165,12 @@ export class Game {
       );
 
       if (canAct && camera) {
-        const weaponPickupHit = this.weaponDrops.raycastFromCamera(camera);
+        const feet = this.player.getFeetPosition();
+        const weaponPickupHit = this.weaponDrops.raycastFromCamera(
+          camera,
+          feet.x,
+          feet.z,
+        );
         const snapshot = this.network.getLocalSnapshot();
         const pickupTarget =
           weaponPickupHit &&

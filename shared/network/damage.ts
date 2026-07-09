@@ -6,7 +6,7 @@ export interface PlayerHitMessage {
   bodyPart?: BodyPartId;
 }
 
-/** Sent to the victim when a hit lands — includes shooter position from fire time. */
+/** Sent to the victim when a hit lands — shooter position from fire time (guns) or hit time (melee). */
 export interface PlayerDamagedMessage {
   shooterId: string;
   shooterWorldX: number;

@@ -8,6 +8,7 @@ import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
 import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
+import type { GrenadeThreatIndicatorHud } from '../ui/GrenadeThreatIndicatorHud';
 import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import type { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
@@ -22,6 +23,7 @@ export class PlayerControls {
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
   private damageIndicatorHud: DamageIndicatorHud | null = null;
+  private grenadeThreatIndicatorHud: GrenadeThreatIndicatorHud | null = null;
   private shieldRechargeHud: ShieldRechargeHud | null = null;
   private shieldDomeHud: ShieldDomeHud | null = null;
   private weaponPickupHud: WeaponPickupHud | null = null;
@@ -76,6 +78,10 @@ export class PlayerControls {
 
   setDamageIndicatorHud(hud: DamageIndicatorHud): void {
     this.damageIndicatorHud = hud;
+  }
+
+  setGrenadeThreatIndicatorHud(hud: GrenadeThreatIndicatorHud): void {
+    this.grenadeThreatIndicatorHud = hud;
   }
 
   setShieldRechargeHud(hud: ShieldRechargeHud): void {
@@ -172,6 +178,7 @@ export class PlayerControls {
       this.shieldPickupHud?.setVisible(true);
       this.killFeedHud?.setVisible(true);
       this.damageIndicatorHud?.setVisible(true);
+      this.grenadeThreatIndicatorHud?.setVisible(true);
       this.teamHud?.setVisible(true);
       this.controlsHelpHud?.setVisible(true);
       this.minimapHud?.setVisible(true);
@@ -192,6 +199,7 @@ export class PlayerControls {
       this.shieldPickupHud?.setVisible(false);
       this.killFeedHud?.setVisible(false);
       this.damageIndicatorHud?.setVisible(false);
+      this.grenadeThreatIndicatorHud?.setVisible(false);
       this.teamHud?.setVisible(false);
       this.controlsHelpHud?.setVisible(false);
       this.minimapHud?.setVisible(false);

@@ -11,6 +11,7 @@ import { getShieldCapacity } from '../../shared/combat/shield';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import { DEFAULT_SHIELD_CHARGES, DEFAULT_GRENADES } from '../../shared/inventory/inventoryLimits';
 import { computeGrenadeThrowVelocity } from '../../shared/combat/grenadePhysics';
+import type { GrenadePlayerCollider } from '../../shared/combat/grenadePlayerCollision';
 import { GRENADE_FUSE_SEC } from '../../shared/throwables/grenadeConfig';
 import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
@@ -29,14 +30,13 @@ import type { GameJoinIntent } from '../auth/gameJoin';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { MapId } from '../../shared/level/maps';
 import { readProjectileShooterWorldPos } from '../combat/damageIndicatorMath';
+import { buildRemoteProjectileSpawn } from '../combat/remoteProjectileSpawn';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
 import type { ShieldDomeChargeManager } from '../combat/ShieldDomeChargeManager';
 import { RemotePlayerUiVisibility } from '../player/remotePlayerUiVisibility';
 
-const _origin = new THREE.Vector3();
-const _direction = new THREE.Vector3();
 const _shooterWorldPos = new THREE.Vector3();
 const _muzzlePos = new THREE.Vector3();
 /** Local hit still counts as breaking a shield if state sync arrives shortly after. */
@@ -99,36 +99,25 @@ export class NetworkManager {
   async connect(credentials: FpsJoinCredentials, joinIntent?: GameJoinIntent | null): Promise<void> {
     this.remotePlayers.bind();
     this.roomClient.onProjectileSpawn((spawn) => {
-      _direction.set(spawn.dirX, spawn.dirY, spawn.dirZ).normalize();
-      const weaponConfig = getWeaponConfig(spawn.weaponId ?? 'plasma_rifle');
-      const boltColors = weaponConfig?.muzzleFlash?.colors;
+      if (spawn.shooterId && spawn.shooterId === this.roomClient.sessionId) return;
 
       const shooter = spawn.shooterId
         ? this.remotePlayers.getPlayer(spawn.shooterId)
         : undefined;
-      const weaponId = spawn.weaponId && isWeaponId(spawn.weaponId) ? spawn.weaponId : undefined;
-
-      if (!shooter?.readActiveMuzzleWorldPosition(_origin, weaponId)) {
-        _origin.set(spawn.x, spawn.y, spawn.z);
-      }
+      const built = buildRemoteProjectileSpawn(spawn, shooter);
+      if (!built) return;
 
       readProjectileShooterWorldPos(spawn, _shooterWorldPos);
 
-      this.projectiles.spawn(
-        {
-          hitRayOrigin: _origin,
-          hitRayDirection: _direction,
-          visualOrigin: _origin,
-          speed: weaponConfig?.projectileSpeed ?? 100,
-        },
-        {
-          visualOnly: true,
-          boltColors,
-          shooterId: spawn.shooterId,
-          shooterWorldPos: _shooterWorldPos,
-          weaponId: weaponId ?? 'plasma_rifle',
-        },
-      );
+      this.projectiles.spawn(built.params, {
+        visualOnly: true,
+        ownerSessionId: spawn.shooterId ?? '',
+        boltColors: built.boltColors,
+        shooterId: spawn.shooterId,
+        shooterWorldPos: _shooterWorldPos,
+        weaponId: built.weaponId,
+        muzzleFlash: built.muzzleFlash,
+      });
     });
     this.roomClient.onWeaponShotSound((shot) => {
       if (shot.phase === 'autoStop') {
@@ -182,11 +171,12 @@ export class NetworkManager {
       this.onLocalGrenadePickup();
     });
     this.roomClient.onGrenadeThrown((data) => {
+      const worldTime = this.getWorldTime();
       if (data.throwerId === this.roomClient.sessionId) {
-        this.grenadeManager?.reconcileLocalThrow(data);
+        this.grenadeManager?.reconcileLocalThrow(data, worldTime);
         return;
       }
-      this.grenadeManager?.spawnFromNetwork(data);
+      this.grenadeManager?.spawnFromNetwork(data, worldTime);
     });
     this.roomClient.onGrenadeExplosion((data) => {
       this.grenadeManager?.detonateFromNetwork(data.x, data.y, data.z, data.id);
@@ -337,10 +327,16 @@ export class NetworkManager {
     });
     player.setGrenadeThrowNetworkCallback((request) => {
       if (!this.roomClient.connected) return;
+      const snapshot = this.roomClient.getLocalSnapshot();
       const vel = computeGrenadeThrowVelocity(request.dirX, request.dirY, request.dirZ);
-      const fuseEndAt = this.getWorldTime() + GRENADE_FUSE_SEC;
+      const fuseRemaining =
+        typeof request.fuseRemainingSec === 'number' && Number.isFinite(request.fuseRemainingSec)
+          ? Math.min(GRENADE_FUSE_SEC, Math.max(0, request.fuseRemainingSec))
+          : GRENADE_FUSE_SEC;
+      const fuseEndAt = this.getWorldTime() + fuseRemaining;
       this.grenadeManager?.spawnLocalThrow(
         this.roomClient.sessionId ?? '',
+        snapshot?.teamId ?? 0,
         request.x,
         request.y,
         request.z,
@@ -348,19 +344,19 @@ export class NetworkManager {
         vel.velY,
         vel.velZ,
         fuseEndAt,
+        this.getWorldTime(),
       );
       this.roomClient.sendThrowGrenade(request);
     });
   }
 
-  applyLocalSpawn(player: Player): void {
+  applyLocalSpawn(player: Player, options?: { resetLook?: boolean }): void {
     const snapshot = this.roomClient.getLocalSnapshot();
     if (!snapshot) return;
-    player.setEyePosition(snapshot.x, snapshot.y, snapshot.z);
+    player.setEyePosition(snapshot.x, snapshot.y, snapshot.z, options?.resetLook ?? true);
     player.setProjectileSpawnOptions(snapshot.teamId, this.roomClient.sessionId ?? '');
     player.setFromSnapshot(snapshot, true);
-    player.applyLoadoutFromSnapshot(snapshot);
-    player.refillAmmo();
+    player.applyRespawnFromServer(snapshot);
   }
 
   sendStartShieldRecharge(): void {
@@ -468,8 +464,43 @@ export class NetworkManager {
     return this.roomClient.sessionId ?? '';
   }
 
+  getFriendlyFire(): boolean {
+    return this.roomClient.getFriendlyFire();
+  }
+
   getRemotePlayer(sessionId: string): Player | undefined {
     return this.remotePlayers.getPlayer(sessionId);
+  }
+
+  /** Alive player capsules for grenade bounce (local + remotes). */
+  getGrenadePlayerColliders(localPlayer: Player): GrenadePlayerCollider[] {
+    const colliders: GrenadePlayerCollider[] = [];
+    const localSessionId = this.roomClient.sessionId ?? '';
+
+    if (localPlayer.isAlive()) {
+      const feet = localPlayer.getFeetPosition();
+      colliders.push({
+        sessionId: localSessionId,
+        feetX: feet.x,
+        feetY: feet.y,
+        feetZ: feet.z,
+        crouching: localPlayer.getLocomotionState().isCrouching,
+      });
+    }
+
+    for (const [sessionId, player] of this.remotePlayers.getAllPlayers()) {
+      if (!player.isAlive()) continue;
+      const feet = player.getFeetPosition();
+      colliders.push({
+        sessionId,
+        feetX: feet.x,
+        feetY: feet.y,
+        feetZ: feet.z,
+        crouching: player.getLocomotionState().isCrouching,
+      });
+    }
+
+    return colliders;
   }
 
   getPlayerSnapshot(sessionId: string): (PlayerSnapshot & { sessionId: string }) | null {

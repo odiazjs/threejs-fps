@@ -9,6 +9,7 @@ import type { ProjectileHitTarget } from './ProjectileManager';
 import { raycastLevelBullets } from './levelBulletRaycast';
 import {
   MISS_TRACER_MAX_FLIGHT_SEC,
+  PROJECTILE_RAY_SKIN,
   RESOLVE_RAYCAST_MAX_DISTANCE,
 } from './projectileConfig';
 
@@ -25,6 +26,8 @@ export interface ResolvedProjectilePath {
 const _segmentEnd = new THREE.Vector3();
 const _hitPoint = new THREE.Vector3();
 const _playerHitPoint = new THREE.Vector3();
+
+const MIN_VISUAL_TRACER_DISTANCE = PROJECTILE_RAY_SKIN * 2;
 
 export function resolveProjectilePath(
   aimOrigin: Vector3,
@@ -59,11 +62,73 @@ export function resolveProjectilePath(
 
   const missTracerDistance = projectileSpeed * MISS_TRACER_MAX_FLIGHT_SEC;
 
+  if (options.visualOnly) {
+    let hitDistance = missTracerDistance;
+    let hitKind: ResolvedHitKind = 'miss';
+    _hitPoint.set(ox + dx * hitDistance, oy + dy * hitDistance, oz + dz * hitDistance);
+
+    const levelHit = raycastLevelBullets(
+      ox,
+      oy,
+      oz,
+      dx,
+      dy,
+      dz,
+      Math.min(resolveDistance, missTracerDistance),
+      PROJECTILE_RAY_SKIN,
+    );
+    if (
+      levelHit
+      && levelHit.distance > MIN_VISUAL_TRACER_DISTANCE
+      && levelHit.distance < hitDistance
+    ) {
+      hitDistance = levelHit.distance;
+      hitKind = 'world';
+      _hitPoint.set(levelHit.x, levelHit.y, levelHit.z);
+    }
+
+    if (shieldDomeManager && shieldDomeManager.hasAnyActiveDome(worldTime)) {
+      _segmentEnd.set(ox + dx * hitDistance, oy + dy * hitDistance, oz + dz * hitDistance);
+      const shieldPoint = shieldDomeManager.testProjectileSegment(
+        aimOrigin,
+        _segmentEnd,
+        options.ownerSessionId,
+        worldTime,
+      );
+      if (shieldPoint) {
+        const shieldDist =
+          (shieldPoint.x - ox) * dx
+          + (shieldPoint.y - oy) * dy
+          + (shieldPoint.z - oz) * dz;
+        if (shieldDist > MIN_VISUAL_TRACER_DISTANCE && shieldDist < hitDistance) {
+          hitDistance = shieldDist;
+          hitKind = 'shield';
+          _hitPoint.copy(shieldPoint);
+        }
+      }
+    }
+
+    return {
+      hitDistance,
+      hitKind,
+      hitPoint: _hitPoint.clone(),
+    };
+  }
+
   let bestDist = resolveDistance;
   let bestKind: ResolvedHitKind = 'miss';
   _hitPoint.set(ox + dx * bestDist, oy + dy * bestDist, oz + dz * bestDist);
 
-  const levelHit = raycastLevelBullets(ox, oy, oz, dx, dy, dz, resolveDistance, 0);
+  const levelHit = raycastLevelBullets(
+    ox,
+    oy,
+    oz,
+    dx,
+    dy,
+    dz,
+    resolveDistance,
+    PROJECTILE_RAY_SKIN,
+  );
   if (levelHit && levelHit.distance < bestDist) {
     bestDist = levelHit.distance;
     bestKind = 'world';
