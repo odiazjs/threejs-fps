@@ -8,6 +8,34 @@
       "when": 1782840507286,
       "tag": "0000_robust_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783641975513,
+      "tag": "0001_weapon_loadouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783642405960,
+      "tag": "0002_weapons_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783645945177,
+      "tag": "0003_weapon_stats_upgrades",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783647089247,
+      "tag": "0004_plasma_minerals",
+      "breakpoints": true
     }
   ]
 }

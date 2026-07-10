@@ -136,6 +136,11 @@ import {
   sanitizeLoadoutSlots,
   setLoadoutSlotWeapon,
 } from '../../../shared/loadout/loadoutSlots.js';
+import { applyWeaponLoadoutPreset } from '../../../shared/loadout/weaponLoadoutPreset.js';
+import type { WeaponLoadoutPresetWeapons } from '../../../shared/loadout/weaponLoadoutPreset.js';
+import { getDefaultWeaponLoadoutWeapons } from '../loadouts/service.js';
+import { getPlayerWeaponEffectiveStatsById } from '../weapons/service.js';
+import type { WeaponEffectiveStats } from '../../../shared/content/weaponUpgrades.js';
 import { MAX_SHIELD_CHARGES, MAX_GRENADES } from '../../../shared/inventory/inventoryLimits.js';
 import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupRespawn.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
@@ -202,6 +207,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly botPhysics = new Map<string, PlayerPhysicsState>();
   private readonly botMoveState = new Map<string, TrainingBotMoveState>();
   private readonly userIdBySession = new Map<string, string>();
+  private readonly defaultLoadoutBySession = new Map<string, WeaponLoadoutPresetWeapons>();
+  /** Per-session Armory effective stats, frozen at join for match combat. */
+  private readonly weaponStatsBySession = new Map<string, Map<string, WeaponEffectiveStats>>();
   private readonly lastShotOriginBySession = new Map<string, LastShotOrigin>();
   private readonly autoFiringSessions = new Set<string>();
   private readonly holsteredWeaponIdBySession = new Map<string, string>();
@@ -1048,7 +1056,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       player.reloading = true;
       player.activeWeaponId = data.weaponId;
-      player.reloadEndAt = this.state.worldTime + getWeaponReloadSec(data.weaponId);
+      player.reloadEndAt = this.state.worldTime + this.getSessionWeaponReloadSec(client.sessionId, data.weaponId);
     },
 
     switchWeapon: (client: Client, data: SwitchWeaponMessage) => {
@@ -1463,7 +1471,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       }
 
       const distance = Math.hypot(shooter.x - target.x, shooter.z - target.z);
-      const maxDistance = getWeaponMaxHitDistance(data.weaponId);
+      const maxDistance = this.getSessionWeaponMaxHitDistance(client.sessionId, data.weaponId);
       if (distance > maxDistance) return;
 
       const targetFeetY = feetYFromEyeY(target.y);
@@ -1509,7 +1517,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         if (meleeHit) bodyPart = meleeHit.part;
       }
 
-      const damage = scaleDamageForBodyPart(getWeaponDamage(data.weaponId), bodyPart);
+      const damage = scaleDamageForBodyPart(
+        this.getSessionWeaponDamage(client.sessionId, data.weaponId),
+        bodyPart,
+      );
       const prevShieldPoints = target.shieldPoints;
       const result = applyDamageWithShield(target.hp, target.shieldPoints, damage);
       target.shieldPoints = result.shieldPoints;
@@ -1582,7 +1593,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     },
   };
 
-  onJoin(client: Client, options: JoinOptions): void {
+  async onJoin(client: Client, options: JoinOptions): Promise<void> {
     if (this.emptyDisposeTimer) {
       this.emptyDisposeTimer.clear();
       this.emptyDisposeTimer = undefined;
@@ -1596,6 +1607,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     if (userId) {
       this.userIdBySession.set(client.sessionId, userId);
       registerGameUser(userId);
+      await this.cacheDefaultLoadoutForSession(client.sessionId, userId);
     }
     player.teamId = this.isTdm()
       ? this.pickBalancedTdmTeam()
@@ -1609,13 +1621,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
-    this.initPlayerLoadout(player);
+    this.initPlayerLoadout(player, client.sessionId);
     this.state.players.set(client.sessionId, player);
   }
 
   onLeave(client: Client): void {
     this.stopAutoFireSound(client.sessionId);
     this.holsteredWeaponIdBySession.delete(client.sessionId);
+    this.defaultLoadoutBySession.delete(client.sessionId);
+    this.weaponStatsBySession.delete(client.sessionId);
     const userId = this.userIdBySession.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.userIdBySession.delete(client.sessionId);
@@ -1833,17 +1847,71 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.jumping = false;
     player.crouching = false;
     this.holsteredWeaponIdBySession.delete(sessionId);
-    this.initPlayerLoadout(player);
+    this.initPlayerLoadout(player, sessionId);
     this.resetPlayerWeaponTiming(player);
     if (this.mapDef.respawnGrenadeCount !== undefined) {
       player.grenadeCount = this.mapDef.respawnGrenadeCount;
     }
   }
 
-  private initPlayerLoadout(player: PlayerState): void {
+  private async cacheDefaultLoadoutForSession(
+    sessionId: string,
+    userId: string,
+  ): Promise<void> {
+    try {
+      const [preset, weaponStats] = await Promise.all([
+        getDefaultWeaponLoadoutWeapons(userId),
+        getPlayerWeaponEffectiveStatsById(userId),
+      ]);
+      if (preset) {
+        this.defaultLoadoutBySession.set(sessionId, preset);
+      } else {
+        this.defaultLoadoutBySession.delete(sessionId);
+      }
+      this.weaponStatsBySession.set(sessionId, weaponStats);
+    } catch (error) {
+      console.error('[loadouts] failed to load default for match spawn', error);
+      this.defaultLoadoutBySession.delete(sessionId);
+      this.weaponStatsBySession.delete(sessionId);
+    }
+  }
+
+  private getSessionWeaponStats(
+    sessionId: string,
+    weaponId: string,
+  ): WeaponEffectiveStats | undefined {
+    return this.weaponStatsBySession.get(sessionId)?.get(weaponId);
+  }
+
+  private getSessionWeaponDamage(sessionId: string, weaponId: string): number {
+    const stats = this.getSessionWeaponStats(sessionId, weaponId);
+    if (stats) return stats.damage;
+    return isWeaponId(weaponId) ? getWeaponDamage(weaponId) : 0;
+  }
+
+  private getSessionWeaponMaxHitDistance(sessionId: string, weaponId: string): number {
+    const stats = this.getSessionWeaponStats(sessionId, weaponId);
+    if (stats) return stats.range;
+    return isWeaponId(weaponId) ? getWeaponMaxHitDistance(weaponId) : 0;
+  }
+
+  private getSessionWeaponReloadSec(sessionId: string, weaponId: string): number {
+    const stats = this.getSessionWeaponStats(sessionId, weaponId);
+    if (stats) return stats.reloadTime;
+    return isWeaponId(weaponId) ? getWeaponReloadSec(weaponId) : 0;
+  }
+
+  private initPlayerLoadout(player: PlayerState, sessionId?: string): void {
     if (this.mapDef.emptyStartingLoadout) {
       clearLoadoutSlots(player);
       player.activeWeaponId = EMPTY_WEAPON_SLOT;
+      sanitizeLoadoutSlots(player);
+      return;
+    }
+
+    const preset = sessionId ? this.defaultLoadoutBySession.get(sessionId) : undefined;
+    if (preset) {
+      player.activeWeaponId = applyWeaponLoadoutPreset(player, preset);
     } else {
       initDefaultLoadoutSlots(player);
       player.activeWeaponId = LOADOUT_WEAPON_IDS[0]!;

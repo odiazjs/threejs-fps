@@ -5,3 +5,5 @@ export const friendRequestStatusEnum = pgEnum('friend_request_status', [
   'accepted',
   'declined',
 ]);
+
+export const weaponKindEnum = pgEnum('weapon_kind', ['gun', 'melee']);

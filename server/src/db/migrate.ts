@@ -14,6 +14,11 @@ async function main(): Promise<void> {
   console.log(`[db] running migrations from ${migrationsFolder}`);
   await migrate(db, { migrationsFolder });
   console.log('[db] migrations complete');
+
+  const { upsertCurrentWeaponCatalog } = await import('./seed/upsertWeapons.js');
+  await upsertCurrentWeaponCatalog();
+  console.log('[db] weapon catalog upserted');
+
   await closeDb();
 }
 

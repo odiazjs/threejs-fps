@@ -1,0 +1,53 @@
+import type { WeaponBaseStats } from '../../../../shared/content/weaponUpgrades.js';
+import { SHIPPED_WEAPON_BASE_STATS } from '../../../../shared/content/weaponUpgrades.js';
+
+/**
+ * Canonical catalog rows for the current shipped weapons.
+ * Migration seeds these; upsertCurrentWeaponCatalog syncs them on demand.
+ */
+export const CURRENT_WEAPON_CATALOG = [
+  {
+    id: 'pistol',
+    displayName: 'Pistol',
+    kind: 'gun' as const,
+    loadoutEligible: true,
+    enabled: true,
+    sortOrder: 10,
+    baseStats: SHIPPED_WEAPON_BASE_STATS.pistol,
+  },
+  {
+    id: 'plasma_rifle',
+    displayName: 'Plasma Rifle',
+    kind: 'gun' as const,
+    loadoutEligible: true,
+    enabled: true,
+    sortOrder: 20,
+    baseStats: SHIPPED_WEAPON_BASE_STATS.plasma_rifle,
+  },
+  {
+    id: 'sniper_rifle',
+    displayName: 'Sniper Rifle',
+    kind: 'gun' as const,
+    loadoutEligible: true,
+    enabled: true,
+    sortOrder: 30,
+    baseStats: SHIPPED_WEAPON_BASE_STATS.sniper_rifle,
+  },
+  {
+    id: 'katana',
+    displayName: 'Katana',
+    kind: 'melee' as const,
+    loadoutEligible: false,
+    enabled: true,
+    sortOrder: 100,
+    baseStats: SHIPPED_WEAPON_BASE_STATS.katana,
+  },
+] as const satisfies ReadonlyArray<{
+  id: string;
+  displayName: string;
+  kind: 'gun' | 'melee';
+  loadoutEligible: boolean;
+  enabled: boolean;
+  sortOrder: number;
+  baseStats: WeaponBaseStats;
+}>;

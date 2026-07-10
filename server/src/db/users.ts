@@ -1,5 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { displayNameFromEmail } from '../../../shared/auth/displayName.js';
+import { PLASMA_MINERALS_STARTING_BALANCE } from '../../../shared/content/weaponUpgrades.js';
 import type { AuthContext } from '../auth/middleware.js';
 import { getDb } from './index.js';
 import { playerStats } from './schema/playerStats.js';
@@ -20,6 +21,7 @@ export async function ensureUser(auth: AuthContext): Promise<void> {
       id: auth.sub,
       email: auth.email,
       displayName,
+      plasmaMinerals: PLASMA_MINERALS_STARTING_BALANCE,
       lastSeenAt: now,
     })
     .onConflictDoUpdate({
@@ -49,4 +51,36 @@ export async function findUserById(userId: string) {
   const db = getDb();
   const [row] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   return row ?? null;
+}
+
+export async function getPlasmaMinerals(userId: string): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ plasmaMinerals: users.plasmaMinerals })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row?.plasmaMinerals ?? 0;
+}
+
+/** Credit plasma minerals (store purchase / grants). Returns new balance. */
+export async function addPlasmaMinerals(userId: string, amount: number): Promise<number> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Invalid plasma mineral amount');
+  }
+  const grant = Math.floor(amount);
+  const db = getDb();
+  const [row] = await db
+    .update(users)
+    .set({
+      plasmaMinerals: sql`${users.plasmaMinerals} + ${grant}`,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId))
+    .returning({ plasmaMinerals: users.plasmaMinerals });
+
+  if (!row) {
+    throw new Error('User not found');
+  }
+  return row.plasmaMinerals;
 }
