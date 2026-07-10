@@ -17,10 +17,14 @@ export class WeaponsScene {
   private readonly controls: OrbitControls;
   private readonly weaponPivot = new THREE.Group();
   private readonly pickerButtons: HTMLButtonElement[];
+  private readonly resizeObserver: ResizeObserver;
   private currentWeapon: THREE.Group | null = null;
-  private currentWeaponId: WeaponId = 'pistol';
+  private currentWeaponId: WeaponId | null = null;
   private animationId = 0;
   private disposed = false;
+  private resizeRetryId = 0;
+  private lastSyncWidth = 0;
+  private lastSyncHeight = 0;
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
   private readyResolved = false;
@@ -28,21 +32,18 @@ export class WeaponsScene {
   constructor(
     private readonly container: HTMLElement,
     pickerRoot: HTMLElement,
+    private readonly onWeaponChange: (weaponId: WeaponId) => void = () => undefined,
   ) {
     this.readyPromise = new Promise((resolve) => {
       this.resolveReady = resolve;
     });
-    this.camera = new THREE.PerspectiveCamera(
-      38,
-      container.clientWidth / container.clientHeight,
-      0.05,
-      100,
-    );
+    this.camera = new THREE.PerspectiveCamera(38, 16 / 9, 0.05, 100);
     this.camera.position.set(0, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(container.clientWidth, container.clientHeight);
+    // Drawing buffer only — CSS sizes the canvas to the stage (avoids first-open stretch).
+    this.renderer.setSize(1, 1, false);
     container.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -83,17 +84,22 @@ export class WeaponsScene {
     for (const button of this.pickerButtons) {
       button.addEventListener('click', () => {
         const weaponId = button.dataset.weaponId;
-        if (!weaponId || button.classList.contains('active')) return;
+        if (!weaponId) return;
+        if (button.classList.contains('active') && weaponId === this.currentWeaponId) return;
         void this.selectWeapon(weaponId as WeaponId, button);
       });
     }
 
+    this.resizeObserver = new ResizeObserver(() => {
+      this.syncViewport();
+    });
+    this.resizeObserver.observe(this.container);
     window.addEventListener('resize', this.onResize);
-    this.onResize();
+    this.syncViewport();
 
     void preloadWeaponMeshes()
       .then(() => {
-        this.mountWeapon('pistol');
+        // Weapon mesh is chosen by WeaponsView after loadouts resolve.
         this.scheduleReadyAfterRender();
       })
       .catch((error) => {
@@ -104,8 +110,45 @@ export class WeaponsScene {
     this.loop();
   }
 
+  getCurrentWeaponId(): WeaponId | null {
+    return this.currentWeaponId;
+  }
+
   whenReady(): Promise<void> {
     return this.readyPromise;
+  }
+
+  /** Show a weapon in the preview (used by loadout primary/secondary clicks). */
+  async showWeapon(weaponId: string): Promise<void> {
+    if (!SHOWCASE_WEAPON_IDS.includes(weaponId as WeaponId)) return;
+    if (weaponId === this.currentWeaponId) {
+      this.syncPickerActive(weaponId as WeaponId);
+      this.onWeaponChange(weaponId as WeaponId);
+      return;
+    }
+
+    for (const entry of this.pickerButtons) {
+      entry.disabled = true;
+    }
+
+    try {
+      await preloadWeaponMeshes();
+      this.mountWeapon(weaponId as WeaponId);
+      this.syncPickerActive(weaponId as WeaponId);
+      this.onWeaponChange(weaponId as WeaponId);
+    } finally {
+      for (const entry of this.pickerButtons) {
+        entry.disabled = false;
+      }
+    }
+  }
+
+  private syncPickerActive(weaponId: WeaponId): void {
+    for (const entry of this.pickerButtons) {
+      const isActive = entry.dataset.weaponId === weaponId;
+      entry.classList.toggle('active', isActive);
+      entry.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    }
   }
 
   private scheduleReadyAfterRender(): void {
@@ -113,32 +156,29 @@ export class WeaponsScene {
 
     requestAnimationFrame(() => {
       if (this.disposed) return;
+      this.syncViewport();
       this.controls.update();
       this.renderer.render(this.scene, this.camera);
       requestAnimationFrame(() => {
         if (this.readyResolved || this.disposed) return;
+        this.syncViewport();
         this.readyResolved = true;
         this.resolveReady();
       });
     });
   }
 
-  private async selectWeapon(weaponId: WeaponId, button: HTMLButtonElement): Promise<void> {
-    if (!SHOWCASE_WEAPON_IDS.includes(weaponId) || weaponId === this.currentWeaponId) return;
+  /** Re-measure after the Armory loading veil lifts / layout settles. */
+  refreshViewport(): void {
+    this.syncViewport(true);
+    requestAnimationFrame(() => {
+      if (this.disposed) return;
+      this.syncViewport(true);
+    });
+  }
 
-    for (const entry of this.pickerButtons) {
-      entry.classList.toggle('active', entry === button);
-      entry.disabled = true;
-    }
-
-    try {
-      await preloadWeaponMeshes();
-      this.mountWeapon(weaponId);
-    } finally {
-      for (const entry of this.pickerButtons) {
-        entry.disabled = false;
-      }
-    }
+  private async selectWeapon(weaponId: WeaponId, _button: HTMLButtonElement): Promise<void> {
+    await this.showWeapon(weaponId);
   }
 
   private mountWeapon(weaponId: WeaponId): void {
@@ -182,18 +222,38 @@ export class WeaponsScene {
   };
 
   private onResize = (): void => {
-    const w = this.container.clientWidth;
-    const h = this.container.clientHeight;
+    this.syncViewport();
+  };
+
+  private syncViewport(force = false): void {
+    if (this.disposed) return;
+
+    const w = Math.max(0, Math.floor(this.container.clientWidth));
+    const h = Math.max(0, Math.floor(this.container.clientHeight));
+    if (w < 2 || h < 2) {
+      // Layout not ready yet (common on first Armory open) — retry next frame.
+      cancelAnimationFrame(this.resizeRetryId);
+      this.resizeRetryId = requestAnimationFrame(() => this.syncViewport(force));
+      return;
+    }
+
+    if (!force && w === this.lastSyncWidth && h === this.lastSyncHeight) return;
+    this.lastSyncWidth = w;
+    this.lastSyncHeight = h;
+
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h);
-  };
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(w, h, false);
+  }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
 
     cancelAnimationFrame(this.animationId);
+    cancelAnimationFrame(this.resizeRetryId);
+    this.resizeObserver.disconnect();
     window.removeEventListener('resize', this.onResize);
 
     if (this.currentWeapon) {

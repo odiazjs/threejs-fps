@@ -17,6 +17,7 @@ import {
 } from '../../shared/throwables/grenadeConfig';
 import { GrenadeViewModel } from './GrenadeViewModel';
 import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
+import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
 import {
   isWeaponId,
   LOADOUT_SIZE,
@@ -136,6 +137,8 @@ export class Player {
   private aimControls: PointerAimControls | null = null;
 
   private loadout: WeaponLoadout | null = null;
+  /** Armory effective stats cached for this match (re-applied after loadout sync). */
+  private matchWeaponStatsById: ReadonlyMap<string, WeaponEffectiveStats> | null = null;
   private readonly inventory = new PlayerInventory();
   private forward = new THREE.Vector3();
   private right = new THREE.Vector3();
@@ -276,7 +279,10 @@ export class Player {
       this.headRig.add(this.yawRecoilRig);
       this.object.add(this.headRig);
       this.weaponPose = new WeaponPose();
-      this.weaponPose.setViewConfig(this.loadout.getActive()!.config.view);
+      this.weaponPose.setViewConfig(
+        this.loadout.getActive()!.config.view,
+        this.loadout.getActive()!.config.adsTime,
+      );
       this.weaponSway = new WeaponSway();
       this.grenadeViewModel = new GrenadeViewModel(this.camera);
       this.katanaSlashFx = new KatanaSlashTrailFx();
@@ -404,10 +410,12 @@ export class Player {
   }
 
   private getRemotePose(worldTime: number): RemoteCharacterPose {
+    const activeReloadSec = this.loadout?.getActive()?.config.reloadSec;
     const { reloading } = getReloadState(
       this.targetReloadEndAt,
       worldTime,
       this.targetActiveWeaponId,
+      activeReloadSec,
     );
     const weaponSwitch = getWeaponSwitchAnimState(this.targetWeaponSwitchEndAt, worldTime);
     const meleeAttack = getMeleeAttackAnimState(this.targetMeleeAttackEndAt, worldTime);
@@ -676,7 +684,7 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active) return false;
 
-    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
     this.onMeleeEquipNetwork?.(true);
@@ -699,12 +707,13 @@ export class Player {
     const prevActiveWeaponId = this.loadout.getActiveWeaponId();
 
     this.loadout.applyServerSlots(snapshot, snapshot.activeWeaponId);
+    this.reapplyMatchWeaponStats();
     if (isWeaponId(snapshot.activeWeaponId)) {
       this.targetActiveWeaponId = snapshot.activeWeaponId;
       this.loadout.setRemoteActiveWeapon(snapshot.activeWeaponId);
       const active = this.loadout.getActive();
       if (active) {
-        this.weaponPose?.setViewConfig(active.config.view);
+        this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
         this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
       }
     } else {
@@ -746,6 +755,40 @@ export class Player {
     return this.loadout?.getActiveDamage() ?? 0;
   }
 
+  /** Apply Armory effective stats before match combat (damage, mag, reload, recoil, ADS, range). */
+  applyWeaponEffectiveStats(statsById: ReadonlyMap<string, WeaponEffectiveStats>): void {
+    this.matchWeaponStatsById = statsById;
+    this.loadout?.applyEffectiveStatsByWeaponId(statsById);
+    const active = this.loadout?.getActive();
+    if (active) {
+      this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
+    }
+  }
+
+  /** Re-apply cached Armory stats (e.g. after loadout slot sync). */
+  reapplyMatchWeaponStats(): void {
+    if (!this.matchWeaponStatsById || this.matchWeaponStatsById.size === 0) return;
+    this.loadout?.applyEffectiveStatsByWeaponId(this.matchWeaponStatsById);
+    const active = this.loadout?.getActive();
+    if (active) {
+      this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
+    }
+  }
+
+  /** Active weapon max hit distance (Armory range), if configured. */
+  getActiveMaxHitDistance(): number | undefined {
+    const active = this.loadout?.getActive();
+    if (!active) return undefined;
+    if (active.config.maxHitDistance !== undefined) return active.config.maxHitDistance;
+    if (active.config.meleeRange !== undefined) return active.config.meleeRange;
+    return undefined;
+  }
+
+  /** Active weapon reload duration (Armory reloadTime). */
+  getActiveReloadSec(): number | undefined {
+    return this.loadout?.getActive()?.config.reloadSec;
+  }
+
   addReserveClip(): void {
     this.loadout?.addReserveToActive();
   }
@@ -771,7 +814,7 @@ export class Player {
 
     const active = this.loadout.getActive();
     if (active) {
-      this.weaponPose?.setViewConfig(active.config.view);
+      this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
       this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
     }
   }
@@ -996,7 +1039,7 @@ export class Player {
     this.weaponSway?.reset();
     const active = this.loadout?.getActive();
     if (active) {
-      this.weaponPose?.setViewConfig(active.config.view);
+      this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     }
     if (this.yawRecoilRig && this.pitchRecoilRig) {
       this.applyActiveRecoilAim();
@@ -1077,6 +1120,7 @@ export class Player {
       this.inventory.setShieldCharges(snapshot.shieldCharges);
     } else if (this.loadout) {
       this.loadout.applyServerSlots(snapshot, snapshot.activeWeaponId);
+      this.reapplyMatchWeaponStats();
       if (isWeaponId(snapshot.activeWeaponId)) {
         this.loadout.setRemoteActiveWeapon(snapshot.activeWeaponId);
         this.targetActiveWeaponId = snapshot.activeWeaponId;
@@ -1222,7 +1266,7 @@ export class Player {
       this.remoteDisplayedWeaponId = this.targetActiveWeaponId;
       const active = this.loadout.getActive();
       if (active) {
-        this.weaponPose.setViewConfig(active.config.view);
+        this.weaponPose.setViewConfig(active.config.view, active.config.adsTime);
         this.weaponPose.startSwitch(this.loadout.getSwitchReadySec());
       }
       if (this.displayedCharacterModelFile) {
@@ -1354,7 +1398,7 @@ export class Player {
             ? this.weaponPose?.isSlashing() ?? false
             : this.isFiring(pointer, active.config.fireMode);
 
-      this.weaponPose?.setViewConfig(active.config.view);
+      this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
       this.weaponPose?.update(
         delta,
         ads,
@@ -1376,6 +1420,11 @@ export class Player {
         meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0),
         active.config.sway,
       );
+
+      // Fire before recoil.update so onShot kick lerps in this frame (not next).
+      this.updateFire(delta, pointer, projectiles);
+      this.updateMeleeAttack(delta, input, pointer, projectiles);
+
       active.recoil.update(delta, shooting, ads);
       this.applyActiveWeaponPose();
       this.weaponPose?.applyCamera(this.camera);
@@ -1390,9 +1439,6 @@ export class Player {
         active.mesh,
         weaponRotation,
       );
-
-      this.updateFire(delta, pointer, projectiles);
-      this.updateMeleeAttack(delta, input, pointer, projectiles);
     } else if (this.throwableEquipped) {
       this.stopWeaponAutoFire();
       this.tryStartShieldRecharge(input);
@@ -1547,6 +1593,7 @@ export class Player {
     this.lookRigFollowsHead = false;
     this.loadout?.dispose();
     this.loadout = null;
+    this.matchWeaponStatsById = null;
     this.grenadeViewModel?.dispose();
     this.grenadeViewModel = null;
     this.katanaSlashFx?.dispose();
@@ -1731,7 +1778,7 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active) return;
 
-    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
     this.onMeleeEquipNetwork?.(equip);
@@ -1764,7 +1811,7 @@ export class Player {
       this.stopWeaponAutoFire();
       const active = this.loadout.getActive();
       if (active) {
-        this.weaponPose?.setViewConfig(active.config.view);
+        this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
         this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
         this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
       }
@@ -1778,7 +1825,7 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active) return true;
 
-    this.weaponPose?.setViewConfig(active.config.view);
+    this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
     if (sendNetwork) {
@@ -1861,7 +1908,7 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active) return;
 
-    const range = active.config.meleeRange ?? 2.8;
+    const range = active.config.meleeRange ?? active.config.maxHitDistance ?? 2.8;
     if (projectiles.tryMeleeHit(
         this.camera,
         range,
@@ -1980,6 +2027,7 @@ export class Player {
       shooterId: this.projectileSpawnOptions.ownerSessionId || undefined,
       shooterWorldPos: this.shooterWorldPos,
       weaponId: active.config.id,
+      maxHitDistance: active.config.maxHitDistance,
       muzzleFlash: active.config.fireMode === 'auto' ? undefined : active.config.muzzleFlash,
       boltColors: active.config.muzzleFlash?.colors,
       },

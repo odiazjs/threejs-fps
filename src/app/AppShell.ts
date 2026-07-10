@@ -170,6 +170,7 @@ export class AppShell {
     if (view === 'lobby') {
       this.lobbyScene.setActive(true);
       void refreshLobbyProfileStats();
+      void this.lobbyScene.refreshFromDefaultLoadout();
       return;
     }
 
@@ -189,6 +190,10 @@ export class AppShell {
       }
     } finally {
       viewEl.classList.remove('app-view--loading');
+      if (view === 'weapons') {
+        await waitForPaint();
+        this.weaponsView.refreshViewport();
+      }
     }
   }
 }

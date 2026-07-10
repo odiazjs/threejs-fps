@@ -34,13 +34,18 @@ export interface RecoilConfig {
   readonly pattern: readonly RecoilKick[];
   /** Aim recovery when not firing (higher = faster reset). */
   readonly recoverySpeed: number;
+  /**
+   * Hold accumulated kick this long after the last shot before recovery starts.
+   * Critical for semi-auto (fire flag is only true for one frame).
+   */
+  readonly recoveryDelaySec?: number;
   /** How quickly the view eases toward accumulated recoil (higher = snappier). */
   readonly aimSmoothSpeed?: number;
   /** Scales pattern kicks while aiming down sights. */
   readonly adsMultiplier: number;
   /** Extra scale on horizontal kick (defaults to 1). */
   readonly yawScale?: number;
-  /** Peak visual weapon kick on each shot (0–1). */
+  /** Peak visual weapon kick on each shot (0–1+). */
   readonly visualKick: number;
   /** How quickly the visual kick settles. */
   readonly visualRecoverySpeed: number;
@@ -127,6 +132,8 @@ export interface WeaponConfig {
   readonly fireRate: number;
   readonly fireMode: WeaponFireMode;
   readonly damage: number;
+  /** Seconds to reach full ADS (hip → sights). Lower is faster. */
+  readonly adsTime: number;
   /** World units per second for hitscan-style projectile travel. */
   readonly projectileSpeed: number;
   readonly view: WeaponViewConfig;
@@ -140,4 +147,9 @@ export interface WeaponConfig {
   readonly moveSpeedMultiplier?: number;
   /** Melee hit range in world units. */
   readonly meleeRange?: number;
+  /**
+   * Max player-hit distance for this weapon (Armory range).
+   * Guns use this for projectile path; melee also mirrors it via meleeRange.
+   */
+  readonly maxHitDistance?: number;
 }

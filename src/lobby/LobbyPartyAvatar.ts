@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+import type { WeaponId } from '../../shared/content/weaponIds';
 import {
   createCharacterInstance,
   resolveCharacterRig,
@@ -19,6 +20,7 @@ export class LobbyPartyAvatar {
   constructor(
     username: string,
     template: CharacterTemplate,
+    weaponId: WeaponId,
     spinPhase = 0,
   ) {
     this.spinPhase = spinPhase;
@@ -29,7 +31,7 @@ export class LobbyPartyAvatar {
 
     this.characterInstance = createCharacterInstance(template);
     bodyRoot.add(this.characterInstance.root);
-    this.attachWeapon(template);
+    this.attachWeapon(template, weaponId);
 
     const labelRoot = document.createElement('div');
     labelRoot.className = 'lobby-party-name';
@@ -55,21 +57,21 @@ export class LobbyPartyAvatar {
     this.root.removeFromParent();
   }
 
-  private attachWeapon(template: CharacterTemplate): void {
+  private attachWeapon(template: CharacterTemplate, weaponId: WeaponId): void {
     if (!this.characterInstance) return;
 
     const rig = resolveCharacterRig(this.characterInstance.root, template.bones);
     if (!rig) return;
 
-    const mount = getRemoteWeaponMount(template.modelFile, 'plasma_rifle');
+    const mount = getRemoteWeaponMount(template.modelFile, weaponId);
     const handRig = new THREE.Group();
     handRig.name = 'lobbyPartyHandRig';
     handRig.position.copy(mount.handPosition);
     handRig.rotation.copy(mount.handRotation);
     rig.rightHand.add(handRig);
 
-    const weapon = createWeaponMesh('plasma_rifle');
-    weapon.scale.setScalar(remoteWeaponMeshScale(template.fitScale));
+    const weapon = createWeaponMesh(weaponId);
+    weapon.scale.setScalar(remoteWeaponMeshScale(template.fitScale, weaponId));
     weapon.position.copy(mount.weaponPosition);
     weapon.rotation.copy(mount.weaponRotation);
     weapon.frustumCulled = false;

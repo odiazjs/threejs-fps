@@ -10,6 +10,7 @@ import { LobbyClient } from './LobbyClient';
 import { LobbyScene } from './LobbyScene';
 import { refreshLobbyProfileStats } from './lobbyProfileStats';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
+import { PlasmaMineralsStoreModal } from '../ui/PlasmaMineralsStoreModal';
 import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
 import { initLobbyMapSelector } from './mapSelection';
 import { initLobbyGameModeSelector } from './gameModeSelection';
@@ -63,6 +64,10 @@ async function startLobby(): Promise<void> {
     appShell.bindNavigation();
     initLobbyGameModeSelector();
     initLobbyMapSelector();
+    const plasmaStore = new PlasmaMineralsStoreModal(
+      document.getElementById('plasma-minerals-store-modal')!,
+    );
+    plasmaStore.bind();
     if (initialView !== 'lobby') {
       await appShell.showView(initialView);
     }

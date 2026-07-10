@@ -8,7 +8,7 @@
 
 /* Fixed lobby HUD panels — beat late-loaded shared .hud-panel rules */
 .lobby-ui .lobby-profile.hud-panel,
-.lobby-ui .lobby-perf.hud-panel,
+.lobby-ui .lobby-top-right,
 .lobby-ui .friends-panel.hud-panel,
 .lobby-ui .lobby-match-panel.hud-panel {
   position: fixed;
@@ -230,11 +230,223 @@
   height: 1rem;
 }
 
-/* Performance readout — top right */
-.lobby-perf {
+/* Top-right cluster: plasma minerals + perf */
+.lobby-top-right {
   position: fixed;
   top: 1.25rem;
   right: 1.25rem;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: 0.55rem;
+  pointer-events: none;
+}
+
+.plasma-minerals-chip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 7.75rem;
+  padding: 0.55rem 0.75rem;
+  pointer-events: none;
+}
+
+.plasma-minerals-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--hud-cyan-dim);
+}
+
+.plasma-minerals-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--hud-cyan);
+  text-shadow: 0 0 10px rgba(0, 242, 255, 0.28);
+  font-variant-numeric: tabular-nums;
+}
+
+.plasma-minerals-get-more {
+  pointer-events: auto;
+  margin-top: 0.1rem;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid rgba(0, 242, 255, 0.4);
+  border-radius: 3px;
+  background: rgba(0, 242, 255, 0.1);
+  color: var(--hud-cyan);
+  font-family: var(--hud-font);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.plasma-minerals-get-more:hover {
+  border-color: var(--hud-cyan);
+  background: rgba(0, 242, 255, 0.2);
+  color: #fff;
+}
+
+/* Plasma minerals store modal */
+.plasma-store-modal {
+  z-index: 40;
+}
+
+.plasma-store-modal[hidden] {
+  display: none !important;
+}
+
+.plasma-store-panel {
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1.15rem 1.25rem 1.35rem;
+  pointer-events: auto;
+  border: 1px solid var(--hud-cyan-border);
+  background: rgba(6, 12, 20, 0.94);
+  box-shadow:
+    0 0 40px rgba(0, 0, 0, 0.55),
+    0 0 24px rgba(0, 242, 255, 0.12);
+}
+
+.plasma-store-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.plasma-store-title {
+  margin: 0;
+  font-family: var(--hud-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #fff;
+}
+
+.plasma-store-close {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid rgba(0, 242, 255, 0.3);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.plasma-store-close:hover:not(:disabled) {
+  border-color: var(--hud-cyan);
+  color: #fff;
+}
+
+.plasma-store-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.plasma-store-subtitle {
+  margin: 0 0 0.85rem;
+  font-family: var(--hud-font);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.plasma-store-status {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  border-radius: 3px;
+  background: rgba(0, 242, 255, 0.08);
+  color: var(--hud-cyan-soft);
+  font-family: var(--hud-font);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.plasma-store-packs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.plasma-store-pack {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 0.15rem 0.85rem;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(0, 12, 16, 0.72);
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.plasma-store-pack:hover:not(:disabled) {
+  border-color: var(--hud-cyan);
+  background: rgba(0, 40, 48, 0.88);
+  box-shadow: 0 0 16px rgba(0, 242, 255, 0.18);
+}
+
+.plasma-store-pack:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.plasma-store-pack-amount {
+  grid-column: 1;
+  font-family: var(--hud-font);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--hud-cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+.plasma-store-pack-label {
+  grid-column: 1;
+  font-family: var(--hud-font);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.plasma-store-pack-price {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-family: var(--hud-font);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+/* Performance readout — top right */
+.lobby-perf {
+  position: relative;
+  top: auto;
+  right: auto;
   z-index: 2;
   display: flex;
   flex-direction: column;
@@ -1000,7 +1212,6 @@
     #04080e;
 }
 
-.weapons-picker,
 .leaderboard-shell,
 .settings-shell {
   border: 1px solid var(--hud-cyan-border);
@@ -1022,17 +1233,6 @@
 .leaderboard-title {
   color: #fff !important;
   text-shadow: 0 0 20px var(--hud-cyan-glow);
-}
-
-.weapons-picker-btn {
-  font-family: var(--hud-font);
-  border-color: var(--hud-cyan-border) !important;
-}
-
-.weapons-picker-btn.active {
-  border-color: var(--hud-cyan) !important;
-  background: rgba(0, 242, 255, 0.12) !important;
-  box-shadow: 0 0 16px var(--hud-cyan-glow) !important;
 }
 
 .weapons-back-btn,
@@ -1098,6 +1298,10 @@
 
   .lobby-perf {
     display: none;
+  }
+
+  .lobby-top-right .plasma-minerals-chip {
+    display: flex;
   }
 
   .friends-panel,

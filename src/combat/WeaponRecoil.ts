@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import type { RecoilConfig } from '../../shared/content/weaponConfig';
 import { AIM_PITCH_LIMIT, AIM_ROTATION_ORDER } from '../player/playerAim';
 
-const DEFAULT_AIM_SMOOTH_SPEED = 26;
+const DEFAULT_AIM_SMOOTH_SPEED = 18;
+/** Hold kick before recovery starts (covers semi-auto one-frame fire flags). */
+const DEFAULT_RECOVERY_DELAY_SEC = 0.14;
 
 const _weaponPos = new THREE.Vector3();
 const _weaponRot = new THREE.Euler();
@@ -19,17 +21,23 @@ const DEFAULT_VISUAL_STYLE = {
 } as const;
 
 export class WeaponRecoil {
-  /** Accumulated recoil target — only decays while not firing. */
+  /** Accumulated recoil target — decays after recovery delay when not firing. */
   private targetPitch = 0;
   private targetYaw = 0;
-  /** Smoothed view offset — eases toward target to avoid per-shot shake. */
+  /** Smoothed view offset — eases toward target. */
   private currentPitch = 0;
   private currentYaw = 0;
   private patternIndex = 0;
   private visualImpulse = 0;
   private visualCurrent = 0;
+  /** Seconds remaining before aim recovery may begin. */
+  private recoveryDelay = 0;
 
-  constructor(private readonly config: RecoilConfig) {}
+  constructor(private config: RecoilConfig) {}
+
+  setConfig(config: RecoilConfig): void {
+    this.config = config;
+  }
 
   reset(): void {
     this.targetPitch = 0;
@@ -39,6 +47,7 @@ export class WeaponRecoil {
     this.patternIndex = 0;
     this.visualImpulse = 0;
     this.visualCurrent = 0;
+    this.recoveryDelay = 0;
   }
 
   onShot(adsBlend: number): void {
@@ -52,16 +61,38 @@ export class WeaponRecoil {
     const yawScale = this.config.yawScale ?? 1;
     this.targetPitch += kick.pitch * mult;
     this.targetYaw += kick.yaw * mult * yawScale;
-    this.visualImpulse = Math.min(1, this.visualImpulse + 0.55);
+
+    // Visual punch — allow stacking a bit so rapid fire still reads.
+    this.visualImpulse = Math.min(1.35, this.visualImpulse + 0.7);
+    this.recoveryDelay = Math.max(
+      this.recoveryDelay,
+      this.config.recoveryDelaySec ?? DEFAULT_RECOVERY_DELAY_SEC,
+    );
   }
 
   update(delta: number, shooting: boolean, ads: boolean): void {
-    if (!shooting) {
-      this.patternIndex = 0;
-      const recoveryScale = ads ? 1.2 : 1;
+    if (shooting) {
+      // Keep pattern while trigger is held (auto); delay recovery.
+      this.recoveryDelay = Math.max(
+        this.recoveryDelay,
+        this.config.recoveryDelaySec ?? DEFAULT_RECOVERY_DELAY_SEC,
+      );
+    } else {
+      this.recoveryDelay = Math.max(0, this.recoveryDelay - delta);
+    }
+
+    const canRecover = !shooting && this.recoveryDelay <= 0;
+    if (canRecover) {
+      const recoveryScale = ads ? 1.15 : 1;
       const decay = 1 - Math.exp(-this.config.recoverySpeed * recoveryScale * delta);
       this.targetPitch *= 1 - decay;
       this.targetYaw *= 1 - decay;
+
+      if (Math.abs(this.targetPitch) < 1e-4 && Math.abs(this.targetYaw) < 1e-4) {
+        this.targetPitch = 0;
+        this.targetYaw = 0;
+        this.patternIndex = 0;
+      }
     }
 
     const aimSmooth = this.config.aimSmoothSpeed ?? DEFAULT_AIM_SMOOTH_SPEED;
@@ -73,8 +104,6 @@ export class WeaponRecoil {
     this.visualImpulse *= 1 - visualDecay;
     this.visualCurrent += (this.visualImpulse - this.visualCurrent) * aimBlend;
 
-    if (Math.abs(this.targetPitch) < 1e-6) this.targetPitch = 0;
-    if (Math.abs(this.targetYaw) < 1e-6) this.targetYaw = 0;
     if (Math.abs(this.currentPitch) < 1e-6) this.currentPitch = 0;
     if (Math.abs(this.currentYaw) < 1e-6) this.currentYaw = 0;
     if (this.visualImpulse < 1e-4) this.visualImpulse = 0;

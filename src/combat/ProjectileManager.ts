@@ -51,10 +51,17 @@ export class ProjectileManager {
   private onPlayerHit: ((targetId: string, point: Vector3, bodyPart: BodyPartId) => void) | null = null;
   private shieldDomeManager: ShieldDomeManager | null = null;
   private getWorldTime: (() => number) | null = null;
+  private resolveWeaponMaxHitDistance: ((weaponId: WeaponId) => number | undefined) | null = null;
   private worldSplashCooldown = 0;
 
   constructor(private readonly scene: Scene) {
     initHitSplashPool(scene);
+  }
+
+  setWeaponMaxHitDistanceResolver(
+    resolver: (weaponId: WeaponId) => number | undefined,
+  ): void {
+    this.resolveWeaponMaxHitDistance = resolver;
   }
 
   setShieldDomeManager(manager: ShieldDomeManager): void {
@@ -103,6 +110,8 @@ export class ProjectileManager {
       shooterId?: string;
       shooterWorldPos?: Vector3;
       weaponId?: WeaponId;
+      /** Armory-upgraded max hit distance; preferred over catalog resolver. */
+      maxHitDistance?: number;
       muzzleFlash?: MuzzleFlashConfig;
       boltColors?: readonly [number, number, number];
     },
@@ -132,6 +141,12 @@ export class ProjectileManager {
     const hitTargets =
       canHitPlayers && !visualOnly ? this.getHitTargets?.() ?? null : null;
 
+    const resolvedMaxHit =
+      options?.maxHitDistance ??
+      (options?.weaponId && this.resolveWeaponMaxHitDistance
+        ? this.resolveWeaponMaxHitDistance(options.weaponId)
+        : undefined);
+
     const resolved = resolveProjectilePath(
       params.hitRayOrigin,
       params.hitRayDirection,
@@ -141,6 +156,7 @@ export class ProjectileManager {
         visualOnly,
         weaponId: options?.weaponId,
         ownerSessionId,
+        maxHitDistance: resolvedMaxHit,
       },
       hitTargets,
       this.shieldDomeManager,

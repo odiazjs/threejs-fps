@@ -38,6 +38,8 @@ export function resolveProjectilePath(
     visualOnly: boolean;
     weaponId?: WeaponId;
     ownerSessionId: string;
+    /** Optional Armory-upgraded range override for this shot. */
+    maxHitDistance?: number;
   },
   hitTargets: readonly ProjectileHitTarget[] | null,
   shieldDomeManager: ShieldDomeManager | null,
@@ -52,7 +54,7 @@ export function resolveProjectilePath(
 
   const weaponMax =
     options.canHitPlayers && !options.visualOnly && options.weaponId
-      ? getWeaponMaxHitDistance(options.weaponId)
+      ? options.maxHitDistance ?? getWeaponMaxHitDistance(options.weaponId)
       : 0;
 
   const resolveDistance = Math.min(

@@ -64,6 +64,8 @@ import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
 import { getWeaponConfig } from '../content/weaponConfig';
+import { apiListMyWeapons } from '../auth/weaponsApi';
+import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
 import { isWeaponId } from '../../shared/content/weaponIds';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { MinimapUpdateState } from '../ui/minimapTypes';
@@ -675,6 +677,20 @@ export class Game {
     this.network.setWeaponSoundService(this.weaponSounds);
     this.network.setImpactSoundService(this.impactSounds);
     this.network.applyLocalSpawn(this.player);
+
+    try {
+      const { weapons } = await apiListMyWeapons();
+      const statsById = new Map<string, WeaponEffectiveStats>();
+      for (const weapon of weapons) {
+        statsById.set(weapon.id, weapon.effectiveStats);
+      }
+      this.player.applyWeaponEffectiveStats(statsById);
+      this.projectiles.setWeaponMaxHitDistanceResolver((weaponId) => {
+        return statsById.get(weaponId)?.range;
+      });
+    } catch (error) {
+      console.warn('[Game] failed to apply weapon upgrades for match', error);
+    }
 
     this.shieldDomeAbility = new ShieldDomeAbility();
     this.shieldDomeAbility.setStartChargeCallback(() =>

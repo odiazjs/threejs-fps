@@ -148,8 +148,9 @@
 
 /* Weapons */
 #weapons-canvas {
-  position: fixed;
-  inset: 0;
+  position: relative;
+  width: 100%;
+  height: 100%;
   z-index: 0;
 }
 
@@ -158,49 +159,6 @@
   z-index: 1;
   min-height: 100vh;
   pointer-events: none;
-}
-
-.weapons-picker {
-  position: fixed;
-  top: 1.5rem;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.55rem;
-  padding: 0.65rem;
-  pointer-events: auto;
-  width: min(720px, 92vw);
-}
-
-.weapons-picker-btn {
-  padding: 0.55rem 0.9rem;
-  border: 1px solid var(--hud-cyan-border);
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.45);
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: background 120ms linear, border-color 120ms linear, color 120ms linear;
-}
-
-.weapons-picker-btn:hover:not(:disabled) {
-  background: rgba(0, 242, 255, 0.1);
-}
-
-.weapons-picker-btn.active {
-  border-color: var(--hud-cyan);
-  background: rgba(0, 242, 255, 0.12);
-  color: #fff;
-  box-shadow: 0 0 16px var(--hud-cyan-glow);
-}
-
-.weapons-picker-btn:disabled {
-  opacity: 0.55;
-  cursor: wait;
 }
 
 .weapons-back-btn {

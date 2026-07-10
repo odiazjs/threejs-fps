@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { PartyMember } from '../../shared/network/party';
+import type { WeaponId } from '../../shared/content/weaponIds';
 import {
   createCharacterInstance,
-  loadLobbyCharacterTemplate,
+  loadGameIdleCharacterTemplate,
   resolveCharacterRig,
   type CharacterInstance,
   type CharacterTemplate,
@@ -17,9 +18,11 @@ import { GrassField } from '../world/GrassField';
 import { createDroneVisual } from '../world/DroneField';
 import { LobbyPerfHud } from '../ui/LobbyPerfHud';
 import { LobbyPartyAvatar, partyMemberOffsets } from './LobbyPartyAvatar';
+import { fetchDefaultPrimaryWeaponId } from './lobbyLoadoutWeapon';
 
 const BASE_CAMERA_Z = 3.2;
 const CAMERA_ZOOM_PER_MEMBER = 0.2;
+const FALLBACK_LOBBY_WEAPON: WeaponId = 'plasma_rifle';
 
 export class LobbyScene {
   private readonly scene = new THREE.Scene();
@@ -27,8 +30,11 @@ export class LobbyScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly labelRenderer: CSS2DRenderer;
   private readonly avatar = new THREE.Group();
+  private readonly bodyRoot = new THREE.Group();
   private characterInstance: CharacterInstance | null = null;
+  private handRig: THREE.Group | null = null;
   private weaponMesh: THREE.Group | null = null;
+  private equippedWeaponId: WeaponId | null = null;
   private readonly grassField: GrassField;
   private readonly droneRoot: THREE.Group;
   private readonly dronePropellers: THREE.Group[];
@@ -40,6 +46,7 @@ export class LobbyScene {
   private partyMembers: PartyMember[] = [];
   private animationId = 0;
   private active = true;
+  private avatarLoadToken = 0;
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
 
@@ -111,24 +118,11 @@ export class LobbyScene {
     this.dronePropellers = drone.propellers;
     this.scene.add(this.droneRoot);
 
-    const bodyRoot = new THREE.Group();
-    bodyRoot.rotation.y = Math.PI;
-    this.avatar.add(bodyRoot);
-    void Promise.all([loadLobbyCharacterTemplate(), preloadWeaponMeshes()])
-      .then(([template]) => {
-        this.characterTemplate = template;
-        this.characterInstance = createCharacterInstance(template);
-        bodyRoot.add(this.characterInstance.root);
-        this.attachLobbyWeapon(template);
-        this.syncRemoteAvatars();
-        this.scheduleReadyAfterRender();
-      })
-      .catch((error) => {
-        console.warn('[LobbyScene] Failed to load lobby assets', error);
-        this.scheduleReadyAfterRender();
-      });
-
+    this.bodyRoot.rotation.y = Math.PI;
+    this.avatar.add(this.bodyRoot);
     this.scene.add(this.avatar);
+
+    void this.bootstrapAvatar();
 
     window.addEventListener('resize', this.onResize);
     this.onResize();
@@ -150,6 +144,71 @@ export class LobbyScene {
     }
   }
 
+  /** Re-read default loadout and swap idle pose + equipped primary. */
+  async refreshFromDefaultLoadout(): Promise<void> {
+    const weaponId = await fetchDefaultPrimaryWeaponId();
+    if (weaponId === this.equippedWeaponId && this.characterInstance) return;
+    await this.applyLobbyLoadout(weaponId);
+  }
+
+  private async bootstrapAvatar(): Promise<void> {
+    try {
+      await preloadWeaponMeshes();
+      const weaponId = await fetchDefaultPrimaryWeaponId();
+      await this.applyLobbyLoadout(weaponId);
+    } catch (error) {
+      console.warn('[LobbyScene] Failed to load lobby avatar', error);
+      try {
+        await this.applyLobbyLoadout(FALLBACK_LOBBY_WEAPON);
+      } catch (fallbackError) {
+        console.warn('[LobbyScene] Fallback lobby avatar failed', fallbackError);
+      }
+    } finally {
+      this.scheduleReadyAfterRender();
+    }
+  }
+
+  private async applyLobbyLoadout(weaponId: WeaponId): Promise<void> {
+    const token = ++this.avatarLoadToken;
+    const template = await loadGameIdleCharacterTemplate(weaponId);
+    if (token !== this.avatarLoadToken) return;
+
+    this.clearLocalCharacter();
+    this.characterTemplate = template;
+    this.characterInstance = createCharacterInstance(template);
+    this.bodyRoot.add(this.characterInstance.root);
+    this.attachLobbyWeapon(template, weaponId);
+    this.equippedWeaponId = weaponId;
+    this.rebuildRemoteAvatars();
+  }
+
+  private clearLocalCharacter(): void {
+    this.clearLobbyWeapon();
+    this.characterInstance?.dispose();
+    this.characterInstance = null;
+    while (this.bodyRoot.children.length > 0) {
+      this.bodyRoot.remove(this.bodyRoot.children[0]!);
+    }
+  }
+
+  private clearLobbyWeapon(): void {
+    this.weaponMesh?.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        const { material } = child;
+        if (Array.isArray(material)) {
+          for (const entry of material) entry.dispose();
+        } else {
+          material.dispose();
+        }
+      }
+    });
+    this.weaponMesh?.removeFromParent();
+    this.weaponMesh = null;
+    this.handRig?.removeFromParent();
+    this.handRig = null;
+  }
+
   private scheduleReadyAfterRender(): void {
     requestAnimationFrame(() => {
       this.renderer.render(this.scene, this.camera);
@@ -166,6 +225,14 @@ export class LobbyScene {
     this.syncRemoteAvatars();
   }
 
+  private rebuildRemoteAvatars(): void {
+    for (const avatar of this.remoteAvatars.values()) {
+      avatar.dispose();
+    }
+    this.remoteAvatars.clear();
+    this.syncRemoteAvatars();
+  }
+
   private syncRemoteAvatars(): void {
     const remoteMembers = this.partyMembers.filter(
       (member) => member.userId !== this.localUserId,
@@ -179,7 +246,7 @@ export class LobbyScene {
       }
     }
 
-    if (!this.characterTemplate) return;
+    if (!this.characterTemplate || !this.equippedWeaponId) return;
 
     const offsets = partyMemberOffsets(remoteMembers.length);
     remoteMembers.forEach((member, index) => {
@@ -188,6 +255,7 @@ export class LobbyScene {
         avatar = new LobbyPartyAvatar(
           member.username,
           this.characterTemplate!,
+          this.equippedWeaponId!,
           index * 1.7,
         );
         this.scene.add(avatar.root);
@@ -238,7 +306,7 @@ export class LobbyScene {
     this.performanceHud.update(delta);
   };
 
-  private attachLobbyWeapon(template: CharacterTemplate): void {
+  private attachLobbyWeapon(template: CharacterTemplate, weaponId: WeaponId): void {
     if (!this.characterInstance) return;
 
     const rig = resolveCharacterRig(this.characterInstance.root, template.bones);
@@ -247,15 +315,16 @@ export class LobbyScene {
       return;
     }
 
-    const mount = getRemoteWeaponMount(template.modelFile, 'plasma_rifle');
+    const mount = getRemoteWeaponMount(template.modelFile, weaponId);
     const handRig = new THREE.Group();
     handRig.name = 'lobbyHandRig';
     handRig.position.copy(mount.handPosition);
     handRig.rotation.copy(mount.handRotation);
     rig.rightHand.add(handRig);
+    this.handRig = handRig;
 
-    const weapon = createWeaponMesh('plasma_rifle');
-    weapon.scale.setScalar(remoteWeaponMeshScale(template.fitScale));
+    const weapon = createWeaponMesh(weaponId);
+    weapon.scale.setScalar(remoteWeaponMeshScale(template.fitScale, weaponId));
     weapon.position.copy(mount.weaponPosition);
     weapon.rotation.copy(mount.weaponRotation);
     weapon.frustumCulled = false;
@@ -283,16 +352,9 @@ export class LobbyScene {
       avatar.dispose();
     }
     this.remoteAvatars.clear();
-    this.characterInstance?.dispose();
-    this.characterInstance = null;
-    this.weaponMesh?.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
-      }
-    });
-    this.weaponMesh?.removeFromParent();
-    this.weaponMesh = null;
+    this.clearLocalCharacter();
+    this.characterTemplate = null;
+    this.equippedWeaponId = null;
     this.grassField.dispose();
     this.labelRenderer.domElement.remove();
     this.renderer.dispose();

@@ -5,6 +5,7 @@ import {
   WEAPON_MAX_HIT_DISTANCE,
   WEAPON_RELOAD_SEC,
 } from '../../shared/content/weaponStats';
+import { SHIPPED_WEAPON_BASE_STATS } from '../../shared/content/weaponUpgrades';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
 import { PROJECTILE_SPEED } from '../combat/projectileConfig';
 
@@ -39,8 +40,8 @@ function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
 /** Semi-auto sidearm: heavy single-shot kick. */
 function buildPistolRecoilPattern(): RecoilKick[] {
   return Array.from({ length: 12 }, (_, i) => ({
-    pitch: 0.052,
-    yaw: (i % 2 === 0 ? 1 : -1) * 0.009,
+    pitch: 0.078,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.012,
   }));
 }
 
@@ -61,7 +62,9 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   fireRate: 12,
   fireMode: 'auto',
   damage: WEAPON_DAMAGE.plasma_rifle,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.plasma_rifle.adsTime,
   projectileSpeed: PROJECTILE_SPEED,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.plasma_rifle,
   view: {
     hip: { x: 0.15, y: -0.25, z: -0.35 },
     ads: { x: 0, y: -0.195, z: -0.22 },
@@ -73,7 +76,8 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   recoil: {
     pattern: buildPlasmaRifleRecoilPattern(),
     recoverySpeed: 9,
-    aimSmoothSpeed: 22,
+    recoveryDelaySec: 0.08,
+    aimSmoothSpeed: 18,
     adsMultiplier: 0.5,
     yawScale: 0.9,
     visualKick: 0.5,
@@ -119,7 +123,9 @@ export const PISTOL_CONFIG: WeaponConfig = {
   fireRate: 0,
   fireMode: 'semi',
   damage: WEAPON_DAMAGE.pistol,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.pistol.adsTime,
   projectileSpeed: PROJECTILE_SPEED,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.pistol,
   view: {
     hip: { x: 0.12, y: -0.16, z: -0.28 },
     ads: { x: 0.0, y: -0.115, z: -0.25 },
@@ -130,12 +136,14 @@ export const PISTOL_CONFIG: WeaponConfig = {
   },
   recoil: {
     pattern: buildPistolRecoilPattern(),
-    recoverySpeed: 60,
-    aimSmoothSpeed: 20,
+    // Was 60 — with semi-auto `shooting` only true for 1 frame, that wiped kick instantly.
+    recoverySpeed: 9,
+    recoveryDelaySec: 0.16,
+    aimSmoothSpeed: 16,
     adsMultiplier: 0.75,
     yawScale: 1.1,
-    visualKick: 0.50,
-    visualRecoverySpeed: 44,
+    visualKick: 0.85,
+    visualRecoverySpeed: 12,
     adsVisualMultiplier: 0.65,
     visualStyle: {
       rotX: 0.48,
@@ -175,9 +183,11 @@ export const KATANA_CONFIG: WeaponConfig = {
   fireRate: 2,
   fireMode: 'melee',
   damage: WEAPON_DAMAGE.katana,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.katana.adsTime || 0.18,
   projectileSpeed: 0,
   moveSpeedMultiplier: 1.15,
   meleeRange: WEAPON_MAX_HIT_DISTANCE.katana,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.katana,
   view: {
     hip: { x: 0.12, y: -0.13, z: -0.3 },
     ads: { x: 0.12, y: -0.2, z: -0.3 },
@@ -221,7 +231,9 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   fireRate: 1.1,
   fireMode: 'semi',
   damage: WEAPON_DAMAGE.sniper_rifle,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.sniper_rifle.adsTime,
   projectileSpeed: SNIPER_PROJECTILE_SPEED,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.sniper_rifle,
   view: {
     hip: { x: 0.1, y: -0.24, z: -0.44 },
     ads: { x: 0, y: -0.15, z: -0.24 },
@@ -234,7 +246,8 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   recoil: {
     pattern: buildSniperRecoilPattern(),
     recoverySpeed: 5,
-    aimSmoothSpeed: 13,
+    recoveryDelaySec: 0.22,
+    aimSmoothSpeed: 12,
     adsMultiplier: 0.92,
     yawScale: 1.45,
     visualKick: 2.9,

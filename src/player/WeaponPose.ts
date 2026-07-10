@@ -6,9 +6,19 @@ const HIP_FOV = 75;
 const DEFAULT_ADS_FOV = 68;
 const HIP_CAMERA_NEAR = 0.1;
 const ADS_CAMERA_NEAR = 0.01;
-const BLEND_SPEED = 30;
+/** Fallback ADS blend rate when a weapon has no adsTime (≈0.18s hip→ADS). */
+const DEFAULT_ADS_BLEND_SPEED = 30;
 const RELOAD_ADS_BLEND_SPEED = 55;
+const MIN_ADS_TIME_SEC = 0.05;
+const MAX_ADS_TIME_SEC = 1.5;
 export const WEAPON_SWITCH_SEC = 0.2;
+
+/** Convert seconds-to-full-ADS into an exponential blend speed matching legacy feel. */
+export function adsBlendSpeedFromAdsTime(adsTimeSec: number): number {
+  const t = THREE.MathUtils.clamp(adsTimeSec, MIN_ADS_TIME_SEC, MAX_ADS_TIME_SEC);
+  // Legacy BLEND_SPEED 30 ≈ 0.18s; scale inversely with adsTime.
+  return DEFAULT_ADS_BLEND_SPEED * (0.18 / t);
+}
 
 /** Default hip offset — used when attaching meshes before per-weapon pose runs. */
 export const DEFAULT_HIP_OFFSET = new THREE.Vector3(0.15, -0.18, -0.35);
@@ -134,6 +144,7 @@ export class WeaponPose {
   private slashDuration = KATANA_SLASH_DURATION_SEC;
   private slashTimeLeft = 0;
   private adsFov = DEFAULT_ADS_FOV;
+  private adsBlendSpeed = DEFAULT_ADS_BLEND_SPEED;
   private view: WeaponViewConfig | null = null;
 
   get hipOffset(): THREE.Vector3 {
@@ -177,9 +188,17 @@ export class WeaponPose {
     this.switchTimeLeft = duration;
   }
 
-  setViewConfig(view: WeaponViewConfig): void {
+  setViewConfig(view: WeaponViewConfig, adsTimeSec?: number): void {
     this.view = view;
     this.adsFov = view.adsFov ?? DEFAULT_ADS_FOV;
+    if (adsTimeSec !== undefined && Number.isFinite(adsTimeSec) && adsTimeSec > 0) {
+      this.adsBlendSpeed = adsBlendSpeedFromAdsTime(adsTimeSec);
+    }
+  }
+
+  setAdsTime(adsTimeSec: number): void {
+    if (!Number.isFinite(adsTimeSec) || adsTimeSec <= 0) return;
+    this.adsBlendSpeed = adsBlendSpeedFromAdsTime(adsTimeSec);
   }
 
   reset(): void {
@@ -209,7 +228,8 @@ export class WeaponPose {
     const canAim = !reloading && !this.isSwitching() && !this.isSlashing();
     const ignoreAds = options?.ignoreAds ?? false;
     const targetAds = !ignoreAds && ads && canAim ? 1 : 0;
-    const blendSpeed = reloading || this.isSwitching() ? RELOAD_ADS_BLEND_SPEED : BLEND_SPEED;
+    const blendSpeed =
+      reloading || this.isSwitching() ? RELOAD_ADS_BLEND_SPEED : this.adsBlendSpeed;
     this.blend += (targetAds - this.blend) * (1 - Math.exp(-blendSpeed * delta));
   }
 

@@ -18,8 +18,21 @@ export class WeaponAmmo {
   private reloadRemaining = 0;
   private reloadRoundsNeeded = 0;
 
-  constructor(private readonly config: WeaponConfig) {
+  constructor(private config: WeaponConfig) {
     this.refill();
+  }
+
+  /** Apply Armory effective clip/reload without wiping reserve. */
+  applyConfig(config: WeaponConfig): void {
+    const prevSize = this.config.clipSize;
+    const wasFull = this.clip >= prevSize;
+    this.config = config;
+    if (wasFull || this.clip > config.clipSize) {
+      this.clip = config.clipSize;
+    }
+    if (this.reloading) {
+      this.reloadRemaining = Math.min(this.reloadRemaining, config.reloadSec);
+    }
   }
 
   refill(reserveRounds = PLAYER_START_RESERVE_ROUNDS): void {

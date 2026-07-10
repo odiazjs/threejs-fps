@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { WeaponConfig } from '../../shared/content/weaponConfig';
+import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
+import { withEffectiveWeaponStats } from '../../shared/content/applyWeaponEffectiveStats';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import { isPickableWeaponId, isWeaponId, LOADOUT_SIZE, MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import type { LoadoutSlotSnapshot } from '../../shared/loadout/loadoutSlots';
@@ -108,17 +110,34 @@ export interface LoadoutAmmoState extends AmmoState {
 }
 
 export class WeaponSlot {
-  readonly config: WeaponConfig;
+  /** Unmodified catalog config — upgrades are always applied from this base. */
+  private readonly baseConfig: WeaponConfig;
+  config: WeaponConfig;
   readonly ammo: WeaponAmmo;
   readonly recoil: WeaponRecoil;
   readonly mesh: THREE.Group;
 
   constructor(config: WeaponConfig) {
+    this.baseConfig = config;
     this.config = config;
     this.ammo = new WeaponAmmo(config);
     this.recoil = new WeaponRecoil(config.recoil);
     this.mesh = createWeaponMesh(config.id);
     this.mesh.visible = false;
+  }
+
+  get weaponId(): WeaponId {
+    return this.baseConfig.id;
+  }
+
+  /**
+   * Overlay Armory effective stats onto this slot for the current match.
+   * Does not reset live recoil — network re-apply must not snap aim mid-fight.
+   */
+  applyEffectiveStats(stats: WeaponEffectiveStats): void {
+    this.config = withEffectiveWeaponStats(this.baseConfig, stats);
+    this.ammo.applyConfig(this.config);
+    this.recoil.setConfig(this.config.recoil);
   }
 
   get fireInterval(): number {
@@ -237,6 +256,18 @@ export class WeaponLoadout {
 
   getActiveDamage(): number {
     return this.getActive()?.config.damage ?? 0;
+  }
+
+  /** Apply Armory upgrades to every owned weapon slot for this match. */
+  applyEffectiveStatsByWeaponId(statsById: ReadonlyMap<string, WeaponEffectiveStats>): void {
+    for (const [weaponId, slot] of this.weaponsById) {
+      const stats = statsById.get(weaponId);
+      if (stats) slot.applyEffectiveStats(stats);
+    }
+    if (this.meleeSlot) {
+      const stats = statsById.get(this.meleeSlot.weaponId);
+      if (stats) this.meleeSlot.applyEffectiveStats(stats);
+    }
   }
 
   getSlot(index: number): WeaponSlot | null {
