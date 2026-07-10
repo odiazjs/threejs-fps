@@ -66,6 +66,7 @@ import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { apiListMyWeapons } from '../auth/weaponsApi';
 import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
+import { shippedEffectiveStats } from '../../shared/content/applyWeaponEffectiveStats';
 import { isWeaponId } from '../../shared/content/weaponIds';
 import type { GameJoinIntent } from '../auth/gameJoin';
 import type { MinimapUpdateState } from '../ui/minimapTypes';
@@ -684,12 +685,27 @@ export class Game {
       for (const weapon of weapons) {
         statsById.set(weapon.id, weapon.effectiveStats);
       }
+      // Fill any missing pickables with catalog stock so recoil camera scale is always set.
+      for (const config of PICKABLE_WEAPON_CONFIGS) {
+        if (!statsById.has(config.id)) {
+          statsById.set(config.id, shippedEffectiveStats(config.id));
+        }
+      }
+      if (!statsById.has(KATANA_CONFIG.id)) {
+        statsById.set(KATANA_CONFIG.id, shippedEffectiveStats(KATANA_CONFIG.id));
+      }
       this.player.applyWeaponEffectiveStats(statsById);
       this.projectiles.setWeaponMaxHitDistanceResolver((weaponId) => {
         return statsById.get(weaponId)?.range;
       });
     } catch (error) {
       console.warn('[Game] failed to apply weapon upgrades for match', error);
+      const fallback = new Map<string, WeaponEffectiveStats>();
+      for (const config of PICKABLE_WEAPON_CONFIGS) {
+        fallback.set(config.id, shippedEffectiveStats(config.id));
+      }
+      fallback.set(KATANA_CONFIG.id, shippedEffectiveStats(KATANA_CONFIG.id));
+      this.player.applyWeaponEffectiveStats(fallback);
     }
 
     this.shieldDomeAbility = new ShieldDomeAbility();

@@ -20,6 +20,7 @@ export class MuzzleFlash {
   private readonly duration: number;
   private readonly lightIntensity: number;
   private readonly particleBaseSize: number;
+  private readonly particleFall: number;
   private readonly light: THREE.PointLight;
   private readonly layers: FlashLayer[] = [];
   private readonly points: THREE.Points;
@@ -35,6 +36,7 @@ export class MuzzleFlash {
     this.duration = config.duration;
     this.particleCount = config.particleCount;
     this.lightIntensity = config.lightIntensity;
+    this.particleFall = Math.max(0, config.particleFall ?? 0);
     const particleSizeScale = config.particleSizeScale ?? DEFAULT_PARTICLE_SIZE_SCALE;
     this.particleBaseSize = config.coreScale * particleSizeScale;
 
@@ -91,10 +93,11 @@ export class MuzzleFlash {
 
       const speed = config.particleSpeed * (0.55 + Math.random() * 0.9);
       const spread = config.particleSpread;
+      const drip = this.particleFall > 0 ? -(0.35 + Math.random() * 0.65) * this.particleFall * 0.08 : 0;
       this.particleVelocities.push(
         new THREE.Vector3(
           (Math.random() - 0.5) * spread,
-          (Math.random() - 0.5) * spread,
+          (Math.random() - 0.5) * spread + drip,
           -speed,
         ),
       );
@@ -151,10 +154,13 @@ export class MuzzleFlash {
     for (let i = 0; i < this.particleCount; i++) {
       const velocity = this.particleVelocities[i];
       const i3 = i * 3;
+      if (this.particleFall > 0) {
+        velocity.y -= this.particleFall * delta;
+      }
       positions[i3] += velocity.x * delta;
       positions[i3 + 1] += velocity.y * delta;
       positions[i3 + 2] += velocity.z * delta;
-      velocity.multiplyScalar(1 - delta * 4.5);
+      velocity.multiplyScalar(1 - delta * (this.particleFall > 0 ? 2.2 : 4.5));
     }
     this.points.geometry.attributes.position.needsUpdate = true;
 

@@ -59,7 +59,8 @@ function sampleReloadOffsets(progress: number): PoseOffsets {
 
   let drop = 0;
   if (t < 0.2) {
-    drop = easeOutCubic(t / 0.2);
+    // Bias the ease so the first frames already read as mag-out (t=0 still kicks).
+    drop = easeOutCubic(0.28 + (t / 0.2) * 0.72);
   } else if (t < 0.5) {
     drop = 1;
   } else {
@@ -68,18 +69,18 @@ function sampleReloadOffsets(progress: number): PoseOffsets {
 
   const insertPhase = t >= 0.2 && t < 0.5;
   const insertT = insertPhase ? (t - 0.2) / 0.3 : 0;
-  const click = insertPhase ? Math.abs(Math.sin(insertT * Math.PI * 3)) * 0.22 : 0;
+  const click = insertPhase ? Math.abs(Math.sin(insertT * Math.PI * 3)) * 0.28 : 0;
 
   const rack = t >= 0.5 ? easeOutBack((t - 0.5) / 0.5) : 0;
-  const rackSnap = Math.sin(rack * Math.PI) * 0.14;
+  const rackSnap = Math.sin(rack * Math.PI) * 0.18;
 
   return {
-    x: -0.12 * drop + click * 0.035,
-    y: -0.16 * drop - rackSnap * 0.05,
-    z: 0.1 * drop + rackSnap * 0.07,
-    rx: 0.48 * drop + rackSnap * 0.1,
-    ry: 0.32 * drop + click * 0.08,
-    rz: 0.26 * drop + click * 0.06,
+    x: -0.18 * drop + click * 0.045,
+    y: -0.24 * drop - rackSnap * 0.06,
+    z: 0.14 * drop + rackSnap * 0.09,
+    rx: 0.62 * drop + rackSnap * 0.12,
+    ry: 0.4 * drop + click * 0.1,
+    rz: 0.32 * drop + click * 0.08,
   };
 }
 
@@ -138,6 +139,7 @@ function copyViewOffset(target: THREE.Vector3, offset: { x: number; y: number; z
 /** Blends the local weapon between hip-fire, ADS, and reload poses. */
 export class WeaponPose {
   private blend = 0;
+  private reloading = false;
   private reloadProgress = 0;
   private switchDuration = WEAPON_SWITCH_SEC;
   private switchTimeLeft = 0;
@@ -157,7 +159,7 @@ export class WeaponPose {
   }
 
   get isReloading(): boolean {
-    return this.reloadProgress > 0;
+    return this.reloading;
   }
 
   isSwitching(): boolean {
@@ -203,6 +205,7 @@ export class WeaponPose {
 
   reset(): void {
     this.blend = 0;
+    this.reloading = false;
     this.reloadProgress = 0;
     this.switchTimeLeft = 0;
     this.slashTimeLeft = 0;
@@ -215,7 +218,15 @@ export class WeaponPose {
     reloadProgress: number,
     options?: { ignoreAds?: boolean },
   ): void {
-    this.reloadProgress = reloading ? reloadProgress : 0;
+    const wasReloading = this.reloading;
+    this.reloading = reloading;
+    this.reloadProgress = reloading
+      ? THREE.MathUtils.clamp(
+          Number.isFinite(reloadProgress) ? reloadProgress : 0,
+          0,
+          1,
+        )
+      : 0;
 
     if (this.switchTimeLeft > 0) {
       this.switchTimeLeft = Math.max(0, this.switchTimeLeft - delta);
@@ -225,20 +236,32 @@ export class WeaponPose {
       this.slashTimeLeft = Math.max(0, this.slashTimeLeft - delta);
     }
 
+    // Reload owns the viewmodel — clear slash leftover and snap out of ADS.
+    if (reloading) {
+      this.slashTimeLeft = 0;
+      if (!wasReloading) {
+        this.blend = 0;
+      }
+    }
+
     const canAim = !reloading && !this.isSwitching() && !this.isSlashing();
     const ignoreAds = options?.ignoreAds ?? false;
     const targetAds = !ignoreAds && ads && canAim ? 1 : 0;
     const blendSpeed =
       reloading || this.isSwitching() ? RELOAD_ADS_BLEND_SPEED : this.adsBlendSpeed;
     this.blend += (targetAds - this.blend) * (1 - Math.exp(-blendSpeed * delta));
+    if (reloading) {
+      this.blend = 0;
+    }
   }
 
   private getActivePoseOffsets(): PoseOffsets | null {
+    // Reload beats slash/switch so mag-out always reads on the viewmodel.
+    if (this.reloading) {
+      return sampleReloadOffsets(this.reloadProgress);
+    }
     if (this.slashTimeLeft > 0) {
       return sampleSlashOffsets(this.getSlashProgress());
-    }
-    if (this.reloadProgress > 0) {
-      return sampleReloadOffsets(this.reloadProgress);
     }
     if (this.isSwitching()) {
       return sampleSwitchOffsets(this.getSwitchProgress());
@@ -246,7 +269,7 @@ export class WeaponPose {
     return null;
   }
 
-  apply(weapon: THREE.Object3D, wallPullback = 0): void {
+  apply(weapon: THREE.Object3D, wallPullback = 0, baseRotation?: THREE.Euler): void {
     if (!this.view) return;
 
     copyViewOffset(_hip, this.view.hip);
@@ -263,6 +286,14 @@ export class WeaponPose {
     }
 
     weapon.position.copy(_offset);
+
+    if (baseRotation) {
+      _weaponRot.copy(baseRotation);
+      if (pose) {
+        applyPoseRotation(_weaponRot, _weaponRot, pose);
+      }
+      weapon.rotation.copy(_weaponRot);
+    }
   }
 
   applyRemoteReload(
@@ -270,11 +301,7 @@ export class WeaponPose {
     basePosition: THREE.Vector3,
     baseRotation: THREE.Euler,
   ): void {
-    const pose = this.isSlashing()
-      ? sampleSlashOffsets(this.getSlashProgress())
-      : this.isSwitching()
-        ? sampleSwitchOffsets(this.getSwitchProgress())
-        : null;
+    const pose = this.getActivePoseOffsets();
 
     if (pose) {
       applyPoseOffsets(weapon.position, basePosition, pose);

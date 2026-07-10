@@ -35,7 +35,7 @@ import {
 } from '../../shared/combat/meleeHit';
 import { bodyPartVolumesFromBoneRefs, type BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
-import { readCrosshairWorldRay, readMuzzleFirePose, readWeaponMuzzleWorldPosition, projectMuzzleAimToScreenOffset, readScreenHoldWorldPosition } from '../combat/aiming';
+import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readScreenHoldWorldPosition } from '../combat/aiming';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -108,7 +108,6 @@ const MOVE_SPEED = 3;
 const CROUCH_CAMERA_BLEND_SPEED = 12;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
-const _crosshairAimOffset = { x: 0, y: 0 };
 
 const _spinePitchAxis = new THREE.Vector3(1, 0, 0);
 const _spinePitchQuat = new THREE.Quaternion();
@@ -915,26 +914,9 @@ export class Player {
     return this.targetShieldRechargeEndAt;
   }
 
-  updateCrosshairAim(hud: CrosshairHud, width: number, height: number): void {
-    if (!this.camera || !this.loadout) {
-      hud.setAimOffset(0, 0);
-      return;
-    }
-
-    const active = this.loadout.getActive();
-    if (!active) {
-      hud.setAimOffset(0, 0);
-      return;
-    }
-
-    projectMuzzleAimToScreenOffset(
-      active.mesh,
-      this.camera,
-      width,
-      height,
-      _crosshairAimOffset,
-    );
-    hud.setAimOffset(_crosshairAimOffset.x, _crosshairAimOffset.y);
+  updateCrosshairAim(hud: CrosshairHud, _width: number, _height: number): void {
+    // Camera-recoil aim: reticle stays screen-center; weapon sway/visual kick are cosmetic only.
+    hud.setAimOffset(0, 0);
   }
 
   getFeetPosition(): THREE.Vector3 {
@@ -1304,7 +1286,13 @@ export class Player {
       this.remoteWeaponBaseRotation,
     );
     this.loadout.applyActiveRotation(remoteBaseRotation, 'remote');
-    this.weaponPose.update(delta, false, false, 0);
+    const { reloading, progress } = getReloadState(
+      this.targetReloadEndAt,
+      worldTime,
+      this.targetActiveWeaponId,
+      active.config.reloadSec,
+    );
+    this.weaponPose.update(delta, false, reloading, progress);
     this.weaponPose.applyRemoteReload(
       active.mesh,
       this.remoteWeaponBasePosition,
@@ -1378,7 +1366,9 @@ export class Player {
           !this.weaponPose?.isSwitching() &&
           active.ammo.tryReload()
         ) {
-          this.weaponSounds?.playReload(active.config.sounds, active.config.reloadSec);
+          this.stopWeaponAutoFire();
+          const reloadSec = Math.max(0.05, Number(active.config.reloadSec) || 0.05);
+          this.weaponSounds?.playReload(active.config.sounds, reloadSec);
           const weaponId = this.loadout.getActiveWeaponId();
           if (weaponId) this.onReloadNetwork?.(weaponId);
         }
@@ -1421,6 +1411,7 @@ export class Player {
         this.physics.grounded,
         meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0),
         active.config.sway,
+        ammoState.reloading,
       );
 
       // Fire before recoil.update so onShot kick lerps in this frame (not next).
@@ -1428,19 +1419,19 @@ export class Player {
       this.updateMeleeAttack(delta, input, pointer, projectiles);
 
       active.recoil.update(delta, shooting, ads);
-      this.applyActiveWeaponPose();
-      this.weaponPose?.applyCamera(this.camera);
       const baseRotation = this.getActiveMeshBaseRotation();
+      this.applyActiveWeaponPose(ammoState.reloading ? baseRotation : undefined);
+      this.weaponPose?.applyCamera(this.camera);
       const weaponRotation = this.weaponPose?.getWeaponRotation(baseRotation) ?? baseRotation;
-      active.recoil.applyWeaponVisual(
-        active.mesh,
-        weaponRotation,
-        this.weaponPose?.adsBlend ?? 0,
-      );
-      this.weaponSway?.apply(
-        active.mesh,
-        weaponRotation,
-      );
+      if (!ammoState.reloading) {
+        active.recoil.applyWeaponVisual(
+          active.mesh,
+          weaponRotation,
+          this.weaponPose?.adsBlend ?? 0,
+        );
+        this.weaponSway?.apply(active.mesh, weaponRotation);
+      }
+      // While reloading, applyActiveWeaponPose already wrote position + rotation.
     } else if (this.throwableEquipped) {
       this.stopWeaponAutoFire();
       this.tryStartShieldRecharge(input);
@@ -1674,6 +1665,7 @@ export class Player {
 
     this.stopWeaponAutoFire();
     this.loadout?.getActive()?.ammo.cancelReload();
+    this.stopReloadAudio();
 
     if (this.loadout?.isMeleeEquipped()) {
       if (!this.loadout.tryEquipMelee(false, { bypassCooldown: true })) return;
@@ -1777,6 +1769,7 @@ export class Player {
     if (equip) this.unequipThrowable();
 
     this.stopWeaponAutoFire();
+    this.stopReloadAudio();
     const active = this.loadout.getActive();
     if (!active) return;
 
@@ -1824,6 +1817,7 @@ export class Player {
 
     this.unequipThrowable();
     this.stopWeaponAutoFire();
+    this.stopReloadAudio();
     const active = this.loadout.getActive();
     if (!active) return true;
 
@@ -1984,6 +1978,10 @@ export class Player {
     }
   }
 
+  private stopReloadAudio(): void {
+    this.weaponSounds?.stopReload();
+  }
+
   private shoot(projectiles: ProjectileManager | null): boolean {
     if (!this.camera || !this.loadout || !projectiles) return false;
 
@@ -1993,11 +1991,15 @@ export class Player {
       return false;
     }
 
-    if (active.config.fireMode === 'auto') {
+    if (active.config.fireMode === 'auto' && active.config.sounds?.autoShot) {
       this.localAutoFiring = true;
       this.weaponSounds?.startAutoFire(active.config.sounds);
     } else {
+      // Per-shot SFX (semi, burst, or auto weapons without a loop clip).
       this.weaponSounds?.playSingleShot(active.config.sounds);
+      if (active.config.fireMode === 'auto') {
+        this.localAutoFiring = true;
+      }
     }
 
     active.recoil.onShot(this.weaponPose?.adsBlend ?? 0);
@@ -2005,31 +2007,21 @@ export class Player {
     this.camera.updateMatrixWorld(true);
     active.mesh.updateMatrixWorld(true);
 
-    readMuzzleFirePose(
-      active.mesh,
-      this.camera,
-      this.muzzleOrigin,
-      this.aimDirection,
-    );
-
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    projectMuzzleAimToScreenOffset(
-      active.mesh,
-      this.camera,
-      viewportWidth,
-      viewportHeight,
-      _crosshairAimOffset,
-    );
+    // Gameplay aim = screen center / camera look (includes hierarchy camera recoil).
     readCrosshairWorldRay(
       this.camera,
       viewportWidth,
       viewportHeight,
-      _crosshairAimOffset.x,
-      _crosshairAimOffset.y,
+      0,
+      0,
       this.hitRayOrigin,
       this.hitRayDirection,
     );
+    // Tracer / flash start at the true muzzle (no forward nudge — flash sits on the barrel tip).
+    readWeaponMuzzleWorldPosition(active.mesh, this.muzzleOrigin);
+    this.aimDirection.copy(this.hitRayDirection);
 
     const feet = this.object.position;
     this.shooterWorldPos.set(
@@ -2050,8 +2042,10 @@ export class Player {
       shooterWorldPos: this.shooterWorldPos,
       weaponId: active.config.id,
       maxHitDistance: active.config.maxHitDistance,
-      muzzleFlash: active.config.fireMode === 'auto' ? undefined : active.config.muzzleFlash,
+      muzzleFlash: active.config.muzzleFlash,
       boltColors: active.config.muzzleFlash?.colors,
+      projectileStyle: active.config.projectileStyle,
+      projectileGravity: active.config.projectileGravity,
       },
     );
     this.onShoot?.(this.muzzleOrigin, this.aimDirection);
@@ -2077,6 +2071,15 @@ export class Player {
     } else {
       this.yawRecoilRig.rotation.set(0, 0, 0);
       this.pitchRecoilRig.rotation.set(0, 0, 0);
+    }
+    const active = this.loadout?.getActive();
+    if (
+      active &&
+      !this.throwableEquipped &&
+      active.config.fireMode !== 'melee' &&
+      !this.weaponPose?.isReloading
+    ) {
+      this.weaponSway?.applyCamera(this.yawRecoilRig, this.pitchRecoilRig);
     }
     if (this.grenadeThrowKick.isActive()) {
       this.grenadeThrowKick.applyAdditive(this.yawRecoilRig, this.pitchRecoilRig);
@@ -2107,7 +2110,7 @@ export class Player {
     applyLookPitch(this.pitchRig, lookPitch);
   }
 
-  private applyActiveWeaponPose(): void {
+  private applyActiveWeaponPose(baseRotation?: THREE.Euler): void {
     if (!this.loadout) return;
 
     const active = this.loadout.getActive();
@@ -2133,7 +2136,7 @@ export class Player {
       }
     }
 
-    this.weaponPose?.apply(active.mesh, wallPullback);
+    this.weaponPose?.apply(active.mesh, wallPullback, baseRotation);
   }
 
   private getActiveMeshBaseRotation(): THREE.Euler {

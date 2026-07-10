@@ -6,6 +6,7 @@ export const WEAPON_DAMAGE: Record<WeaponId, number> = {
   pistol: 11,
   sniper_rifle: 90,
   root_bio_carbine: 8,
+  bio_liquid_rifle: 16,
   katana: 44,
 };
 
@@ -14,6 +15,7 @@ export const WEAPON_RELOAD_SEC: Record<WeaponId, number> = {
   pistol: 1.5,
   sniper_rifle: 2.75,
   root_bio_carbine: 1.9,
+  bio_liquid_rifle: 1.9,
   katana: 0,
 };
 
@@ -22,6 +24,7 @@ export const WEAPON_MAX_HIT_DISTANCE: Record<WeaponId, number> = {
   pistol: 75,
   sniper_rifle: 220,
   root_bio_carbine: 80,
+  bio_liquid_rifle: 70,
   katana: 2.8,
 };
 
@@ -30,6 +33,7 @@ export const WEAPON_FIRE_MODE: Record<WeaponId, WeaponFireMode> = {
   pistol: 'semi',
   sniper_rifle: 'semi',
   root_bio_carbine: 'burst',
+  bio_liquid_rifle: 'auto',
   katana: 'melee',
 };
 

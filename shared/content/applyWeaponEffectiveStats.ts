@@ -1,65 +1,72 @@
 import type { RecoilConfig, WeaponConfig } from './weaponConfig.js';
 import {
   SHIPPED_WEAPON_BASE_STATS,
-  WEAPON_UPGRADE_STEP_BY_STAT,
+  resolveEffectiveWeaponStats,
+  zeroUpgradeLevels,
   type WeaponEffectiveStats,
 } from './weaponUpgrades.js';
 import type { WeaponId } from './weaponIds.js';
 
+/**
+ * Armory recoil stat that maps to 1.0× camera pattern amplitude.
+ * Higher recoil → stronger pitch/yaw kicks on the aim rigs.
+ */
+export const RECOIL_STAT_REFERENCE = 50;
+
 /** Fully upgraded / near-zero Armory recoil still keeps a readable kick. */
-const MIN_RECOIL_SCALE = 0.25;
-/** Armory recoil 100 vs a mid catalog base (~55) → ~1.8×; allow up to 2×. */
-const MAX_RECOIL_SCALE = 2;
+const MIN_RECOIL_CAMERA_SCALE = 0.2;
+/** Recoil 100 / reference 50 → 2×; allow a little headroom for hot loads. */
+const MAX_RECOIL_CAMERA_SCALE = 2.4;
 
 /**
- * Catalog base recoil intensity (0–100) for a weapon id.
- * Falls back to reconstructing from effective stats when unknown.
+ * Map Armory recoil (0–100) → camera pattern multiplier.
+ * Absolute across weapons: 70 recoil kicks harder than 35 on the same pattern shape.
  */
-function catalogBaseRecoil(weaponId: string, stats: WeaponEffectiveStats): number {
-  if (weaponId in SHIPPED_WEAPON_BASE_STATS) {
-    const shipped = SHIPPED_WEAPON_BASE_STATS[weaponId as WeaponId].recoil;
-    if (shipped > 0) return shipped;
-  }
+export function recoilCameraKickScale(recoilStat: number): number {
+  if (!Number.isFinite(recoilStat) || recoilStat <= 0) return 0;
   return Math.max(
-    1,
-    stats.recoil + stats.levels.recoil * WEAPON_UPGRADE_STEP_BY_STAT.recoil,
+    MIN_RECOIL_CAMERA_SCALE,
+    Math.min(MAX_RECOIL_CAMERA_SCALE, recoilStat / RECOIL_STAT_REFERENCE),
   );
 }
 
-/**
- * Linear Armory → pattern scale.
- * pistol stock 55 → 1.0; recoil 100 → ~1.82; recoil 0 → 0.25 (floor).
- */
+/** @deprecated Use recoilCameraKickScale — kept for callers that passed weapon id. */
 export function recoilPatternScale(
-  weaponId: string,
+  _weaponId: string,
   stats: WeaponEffectiveStats,
 ): number {
-  const base = catalogBaseRecoil(weaponId, stats);
-  if (base <= 0) return 1;
-  return Math.max(MIN_RECOIL_SCALE, Math.min(MAX_RECOIL_SCALE, stats.recoil / base));
+  return recoilCameraKickScale(stats.recoil);
 }
 
 function scaleRecoilConfig(recoil: RecoilConfig, scale: number): RecoilConfig {
-  // Amplitude only — recovery timing stays on the catalog feel.
+  // Pattern shape stays authored; cameraKickScale drives pitch/yaw amplitude in WeaponRecoil.
+  // visualKick is scaled here so viewmodel punch tracks the same Armory recoil stat.
   return {
     ...recoil,
-    pattern: recoil.pattern.map((kick) => ({
-      pitch: kick.pitch * scale,
-      yaw: kick.yaw * scale,
-    })),
+    cameraKickScale: scale,
     visualKick: recoil.visualKick * scale,
   };
+}
+
+/** Catalog stock effective stats (level 0) — used when Armory data is missing. */
+export function shippedEffectiveStats(weaponId: WeaponId): WeaponEffectiveStats {
+  return resolveEffectiveWeaponStats(
+    SHIPPED_WEAPON_BASE_STATS[weaponId],
+    zeroUpgradeLevels(),
+  );
 }
 
 /**
  * Overlay Armory effective stats onto a base weapon config for match play.
  * Always pass the unmodified catalog config — do not chain on an already-scaled config.
+ *
+ * Recoil: Armory recoil stat scales the camera pitch/yaw pattern (and viewmodel kick).
  */
 export function withEffectiveWeaponStats(
   config: WeaponConfig,
   stats: WeaponEffectiveStats,
 ): WeaponConfig {
-  const recoilScale = recoilPatternScale(config.id, stats);
+  const recoilScale = recoilCameraKickScale(stats.recoil);
 
   return {
     ...config,

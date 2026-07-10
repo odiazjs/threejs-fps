@@ -23,7 +23,7 @@ export interface WeaponViewConfig {
 }
 
 export interface RecoilKick {
-  /** Radians added to pitch per shot (negative kicks the view upward). */
+  /** Radians added to pitch per shot (positive kicks the view upward on the aim rig). */
   readonly pitch: number;
   /** Radians added to yaw per shot. */
   readonly yaw: number;
@@ -45,6 +45,11 @@ export interface RecoilConfig {
   readonly adsMultiplier: number;
   /** Extra scale on horizontal kick (defaults to 1). */
   readonly yawScale?: number;
+  /**
+   * Multiplier on pattern pitch/yaw for camera aim kick.
+   * Set from Armory recoil via `withEffectiveWeaponStats` (recoilStat / 50).
+   */
+  readonly cameraKickScale?: number;
   /** Peak visual weapon kick on each shot (0–1+). */
   readonly visualKick: number;
   /** How quickly the visual kick settles. */
@@ -93,10 +98,18 @@ export interface MuzzleFlashConfig {
   readonly glowLayers?: 0 | 1 | 2 | 3;
   /** Point sprite size multiplier on `coreScale` (default 1.8). */
   readonly particleSizeScale?: number;
+  /**
+   * Extra downward acceleration on muzzle sparks (local +Y is up in flash space).
+   * Higher values make ejecta feel heavier / more liquid.
+   */
+  readonly particleFall?: number;
 }
 
 export interface WeaponSwayConfig {
-  /** Scales all sway axes for this weapon (default 1). */
+  /**
+   * Scales viewmodel + camera idle/walk sway for this weapon (default 1).
+   * Higher = more breathing / bob (e.g. sniper); lower = steadier (e.g. carbine).
+   */
   readonly intensity?: number;
 }
 
@@ -143,6 +156,16 @@ export interface WeaponConfig {
   readonly adsTime: number;
   /** World units per second for hitscan-style projectile travel. */
   readonly projectileSpeed: number;
+  /**
+   * Visual projectile look. `bioLiquid` = glowing viscous blobs with trail.
+   * Defaults to a standard plasma bolt.
+   */
+  readonly projectileStyle?: 'bolt' | 'bioLiquid';
+  /**
+   * Downward acceleration (world units / s²) applied to the tracer pose for weight/arc.
+   * Hit resolution stays on the aim ray; only the flying visual sags.
+   */
+  readonly projectileGravity?: number;
   readonly view: WeaponViewConfig;
   readonly recoil: RecoilConfig;
   readonly muzzleFlash: MuzzleFlashConfig;

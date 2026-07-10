@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PICKABLE_WEAPON_CONFIGS } from '../content/weaponConfig';
 import { ShieldBreakFx } from '../effects/ShieldBreakFx';
 import { getBoltCoreGeometry, getBoltCoreMaterial, getBoltGlowGeometry, getBoltGlowMaterial } from './boltVisualShared';
+import { touchBioLiquidBoltAssets } from './bioLiquidBoltShared';
 import { prewarmHitSplashesGpu, warmHitSplashPool } from './hitSplashPool';
 import { MuzzleFlash } from './MuzzleFlash';
 
@@ -13,6 +14,7 @@ function touchBoltVisualAssets(): void {
   getBoltGlowGeometry();
   getBoltCoreMaterial();
   getBoltGlowMaterial();
+  touchBioLiquidBoltAssets();
 }
 
 /**

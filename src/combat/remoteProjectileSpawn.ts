@@ -17,6 +17,8 @@ export interface RemoteProjectileSpawn {
   weaponId: WeaponId;
   boltColors?: readonly [number, number, number];
   muzzleFlash?: MuzzleFlashConfig;
+  projectileStyle?: 'bolt' | 'bioLiquid';
+  projectileGravity?: number;
 }
 
 /** Build dummy tracer spawn data for a remote player's shot. */
@@ -48,8 +50,8 @@ export function buildRemoteProjectileSpawn(
     },
     weaponId,
     boltColors: weaponConfig?.muzzleFlash?.colors,
-    // Remote observers get a per-shot flash even on auto weapons (local FP skips
-    // those to avoid view clutter).
     muzzleFlash: weaponConfig?.muzzleFlash,
+    projectileStyle: weaponConfig?.projectileStyle,
+    projectileGravity: weaponConfig?.projectileGravity,
   };
 }

@@ -48,7 +48,7 @@ export function readCrosshairWorldRay(
   direction.subVectors(_ndcFar, _ndcNear).normalize();
 }
 
-/** World-space bore direction from the muzzle (includes sway / visual recoil). */
+/** World-space bore direction from the muzzle (includes sway / visual recoil). Cosmetic only for FP aim. */
 export function readMuzzleWorldAimDirection(
   weapon: THREE.Object3D,
   direction: THREE.Vector3,
@@ -60,8 +60,8 @@ export function readMuzzleWorldAimDirection(
 }
 
 /**
- * Fire from the muzzle along the bore (matches swayed crosshair placement).
- * Call after `weapon.updateMatrixWorld(true)`.
+ * Fire from the muzzle along the bore.
+ * Prefer camera-center hit rays for gameplay; keep this for bore-aligned VFX helpers.
  */
 export function readMuzzleFirePose(
   weapon: THREE.Object3D,
@@ -80,7 +80,10 @@ export interface ScreenOffset2D {
   y: number;
 }
 
-/** Pixel offset from screen center for where the muzzle bore is pointing (sway / recoil only). */
+/**
+ * Pixel offset from screen center for where the muzzle bore is pointing.
+ * Not used for gameplay aim (crosshair stays center); retained for debug / tooling.
+ */
 export function projectMuzzleAimToScreenOffset(
   weapon: THREE.Object3D,
   camera: THREE.Camera,

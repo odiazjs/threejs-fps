@@ -32,7 +32,7 @@ const FIRING_RANGE_WEAPON_LOADOUT: readonly WeaponId[] = [
   'sniper_rifle',
   'sniper_rifle',
   'plasma_rifle',
-  'plasma_rifle',
+  'bio_liquid_rifle',
 ];
 
 let crateSurfaces: FiringRangeCrateTop[] = [];

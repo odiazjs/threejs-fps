@@ -196,6 +196,15 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     adsTime: 0.19,
     fireRate: 14,
   },
+  bio_liquid_rifle: {
+    damage: 16,
+    recoil: 80,
+    range: 70,
+    magazineSize: 18,
+    reloadTime: 1.9,
+    adsTime: 0.22,
+    fireRate: 7,
+  },
   sniper_rifle: {
     damage: 90,
     recoil: 85,

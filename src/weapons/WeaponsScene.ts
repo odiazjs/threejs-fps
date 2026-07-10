@@ -9,6 +9,7 @@ const SHOWCASE_WEAPON_IDS: WeaponId[] = [
   'pistol',
   'plasma_rifle',
   'root_bio_carbine',
+  'bio_liquid_rifle',
   'sniper_rifle',
   'katana',
 ];

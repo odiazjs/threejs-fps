@@ -14,21 +14,23 @@ export type { WeaponConfig };
 const SNIPER_PROJECTILE_SPEED = 675;
 
 function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
+  // Authored for RECOIL_STAT_REFERENCE (50). Runtime: cameraKickScale = recoilStat / 50.
+  // Positive pitch = camera kicks upward (aim rig X).
   const pattern: RecoilKick[] = [];
 
   for (let i = 0; i < 30; i++) {
     const t = i / 29;
-    const pitch = (0.013 + t * 0.015);
+    const pitch = 0.02 + t * 0.024;
 
     let yaw: number;
     if (i < 7) {
-      yaw = 0.0045;
+      yaw = 0.006;
     } else if (i < 15) {
-      yaw = -0.0055;
+      yaw = -0.0075;
     } else if (i < 23) {
-      yaw = 0.005;
+      yaw = 0.0065;
     } else {
-      yaw = -0.004;
+      yaw = -0.0055;
     }
 
     pattern.push({ pitch, yaw });
@@ -40,16 +42,16 @@ function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
 /** Semi-auto sidearm: heavy single-shot kick. */
 function buildPistolRecoilPattern(): RecoilKick[] {
   return Array.from({ length: 12 }, (_, i) => ({
-    pitch: 0.078,
-    yaw: (i % 2 === 0 ? 1 : -1) * 0.012,
+    pitch: 0.085,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.014,
   }));
 }
 
 /** Bolt-action sniper: punishing single-shot kick. */
 function buildSniperRecoilPattern(): RecoilKick[] {
   return Array.from({ length: 8 }, (_, i) => ({
-    pitch: 0.168,
-    yaw: (i % 2 === 0 ? 1 : -1) * 0.038,
+    pitch: 0.12,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.028,
   }));
 }
 
@@ -103,14 +105,14 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     colors: [MAP_PALETTE.neonCyan, 0x55eeff, 0x00b8ff],
     lightIntensity: 2.0,
     lightDistance: 3.5,
-    glowLayers: 0,
+    glowLayers: 2,
     particleSizeScale: 1.15,
   },
   sway: { intensity: 0.95 },
   sounds: {
     autoShot: '/sounds/rifle_auto_3.wav',
     reload: '/sounds/rifle_reload_1.wav',
-    volume: 0.5,
+    volume: 0.2,
   },
 };
 
@@ -170,7 +172,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: '/sounds/pistol_8.wav',
     reload: '/sounds/pistol_reload_1.wav',
-    volume: 0.5,
+    volume: 0.2,
   },
 };
 
@@ -218,7 +220,7 @@ export const KATANA_CONFIG: WeaponConfig = {
   sway: { intensity: 1.35 },
   sounds: {
     singleShot: '/sounds/katana_melee_sound_1.wav',
-    volume: 0.5,
+    volume: 0.2,
   },
 };
 
@@ -281,7 +283,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: '/sounds/sniper_3.wav',
     reload: '/sounds/sniper_reload_1.wav',
-    volume: 0.5,
+    volume: 0.2,
   },
 };
 
@@ -302,7 +304,7 @@ export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.root_bio_carbine,
   view: {
     hip: { x: 0.15, y: -0.25, z: -0.35 },
-    ads: { x: 0, y: -0.195, z: -0.22 },
+    ads: { x: 0, y: -0.188, z: -0.22 },
     adsFov: 58,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -345,7 +347,78 @@ export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: '/sounds/root_bio_carbine.wav',
     reload: '/sounds/root_bio_carbine_reload.wav',
-    volume: 0.5,
+    volume: 0.2,
+  },
+};
+
+function buildBioLiquidRifleRecoilPattern(): RecoilKick[] {
+  // Same climb shape as plasma — higher Armory recoil (70 vs 35) supplies the extra kick.
+  return buildPlasmaRifleRecoilPattern();
+}
+
+/** Viscous bio-energy auto rifle — heavier hit and kick than the plasma rifle. */
+export const BIO_LIQUID_RIFLE_CONFIG: WeaponConfig = {
+  id: 'bio_liquid_rifle',
+  name: 'Bio-Liquid Rifle',
+  clipSize: SHIPPED_WEAPON_BASE_STATS.bio_liquid_rifle.magazineSize,
+  reloadSec: WEAPON_RELOAD_SEC.bio_liquid_rifle,
+  reserveClips: 3,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.bio_liquid_rifle.fireRate,
+  fireMode: 'auto',
+  damage: WEAPON_DAMAGE.bio_liquid_rifle,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.bio_liquid_rifle.adsTime,
+  projectileSpeed: 290,
+  projectileStyle: 'bioLiquid',
+  projectileGravity: 28,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.bio_liquid_rifle,
+  view: {
+    hip: { x: 0.15, y: -0.25, z: -0.35 },
+    ads: { x: 0, y: -0.195, z: -0.22 },
+    adsFov: 60,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
+  },
+  recoil: {
+    pattern: buildBioLiquidRifleRecoilPattern(),
+    recoverySpeed: 7.5,
+    recoveryDelaySec: 0.1,
+    aimSmoothSpeed: 16,
+    adsMultiplier: 0.55,
+    yawScale: 1.15,
+    visualKick: 0.78,
+    visualRecoverySpeed: 11,
+    adsVisualMultiplier: 0.5,
+    visualStyle: {
+      rotX: 0.42,
+      rotYFromYaw: -0.16,
+      rotZ: -0.14,
+      posXFromYaw: -0.04,
+      posY: -0.04,
+      posZ: 0,
+      kickBack: 0.22,
+      kickUp: -0.028,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.14,
+    duration: 0.1,
+    particleCount: 14,
+    particleSpeed: 8,
+    particleSpread: 0.85,
+    colors: [0xb8ff3a, 0x5cff7a, 0x1faa4a],
+    lightIntensity: 2.2,
+    lightDistance: 3.2,
+    glowScale: 0.55,
+    glowLayers: 2,
+    particleSizeScale: 1.35,
+    particleFall: 22,
+  },
+  sway: { intensity: 1.05 },
+  sounds: {
+    singleShot: '/sounds/bio_liquid_rifle.wav',
+    reload: '/sounds/bio_liquid_rifle_reload.wav',
+    volume: 0.28,
   },
 };
 
@@ -354,6 +427,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   pistol: PISTOL_CONFIG,
   sniper_rifle: SNIPER_RIFLE_CONFIG,
   root_bio_carbine: ROOT_BIO_CARBINE_CONFIG,
+  bio_liquid_rifle: BIO_LIQUID_RIFLE_CONFIG,
   katana: KATANA_CONFIG,
 };
 
@@ -363,6 +437,7 @@ export const PICKABLE_WEAPON_CONFIGS = [
   PLASMA_RIFLE_CONFIG,
   SNIPER_RIFLE_CONFIG,
   ROOT_BIO_CARBINE_CONFIG,
+  BIO_LIQUID_RIFLE_CONFIG,
 ] as const;
 
 /** Default numbered-slot fill order (keys 1–3). */

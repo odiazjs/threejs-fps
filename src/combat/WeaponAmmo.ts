@@ -52,6 +52,7 @@ export class WeaponAmmo {
     const canReload = this.canReload();
     const outOfAmmo =
       this.clip <= 0 && !canReload && !this.reloading;
+    const safeReloadSec = Math.max(reloadSec, 0.001);
 
     return {
       clip: this.clip,
@@ -59,7 +60,7 @@ export class WeaponAmmo {
       reserveRounds: this.reserveRounds,
       reloading: this.reloading,
       reloadProgress: this.reloading
-        ? 1 - this.reloadRemaining / reloadSec
+        ? 1 - this.reloadRemaining / safeReloadSec
         : 0,
       outOfAmmo,
       canReload,
@@ -103,7 +104,7 @@ export class WeaponAmmo {
 
     this.reloadRoundsNeeded = Math.min(this.roundsToFillClip(), this.reserveRounds);
     this.reloading = true;
-    this.reloadRemaining = this.config.reloadSec;
+    this.reloadRemaining = Math.max(this.config.reloadSec, 0.05);
     return true;
   }
 

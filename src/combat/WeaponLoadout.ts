@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { WeaponConfig } from '../../shared/content/weaponConfig';
 import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
-import { withEffectiveWeaponStats } from '../../shared/content/applyWeaponEffectiveStats';
+import { withEffectiveWeaponStats, shippedEffectiveStats } from '../../shared/content/applyWeaponEffectiveStats';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import { isPickableWeaponId, isWeaponId, LOADOUT_SIZE, MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import type { LoadoutSlotSnapshot } from '../../shared/loadout/loadoutSlots';
@@ -119,9 +119,11 @@ export class WeaponSlot {
 
   constructor(config: WeaponConfig) {
     this.baseConfig = config;
-    this.config = config;
-    this.ammo = new WeaponAmmo(config);
-    this.recoil = new WeaponRecoil(config.recoil);
+    // Apply catalog recoil→camera scale immediately so stock Armory recoil drives kick
+    // even before match upgrade sync (and as a fallback if that sync fails).
+    this.config = withEffectiveWeaponStats(config, shippedEffectiveStats(config.id));
+    this.ammo = new WeaponAmmo(this.config);
+    this.recoil = new WeaponRecoil(this.config.recoil);
     this.mesh = createWeaponMesh(config.id);
     this.mesh.visible = false;
   }

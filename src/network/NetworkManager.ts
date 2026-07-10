@@ -117,7 +117,26 @@ export class NetworkManager {
         shooterWorldPos: _shooterWorldPos,
         weaponId: built.weaponId,
         muzzleFlash: built.muzzleFlash,
+        projectileStyle: built.projectileStyle,
+        projectileGravity: built.projectileGravity,
       });
+
+      // Auto weapons without a loop clip (e.g. bio-liquid) play one SFX per tracer.
+      const remoteSounds = getWeaponConfig(built.weaponId)?.sounds;
+      if (
+        spawn.shooterId &&
+        remoteSounds &&
+        !remoteSounds.autoShot &&
+        remoteSounds.singleShot
+      ) {
+        _muzzlePos.copy(built.params.visualOrigin);
+        this.weaponSounds?.playRemoteShot(
+          spawn.shooterId,
+          remoteSounds,
+          'single',
+          _muzzlePos,
+        );
+      }
     });
     this.roomClient.onWeaponShotSound((shot) => {
       if (shot.phase === 'autoStop') {

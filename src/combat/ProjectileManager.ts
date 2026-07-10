@@ -114,6 +114,8 @@ export class ProjectileManager {
       maxHitDistance?: number;
       muzzleFlash?: MuzzleFlashConfig;
       boltColors?: readonly [number, number, number];
+      projectileStyle?: 'bolt' | 'bioLiquid';
+      projectileGravity?: number;
     },
   ): void {
     const visualOnly = options?.visualOnly ?? !(options?.canHitPlayers ?? false);
@@ -164,7 +166,11 @@ export class ProjectileManager {
     );
 
     const projectile = this.acquireProjectile();
-    projectile.init(params, resolved, { colors: options?.boltColors });
+    projectile.init(params, resolved, {
+      colors: options?.boltColors,
+      style: options?.projectileStyle,
+      gravity: options?.projectileGravity,
+    });
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);
     this.meta.set(projectile, {

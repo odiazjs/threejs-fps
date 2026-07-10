@@ -12,6 +12,9 @@ interface SwayProfile {
 const SWAY_IDLE: SwayProfile = { pos: 0.002, rot: 0.0028, freq: 0.42 };
 const SWAY_WALK: SwayProfile = { pos: 0.0055, rot: 0.0065, freq: 1.15 };
 
+/** Camera rotational sway relative to weapon `rotAmp` (affects aim — shots follow camera). */
+const CAMERA_SWAY_SCALE = 0.9;
+
 const SWAY_BLEND_SPEED = 12;
 const CARRY_BLEND_IN_SPEED = 14;
 const CARRY_BLEND_OUT_SPEED = 9;
@@ -43,6 +46,7 @@ const _targetQuat = new THREE.Quaternion();
 
 /**
  * Idle / walk weapon sway plus sprint high-carry pose when not firing.
+ * Camera sway uses the same phase / weapon intensity so hipfire and ADS breathe with the gun.
  */
 export class WeaponSway {
   private phase = 0;
@@ -85,9 +89,12 @@ export class WeaponSway {
     grounded: boolean,
     adsBlend: number,
     config?: WeaponSwayConfig,
+    reloading = false,
   ): void {
     const weaponScale = config?.intensity ?? 1;
-    const walkActive = grounded && walking && !sprinting;
+    // Keep reload pose readable — damp locomotion sway while mag is out.
+    const reloadDamp = reloading ? 0.12 : 1;
+    const walkActive = grounded && walking && !sprinting && !reloading;
 
     if (grounded && sprinting) {
       this.carryGroundedGrace = CARRY_GROUNDED_GRACE_SEC;
@@ -118,7 +125,8 @@ export class WeaponSway {
       (grounded || this.carryGroundedGrace > 0)
       && sprinting
       && (this.carryShootingGrace > 0 || !shooting)
-      && !this.adsBlocksCarry;
+      && !this.adsBlocksCarry
+      && !reloading;
 
     const walkStep = 1 - Math.exp(-SWAY_BLEND_SPEED * delta);
     const carryStep = 1 - Math.exp(
@@ -127,12 +135,19 @@ export class WeaponSway {
 
     this.walkBlend += ((walkActive ? 1 : 0) - this.walkBlend) * walkStep;
     this.carryBlend += ((carryRaw ? 1 : 0) - this.carryBlend) * carryStep;
+    if (reloading) {
+      // Hard-cut sprint carry so reload pose isn't lerped into the high-ready.
+      this.carryBlend = 0;
+      this.carryPhase = 0;
+    }
 
     const locomotionBlend = this.walkBlend * (1 - this.carryBlend);
     const idleWeight = (1 - locomotionBlend) * (1 - this.carryBlend);
 
-    this.posAmp = (SWAY_IDLE.pos * idleWeight + SWAY_WALK.pos * locomotionBlend) * weaponScale;
-    this.rotAmp = (SWAY_IDLE.rot * idleWeight + SWAY_WALK.rot * locomotionBlend) * weaponScale;
+    this.posAmp =
+      (SWAY_IDLE.pos * idleWeight + SWAY_WALK.pos * locomotionBlend) * weaponScale * reloadDamp;
+    this.rotAmp =
+      (SWAY_IDLE.rot * idleWeight + SWAY_WALK.rot * locomotionBlend) * weaponScale * reloadDamp;
     this.freq = SWAY_IDLE.freq * idleWeight + SWAY_WALK.freq * locomotionBlend;
 
     this.phase += delta * this.freq;
@@ -183,5 +198,19 @@ export class WeaponSway {
     weapon.rotation.x += Math.sin(t * 0.53 + 0.4) * r * 0.35;
     weapon.rotation.y += Math.cos(t * 0.37) * r * 0.28;
     weapon.rotation.z += Math.sin(t * 0.88) * r;
+  }
+
+  /**
+   * Additive camera sway on the recoil rigs (call after recoil `applyAim`).
+   * Uses the same phase / intensity / ADS damp as the viewmodel sway.
+   */
+  applyCamera(yawRig: THREE.Object3D, pitchRig: THREE.Object3D): void {
+    const swayScale = (1 - this.carryBlend) * this.adsDamp;
+    const r = this.rotAmp * swayScale * CAMERA_SWAY_SCALE;
+    if (r <= 0) return;
+
+    const t = this.phase * TAU;
+    yawRig.rotation.y += Math.cos(t * 0.37) * r * 0.55;
+    pitchRig.rotation.x += Math.sin(t * 0.53 + 0.4) * r * 0.7;
   }
 }

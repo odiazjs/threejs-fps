@@ -41,21 +41,23 @@ function addSoundUrl(urls: Set<string>, clip: string | WeaponSoundClip | undefin
 }
 
 /** Keep reload SFX from becoming unrecognizably fast/slow. */
-const MIN_RELOAD_PLAYBACK_RATE = 0.45;
-const MAX_RELOAD_PLAYBACK_RATE = 2.5;
+const MIN_RELOAD_PLAYBACK_RATE = 0.12;
+const MAX_RELOAD_PLAYBACK_RATE = 6;
 
 /**
  * Stretch/compress the reload clip so its audible length matches `reloadSec`
  * (Armory reloadTime / catalog reload duration).
  */
-function reloadPlaybackRate(buffer: AudioBuffer | undefined, reloadSec: number | undefined): number {
-  if (!buffer || !Number.isFinite(reloadSec) || (reloadSec ?? 0) <= 0.05) return 1;
+function reloadPlaybackRate(
+  buffer: AudioBuffer | undefined,
+  reloadSec: number | undefined,
+): number {
+  const sec = Number(reloadSec);
+  if (!buffer || !Number.isFinite(sec) || sec <= 0.05) return 1;
   const duration = buffer.duration;
   if (!(duration > 0.05)) return 1;
-  return Math.min(
-    MAX_RELOAD_PLAYBACK_RATE,
-    Math.max(MIN_RELOAD_PLAYBACK_RATE, duration / (reloadSec as number)),
-  );
+  const rate = duration / sec;
+  return Math.min(MAX_RELOAD_PLAYBACK_RATE, Math.max(MIN_RELOAD_PLAYBACK_RATE, rate));
 }
 
 function findAudibleBounds(data: Float32Array, sampleRate: number): { start: number; end: number } {
@@ -148,6 +150,7 @@ export class WeaponSoundService {
   private autoSource: AudioBufferSourceNode | null = null;
   private autoGain: GainNode | null = null;
   private activeAutoUrl: string | null = null;
+  private reloadSource: AudioBufferSourceNode | null = null;
   private readonly remoteAutoFire = new Map<string, RemoteAutoFireNodes>();
   private outOfAmmoConfig: { src: string; volume: number } | null = null;
   private spatialConfig: WeaponSpatialAudioConfig | null = null;
@@ -265,7 +268,39 @@ export class WeaponSoundService {
     const clip = resolveSoundClip(sounds.reload, defaultVolume);
     if (!clip) return;
 
-    this.playOneShot(clip.url, clip.volume, reloadPlaybackRate(this.buffers.get(clip.url)?.buffer, reloadSec));
+    this.stopReload();
+    this.ensureContext();
+    const loaded = this.buffers.get(clip.url);
+    if (!loaded) {
+      // Still attempt play after ensure — preload may race on first reload.
+      void this.preload([clip.url]).then(() => {
+        const ready = this.buffers.get(clip.url);
+        if (!ready) return;
+        this.playReloadOneShot(
+          clip.url,
+          clip.volume,
+          reloadPlaybackRate(ready.buffer, reloadSec),
+        );
+      });
+      return;
+    }
+
+    this.playReloadOneShot(
+      clip.url,
+      clip.volume,
+      reloadPlaybackRate(loaded.buffer, reloadSec),
+    );
+  }
+
+  stopReload(): void {
+    if (!this.reloadSource) return;
+    try {
+      this.reloadSource.stop();
+    } catch {
+      // Already stopped.
+    }
+    this.reloadSource.disconnect();
+    this.reloadSource = null;
   }
 
   updateListener(camera: THREE.Camera): void {
@@ -317,6 +352,10 @@ export class WeaponSoundService {
     if (!sounds || !this.spatialConfig) return;
 
     if (phase === 'autoStart') {
+      const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+      // Looping auto only when a dedicated auto clip exists; otherwise remotes
+      // hear per-shot SFX from projectile spawns.
+      if (!resolveSoundClip(sounds.autoShot, defaultVolume)) return;
       this.startRemoteAutoFire(sessionId, sounds, position);
       return;
     }
@@ -430,6 +469,34 @@ export class WeaponSoundService {
     return panner;
   }
 
+  private playReloadOneShot(url: string, volume: number, playbackRate: number): void {
+    this.ensureContext();
+    if (!this.context || !this.masterGain) return;
+
+    const loaded = this.buffers.get(url);
+    if (!loaded) return;
+
+    if (this.context.state === 'suspended') {
+      void this.context.resume();
+    }
+
+    const source = this.context.createBufferSource();
+    source.buffer = loaded.buffer;
+    const rate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+    // `.value` is the reliable path across browsers; setValueAtTime alone can no-op.
+    source.playbackRate.value = rate;
+
+    const gain = this.context.createGain();
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(this.masterGain);
+    source.onended = () => {
+      if (this.reloadSource === source) this.reloadSource = null;
+    };
+    source.start(0);
+    this.reloadSource = source;
+  }
+
   private playOneShot(url: string, volume: number, playbackRate = 1): void {
     this.ensureContext();
     if (!this.context || !this.masterGain) return;
@@ -443,7 +510,8 @@ export class WeaponSoundService {
 
     const source = this.context.createBufferSource();
     source.buffer = loaded.buffer;
-    source.playbackRate.value = playbackRate;
+    const rate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
+    source.playbackRate.value = rate;
 
     const gain = this.context.createGain();
     gain.gain.value = volume;

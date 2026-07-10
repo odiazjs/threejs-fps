@@ -59,8 +59,13 @@ export class WeaponRecoil {
 
     const mult = THREE.MathUtils.lerp(1, this.config.adsMultiplier, adsBlend);
     const yawScale = this.config.yawScale ?? 1;
-    this.targetPitch += kick.pitch * mult;
-    this.targetYaw += kick.yaw * mult * yawScale;
+    // Armory recoil → cameraKickScale (recoilStat / 50). Default 1 if stats not applied yet.
+    const cameraScale =
+      this.config.cameraKickScale !== undefined && Number.isFinite(this.config.cameraKickScale)
+        ? this.config.cameraKickScale
+        : 1;
+    this.targetPitch += kick.pitch * mult * cameraScale;
+    this.targetYaw += kick.yaw * mult * yawScale * cameraScale;
 
     // Visual punch — allow stacking a bit so rapid fire still reads.
     this.visualImpulse = Math.min(1.35, this.visualImpulse + 0.7);
