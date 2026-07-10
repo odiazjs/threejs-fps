@@ -34,6 +34,15 @@ export const CURRENT_WEAPON_CATALOG = [
     baseStats: SHIPPED_WEAPON_BASE_STATS.root_bio_carbine,
   },
   {
+    id: 'bio_liquid_rifle',
+    displayName: 'Bio-Liquid Rifle',
+    kind: 'gun' as const,
+    loadoutEligible: true,
+    enabled: true,
+    sortOrder: 26,
+    baseStats: SHIPPED_WEAPON_BASE_STATS.bio_liquid_rifle,
+  },
+  {
     id: 'sniper_rifle',
     displayName: 'Sniper Rifle',
     kind: 'gun' as const,
