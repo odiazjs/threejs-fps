@@ -1378,7 +1378,7 @@ export class Player {
           !this.weaponPose?.isSwitching() &&
           active.ammo.tryReload()
         ) {
-          this.weaponSounds?.playReload(active.config.sounds);
+          this.weaponSounds?.playReload(active.config.sounds, active.config.reloadSec);
           const weaponId = this.loadout.getActiveWeaponId();
           if (weaponId) this.onReloadNetwork?.(weaponId);
         }

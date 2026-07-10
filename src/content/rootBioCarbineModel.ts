@@ -10,9 +10,9 @@ import {
 const ROOT_BIO_CARBINE_MODEL_FILE = 'lod_root_bio_carbine.fbx';
 /**
  * Barrel length in mesh space before WeaponLoadout's 0.1 viewmodel scale.
- * Slightly shorter than the plasma rifle (carbine proportions).
+ * +25% vs base carbine fit so local + remote read larger.
  */
-const ROOT_BIO_CARBINE_MESH_LENGTH = 3.8;
+const ROOT_BIO_CARBINE_MESH_LENGTH = 3.8 * 1.15;
 /** FBX models often face +Z; game weapons point along +X. */
 const ROOT_BIO_CARBINE_MODEL_YAW = -Math.PI / 2;
 

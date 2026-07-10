@@ -110,7 +110,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   sounds: {
     autoShot: '/sounds/rifle_auto_3.wav',
     reload: '/sounds/rifle_reload_1.wav',
-    volume: 0.1,
+    volume: 0.5,
   },
 };
 
@@ -170,7 +170,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: '/sounds/pistol_8.wav',
     reload: '/sounds/pistol_reload_1.wav',
-    volume: 0.15,
+    volume: 0.5,
   },
 };
 
@@ -218,7 +218,7 @@ export const KATANA_CONFIG: WeaponConfig = {
   sway: { intensity: 1.35 },
   sounds: {
     singleShot: '/sounds/katana_melee_sound_1.wav',
-    volume: 0.35,
+    volume: 0.5,
   },
 };
 
@@ -281,7 +281,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: '/sounds/sniper_3.wav',
     reload: '/sounds/sniper_reload_1.wav',
-    volume: 0.2,
+    volume: 0.5,
   },
 };
 
@@ -295,7 +295,7 @@ export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
   fireRate: SHIPPED_WEAPON_BASE_STATS.root_bio_carbine.fireRate,
   fireMode: 'burst',
   burstCount: 3,
-  burstRecoverySec: 0.18,
+  burstRecoverySec: 0.15,
   damage: WEAPON_DAMAGE.root_bio_carbine,
   adsTime: SHIPPED_WEAPON_BASE_STATS.root_bio_carbine.adsTime,
   projectileSpeed: PROJECTILE_SPEED,
@@ -330,23 +330,22 @@ export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
     },
   },
   muzzleFlash: {
-    coreScale: 0.18,
-    duration: 0.08,
+    coreScale: 0.25,
+    duration: 0.1,
     particleCount: 14,
     particleSpeed: 14,
     particleSpread: 0.8,
     colors: [0x7dffb0, MAP_PALETTE.neonCyan, 0x2aff9a],
-    lightIntensity: 2.2,
+    lightIntensity: 2.5,
     lightDistance: 3.6,
     glowLayers: 0,
     particleSizeScale: 1.2,
   },
   sway: { intensity: 0.92 },
   sounds: {
-    // Placeholder: reuse rifle one-shots until carbine SFX exist.
-    singleShot: '/sounds/rifle_auto_3.wav',
-    reload: '/sounds/rifle_reload_1.wav',
-    volume: 0.12,
+    singleShot: '/sounds/root_bio_carbine.wav',
+    reload: '/sounds/root_bio_carbine_reload.wav',
+    volume: 0.5,
   },
 };
 

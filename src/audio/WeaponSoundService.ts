@@ -40,6 +40,24 @@ function addSoundUrl(urls: Set<string>, clip: string | WeaponSoundClip | undefin
   urls.add(typeof clip === 'string' ? clip : clip.src);
 }
 
+/** Keep reload SFX from becoming unrecognizably fast/slow. */
+const MIN_RELOAD_PLAYBACK_RATE = 0.45;
+const MAX_RELOAD_PLAYBACK_RATE = 2.5;
+
+/**
+ * Stretch/compress the reload clip so its audible length matches `reloadSec`
+ * (Armory reloadTime / catalog reload duration).
+ */
+function reloadPlaybackRate(buffer: AudioBuffer | undefined, reloadSec: number | undefined): number {
+  if (!buffer || !Number.isFinite(reloadSec) || (reloadSec ?? 0) <= 0.05) return 1;
+  const duration = buffer.duration;
+  if (!(duration > 0.05)) return 1;
+  return Math.min(
+    MAX_RELOAD_PLAYBACK_RATE,
+    Math.max(MIN_RELOAD_PLAYBACK_RATE, duration / (reloadSec as number)),
+  );
+}
+
 function findAudibleBounds(data: Float32Array, sampleRate: number): { start: number; end: number } {
   const minSilentRun = Math.max(1, Math.floor(sampleRate * MIN_SILENCE_RUN_SEC));
   let start = 0;
@@ -240,14 +258,14 @@ export class WeaponSoundService {
     this.playOneShot(this.outOfAmmoConfig.src, this.outOfAmmoConfig.volume);
   }
 
-  playReload(sounds: WeaponSoundsConfig | undefined): void {
+  playReload(sounds: WeaponSoundsConfig | undefined, reloadSec?: number): void {
     if (!sounds) return;
 
     const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
     const clip = resolveSoundClip(sounds.reload, defaultVolume);
     if (!clip) return;
 
-    this.playOneShot(clip.url, clip.volume);
+    this.playOneShot(clip.url, clip.volume, reloadPlaybackRate(this.buffers.get(clip.url)?.buffer, reloadSec));
   }
 
   updateListener(camera: THREE.Camera): void {
@@ -412,7 +430,7 @@ export class WeaponSoundService {
     return panner;
   }
 
-  private playOneShot(url: string, volume: number): void {
+  private playOneShot(url: string, volume: number, playbackRate = 1): void {
     this.ensureContext();
     if (!this.context || !this.masterGain) return;
 
@@ -425,6 +443,7 @@ export class WeaponSoundService {
 
     const source = this.context.createBufferSource();
     source.buffer = loaded.buffer;
+    source.playbackRate.value = playbackRate;
 
     const gain = this.context.createGain();
     gain.gain.value = volume;

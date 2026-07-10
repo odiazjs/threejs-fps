@@ -27,6 +27,9 @@ const ADS_ALLOW_CARRY_BLEND = 0.1;
 const SPRINT_CARRY = {
   position: { x: 0.12, y: 0.05, z: -0.1 },
   rotation: { x: 1.48, y: -0.1, z: -0.32 },
+  /** Vertical bob while sprinting in the high-carry pose. */
+  bobAmp: 0.016,
+  bobFreq: 3.1,
 } as const;
 
 const _basePos = new THREE.Vector3();
@@ -43,6 +46,7 @@ const _targetQuat = new THREE.Quaternion();
  */
 export class WeaponSway {
   private phase = 0;
+  private carryPhase = 0;
   private adsDamp = 1;
   private posAmp = SWAY_IDLE.pos;
   private rotAmp = SWAY_IDLE.rot;
@@ -56,6 +60,7 @@ export class WeaponSway {
 
   reset(): void {
     this.phase = 0;
+    this.carryPhase = 0;
     this.walkBlend = 0;
     this.carryBlend = 0;
     this.carryGroundedGrace = 0;
@@ -131,6 +136,12 @@ export class WeaponSway {
     this.freq = SWAY_IDLE.freq * idleWeight + SWAY_WALK.freq * locomotionBlend;
 
     this.phase += delta * this.freq;
+    if (this.carryBlend > 0.01) {
+      this.carryPhase += delta * SPRINT_CARRY.bobFreq;
+    } else if (this.carryPhase !== 0) {
+      this.carryPhase = 0;
+    }
+
     this.adsDamp = 1 - adsBlend * ADS_SWAY_REDUCTION;
   }
 
@@ -140,9 +151,10 @@ export class WeaponSway {
     _baseQuat.setFromEuler(_baseRot);
 
     if (this.carryBlend > 0.001) {
+      const bobY = Math.sin(this.carryPhase * TAU) * SPRINT_CARRY.bobAmp;
       _carryOffset.set(
         SPRINT_CARRY.position.x,
-        SPRINT_CARRY.position.y,
+        SPRINT_CARRY.position.y + bobY,
         SPRINT_CARRY.position.z,
       );
       _targetPos.copy(_basePos).add(_carryOffset);
