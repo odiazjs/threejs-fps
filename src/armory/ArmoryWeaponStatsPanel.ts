@@ -20,6 +20,7 @@ import {
   onPlasmaMineralsChange,
   setPlasmaMineralsDisplay,
 } from '../ui/plasmaMineralsHud';
+import { showErrorSnackbar, showSuccessSnackbar } from '../ui/snackbar';
 
 const STAT_LABELS: Record<WeaponUpgradeStatId, string> = {
   damage: 'DAMAGE',
@@ -28,6 +29,7 @@ const STAT_LABELS: Record<WeaponUpgradeStatId, string> = {
   magazineSize: 'MAG SIZE',
   reloadTime: 'RELOAD',
   adsTime: 'ADS TIME',
+  fireRate: 'FIRE RATE',
 };
 
 /**
@@ -42,6 +44,7 @@ const STAT_MAX: Record<WeaponUpgradeStatId, number> = {
   magazineSize: 40,
   reloadTime: 3.5,
   adsTime: 0.5,
+  fireRate: 20,
 };
 
 function formatStatValue(stat: WeaponUpgradeStatId, value: number): string {
@@ -51,6 +54,8 @@ function formatStatValue(stat: WeaponUpgradeStatId, value: number): string {
     case 'reloadTime':
     case 'adsTime':
       return `${value.toFixed(2)}s`;
+    case 'fireRate':
+      return `${value.toFixed(1)}/s`;
     case 'recoil':
       return value.toFixed(0);
     case 'damage':
@@ -350,14 +355,21 @@ export class ArmoryWeaponStatsPanel {
       this.pendingByWeapon.set(weaponId, emptyPending());
       setPlasmaMineralsDisplay(this.plasmaMinerals);
       if (totalCost > 0) {
-        this.setStatus(`Saved (−${formatPlasmaMinerals(totalCost)} plasma)`);
+        const message = `Upgrades saved (−${formatPlasmaMinerals(totalCost)} plasma)`;
+        this.setStatus(message);
+        showSuccessSnackbar(message);
       } else if (totalCost < 0) {
-        this.setStatus(`Saved (+${formatPlasmaMinerals(-totalCost)} plasma refunded)`);
+        const message = `Upgrades saved (+${formatPlasmaMinerals(-totalCost)} plasma refunded)`;
+        this.setStatus(message);
+        showSuccessSnackbar(message);
       } else {
         this.setStatus('Saved');
+        showSuccessSnackbar('Weapon upgrades saved');
       }
     } catch (error) {
-      this.setStatus(error instanceof Error ? error.message : 'Could not save upgrades');
+      const message = error instanceof Error ? error.message : 'Could not save upgrades';
+      this.setStatus(message);
+      showErrorSnackbar(message);
       try {
         const { weapons, plasmaMinerals } = await apiListMyWeapons();
         this.weaponsById = new Map(weapons.map((row) => [row.id, row]));

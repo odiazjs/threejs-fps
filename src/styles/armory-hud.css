@@ -2,7 +2,9 @@
 
 .armory-ui {
   display: grid;
-  grid-template-columns: minmax(17rem, 21rem) minmax(24rem, 31rem) minmax(0, 1fr);
+  /* weapons | 3d preview | loadouts — fr tracks fill 100% of the row */
+  width: 100%;
+  grid-template-columns: minmax(0, 0.29fr) minmax(0, 0.41fr) minmax(0, 0.3fr);
   align-items: stretch;
   gap: 1rem;
   min-height: 100vh;
@@ -369,7 +371,7 @@
 .armory-panel-title {
   margin: 0;
   font-family: var(--hud-font);
-  font-size: 0.92rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -397,13 +399,13 @@
 .armory-search-input {
   width: 100%;
   margin: 0;
-  padding: 0.55rem 0.75rem 0.55rem 2rem;
+  padding: 0.6rem 0.75rem 0.6rem 2.1rem;
   border: 1px solid rgba(0, 242, 255, 0.28);
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.42);
   color: #fff;
   font-family: var(--hud-font);
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   letter-spacing: 0.04em;
   outline: none;
   transition: border-color 120ms ease, box-shadow 120ms ease;
@@ -428,13 +430,13 @@
 
 .armory-category-tab {
   margin: 0;
-  padding: 0.38rem 0.55rem;
+  padding: 0.42rem 0.65rem;
   border: 1px solid rgba(0, 242, 255, 0.28);
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.35);
   color: rgba(255, 255, 255, 0.62);
   font-family: var(--hud-font);
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   cursor: pointer;
@@ -458,8 +460,8 @@
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.65rem;
   align-content: start;
   overflow-y: auto;
   padding: 0.1rem 0.25rem 0.25rem 0.05rem;
@@ -522,7 +524,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 4.4rem;
+  height: 6.5rem;
   border-radius: 3px;
   background:
     radial-gradient(circle at 50% 70%, rgba(0, 242, 255, 0.12), transparent 65%),
@@ -530,8 +532,8 @@
 }
 
 .armory-weapon-card-icon {
-  max-width: 78%;
-  max-height: 3.4rem;
+  max-width: 88%;
+  max-height: 9.4rem;
   object-fit: contain;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
   pointer-events: none;
@@ -545,7 +547,7 @@
 
 .armory-weapon-card-name {
   font-family: var(--hud-font);
-  font-size: 0.78rem;
+  font-size: 0.92rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #fff;
@@ -555,27 +557,27 @@
 .armory-weapon-stats {
   display: flex;
   flex-direction: column;
-  gap: 0.22rem;
+  gap: 0.28rem;
 }
 
 .armory-stat {
   display: grid;
-  grid-template-columns: 4.2rem 1fr;
+  grid-template-columns: 5.25rem 1fr;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 
 .armory-stat-label {
   font-family: var(--hud-font);
-  font-size: 0.5rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .armory-stat-bar {
   position: relative;
-  height: 0.28rem;
+  height: 0.34rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);
   overflow: hidden;
@@ -595,8 +597,8 @@
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.65rem;
   align-content: start;
   overflow-y: auto;
   padding-right: 0.15rem;
@@ -637,28 +639,28 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 1.35rem;
+  height: 1.35rem;
   border-radius: 2px;
   background: rgba(0, 242, 255, 0.16);
   color: var(--hud-cyan);
   font-family: var(--hud-font);
-  font-size: 0.68rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
 .armory-loadout-label {
   flex: 1 1 auto;
   font-family: var(--hud-font);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.12em;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .armory-loadout-status {
   font-family: var(--hud-font);
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--hud-cyan);
@@ -666,13 +668,13 @@
 
 .armory-loadout-status-msg {
   margin: 0;
-  padding: 0.45rem 0.55rem;
+  padding: 0.5rem 0.6rem;
   border: 1px solid rgba(0, 242, 255, 0.28);
   border-radius: 3px;
   background: rgba(0, 242, 255, 0.08);
   color: var(--hud-cyan-soft);
   font-family: var(--hud-font);
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1.35;
@@ -704,13 +706,13 @@
 .armory-loadout-default-btn {
   margin: 0;
   width: 100%;
-  padding: 0.4rem 0.45rem;
+  padding: 0.45rem 0.55rem;
   border: 1px solid rgba(0, 242, 255, 0.35);
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.35);
   color: var(--hud-cyan-soft);
   font-family: var(--hud-font);
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -727,13 +729,13 @@
 .armory-loadout-default-badge {
   display: block;
   width: 100%;
-  padding: 0.4rem 0.45rem;
+  padding: 0.45rem 0.55rem;
   border: 1px solid rgba(0, 242, 255, 0.45);
   border-radius: 3px;
   background: rgba(0, 242, 255, 0.12);
   color: var(--hud-cyan);
   font-family: var(--hud-font);
-  font-size: 0.58rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-align: center;
@@ -748,13 +750,13 @@
 .armory-loadout-name {
   width: 100%;
   margin: 0;
-  padding: 0.35rem 0.45rem;
+  padding: 0.4rem 0.5rem;
   border: 1px solid rgba(0, 242, 255, 0.22);
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.35);
   color: #fff;
   font-family: var(--hud-font);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: 0.03em;
   outline: none;
@@ -768,7 +770,7 @@
   margin: 0;
   padding: 0.2rem 0;
   font-family: var(--hud-font);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   color: rgba(255, 255, 255, 0.35);
@@ -783,13 +785,13 @@
 
 .armory-loadout-slot-tab {
   margin: 0;
-  padding: 0.28rem 0.35rem;
+  padding: 0.35rem 0.4rem;
   border: 1px solid rgba(0, 242, 255, 0.25);
   border-radius: 2px;
   background: transparent;
   color: rgba(255, 255, 255, 0.55);
   font-family: var(--hud-font);
-  font-size: 0.55rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   cursor: pointer;
@@ -808,17 +810,17 @@
 }
 
 .armory-loadout-weapon {
-  min-height: 3.4rem;
+  min-height: 5.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.35rem;
+  padding: 0.45rem;
   border: 1px dashed rgba(0, 242, 255, 0.28);
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.28);
   color: rgba(255, 255, 255, 0.4);
   font-family: var(--hud-font);
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-align: center;
@@ -832,7 +834,8 @@
 
 .armory-loadout-weapon img {
   max-width: 100%;
-  max-height: 2.5rem;
+  max-height: 7.25rem;
+  width: auto;
   object-fit: contain;
   pointer-events: none;
 }
@@ -897,20 +900,16 @@
 
 @media (max-width: 1200px) {
   .armory-ui {
-    grid-template-columns: minmax(15rem, 18rem) minmax(22rem, 27rem) minmax(0, 1fr);
+    width: 100%;
+    grid-template-columns: minmax(0, 0.275fr) minmax(0, 0.42fr) minmax(0, 0.305fr);
     padding: 0.85rem 0.85rem 4.75rem;
-  }
-
-  .armory-weapon-grid,
-  .armory-loadout-grid {
-    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 900px) {
   .armory-ui {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto minmax(18rem, 42vh);
+    grid-template-rows: auto minmax(18rem, 42vh) auto;
     overflow-y: auto;
   }
 
@@ -920,16 +919,16 @@
     min-height: 0;
   }
 
-  .armory-preview-column {
-    min-height: 18rem;
-    order: 3;
-  }
-
   .armory-panel--left {
     order: 1;
   }
 
-  .armory-panel--middle {
+  .armory-preview-column {
+    min-height: 18rem;
     order: 2;
+  }
+
+  .armory-panel--middle {
+    order: 3;
   }
 }

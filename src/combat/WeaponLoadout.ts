@@ -167,11 +167,12 @@ export class WeaponLoadout {
   private meshesForcedHidden = false;
 
   constructor(configs: readonly WeaponConfig[], meleeConfig?: WeaponConfig) {
-    if (configs.length !== LOADOUT_SIZE) {
-      throw new Error(`Loadout requires exactly ${LOADOUT_SIZE} weapons`);
+    if (configs.length < LOADOUT_SIZE) {
+      throw new Error(`Loadout requires at least ${LOADOUT_SIZE} weapons`);
     }
     this.weaponsById = new Map(configs.map((config) => [config.id, new WeaponSlot(config)]));
-    this.slotAssignments = configs.map((config) => config.id);
+    // Default numbered slots use the first LOADOUT_SIZE configs (pistol / rifle / sniper).
+    this.slotAssignments = configs.slice(0, LOADOUT_SIZE).map((config) => config.id);
     this.meleeSlot =
       meleeConfig && meleeConfig.id === MELEE_WEAPON_ID
         ? new WeaponSlot(meleeConfig)

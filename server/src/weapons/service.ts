@@ -38,6 +38,7 @@ function baseStatsFromRow(row: typeof weapons.$inferSelect): WeaponBaseStats {
     magazineSize: row.baseMagazineSize,
     reloadTime: row.baseReloadSec,
     adsTime: row.baseAdsSec,
+    fireRate: row.baseFireRate,
   };
 }
 
@@ -64,6 +65,7 @@ function levelsFromUpgradeRow(
     magazineSize: row.magazineLevel,
     reloadTime: row.reloadLevel,
     adsTime: row.adsLevel,
+    fireRate: row.fireRateLevel,
   });
 }
 
@@ -97,6 +99,7 @@ const LEVEL_COLUMN_BY_STAT: Record<
   | 'magazineLevel'
   | 'reloadLevel'
   | 'adsLevel'
+  | 'fireRateLevel'
 > = {
   damage: 'damageLevel',
   recoil: 'recoilLevel',
@@ -104,6 +107,7 @@ const LEVEL_COLUMN_BY_STAT: Record<
   magazineSize: 'magazineLevel',
   reloadTime: 'reloadLevel',
   adsTime: 'adsLevel',
+  fireRate: 'fireRateLevel',
 };
 
 export async function listWeapons(options?: {
@@ -419,6 +423,7 @@ export async function batchUpgradePlayerWeaponStats(
       magazineLevel: nextLevels.magazineSize,
       reloadLevel: nextLevels.reloadTime,
       adsLevel: nextLevels.adsTime,
+      fireRateLevel: nextLevels.fireRate,
       updatedAt: now,
     };
 

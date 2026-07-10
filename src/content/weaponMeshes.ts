@@ -4,12 +4,17 @@ import { createPistolWeaponMesh, preloadPistolWeaponModel } from './pistolModel'
 import { createRifleWeaponMesh, preloadRifleWeaponModel } from './rifleModel';
 import { createKatanaWeaponMesh, preloadKatanaWeaponModel } from './katanaModel';
 import { createSniperWeaponMesh, preloadSniperWeaponModel } from './sniperModel';
+import {
+  createRootBioCarbineWeaponMesh,
+  preloadRootBioCarbineWeaponModel,
+} from './rootBioCarbineModel';
 
 export function preloadWeaponMeshes(): Promise<void> {
   return Promise.all([
     preloadPistolWeaponModel(),
     preloadRifleWeaponModel(),
     preloadSniperWeaponModel(),
+    preloadRootBioCarbineWeaponModel(),
     preloadKatanaWeaponModel(),
   ]).then(() => undefined);
 }
@@ -22,6 +27,8 @@ export function createWeaponMesh(id: WeaponId): THREE.Group {
       return createSniperWeaponMesh();
     case 'katana':
       return createKatanaWeaponMesh();
+    case 'root_bio_carbine':
+      return createRootBioCarbineWeaponMesh();
     case 'plasma_rifle':
     default:
       return createRifleWeaponMesh();

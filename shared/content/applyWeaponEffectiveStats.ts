@@ -67,6 +67,7 @@ export function withEffectiveWeaponStats(
     clipSize: Math.max(1, Math.round(stats.magazineSize)),
     reloadSec: Math.max(0, stats.reloadTime),
     adsTime: Math.max(0.05, stats.adsTime),
+    fireRate: Math.max(0, stats.fireRate),
     maxHitDistance: Math.max(0, stats.range),
     meleeRange:
       config.fireMode === 'melee' ? Math.max(0, stats.range) : config.meleeRange,

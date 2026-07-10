@@ -21,6 +21,8 @@ export const weapons = pgTable('weapons', {
   baseMagazineSize: integer('base_magazine_size').notNull().default(1),
   baseReloadSec: doublePrecision('base_reload_sec').notNull().default(0),
   baseAdsSec: doublePrecision('base_ads_sec').notNull().default(0),
+  /** Shots (or melee swings) per second. */
+  baseFireRate: doublePrecision('base_fire_rate').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -41,6 +43,7 @@ export const userWeaponUpgrades = pgTable(
     magazineLevel: integer('magazine_level').notNull().default(0),
     reloadLevel: integer('reload_level').notNull().default(0),
     adsLevel: integer('ads_level').notNull().default(0),
+    fireRateLevel: integer('fire_rate_level').notNull().default(0),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.weaponId] })],

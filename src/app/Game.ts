@@ -115,7 +115,7 @@ import {
   MATCH_GAME_START_AUDIO,
   MATCH_RESULTS_MUSIC_AUDIO,
 } from '../content/audioConfig';
-import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
+import { DEFAULT_LOADOUT_CONFIGS, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
@@ -244,7 +244,7 @@ export class Game {
       preloadGrenadeModel(),
       Player.preloadGameCharacterModels(),
       this.weaponSounds.preload([
-        ...collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS),
+        ...collectWeaponSoundUrls(PICKABLE_WEAPON_CONFIGS),
         ...collectWeaponSoundUrls([KATANA_CONFIG]),
       ]),
       this.weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),

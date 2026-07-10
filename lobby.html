@@ -48,6 +48,7 @@
     <link rel="stylesheet" href="/src/styles/pages.css" />
     <link rel="stylesheet" href="/src/styles/lobby-hud.css" />
     <link rel="stylesheet" href="/src/styles/armory-hud.css" />
+    <link rel="stylesheet" href="/src/styles/snackbar.css" />
   </head>
   <body class="lobby-page app-shell">
     <div id="page-boot-splash" aria-live="polite" aria-busy="true">
@@ -266,6 +267,7 @@
     </section>
 
     <div id="friend-toasts" class="friend-toasts"></div>
+    <div id="app-snackbars" class="app-snackbars" aria-live="polite" aria-relevant="additions"></div>
 
     <section id="app-view-weapons" class="app-view" data-view="weapons" hidden>
       <div class="weapons-ui armory-ui">
@@ -367,6 +369,36 @@
             <button
               type="button"
               class="armory-weapon-card weapons-picker-btn"
+              data-weapon-id="root_bio_carbine"
+              data-category="rifles"
+              role="option"
+              aria-selected="false"
+            >
+              <div class="armory-weapon-card-visual">
+                <img src="/images/root_bio_carbine_icon.png" alt="" class="armory-weapon-card-icon" />
+              </div>
+              <div class="armory-weapon-card-body">
+                <span class="armory-weapon-card-name">Root Bio Carbine</span>
+                <div class="armory-weapon-stats" aria-hidden="true">
+                  <div class="armory-stat">
+                    <span class="armory-stat-label">DAMAGE</span>
+                    <span class="armory-stat-bar"><span style="--fill: 22%"></span></span>
+                  </div>
+                  <div class="armory-stat">
+                    <span class="armory-stat-label">FIRE RATE</span>
+                    <span class="armory-stat-bar"><span style="--fill: 92%"></span></span>
+                  </div>
+                  <div class="armory-stat">
+                    <span class="armory-stat-label">MAG SIZE</span>
+                    <span class="armory-stat-bar"><span style="--fill: 100%"></span></span>
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              class="armory-weapon-card weapons-picker-btn"
               data-weapon-id="sniper_rifle"
               data-category="snipers"
               role="option"
@@ -426,6 +458,19 @@
           </div>
         </aside>
 
+        <div class="armory-preview-column" aria-label="Weapon preview">
+          <div class="armory-preview-stage">
+            <div id="weapons-canvas"></div>
+          </div>
+          <section class="armory-stats-panel hud-panel" aria-label="Weapon stats">
+            <header class="armory-panel-header">
+              <h2 class="armory-panel-title" id="armory-weapon-stats-title">WEAPON STATS</h2>
+            </header>
+            <p id="armory-weapon-stats-status" class="armory-stats-panel-status" hidden></p>
+            <div id="armory-weapon-stats-body" class="armory-stats-panel-body"></div>
+          </section>
+        </div>
+
         <aside class="armory-panel armory-panel--middle hud-panel" aria-label="Loadout manager">
           <header class="armory-panel-header">
             <h2 class="armory-panel-title">LOADOUT MANAGER</h2>
@@ -443,19 +488,6 @@
             </button>
           </div>
         </aside>
-
-        <div class="armory-preview-column" aria-label="Weapon preview">
-          <div class="armory-preview-stage">
-            <div id="weapons-canvas"></div>
-          </div>
-          <section class="armory-stats-panel hud-panel" aria-label="Weapon stats">
-            <header class="armory-panel-header">
-              <h2 class="armory-panel-title" id="armory-weapon-stats-title">WEAPON STATS</h2>
-            </header>
-            <p id="armory-weapon-stats-status" class="armory-stats-panel-status" hidden></p>
-            <div id="armory-weapon-stats-body" class="armory-stats-panel-body"></div>
-          </section>
-        </div>
 
         <button id="weapons-back-btn" class="secondary-btn weapons-back-btn" type="button">
           BACK TO LOBBY

@@ -2,6 +2,7 @@ import type { WeaponId } from '../content/weaponIds.js';
 
 /** Upgradeable combat stats exposed by the weapons API. */
 export const WEAPON_UPGRADE_STAT_IDS = [
+  'fireRate',
   'damage',
   'recoil',
   'range',
@@ -24,11 +25,12 @@ export const PLASMA_MINERALS_STARTING_BALANCE = 200;
 /** Fixed plasma mineral cost for each upgrade level (does not escalate). */
 export const PLASMA_MINERAL_UPGRADE_COST = 25;
 
-/** Stats that improve by +1 per upgrade level. */
+/** Stats that improve by +step per upgrade level. */
 export const WEAPON_UPGRADE_PLUS_STATS = [
   'damage',
   'range',
   'magazineSize',
+  'fireRate',
 ] as const satisfies readonly WeaponUpgradeStatId[];
 
 /** Stats that improve by −step per upgrade level (lower is better). */
@@ -49,6 +51,8 @@ export const WEAPON_UPGRADE_STEP_BY_STAT: Record<WeaponUpgradeStatId, number> = 
   magazineSize: 1,
   reloadTime: 0.1,
   adsTime: 0.05,
+  /** Shots (or melee swings) per second. */
+  fireRate: 0.5,
 };
 
 /** Base catalog values (level 0) for a weapon. */
@@ -63,6 +67,8 @@ export interface WeaponBaseStats {
   reloadTime: number;
   /** Seconds to reach full ADS. Upgrades reduce this. */
   adsTime: number;
+  /** Shots (or melee swings) per second. */
+  fireRate: number;
 }
 
 export type WeaponUpgradeLevels = Record<WeaponUpgradeStatId, number>;
@@ -83,6 +89,7 @@ export function zeroUpgradeLevels(): WeaponUpgradeLevels {
     magazineSize: 0,
     reloadTime: 0,
     adsTime: 0,
+    fireRate: 0,
   };
 }
 
@@ -104,6 +111,7 @@ export function normalizeUpgradeLevels(
     magazineSize: clampUpgradeLevel(partial.magazineSize ?? 0),
     reloadTime: clampUpgradeLevel(partial.reloadTime ?? 0),
     adsTime: clampUpgradeLevel(partial.adsTime ?? 0),
+    fireRate: clampUpgradeLevel(partial.fireRate ?? 0),
   };
 }
 
@@ -154,6 +162,7 @@ export function resolveEffectiveWeaponStats(
     magazineSize: Math.max(1, Math.round(base.magazineSize + levels.magazineSize * step.magazineSize)),
     reloadTime: roundStat(Math.max(0, base.reloadTime - levels.reloadTime * step.reloadTime)),
     adsTime: roundStat(Math.max(0, base.adsTime - levels.adsTime * step.adsTime), 3),
+    fireRate: roundStat(Math.max(0, base.fireRate + levels.fireRate * step.fireRate), 2),
     levels,
   };
 }
@@ -167,6 +176,7 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     magazineSize: 12,
     reloadTime: 1.5,
     adsTime: 0.18,
+    fireRate: 5,
   },
   plasma_rifle: {
     damage: 7,
@@ -175,6 +185,16 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     magazineSize: 30,
     reloadTime: 2.0,
     adsTime: 0.2,
+    fireRate: 12,
+  },
+  root_bio_carbine: {
+    damage: 8,
+    recoil: 38,
+    range: 80,
+    magazineSize: 30,
+    reloadTime: 1.9,
+    adsTime: 0.19,
+    fireRate: 14,
   },
   sniper_rifle: {
     damage: 90,
@@ -183,6 +203,7 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     magazineSize: 1,
     reloadTime: 2.75,
     adsTime: 0.35,
+    fireRate: 1.1,
   },
   katana: {
     damage: 44,
@@ -191,5 +212,6 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     magazineSize: 1,
     reloadTime: 0,
     adsTime: 0,
+    fireRate: 2,
   },
 };

@@ -13,6 +13,7 @@ import {
 } from '../auth/loadoutsApi';
 import { WEAPON_ICON_SRC } from '../content/inventoryConfig';
 import { getWeaponConfig } from '../content/weaponConfig';
+import { showErrorSnackbar, showSuccessSnackbar } from '../ui/snackbar';
 
 type LoadoutSlot = 'primary' | 'secondary';
 
@@ -354,8 +355,11 @@ export class ArmoryLoadoutsController {
       this.editingSlot = 'primary';
       this.render();
       this.setStatus('Loadout created. Edit weapons, then save.');
+      showSuccessSnackbar(`Created "${loadout.name}"`);
     } catch (error) {
-      this.setStatus(error instanceof Error ? error.message : 'Could not create loadout');
+      const message = error instanceof Error ? error.message : 'Could not create loadout';
+      this.setStatus(message);
+      showErrorSnackbar(message);
     } finally {
       this.setBusy(false);
     }
@@ -382,8 +386,11 @@ export class ArmoryLoadoutsController {
       });
       this.render();
       this.setStatus(`"${loadout.name}" is now your default loadout.`);
+      showSuccessSnackbar(`"${loadout.name}" set as default`);
     } catch (error) {
-      this.setStatus(error instanceof Error ? error.message : 'Could not set default loadout');
+      const message = error instanceof Error ? error.message : 'Could not set default loadout';
+      this.setStatus(message);
+      showErrorSnackbar(message);
     } finally {
       this.setBusy(false);
     }
@@ -435,8 +442,11 @@ export class ArmoryLoadoutsController {
       };
       this.render();
       this.setStatus('Loadout saved.');
+      showSuccessSnackbar(`Saved "${loadout.name}"`);
     } catch (error) {
-      this.setStatus(error instanceof Error ? error.message : 'Could not save loadout');
+      const message = error instanceof Error ? error.message : 'Could not save loadout';
+      this.setStatus(message);
+      showErrorSnackbar(message);
     } finally {
       this.setBusy(false);
     }

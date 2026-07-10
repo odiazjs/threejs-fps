@@ -59,7 +59,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   clipSize: 30,
   reloadSec: WEAPON_RELOAD_SEC.plasma_rifle,
   reserveClips: 3,
-  fireRate: 12,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.plasma_rifle.fireRate,
   fireMode: 'auto',
   damage: WEAPON_DAMAGE.plasma_rifle,
   adsTime: SHIPPED_WEAPON_BASE_STATS.plasma_rifle.adsTime,
@@ -120,7 +120,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   clipSize: 12,
   reloadSec: WEAPON_RELOAD_SEC.pistol,
   reserveClips: 4,
-  fireRate: 0,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.pistol.fireRate,
   fireMode: 'semi',
   damage: WEAPON_DAMAGE.pistol,
   adsTime: SHIPPED_WEAPON_BASE_STATS.pistol.adsTime,
@@ -180,7 +180,7 @@ export const KATANA_CONFIG: WeaponConfig = {
   clipSize: 1,
   reloadSec: 0,
   reserveClips: 0,
-  fireRate: 2,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.katana.fireRate,
   fireMode: 'melee',
   damage: WEAPON_DAMAGE.katana,
   adsTime: SHIPPED_WEAPON_BASE_STATS.katana.adsTime || 0.18,
@@ -228,7 +228,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   clipSize: 1,
   reloadSec: WEAPON_RELOAD_SEC.sniper_rifle,
   reserveClips: 16,
-  fireRate: 1.1,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.sniper_rifle.fireRate,
   fireMode: 'semi',
   damage: WEAPON_DAMAGE.sniper_rifle,
   adsTime: SHIPPED_WEAPON_BASE_STATS.sniper_rifle.adsTime,
@@ -285,13 +285,88 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   },
 };
 
+/** Burst carbine — plasma rifle feel with slightly stronger stats. Placeholder mesh/SFX until assets land. */
+export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
+  id: 'root_bio_carbine',
+  name: 'Root Bio Carbine',
+  clipSize: 30,
+  reloadSec: WEAPON_RELOAD_SEC.root_bio_carbine,
+  reserveClips: 3,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.root_bio_carbine.fireRate,
+  fireMode: 'burst',
+  burstCount: 3,
+  burstRecoverySec: 0.18,
+  damage: WEAPON_DAMAGE.root_bio_carbine,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.root_bio_carbine.adsTime,
+  projectileSpeed: PROJECTILE_SPEED,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.root_bio_carbine,
+  view: {
+    hip: { x: 0.15, y: -0.25, z: -0.35 },
+    ads: { x: 0, y: -0.195, z: -0.22 },
+    adsFov: 58,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
+  },
+  recoil: {
+    pattern: buildPlasmaRifleRecoilPattern(),
+    recoverySpeed: 8.5,
+    recoveryDelaySec: 0.1,
+    aimSmoothSpeed: 18,
+    adsMultiplier: 0.48,
+    yawScale: 0.95,
+    visualKick: 0.55,
+    visualRecoverySpeed: 13,
+    adsVisualMultiplier: 0.42,
+    visualStyle: {
+      rotX: 0.36,
+      rotYFromYaw: -0.13,
+      rotZ: -0.11,
+      posXFromYaw: -0.032,
+      posY: -0.032,
+      posZ: 0,
+      kickBack: 0.07,
+      kickUp: -0.02,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.18,
+    duration: 0.08,
+    particleCount: 14,
+    particleSpeed: 14,
+    particleSpread: 0.8,
+    colors: [0x7dffb0, MAP_PALETTE.neonCyan, 0x2aff9a],
+    lightIntensity: 2.2,
+    lightDistance: 3.6,
+    glowLayers: 0,
+    particleSizeScale: 1.2,
+  },
+  sway: { intensity: 0.92 },
+  sounds: {
+    // Placeholder: reuse rifle one-shots until carbine SFX exist.
+    singleShot: '/sounds/rifle_auto_3.wav',
+    reload: '/sounds/rifle_reload_1.wav',
+    volume: 0.12,
+  },
+};
+
 export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   plasma_rifle: PLASMA_RIFLE_CONFIG,
   pistol: PISTOL_CONFIG,
   sniper_rifle: SNIPER_RIFLE_CONFIG,
+  root_bio_carbine: ROOT_BIO_CARBINE_CONFIG,
   katana: KATANA_CONFIG,
 };
 
+/** All guns that can occupy numbered loadout slots (includes non-default pickables). */
+export const PICKABLE_WEAPON_CONFIGS = [
+  PISTOL_CONFIG,
+  PLASMA_RIFLE_CONFIG,
+  SNIPER_RIFLE_CONFIG,
+  ROOT_BIO_CARBINE_CONFIG,
+] as const;
+
+/** Default numbered-slot fill order (keys 1–3). */
 export const DEFAULT_LOADOUT_CONFIGS = [
   PISTOL_CONFIG,
   PLASMA_RIFLE_CONFIG,

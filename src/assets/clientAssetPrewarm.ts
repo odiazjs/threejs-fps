@@ -31,7 +31,7 @@ import {
   UI_HOVER_AUDIO,
   STATS_INCOMING_AUDIO,
 } from '../content/audioConfig';
-import { DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
+import { PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { preloadGrenadeModel } from '../content/grenadeModel';
 import { runShaderPrewarm } from '../combat/prewarmCombatFx';
@@ -63,7 +63,7 @@ async function preloadAllGameAudio(): Promise<void> {
 
   await Promise.all([
     weaponSounds.preload([
-      ...collectWeaponSoundUrls(DEFAULT_LOADOUT_CONFIGS),
+      ...collectWeaponSoundUrls(PICKABLE_WEAPON_CONFIGS),
       ...collectWeaponSoundUrls([KATANA_CONFIG]),
     ]),
     weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),

@@ -72,7 +72,7 @@ export interface VisualRecoilStyle {
   readonly kickUp?: number;
 }
 
-export type WeaponFireMode = 'auto' | 'semi' | 'melee';
+export type WeaponFireMode = 'auto' | 'semi' | 'burst' | 'melee';
 
 /** Brief muzzle burst — three additive plasma tones plus particle spray. */
 export interface MuzzleFlashConfig {
@@ -131,6 +131,13 @@ export interface WeaponConfig {
   /** Shots per second. Use 0 for uncapped (semi: as fast as the player can click). */
   readonly fireRate: number;
   readonly fireMode: WeaponFireMode;
+  /** Shots fired per trigger pull when `fireMode` is `burst` (default 3). */
+  readonly burstCount?: number;
+  /**
+   * Extra cooldown (seconds) after a burst finishes before the next burst can start.
+   * Intra-burst spacing still uses `1 / fireRate`.
+   */
+  readonly burstRecoverySec?: number;
   readonly damage: number;
   /** Seconds to reach full ADS (hip → sights). Lower is faster. */
   readonly adsTime: number;

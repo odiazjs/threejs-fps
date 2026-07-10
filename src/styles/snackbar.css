@@ -1,0 +1,102 @@
+/* Stacked snackbars — top center, slide in from above. */
+.app-snackbars {
+  position: fixed;
+  top: 5.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: min(22rem, calc(100vw - 2.5rem));
+  pointer-events: none;
+}
+
+.app-snackbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.7rem 0.75rem 0.7rem 0.85rem;
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(-1.15rem);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: rgba(6, 12, 20, 0.92);
+  box-shadow:
+    0 0 22px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.app-snackbar.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.app-snackbar.is-leaving {
+  opacity: 0;
+  transform: translateY(-1.15rem);
+}
+
+.app-snackbar--success {
+  border-color: rgba(64, 220, 160, 0.55);
+  box-shadow:
+    0 0 18px rgba(0, 0, 0, 0.4),
+    0 0 14px rgba(64, 220, 160, 0.12);
+}
+
+.app-snackbar--error {
+  border-color: rgba(255, 96, 120, 0.55);
+  box-shadow:
+    0 0 18px rgba(0, 0, 0, 0.4),
+    0 0 14px rgba(255, 96, 120, 0.14);
+}
+
+.app-snackbar--info {
+  border-color: rgba(0, 242, 255, 0.4);
+}
+
+.app-snackbar-text {
+  margin: 0;
+  font-family: var(--hud-font);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.35;
+  color: #e8f7ff;
+}
+
+.app-snackbar--success .app-snackbar-text {
+  color: #c8ffe8;
+}
+
+.app-snackbar--error .app-snackbar-text {
+  color: #ffd0d8;
+}
+
+.app-snackbar-close {
+  margin: -0.15rem -0.1rem 0 0;
+  padding: 0 0.2rem;
+  border: none;
+  background: transparent;
+  color: rgba(200, 230, 240, 0.65);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.app-snackbar-close:hover {
+  color: #fff;
+}
+
+@media (max-width: 900px) {
+  .app-snackbars {
+    top: 4.75rem;
+    width: min(20rem, calc(100vw - 1.7rem));
+  }
+}

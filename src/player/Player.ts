@@ -16,7 +16,7 @@ import {
   GRENADE_THROW_SCREEN_OFFSET_Y,
 } from '../../shared/throwables/grenadeConfig';
 import { GrenadeViewModel } from './GrenadeViewModel';
-import { getWeaponConfig, DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
+import { getWeaponConfig, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
 import {
   isWeaponId,
@@ -228,6 +228,8 @@ export class Player {
    */
   private grenadeThrowHoldStartedAtMs = 0;
   private localAutoFiring = false;
+  /** Remaining shots in an active burst (0 = idle / between bursts). */
+  private burstShotsRemaining = 0;
   private weaponSounds: WeaponSoundService | null = null;
   private grenadeSounds: GrenadeSoundService | null = null;
   private projectileSpawnOptions: {
@@ -250,7 +252,7 @@ export class Player {
   private readonly bodyHitVolumes: BodyPartVolume[] = [];
 
   private constructor(local: boolean) {
-    this.loadout = new WeaponLoadout(DEFAULT_LOADOUT_CONFIGS, KATANA_CONFIG);
+    this.loadout = new WeaponLoadout(PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG);
 
     if (local) {
       this.headRig = new THREE.Group();
@@ -1862,9 +1864,11 @@ export class Player {
 
   private isFiring(pointer: PointerInput, fireMode: WeaponFireMode): boolean {
     if (fireMode === 'melee') return false;
-    return fireMode === 'semi'
-      ? pointer.isJustPressed(POINTER_SHOOT)
-      : pointer.isPressed(POINTER_SHOOT);
+    if (fireMode === 'semi') return pointer.isJustPressed(POINTER_SHOOT);
+    if (fireMode === 'burst') {
+      return this.burstShotsRemaining > 0 || pointer.isJustPressed(POINTER_SHOOT);
+    }
+    return pointer.isPressed(POINTER_SHOOT);
   }
 
   private updateMeleeAttack(
@@ -1929,7 +1933,8 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active || active.config.fireMode === 'melee') return;
 
-    if (!pointer.isPressed(POINTER_SHOOT)) {
+    // Auto stops on release; burst continues until the burst is spent.
+    if (!pointer.isPressed(POINTER_SHOOT) && active.config.fireMode === 'auto') {
       this.stopWeaponAutoFire();
     }
 
@@ -1941,19 +1946,36 @@ export class Player {
     if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
     if (this.fireCooldown > 0) return;
 
+    if (
+      active.config.fireMode === 'burst' &&
+      this.burstShotsRemaining <= 0 &&
+      pointer.isJustPressed(POINTER_SHOOT)
+    ) {
+      this.burstShotsRemaining = Math.max(1, active.config.burstCount ?? 3);
+    }
+
     if (!this.shoot(projectiles)) {
       const state = active.ammo.getState();
       if (state.clip <= 0 && !state.reloading) {
         this.weaponSounds?.playOutOfAmmo();
         this.fireCooldown += active.fireInterval;
       }
+      this.burstShotsRemaining = 0;
       return;
     }
 
     this.fireCooldown += active.fireInterval;
+
+    if (active.config.fireMode === 'burst') {
+      this.burstShotsRemaining = Math.max(0, this.burstShotsRemaining - 1);
+      if (this.burstShotsRemaining === 0) {
+        this.fireCooldown += Math.max(0, active.config.burstRecoverySec ?? 0);
+      }
+    }
   }
 
   private stopWeaponAutoFire(): void {
+    this.burstShotsRemaining = 0;
     const wasAutoFiring = this.localAutoFiring;
     this.localAutoFiring = false;
     this.weaponSounds?.stopAutoFire();

@@ -6,6 +6,7 @@ import {
 } from '../../shared/content/plasmaMineralPacks';
 import { apiPurchasePlasmaMinerals } from '../auth/meApi';
 import { formatPlasmaMinerals } from './plasmaMineralsHud';
+import { showErrorSnackbar, showSuccessSnackbar } from './snackbar';
 
 export class PlasmaMineralsStoreModal {
   private readonly root: HTMLElement;
@@ -116,15 +117,17 @@ export class PlasmaMineralsStoreModal {
     this.setStatus('Processing purchase...');
     try {
       const result = await apiPurchasePlasmaMinerals(packId);
-      this.setStatus(
-        `Added ${formatPlasmaMinerals(result.amountGranted)} plasma minerals`,
-      );
+      const message = `Added ${formatPlasmaMinerals(result.amountGranted)} plasma minerals`;
+      this.setStatus(message);
+      showSuccessSnackbar(message);
       this.setPurchasing(false);
       window.setTimeout(() => {
         if (!this.purchasing) this.close();
       }, 700);
     } catch (error) {
-      this.setStatus(error instanceof Error ? error.message : 'Purchase failed');
+      const message = error instanceof Error ? error.message : 'Purchase failed';
+      this.setStatus(message);
+      showErrorSnackbar(message);
       this.setPurchasing(false);
     }
   }

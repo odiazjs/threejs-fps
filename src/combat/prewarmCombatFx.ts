@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { DEFAULT_LOADOUT_CONFIGS } from '../content/weaponConfig';
+import { PICKABLE_WEAPON_CONFIGS } from '../content/weaponConfig';
 import { ShieldBreakFx } from '../effects/ShieldBreakFx';
 import { getBoltCoreGeometry, getBoltCoreMaterial, getBoltGlowGeometry, getBoltGlowMaterial } from './boltVisualShared';
 import { prewarmHitSplashesGpu, warmHitSplashPool } from './hitSplashPool';
@@ -36,7 +36,7 @@ export async function runShaderPrewarm(
   holder.add(shieldBreak.object);
 
   const muzzleFlashes: MuzzleFlash[] = [];
-  for (const config of DEFAULT_LOADOUT_CONFIGS) {
+  for (const config of PICKABLE_WEAPON_CONFIGS) {
     if (!config.muzzleFlash) continue;
     const flash = new MuzzleFlash(PREWARM_POSITION, PREWARM_DIRECTION, config.muzzleFlash);
     holder.add(flash.object);

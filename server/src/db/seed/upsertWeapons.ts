@@ -24,6 +24,7 @@ export async function upsertCurrentWeaponCatalog(): Promise<void> {
         baseMagazineSize: baseStats.magazineSize,
         baseReloadSec: baseStats.reloadTime,
         baseAdsSec: baseStats.adsTime,
+        baseFireRate: baseStats.fireRate,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -40,6 +41,7 @@ export async function upsertCurrentWeaponCatalog(): Promise<void> {
           baseMagazineSize: baseStats.magazineSize,
           baseReloadSec: baseStats.reloadTime,
           baseAdsSec: baseStats.adsTime,
+          baseFireRate: baseStats.fireRate,
           updatedAt: now,
         },
       });
