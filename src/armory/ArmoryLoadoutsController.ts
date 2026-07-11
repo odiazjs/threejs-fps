@@ -38,6 +38,20 @@ function weaponIcon(weaponId: string): string | null {
   return null;
 }
 
+/** Short category label for loadout card center text (e.g. RIFLE | PISTOL). */
+function weaponTypeLabel(weaponId: string): string {
+  const types: Record<string, string> = {
+    pistol: 'PISTOL',
+    plasma_rifle: 'RIFLE',
+    root_bio_carbine: 'CARBINE',
+    bio_liquid_rifle: 'RIFLE',
+    plasma_shotgun: 'SHOTGUN',
+    sniper_rifle: 'SNIPER',
+    katana: 'MELEE',
+  };
+  return types[weaponId] ?? 'WEAPON';
+}
+
 function nextLoadoutName(existing: readonly WeaponLoadoutSummary[]): string {
   const used = new Set(existing.map((entry) => entry.name.toLowerCase()));
   for (let i = 1; i <= WEAPON_LOADOUT_MAX_PER_USER + 2; i++) {
@@ -53,8 +67,10 @@ export class ArmoryLoadoutsController {
   private editingSlot: LoadoutSlot = 'primary';
   private draft: DraftLoadout | null = null;
   private busy = false;
+  private readonly slotsEl: HTMLElement | null;
   private readonly onPickerClick: (event: Event) => void;
   private readonly onGridClick: (event: Event) => void;
+  private readonly onSlotsClick: (event: Event) => void;
   private readonly onGridInput: (event: Event) => void;
   private readonly onCreateClick: () => void;
   private readonly onSaveClick: () => void;
@@ -67,8 +83,10 @@ export class ArmoryLoadoutsController {
     private readonly statusEl: HTMLElement | null,
     private readonly onPreviewWeapon: (weaponId: string) => void = () => undefined,
   ) {
+    this.slotsEl = document.getElementById('armory-loadout-slots');
     this.onPickerClick = (event) => this.handlePickerClick(event);
     this.onGridClick = (event) => this.handleGridClick(event);
+    this.onSlotsClick = (event) => this.handleSlotsClick(event);
     this.onGridInput = (event) => this.handleGridInput(event);
     this.onCreateClick = () => {
       void this.createLoadout();
@@ -82,6 +100,7 @@ export class ArmoryLoadoutsController {
     this.picker.addEventListener('click', this.onPickerClick);
     this.grid.addEventListener('click', this.onGridClick);
     this.grid.addEventListener('input', this.onGridInput);
+    this.slotsEl?.addEventListener('click', this.onSlotsClick);
     this.createBtn.addEventListener('click', this.onCreateClick);
     this.saveBtn.addEventListener('click', this.onSaveClick);
     await this.reload();
@@ -91,6 +110,7 @@ export class ArmoryLoadoutsController {
     this.picker.removeEventListener('click', this.onPickerClick);
     this.grid.removeEventListener('click', this.onGridClick);
     this.grid.removeEventListener('input', this.onGridInput);
+    this.slotsEl?.removeEventListener('click', this.onSlotsClick);
     this.createBtn.removeEventListener('click', this.onCreateClick);
     this.saveBtn.removeEventListener('click', this.onSaveClick);
   }
@@ -200,37 +220,26 @@ export class ArmoryLoadoutsController {
       return;
     }
 
-    const slotTab = target.closest<HTMLButtonElement>('.armory-loadout-slot-tab');
-    if (slotTab && this.grid.contains(slotTab)) {
-      const slot = slotTab.dataset.slot;
-      if (slot === 'primary' || slot === 'secondary') {
-        this.setEditingSlot(slot);
-        this.previewSlotWeapon(slot);
-      }
-      return;
-    }
-
-    const weaponSlot = target.closest<HTMLElement>('.armory-loadout-weapon');
-    if (weaponSlot && this.grid.contains(weaponSlot)) {
-      const card = weaponSlot.closest<HTMLElement>('.armory-loadout-card');
-      const loadoutId = card?.dataset.loadoutId ?? null;
-      if (loadoutId && loadoutId !== this.selectedId) {
-        this.selectLoadout(loadoutId);
-      }
-      const slot = weaponSlot.dataset.slot;
-      if (slot === 'primary' || slot === 'secondary') {
-        this.setEditingSlot(slot);
-        this.previewSlotWeapon(slot, loadoutId);
-      }
-      return;
-    }
-
     const card = target.closest<HTMLElement>('.armory-loadout-card');
     if (card && this.grid.contains(card) && card.dataset.loadoutId) {
       if (card.dataset.loadoutId !== this.selectedId) {
         this.selectLoadout(card.dataset.loadoutId);
       }
     }
+  }
+
+  private handleSlotsClick(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof Element) || !this.slotsEl) return;
+
+    const weaponSlot = target.closest<HTMLElement>('.armory-loadout-weapon');
+    if (!weaponSlot || !this.slotsEl.contains(weaponSlot)) return;
+
+    const slot = weaponSlot.dataset.slot;
+    if (slot !== 'primary' && slot !== 'secondary') return;
+
+    this.setEditingSlot(slot);
+    this.previewSlotWeapon(slot);
   }
 
   private setEditingSlot(slot: LoadoutSlot): void {
@@ -240,11 +249,8 @@ export class ArmoryLoadoutsController {
     this.render();
   }
 
-  private previewSlotWeapon(slot: LoadoutSlot, loadoutId?: string | null): void {
-    const summary =
-      (loadoutId ? this.loadouts.find((entry) => entry.id === loadoutId) : null) ??
-      this.loadouts.find((entry) => entry.id === this.selectedId) ??
-      null;
+  private previewSlotWeapon(slot: LoadoutSlot): void {
+    const summary = this.loadouts.find((entry) => entry.id === this.selectedId) ?? null;
     const draft = this.draft?.id === summary?.id ? this.draft : null;
     const weaponId =
       slot === 'primary'
@@ -456,12 +462,14 @@ export class ArmoryLoadoutsController {
     if (this.loadouts.length === 0) {
       this.grid.innerHTML =
         '<p class="armory-loadout-empty-state">No loadouts yet. Click CREATE NEW to start.</p>';
+      if (this.slotsEl) this.slotsEl.innerHTML = '';
       return;
     }
 
     this.grid.innerHTML = this.loadouts
       .map((loadout, index) => this.renderCard(loadout, index))
       .join('');
+    this.renderActiveSlots();
   }
 
   private renderCard(loadout: WeaponLoadoutSummary, index: number): string {
@@ -470,61 +478,77 @@ export class ArmoryLoadoutsController {
     const name = draft?.name ?? loadout.name;
     const primaryId = draft?.primaryWeaponId ?? loadout.primaryWeaponId;
     const secondaryId = draft?.secondaryWeaponId ?? loadout.secondaryWeaponId;
-    const status = loadout.isDefault ? 'DEFAULT' : isSelected ? 'OPENED' : '';
+    const typeLine = `${weaponTypeLabel(primaryId)} | ${weaponTypeLabel(secondaryId)}`;
 
     return `
       <article
         class="armory-loadout-card${isSelected ? ' is-active' : ''}${loadout.isDefault ? ' is-default' : ''}"
         data-loadout-id="${escapeAttr(loadout.id)}"
         data-loadout-slot="${index + 1}"
+        role="listitem"
       >
         <div class="armory-loadout-card-top">
-          <span class="armory-loadout-index">${index + 1}</span>
           <span class="armory-loadout-label">LOADOUT ${index + 1}</span>
-          ${status ? `<span class="armory-loadout-status">${status}</span>` : ''}
+          ${
+            loadout.isDefault
+              ? '<span class="armory-loadout-status">DEFAULT</span>'
+              : `<button type="button" class="armory-loadout-default-btn" data-loadout-id="${escapeAttr(loadout.id)}">SET DEFAULT</button>`
+          }
         </div>
-        <input
+        ${
+          isSelected
+            ? `<input
           class="armory-loadout-name"
           type="text"
           value="${escapeAttr(name)}"
           maxlength="${WEAPON_LOADOUT_NAME_MAX_LENGTH}"
           aria-label="Loadout ${index + 1} name"
-          ${isSelected ? '' : 'readonly'}
-        />
-        ${
-          isSelected
-            ? `
-        <div class="armory-loadout-slot-tabs" role="tablist" aria-label="Loadout slots">
-          <button type="button" class="armory-loadout-slot-tab${this.editingSlot === 'primary' ? ' is-active' : ''}" data-slot="primary">PRIMARY</button>
-          <button type="button" class="armory-loadout-slot-tab${this.editingSlot === 'secondary' ? ' is-active' : ''}" data-slot="secondary">SECONDARY</button>
-        </div>`
-            : ''
+        />`
+            : `<p class="armory-loadout-name-static" title="${escapeAttr(name)}">${escapeHtml(name)}</p>`
         }
-        <div class="armory-loadout-weapons">
-          ${this.renderWeaponSlot('primary', primaryId, isSelected)}
-          ${this.renderWeaponSlot('secondary', secondaryId, isSelected)}
-        </div>
-        ${
-          loadout.isDefault
-            ? `<span class="armory-loadout-default-badge">DEFAULT FOR MATCHES</span>`
-            : `<button type="button" class="armory-loadout-default-btn" data-loadout-id="${escapeAttr(loadout.id)}">SET AS DEFAULT</button>`
-        }
+        <p class="armory-loadout-types">${escapeHtml(typeLine)}</p>
       </article>
     `;
   }
 
-  private renderWeaponSlot(slot: LoadoutSlot, weaponId: string, isSelected: boolean): string {
+  private renderActiveSlots(): void {
+    if (!this.slotsEl) return;
+
+    const summary =
+      this.loadouts.find((entry) => entry.id === this.selectedId) ?? null;
+    if (!summary || !this.draft) {
+      this.slotsEl.innerHTML = '';
+      return;
+    }
+
+    const primaryId = this.draft.primaryWeaponId;
+    const secondaryId = this.draft.secondaryWeaponId;
+
+    this.slotsEl.innerHTML = `
+      ${this.renderActiveSlot('primary', primaryId)}
+      ${this.renderActiveSlot('secondary', secondaryId)}
+    `;
+  }
+
+  private renderActiveSlot(slot: LoadoutSlot, weaponId: string): string {
     const icon = weaponIcon(weaponId);
     const label = weaponLabel(weaponId);
-    const editing = isSelected && this.editingSlot === slot;
+    const editing = this.editingSlot === slot;
+    const slotLabel = slot === 'primary' ? 'PRIMARY' : 'SECONDARY';
     return `
-      <div
+      <button
+        type="button"
         class="armory-loadout-weapon is-filled${editing ? ' is-editing' : ''}"
         data-slot="${slot}"
         title="${escapeAttr(label)}"
+        aria-pressed="${editing ? 'true' : 'false'}"
       >
-        ${icon ? `<img src="${escapeAttr(icon)}" alt="" />` : `<span>${escapeHtml(label)}</span>`}
-      </div>
+        <span class="armory-loadout-weapon-slot">${slotLabel}</span>
+        <span class="armory-loadout-weapon-name">${escapeHtml(label)}</span>
+        <span class="armory-loadout-weapon-visual">
+          ${icon ? `<img src="${escapeAttr(icon)}" alt="" />` : ''}
+        </span>
+      </button>
     `;
   }
 }
