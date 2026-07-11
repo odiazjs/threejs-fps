@@ -4,6 +4,7 @@ import {
   batchUpgradePlayerWeaponStats,
   listPlayerWeapons,
   listWeapons,
+  resetPlayerWeaponStats,
   upgradePlayerWeaponStat,
 } from './service.js';
 
@@ -90,6 +91,21 @@ export function registerWeaponRoutes(app: Express): void {
       res.json(data);
     } catch (error) {
       sendError(res, 400, error instanceof Error ? error.message : 'Could not save upgrades');
+    }
+  });
+
+  app.post('/api/me/weapons/:weaponId/reset', requireAuth, async (req, res) => {
+    const weaponId =
+      typeof req.params.weaponId === 'string' ? req.params.weaponId.trim() : '';
+    if (!weaponId) {
+      return sendError(res, 400, 'Weapon id is required');
+    }
+
+    try {
+      const data = await resetPlayerWeaponStats(req.auth!, weaponId);
+      res.json(data);
+    } catch (error) {
+      sendError(res, 400, error instanceof Error ? error.message : 'Could not reset weapon stats');
     }
   });
 }

@@ -96,7 +96,7 @@ import {
   MELEE_WEAPON_ID,
 } from '../../../shared/content/weaponIds.js';
 import type { KillFeedMessage, PlayerDamagedMessage, PlayerHitMessage } from '../../../shared/network/damage.js';
-import type { ReloadMessage } from '../../../shared/network/reload.js';
+import type { ReloadMessage, ReloadStopMessage } from '../../../shared/network/reload.js';
 import type { SwitchWeaponMessage, EquipMeleeMessage } from '../../../shared/network/weapon.js';
 import type { MeleeAttackMessage } from '../../../shared/network/meleeAttack.js';
 import type { AutoFireStopMessage } from '../../../shared/network/autoFireStop.js';
@@ -1054,9 +1054,24 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       }
       if (!hasWeapon) return;
 
+      const catalogReload = this.getSessionWeaponReloadSec(client.sessionId, data.weaponId);
+      const duration =
+        data.durationSec !== undefined &&
+        Number.isFinite(data.durationSec) &&
+        data.durationSec > 0
+          ? data.durationSec
+          : catalogReload;
+
       player.reloading = true;
       player.activeWeaponId = data.weaponId;
-      player.reloadEndAt = this.state.worldTime + this.getSessionWeaponReloadSec(client.sessionId, data.weaponId);
+      player.reloadEndAt = this.state.worldTime + duration;
+    },
+
+    reloadStop: (client: Client, _data: ReloadStopMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      player.reloading = false;
+      player.reloadEndAt = 0;
     },
 
     switchWeapon: (client: Client, data: SwitchWeaponMessage) => {
@@ -1074,6 +1089,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.activeWeaponId = nextWeapon;
       this.startWeaponSwitchAnim(player);
       this.cancelShieldRecharge(player);
+      player.reloading = false;
+      player.reloadEndAt = 0;
     },
 
     equipMelee: (client: Client, data: EquipMeleeMessage) => {
@@ -1216,6 +1233,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!isWeaponId(player.activeWeaponId)) return;
       if (!this.isMatchCombatAllowed()) return;
       this.cancelShieldRecharge(player);
+      // Shotgun shell reloads can be interrupted by firing.
+      if (player.reloading) {
+        player.reloading = false;
+        player.reloadEndAt = 0;
+      }
 
       const chestY = player.y - EYE_HEIGHT + PLAYER_HIT_CAPSULE_HEIGHT * 0.5;
       this.lastShotOriginBySession.set(client.sessionId, {
@@ -1229,7 +1251,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!weaponId || !isWeaponId(weaponId)) {
         weaponId = player.activeWeaponId;
       }
-      if (weaponId && isWeaponId(weaponId)) {
+      // Shotgun shells send one shoot message per pellet; only the primary pellet
+      // should start / play the weaponShot SFX.
+      const isPrimaryPellet = (data.pelletIndex ?? 0) === 0;
+      if (weaponId && isWeaponId(weaponId) && isPrimaryPellet) {
         if (WEAPON_FIRE_MODE[weaponId] === 'auto') {
           if (!this.autoFiringSessions.has(client.sessionId)) {
             this.autoFiringSessions.add(client.sessionId);

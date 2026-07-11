@@ -364,6 +364,13 @@
   letter-spacing: 0.14em;
 }
 
+.armory-upgrade-reset-btn {
+  width: 100%;
+  pointer-events: auto;
+  min-height: 2.35rem;
+  letter-spacing: 0.14em;
+}
+
 .armory-panel-header {
   flex: 0 0 auto;
 }

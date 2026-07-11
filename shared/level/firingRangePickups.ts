@@ -28,7 +28,7 @@ const FIRING_RANGE_AMMO_COUNT = 2;
 /** Two of each gun — one weapon per assigned crate (melee is always available via X). */
 const FIRING_RANGE_WEAPON_LOADOUT: readonly WeaponId[] = [
   'pistol',
-  'pistol',
+  'plasma_shotgun',
   'sniper_rifle',
   'sniper_rifle',
   'plasma_rifle',

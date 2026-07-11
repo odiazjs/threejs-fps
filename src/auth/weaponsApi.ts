@@ -1,6 +1,7 @@
 import type {
   BatchUpgradeWeaponResponse,
   PlayerWeaponsListResponse,
+  ResetWeaponStatsResponse,
   UpgradeWeaponStatResponse,
   WeaponUpgradeLevelDeltas,
   WeaponsListResponse,
@@ -79,6 +80,21 @@ export async function apiBatchUpgradeWeaponStats(
     {
       method: 'POST',
       body: JSON.stringify({ deltas }),
+    },
+  );
+  setPlasmaMineralsDisplay(result.plasmaMinerals);
+  return result;
+}
+
+/** Reset all upgrade levels for a weapon to catalog base stats. */
+export async function apiResetWeaponStats(
+  weaponId: string,
+): Promise<ResetWeaponStatsResponse> {
+  const result = await authFetch<ResetWeaponStatsResponse>(
+    `/api/me/weapons/${encodeURIComponent(weaponId)}/reset`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
     },
   );
   setPlasmaMineralsDisplay(result.plasmaMinerals);

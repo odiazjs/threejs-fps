@@ -131,6 +131,8 @@ export function collectWeaponSoundUrls(configs: readonly WeaponConfig[]): string
     addSoundUrl(urls, sounds.singleShot);
     addSoundUrl(urls, sounds.autoShot);
     addSoundUrl(urls, sounds.reload);
+    addSoundUrl(urls, sounds.reloadPartial);
+    addSoundUrl(urls, sounds.reloadComplete);
   }
 
   return [...urls];
@@ -290,6 +292,43 @@ export class WeaponSoundService {
       clip.volume,
       reloadPlaybackRate(loaded.buffer, reloadSec),
     );
+  }
+
+  /** Per-shell insert (shotgun) — natural playback, no duration stretch. */
+  playReloadPartial(sounds: WeaponSoundsConfig | undefined): void {
+    if (!sounds) return;
+    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const clip =
+      resolveSoundClip(sounds.reloadPartial, defaultVolume) ??
+      resolveSoundClip(sounds.reload, defaultVolume);
+    if (!clip) return;
+    this.playReloadInsertClip(clip.url, clip.volume);
+  }
+
+  /** Magazine became full after a shell-style reload. */
+  playReloadComplete(sounds: WeaponSoundsConfig | undefined): void {
+    if (!sounds) return;
+    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const clip =
+      resolveSoundClip(sounds.reloadComplete, defaultVolume) ??
+      resolveSoundClip(sounds.reloadPartial, defaultVolume) ??
+      resolveSoundClip(sounds.reload, defaultVolume);
+    if (!clip) return;
+    this.playReloadInsertClip(clip.url, clip.volume);
+  }
+
+  private playReloadInsertClip(url: string, volume: number): void {
+    this.stopReload();
+    this.ensureContext();
+    const loaded = this.buffers.get(url);
+    if (!loaded) {
+      void this.preload([url]).then(() => {
+        if (!this.buffers.get(url)) return;
+        this.playReloadOneShot(url, volume, 1);
+      });
+      return;
+    }
+    this.playReloadOneShot(url, volume, 1);
   }
 
   stopReload(): void {

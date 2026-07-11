@@ -3,6 +3,7 @@ import type {
   BatchUpgradeWeaponResponse,
   PlayerWeaponEntry,
   PlayerWeaponsListResponse,
+  ResetWeaponStatsResponse,
   UpgradeWeaponStatResponse,
   WeaponCatalogEntry,
   WeaponsListResponse,
@@ -453,6 +454,123 @@ export async function batchUpgradePlayerWeaponStats(
         throw new Error('Could not save weapon upgrades');
       }
       upgradeRow = inserted;
+    }
+
+    return {
+      plasmaMinerals,
+      costSpent,
+      weapon: toPlayerWeaponEntry(weapon, upgradeRow),
+    };
+  });
+}
+
+/**
+ * Set all upgrade levels to 0 (catalog base) and refund/charge plasma for the delta.
+ */
+export async function resetPlayerWeaponStats(
+  auth: AuthContext,
+  weaponId: string,
+): Promise<ResetWeaponStatsResponse> {
+  await ensureUser(auth);
+
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const [weapon] = await tx.select().from(weapons).where(eq(weapons.id, weaponId)).limit(1);
+    if (!weapon) {
+      throw new Error('Weapon not found');
+    }
+    if (!weapon.enabled) {
+      throw new Error('Weapon is disabled');
+    }
+
+    const [existing] = await tx
+      .select()
+      .from(userWeaponUpgrades)
+      .where(
+        and(eq(userWeaponUpgrades.userId, auth.sub), eq(userWeaponUpgrades.weaponId, weaponId)),
+      )
+      .limit(1);
+
+    const currentLevels = levelsFromUpgradeRow(existing);
+    const nextLevels = zeroUpgradeLevels();
+    let costSpent = 0;
+    let hasChange = false;
+
+    for (const stat of WEAPON_UPGRADE_STAT_IDS) {
+      const from = currentLevels[stat];
+      if (from === 0) continue;
+      hasChange = true;
+      costSpent += plasmaMineralCostForLevelRange(from, 0);
+    }
+
+    if (!hasChange) {
+      return {
+        plasmaMinerals: await getPlasmaMinerals(auth.sub),
+        costSpent: 0,
+        weapon: toPlayerWeaponEntry(weapon, existing),
+      };
+    }
+
+    let plasmaMinerals: number;
+    if (costSpent > 0) {
+      const [spent] = await tx
+        .update(users)
+        .set({
+          plasmaMinerals: sql`${users.plasmaMinerals} - ${costSpent}`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(users.id, auth.sub), sql`${users.plasmaMinerals} >= ${costSpent}`))
+        .returning({ plasmaMinerals: users.plasmaMinerals });
+      if (!spent) {
+        throw new Error('Not enough plasma minerals');
+      }
+      plasmaMinerals = spent.plasmaMinerals;
+    } else if (costSpent < 0) {
+      const refund = -costSpent;
+      const [refunded] = await tx
+        .update(users)
+        .set({
+          plasmaMinerals: sql`${users.plasmaMinerals} + ${refund}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, auth.sub))
+        .returning({ plasmaMinerals: users.plasmaMinerals });
+      if (!refunded) {
+        throw new Error('Could not refund plasma minerals');
+      }
+      plasmaMinerals = refunded.plasmaMinerals;
+    } else {
+      plasmaMinerals = await getPlasmaMinerals(auth.sub);
+    }
+
+    const now = new Date();
+    const levelValues = {
+      damageLevel: nextLevels.damage,
+      recoilLevel: nextLevels.recoil,
+      rangeLevel: nextLevels.range,
+      magazineLevel: nextLevels.magazineSize,
+      reloadLevel: nextLevels.reloadTime,
+      adsLevel: nextLevels.adsTime,
+      fireRateLevel: nextLevels.fireRate,
+      updatedAt: now,
+    };
+
+    let upgradeRow: typeof userWeaponUpgrades.$inferSelect;
+    if (existing) {
+      const [updated] = await tx
+        .update(userWeaponUpgrades)
+        .set(levelValues)
+        .where(
+          and(eq(userWeaponUpgrades.userId, auth.sub), eq(userWeaponUpgrades.weaponId, weaponId)),
+        )
+        .returning();
+      if (!updated) {
+        throw new Error('Could not reset weapon stats');
+      }
+      upgradeRow = updated;
+    } else {
+      throw new Error('Could not reset weapon stats');
     }
 
     return {

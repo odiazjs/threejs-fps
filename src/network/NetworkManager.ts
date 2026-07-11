@@ -108,6 +108,7 @@ export class NetworkManager {
       if (!built) return;
 
       readProjectileShooterWorldPos(spawn, _shooterWorldPos);
+      const pelletIndex = spawn.pelletIndex ?? 0;
 
       this.projectiles.spawn(built.params, {
         visualOnly: true,
@@ -116,15 +117,17 @@ export class NetworkManager {
         shooterId: spawn.shooterId,
         shooterWorldPos: _shooterWorldPos,
         weaponId: built.weaponId,
-        muzzleFlash: built.muzzleFlash,
+        muzzleFlash: pelletIndex === 0 ? built.muzzleFlash : undefined,
         projectileStyle: built.projectileStyle,
         projectileGravity: built.projectileGravity,
       });
 
       // Auto weapons without a loop clip (e.g. bio-liquid) play one SFX per tracer.
+      // Shotgun follow-up pellets skip SFX — only pellet 0 (or omitted index) plays.
       const remoteSounds = getWeaponConfig(built.weaponId)?.sounds;
       if (
         spawn.shooterId &&
+        pelletIndex === 0 &&
         remoteSounds &&
         !remoteSounds.autoShot &&
         remoteSounds.singleShot
@@ -305,7 +308,7 @@ export class NetworkManager {
       },
     );
 
-    player.setShootCallback((origin, direction) => {
+    player.setShootCallback((origin, direction, options) => {
       if (!this.roomClient.connected) return;
       const weaponId = player.getActiveWeaponId();
       if (!weaponId) return;
@@ -318,6 +321,7 @@ export class NetworkManager {
         dirY: direction.y,
         dirZ: direction.z,
         weaponId,
+        pelletIndex: options?.pelletIndex,
         shooterWorldX: feet.x,
         shooterWorldY: feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
         shooterWorldZ: feet.z,
@@ -328,9 +332,13 @@ export class NetworkManager {
       if (!this.roomClient.connected) return;
       this.roomClient.sendAutoFireStop();
     });
-    player.setReloadNetworkCallback((weaponId) => {
+    player.setReloadNetworkCallback((weaponId, durationSec) => {
       if (!this.roomClient.connected) return;
-      this.roomClient.sendReload(weaponId);
+      this.roomClient.sendReload(weaponId, durationSec);
+    });
+    player.setReloadStopNetworkCallback(() => {
+      if (!this.roomClient.connected) return;
+      this.roomClient.sendReloadStop();
     });
     player.setWeaponSwitchNetworkCallback((slot) => {
       if (!this.roomClient.connected) return;

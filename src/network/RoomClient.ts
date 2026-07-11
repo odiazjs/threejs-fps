@@ -477,8 +477,15 @@ export class RoomClient {
     this.room?.send('hit', { targetId, weaponId, bodyPart });
   }
 
-  sendReload(weaponId: WeaponId): void {
-    this.room?.send('reload', { weaponId });
+  sendReload(weaponId: WeaponId, durationSec?: number): void {
+    this.room?.send('reload', {
+      weaponId,
+      ...(durationSec !== undefined ? { durationSec } : {}),
+    });
+  }
+
+  sendReloadStop(): void {
+    this.room?.send('reloadStop', {});
   }
 
   sendSwitchWeapon(slot: number): void {

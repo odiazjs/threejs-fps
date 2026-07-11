@@ -125,8 +125,12 @@ export interface WeaponSoundsConfig {
   readonly singleShot?: string | WeaponSoundClip;
   /** Sustained auto fire after the first shot while holding trigger. */
   readonly autoShot?: string | WeaponSoundClip;
-  /** One-shot played when a reload starts. */
+  /** One-shot played when a magazine reload starts. */
   readonly reload?: string | WeaponSoundClip;
+  /** Per-shell insert SFX for `reloadStyle: 'shell'` weapons. */
+  readonly reloadPartial?: string | WeaponSoundClip;
+  /** Played when a shell reload fills the magazine completely. */
+  readonly reloadComplete?: string | WeaponSoundClip;
   /** Default gain for clips that omit their own `volume` (default 1). */
   readonly volume?: number;
 }
@@ -140,6 +144,12 @@ export interface WeaponConfig {
   readonly name: string;
   readonly clipSize: number;
   readonly reloadSec: number;
+  /**
+   * `magazine` (default) — one timed reload fills the clip.
+   * `shell` — loads one round at a time; `reloadSec` is the full-mag duration
+   * (per-shell time = reloadSec / clipSize). Can interrupt to fire mid-reload.
+   */
+  readonly reloadStyle?: 'magazine' | 'shell';
   readonly reserveClips: number;
   /** Shots per second. Use 0 for uncapped (semi: as fast as the player can click). */
   readonly fireRate: number;
@@ -151,6 +161,21 @@ export interface WeaponConfig {
    * Intra-burst spacing still uses `1 / fireRate`.
    */
   readonly burstRecoverySec?: number;
+  /**
+   * Simultaneous projectiles per trigger pull (shotgun). Defaults to 1.
+   * Armory `damage` is applied per pellet that hits.
+   */
+  readonly pelletCount?: number;
+  /**
+   * Cone half-angle in radians for non-center pellets when `pelletCount` > 1.
+   * Pellet 0 stays on the aim ray; others sit on a ring at this angle.
+   */
+  readonly pelletSpreadRad?: number;
+  /**
+   * Multiplier on `pelletSpreadRad` while fully ADS (default 0.55).
+   * Hip fire uses 1.0.
+   */
+  readonly pelletAdsSpreadScale?: number;
   readonly damage: number;
   /** Seconds to reach full ADS (hip → sights). Lower is faster. */
   readonly adsTime: number;

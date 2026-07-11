@@ -4,6 +4,7 @@ export type WeaponId =
   | 'sniper_rifle'
   | 'root_bio_carbine'
   | 'bio_liquid_rifle'
+  | 'plasma_shotgun'
   | 'katana';
 
 export const MELEE_WEAPON_ID = 'katana' as const satisfies WeaponId;
@@ -25,6 +26,7 @@ export function isWeaponId(value: string): value is WeaponId {
     value === 'sniper_rifle' ||
     value === 'root_bio_carbine' ||
     value === 'bio_liquid_rifle' ||
+    value === 'plasma_shotgun' ||
     value === 'katana'
   );
 }

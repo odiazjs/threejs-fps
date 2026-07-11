@@ -57,3 +57,11 @@ export interface BatchUpgradeWeaponResponse {
   costSpent: number;
   weapon: PlayerWeaponEntry;
 }
+
+/** Response from resetting a weapon's upgrade levels back to catalog base. */
+export interface ResetWeaponStatsResponse {
+  plasmaMinerals: number;
+  /** Net plasma change: typically negative (refund) when undoing upgrades. */
+  costSpent: number;
+  weapon: PlayerWeaponEntry;
+}

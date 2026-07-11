@@ -12,6 +12,10 @@ import {
   createBioLiquidRifleWeaponMesh,
   preloadBioLiquidRifleWeaponModel,
 } from './bioLiquidRifleModel';
+import {
+  createPlasmaShotgunWeaponMesh,
+  preloadPlasmaShotgunWeaponModel,
+} from './plasmaShotgunModel';
 
 export function preloadWeaponMeshes(): Promise<void> {
   return Promise.all([
@@ -20,6 +24,7 @@ export function preloadWeaponMeshes(): Promise<void> {
     preloadSniperWeaponModel(),
     preloadRootBioCarbineWeaponModel(),
     preloadBioLiquidRifleWeaponModel(),
+    preloadPlasmaShotgunWeaponModel(),
     preloadKatanaWeaponModel(),
   ]).then(() => undefined);
 }
@@ -36,6 +41,8 @@ export function createWeaponMesh(id: WeaponId): THREE.Group {
       return createRootBioCarbineWeaponMesh();
     case 'bio_liquid_rifle':
       return createBioLiquidRifleWeaponMesh();
+    case 'plasma_shotgun':
+      return createPlasmaShotgunWeaponMesh();
     case 'plasma_rifle':
     default:
       return createRifleWeaponMesh();

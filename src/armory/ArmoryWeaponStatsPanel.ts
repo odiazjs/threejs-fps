@@ -13,7 +13,7 @@ import {
   weaponUpgradeStep,
   zeroUpgradeLevels,
 } from '../../shared/content/weaponUpgrades';
-import { apiBatchUpgradeWeaponStats, apiListMyWeapons } from '../auth/weaponsApi';
+import { apiBatchUpgradeWeaponStats, apiListMyWeapons, apiResetWeaponStats } from '../auth/weaponsApi';
 import {
   formatPlasmaMineralCost,
   formatPlasmaMinerals,
@@ -185,6 +185,7 @@ export class ArmoryWeaponStatsPanel {
   private plasmaMinerals = 0;
   private pendingByWeapon = new Map<string, WeaponUpgradeLevels>();
   private saving = false;
+  private resetting = false;
   private unsubscribeMinerals: (() => void) | null = null;
 
   private readonly onInput = (event: Event): void => {
@@ -233,6 +234,7 @@ export class ArmoryWeaponStatsPanel {
     this.pendingByWeapon.clear();
     this.selectedWeaponId = null;
     this.saving = false;
+    this.resetting = false;
   }
 
   showWeapon(weaponId: string): void {
@@ -276,6 +278,18 @@ export class ArmoryWeaponStatsPanel {
     return WEAPON_UPGRADE_STAT_IDS.some((stat) => pending[stat] !== 0);
   }
 
+  private isAtBaseLevels(entry: PlayerWeaponEntry): boolean {
+    return WEAPON_UPGRADE_STAT_IDS.every((stat) => entry.levels[stat] === 0);
+  }
+
+  private canResetStats(entry: PlayerWeaponEntry): boolean {
+    return !this.saving && !this.resetting && (!this.isAtBaseLevels(entry) || this.hasAnyPending(entry));
+  }
+
+  private isBusy(): boolean {
+    return this.saving || this.resetting;
+  }
+
   private setStatus(message: string): void {
     if (!this.statusEl) return;
     this.statusEl.textContent = message;
@@ -283,7 +297,7 @@ export class ArmoryWeaponStatsPanel {
   }
 
   private handleInput(event: Event): void {
-    if (this.saving) return;
+    if (this.isBusy()) return;
     const target = event.target;
     if (!(target instanceof HTMLInputElement)) return;
     if (!target.matches('[data-upgrade-slider]')) return;
@@ -321,13 +335,72 @@ export class ArmoryWeaponStatsPanel {
   private async handleClick(event: MouseEvent): Promise<void> {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    if (target.closest('[data-upgrade-reset]')) {
+      await this.resetStats();
+      return;
+    }
     if (target.closest('[data-upgrade-save]')) {
       await this.commitUpgrades();
     }
   }
 
+  private async resetStats(): Promise<void> {
+    if (this.isBusy()) return;
+    const weaponId = this.selectedWeaponId;
+    const entry = weaponId ? this.weaponsById.get(weaponId) : undefined;
+    if (!entry || !weaponId || !this.canResetStats(entry)) return;
+
+    // Draft-only changes: snap UI back to saved levels without a network round-trip.
+    if (this.isAtBaseLevels(entry)) {
+      this.pendingByWeapon.set(weaponId, emptyPending());
+      this.setStatus('Stats reset to base');
+      this.render();
+      return;
+    }
+
+    this.resetting = true;
+    this.setStatus('Resetting stats...');
+    this.render();
+
+    try {
+      const result = await apiResetWeaponStats(weaponId);
+      this.plasmaMinerals = result.plasmaMinerals;
+      this.weaponsById.set(weaponId, result.weapon);
+      this.pendingByWeapon.set(weaponId, emptyPending());
+      setPlasmaMineralsDisplay(this.plasmaMinerals);
+
+      if (result.costSpent < 0) {
+        const message = `Stats reset (+${formatPlasmaMinerals(-result.costSpent)} plasma refunded)`;
+        this.setStatus(message);
+        showSuccessSnackbar(message);
+      } else if (result.costSpent > 0) {
+        const message = `Stats reset (−${formatPlasmaMinerals(result.costSpent)} plasma)`;
+        this.setStatus(message);
+        showSuccessSnackbar(message);
+      } else {
+        this.setStatus('Stats reset to base');
+        showSuccessSnackbar('Weapon stats reset to base');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not reset stats';
+      this.setStatus(message);
+      showErrorSnackbar(message);
+      try {
+        const { weapons, plasmaMinerals } = await apiListMyWeapons();
+        this.weaponsById = new Map(weapons.map((row) => [row.id, row]));
+        this.plasmaMinerals = plasmaMinerals;
+        this.pendingByWeapon.set(weaponId, emptyPending());
+      } catch {
+        // keep local state if refresh fails
+      }
+    } finally {
+      this.resetting = false;
+      this.render();
+    }
+  }
+
   private async commitUpgrades(): Promise<void> {
-    if (this.saving) return;
+    if (this.isBusy()) return;
     const weaponId = this.selectedWeaponId;
     const entry = weaponId ? this.weaponsById.get(weaponId) : undefined;
     if (!entry || !weaponId || !this.hasAnyPending(entry)) return;
@@ -442,8 +515,14 @@ export class ArmoryWeaponStatsPanel {
 
     const saveBtn = this.bodyEl.querySelector<HTMLButtonElement>('[data-upgrade-save]');
     if (saveBtn) {
-      saveBtn.disabled = !hasPending || this.saving;
+      saveBtn.disabled = !hasPending || this.isBusy();
       saveBtn.textContent = this.saving ? 'SAVING…' : 'SAVE UPGRADE';
+    }
+
+    const resetBtn = this.bodyEl.querySelector<HTMLButtonElement>('[data-upgrade-reset]');
+    if (resetBtn) {
+      resetBtn.disabled = !this.canResetStats(entry);
+      resetBtn.textContent = this.resetting ? 'RESETTING…' : 'RESET STATS';
     }
   }
 
@@ -474,7 +553,7 @@ export class ArmoryWeaponStatsPanel {
       const draftValue = readStat(draftStats, stat);
       const trackMax = STAT_MAX[stat];
       const ratio = fillRatio(stat, draftValue);
-      const canEdit = !this.saving;
+      const canEdit = !this.isBusy();
 
       const valueHtml =
         pendingLevels !== 0
@@ -521,9 +600,15 @@ export class ArmoryWeaponStatsPanel {
         </div>
         <button
           type="button"
+          class="armory-btn armory-btn--ghost armory-upgrade-reset-btn"
+          data-upgrade-reset
+          ${!this.canResetStats(entry) ? 'disabled' : ''}
+        >${this.resetting ? 'RESETTING…' : 'RESET STATS'}</button>
+        <button
+          type="button"
           class="armory-btn armory-btn--primary armory-upgrade-save-btn"
           data-upgrade-save
-          ${!hasPending || this.saving ? 'disabled' : ''}
+          ${!hasPending || this.isBusy() ? 'disabled' : ''}
         >${this.saving ? 'SAVING…' : 'SAVE UPGRADE'}</button>
       </div>
     `;

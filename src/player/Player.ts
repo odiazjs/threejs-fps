@@ -36,6 +36,7 @@ import {
 import { bodyPartVolumesFromBoneRefs, type BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
 import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readScreenHoldWorldPosition } from '../combat/aiming';
+import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
@@ -117,12 +118,17 @@ function lerpAngle(from: number, to: number, t: number): number {
   return from + delta * t;
 }
 
-export type ShootCallback = (origin: THREE.Vector3, direction: THREE.Vector3) => void;
+export type ShootCallback = (
+  origin: THREE.Vector3,
+  direction: THREE.Vector3,
+  options?: { pelletIndex?: number },
+) => void;
 export type AutoFireStopCallback = () => void;
 export type WeaponSwitchCallback = (slot: number, weaponId: WeaponId) => void;
 export type MeleeEquipCallback = (equipped: boolean) => void;
 export type MeleeAttackNetworkCallback = () => void;
-export type ReloadNetworkCallback = (weaponId: WeaponId) => void;
+export type ReloadNetworkCallback = (weaponId: WeaponId, durationSec?: number) => void;
+export type ReloadStopNetworkCallback = () => void;
 export type ShieldRechargeNetworkCallback = () => void;
 
 export class Player {
@@ -182,6 +188,7 @@ export class Player {
   private hitRayOrigin = new THREE.Vector3();
   private readonly shooterWorldPos = new THREE.Vector3();
   private hitRayDirection = new THREE.Vector3();
+  private readonly pelletDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSway | null = null;
   private grenadeViewModel: GrenadeViewModel | null = null;
@@ -189,6 +196,7 @@ export class Player {
   private onShoot: ShootCallback | null = null;
   private onAutoFireStopNetwork: AutoFireStopCallback | null = null;
   private onReloadNetwork: ReloadNetworkCallback | null = null;
+  private onReloadStopNetwork: ReloadStopNetworkCallback | null = null;
   private onWeaponSwitchNetwork: WeaponSwitchCallback | null = null;
   private onMeleeEquipNetwork: MeleeEquipCallback | null = null;
   private onMeleeAttackNetwork: MeleeAttackNetworkCallback | null = null;
@@ -844,6 +852,10 @@ export class Player {
     this.onReloadNetwork = callback;
   }
 
+  setReloadStopNetworkCallback(callback: ReloadStopNetworkCallback | null): void {
+    this.onReloadStopNetwork = callback;
+  }
+
   setWeaponSwitchNetworkCallback(callback: WeaponSwitchCallback | null): void {
     this.onWeaponSwitchNetwork = callback;
   }
@@ -1367,16 +1379,34 @@ export class Player {
           active.ammo.tryReload()
         ) {
           this.stopWeaponAutoFire();
-          const reloadSec = Math.max(0.05, Number(active.config.reloadSec) || 0.05);
-          this.weaponSounds?.playReload(active.config.sounds, reloadSec);
           const weaponId = this.loadout.getActiveWeaponId();
-          if (weaponId) this.onReloadNetwork?.(weaponId);
+          const durationSec = active.ammo.getReloadSequenceDuration();
+          if (active.ammo.isShellReloadStyle()) {
+            // Shell inserts play SFX as each round chambers — not a stretched mag clip.
+            if (weaponId) this.onReloadNetwork?.(weaponId, durationSec);
+          } else {
+            const reloadSec = Math.max(0.05, Number(active.config.reloadSec) || 0.05);
+            this.weaponSounds?.playReload(active.config.sounds, reloadSec);
+            if (weaponId) this.onReloadNetwork?.(weaponId, reloadSec);
+          }
         }
       }
 
       this.tryStartShieldRecharge(input);
 
       ads = !meleeEquipped && pointer.isPressed(POINTER_ADS);
+      const shellReloadEvent = active.ammo.consumeShellReloadUpdate();
+      if (shellReloadEvent?.shellInserted) {
+        if (shellReloadEvent.magazineFull) {
+          this.weaponSounds?.playReloadComplete(active.config.sounds);
+        } else {
+          this.weaponSounds?.playReloadPartial(active.config.sounds);
+        }
+        if (shellReloadEvent.finished) {
+          this.onReloadStopNetwork?.();
+        }
+      }
+
       const ammoState = active.ammo.getState();
       ammoReloading = ammoState.reloading;
       ammoReloadProgress = ammoState.reloadProgress;
@@ -1770,6 +1800,7 @@ export class Player {
 
     this.stopWeaponAutoFire();
     this.stopReloadAudio();
+    this.onReloadStopNetwork?.();
     const active = this.loadout.getActive();
     if (!active) return;
 
@@ -1818,6 +1849,7 @@ export class Player {
     this.unequipThrowable();
     this.stopWeaponAutoFire();
     this.stopReloadAudio();
+    this.onReloadStopNetwork?.();
     const active = this.loadout.getActive();
     if (!active) return true;
 
@@ -1986,9 +2018,16 @@ export class Player {
     if (!this.camera || !this.loadout || !projectiles) return false;
 
     const active = this.loadout.getActive();
+    const interruptedShellReload =
+      !!active && active.ammo.isReloading() && active.ammo.isShellReloadStyle();
     if (!active || !active.ammo.tryShoot()) {
       this.stopWeaponAutoFire();
       return false;
+    }
+
+    if (interruptedShellReload) {
+      this.weaponSounds?.stopReload();
+      this.onReloadStopNetwork?.();
     }
 
     if (active.config.fireMode === 'auto' && active.config.sounds?.autoShot) {
@@ -2029,26 +2068,47 @@ export class Player {
       feet.y + PLAYER_HIT_CAPSULE_HEIGHT * 0.5,
       feet.z,
     );
-    projectiles.spawn(
-      {
-        hitRayOrigin: this.hitRayOrigin,
-        hitRayDirection: this.hitRayDirection,
-        visualOrigin: this.muzzleOrigin,
-        speed: active.config.projectileSpeed,
-      },
-      {
-      ...this.projectileSpawnOptions,
-      shooterId: this.projectileSpawnOptions.ownerSessionId || undefined,
-      shooterWorldPos: this.shooterWorldPos,
-      weaponId: active.config.id,
-      maxHitDistance: active.config.maxHitDistance,
-      muzzleFlash: active.config.muzzleFlash,
-      boltColors: active.config.muzzleFlash?.colors,
-      projectileStyle: active.config.projectileStyle,
-      projectileGravity: active.config.projectileGravity,
-      },
-    );
-    this.onShoot?.(this.muzzleOrigin, this.aimDirection);
+
+    const pelletCount = Math.max(1, Math.round(active.config.pelletCount ?? 1));
+    const adsBlend = this.weaponPose?.adsBlend ?? 0;
+    const adsSpreadScale = active.config.pelletAdsSpreadScale ?? 0.55;
+    const spreadRad =
+      (active.config.pelletSpreadRad ?? 0) *
+      (1 - adsBlend * (1 - adsSpreadScale));
+
+    for (let pelletIndex = 0; pelletIndex < pelletCount; pelletIndex++) {
+      readPelletDirection(
+        this.hitRayDirection,
+        pelletIndex,
+        pelletCount,
+        spreadRad,
+        this.pelletDirection,
+      );
+
+      projectiles.spawn(
+        {
+          hitRayOrigin: this.hitRayOrigin,
+          hitRayDirection:
+            pelletCount > 1 ? this.pelletDirection.clone() : this.hitRayDirection,
+          visualOrigin: this.muzzleOrigin,
+          speed: active.config.projectileSpeed,
+        },
+        {
+          ...this.projectileSpawnOptions,
+          shooterId: this.projectileSpawnOptions.ownerSessionId || undefined,
+          shooterWorldPos: this.shooterWorldPos,
+          weaponId: active.config.id,
+          maxHitDistance: active.config.maxHitDistance,
+          // One muzzle flash for the whole shell — not per pellet.
+          muzzleFlash: pelletIndex === 0 ? active.config.muzzleFlash : undefined,
+          boltColors: active.config.muzzleFlash?.colors,
+          projectileStyle: active.config.projectileStyle,
+          projectileGravity: active.config.projectileGravity,
+        },
+      );
+      this.onShoot?.(this.muzzleOrigin, this.pelletDirection, { pelletIndex });
+    }
+
     return true;
   }
 

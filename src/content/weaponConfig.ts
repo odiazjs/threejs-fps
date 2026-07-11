@@ -422,12 +422,90 @@ export const BIO_LIQUID_RIFLE_CONFIG: WeaponConfig = {
   },
 };
 
+function buildPlasmaShotgunRecoilPattern(): RecoilKick[] {
+  // Heavy pump kick — one hard punch with a little yaw sway across the mag.
+  return Array.from({ length: 4 }, (_, i) => ({
+    pitch: 0.11,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.028,
+  }));
+}
+
+/** Close-range plasma scattergun — 6 pellets per shell, damage is per pellet. */
+export const PLASMA_SHOTGUN_CONFIG: WeaponConfig = {
+  id: 'plasma_shotgun',
+  name: 'Plasma Shotgun',
+  clipSize: SHIPPED_WEAPON_BASE_STATS.plasma_shotgun.magazineSize,
+  reloadSec: WEAPON_RELOAD_SEC.plasma_shotgun,
+  reloadStyle: 'shell',
+  reserveClips: 3,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.plasma_shotgun.fireRate,
+  fireMode: 'semi',
+  pelletCount: 6,
+  pelletSpreadRad: 0.095,
+  pelletAdsSpreadScale: 0.55,
+  damage: WEAPON_DAMAGE.plasma_shotgun,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.plasma_shotgun.adsTime,
+  projectileSpeed: 340,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.plasma_shotgun,
+  view: {
+    hip: { x: 0.16, y: -0.26, z: -0.38 },
+    ads: { x: 0, y: -0.175, z: -0.26 },
+    adsFov: 64,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
+  },
+  recoil: {
+    pattern: buildPlasmaShotgunRecoilPattern(),
+    recoverySpeed: 5.5,
+    recoveryDelaySec: 0.18,
+    aimSmoothSpeed: 14,
+    adsMultiplier: 0.7,
+    yawScale: 1.25,
+    visualKick: 1.35,
+    visualRecoverySpeed: 8,
+    adsVisualMultiplier: 0.65,
+    visualStyle: {
+      rotX: 0.85,
+      rotYFromYaw: -0.28,
+      rotZ: -0.22,
+      posXFromYaw: -0.06,
+      posY: -0.06,
+      posZ: 0,
+      kickBack: 0.48,
+      kickUp: -0.09,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.22,
+    duration: 0.12,
+    particleCount: 16,
+    particleSpeed: 28,
+    particleSpread: 0.7,
+    colors: [0xe8f7ff, 0x6ecbff, 0x3a7dff],
+    lightIntensity: 4.2,
+    lightDistance: 5.5,
+    glowScale: 0.7,
+    glowLayers: 3,
+    particleSizeScale: 1.5,
+  },
+  sway: { intensity: 1.2 },
+  sounds: {
+    singleShot: '/sounds/plasma_shotgun.wav',
+    reload: '/sounds/plasma_shotgun_partial_reload.wav',
+    reloadPartial: '/sounds/plasma_shotgun_partial_reload.wav',
+    reloadComplete: '/sounds/plasma_shotgun_complete_reload.wav',
+    volume: 0.32,
+  },
+};
+
 export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   plasma_rifle: PLASMA_RIFLE_CONFIG,
   pistol: PISTOL_CONFIG,
   sniper_rifle: SNIPER_RIFLE_CONFIG,
   root_bio_carbine: ROOT_BIO_CARBINE_CONFIG,
   bio_liquid_rifle: BIO_LIQUID_RIFLE_CONFIG,
+  plasma_shotgun: PLASMA_SHOTGUN_CONFIG,
   katana: KATANA_CONFIG,
 };
 
@@ -438,6 +516,7 @@ export const PICKABLE_WEAPON_CONFIGS = [
   SNIPER_RIFLE_CONFIG,
   ROOT_BIO_CARBINE_CONFIG,
   BIO_LIQUID_RIFLE_CONFIG,
+  PLASMA_SHOTGUN_CONFIG,
 ] as const;
 
 /** Default numbered-slot fill order (keys 1–3). */

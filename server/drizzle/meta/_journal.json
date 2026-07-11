@@ -71,6 +71,20 @@
       "when": 1783730000000,
       "tag": "0009_bio_liquid_rifle_combat_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783740000000,
+      "tag": "0010_plasma_shotgun",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783750000000,
+      "tag": "0011_plasma_shotgun_base_stats",
+      "breakpoints": true
     }
   ]
 }
