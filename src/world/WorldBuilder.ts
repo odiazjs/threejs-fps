@@ -7,11 +7,8 @@ import { TerrainBuilder } from './TerrainBuilder';
 import { DroneField } from './DroneField';
 import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
-import { KillhouseWall } from './KillhouseWall';
-import { KillhouseLayoutHouses } from './KillhouseLayoutHouses';
-import { KillhouseLayoutWalls } from './KillhouseLayoutWalls';
-import { KillhousePinkProps } from './KillhousePinkProps';
 import { FiringRangeMap } from './FiringRangeMap';
+import { TdmMap } from './TdmMap';
 import type { GrassQualityProfile } from '../render/grassQuality';
 import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
@@ -21,11 +18,7 @@ export class WorldBuilder {
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
   private platformParticles: PlatformLiftParticles | null = null;
-  private mapGroup: THREE.Object3D | null = null;
-  private killhouseWall: KillhouseWall | null = null;
-  private killhouseLayoutHouses: KillhouseLayoutHouses | null = null;
-  private killhouseLayoutWalls: KillhouseLayoutWalls | null = null;
-  private killhousePinkProps: KillhousePinkProps | null = null;
+  private tdmMap: TdmMap | null = null;
   private firingRangeMap: FiringRangeMap | null = null;
   private readonly mapDef;
 
@@ -74,22 +67,11 @@ export class WorldBuilder {
 
   withLevel(): this {
     const [mapGroup] = new LevelBuilder().build(this.mapDef.id);
-    this.mapGroup = mapGroup;
     this.sceneBuilder.addObject(mapGroup);
 
     if (this.mapDef.id === 'killhouse_small') {
-      this.killhouseWall = new KillhouseWall();
-      this.killhouseLayoutHouses = new KillhouseLayoutHouses();
-      this.killhouseLayoutWalls = new KillhouseLayoutWalls();
-      this.killhousePinkProps = new KillhousePinkProps();
-
-      this.sceneBuilder.addObject(this.killhouseWall.group);
-      this.sceneBuilder.addObject(this.killhouseLayoutWalls.group);
-      this.sceneBuilder.addObject(this.killhousePinkProps.group);
-      for (const group of this.killhouseLayoutHouses.groups) {
-        this.sceneBuilder.addObject(group);
-      }
-      this.sceneBuilder.addObject(this.killhousePinkProps.collisionGroup);
+      this.tdmMap = new TdmMap();
+      this.sceneBuilder.addObject(this.tdmMap.group);
     }
 
     if (this.mapDef.id === 'firing_range') {
@@ -100,8 +82,8 @@ export class WorldBuilder {
   }
 
   whenMeshCollisionReady(): Promise<void> {
-    if (this.mapDef.id === 'killhouse_small') {
-      return this.whenKillhousePhysicsReady();
+    if (this.mapDef.id === 'killhouse_small' && this.tdmMap) {
+      return this.tdmMap.whenReady;
     }
     if (this.mapDef.id === 'firing_range' && this.firingRangeMap) {
       return this.firingRangeMap.whenReady;
@@ -110,41 +92,13 @@ export class WorldBuilder {
   }
 
   getMeshCollisionRoots(): THREE.Object3D[] {
-    if (this.mapDef.id === 'killhouse_small') {
-      return this.getKillhousePhysicsRoots();
+    if (this.mapDef.id === 'killhouse_small' && this.tdmMap) {
+      return this.tdmMap.getPhysicsRoots();
     }
     if (this.mapDef.id === 'firing_range' && this.firingRangeMap) {
       return this.firingRangeMap.getPhysicsRoots();
     }
     return [];
-  }
-
-  whenKillhousePhysicsReady(): Promise<void> {
-    if (this.mapDef.id !== 'killhouse_small') return Promise.resolve();
-    if (!this.killhouseWall || !this.killhouseLayoutHouses) {
-      return Promise.resolve();
-    }
-
-    return Promise.all([
-      this.killhouseWall.whenReady,
-      this.killhouseLayoutHouses.whenReady,
-      this.killhouseLayoutWalls?.whenReady,
-      this.killhousePinkProps?.whenReady,
-    ]).then(() => undefined);
-  }
-
-  getKillhousePhysicsRoots(): THREE.Object3D[] {
-    const roots: THREE.Object3D[] = [];
-    if (this.mapGroup) roots.push(this.mapGroup);
-    if (this.killhouseWall) roots.push(this.killhouseWall.group);
-    if (this.killhouseLayoutWalls) roots.push(this.killhouseLayoutWalls.group);
-    if (this.killhouseLayoutHouses) {
-      for (const collisionGroup of this.killhouseLayoutHouses.collisionGroups) {
-        roots.push(collisionGroup);
-      }
-    }
-    if (this.killhousePinkProps) roots.push(this.killhousePinkProps.collisionGroup);
-    return roots;
   }
 
   withDrones(): this {

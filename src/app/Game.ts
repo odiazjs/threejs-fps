@@ -59,7 +59,7 @@ import {
   type MatchPhase,
 } from '../../shared/combat/match';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
-import { buildKillhouseMinimapLayout } from '../content/killhouseMinimap';
+import { loadTdmMapMinimapLayout } from '../content/tdmMapMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
@@ -303,11 +303,17 @@ export class Game {
         });
       });
     } else if (initialMapId === 'killhouse_small') {
-      const minimapLayout = buildKillhouseMinimapLayout();
-      this.minimapHud.setLayout(minimapLayout);
-      this.tacticalMapOverlay.setLayout(minimapLayout);
-      this.minimapHud.setMapActive(true);
-      this.tacticalMapOverlay.setMapActive(true);
+      try {
+        const minimapLayout = await loadTdmMapMinimapLayout();
+        this.minimapHud.setLayout(minimapLayout);
+        this.tacticalMapOverlay.setLayout(minimapLayout);
+        this.minimapHud.setMapActive(true);
+        this.tacticalMapOverlay.setMapActive(true);
+      } catch (error) {
+        console.warn('[Game] Failed to load Chrono-Bowl minimap', error);
+        this.minimapHud.setMapActive(false);
+        this.tacticalMapOverlay.setMapActive(false);
+      }
     } else {
       this.minimapHud.setMapActive(false);
       this.tacticalMapOverlay.setMapActive(false);

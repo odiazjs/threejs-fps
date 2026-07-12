@@ -321,6 +321,8 @@ function prepareModel(model: THREE.Group): { scene: THREE.Group; fitScale: numbe
   const size = box.getSize(new THREE.Vector3());
   const fitScale = TARGET_HEIGHT / Math.max(size.y, 0.001);
 
+  console.log('fitScale >>>>>>', fitScale);
+
   const wrapper = new THREE.Group();
   wrapper.add(model);
   wrapper.scale.setScalar(fitScale);

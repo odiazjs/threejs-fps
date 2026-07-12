@@ -1,14 +1,17 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { MapCollisionDef } from '../../shared/level/maps';
 import { getClientGameplayColliders } from '../../shared/level/maps';
 import {
   buildMergedLevelCollisionGeometry,
   collectLevelCollisionMeshes,
+  parseLevelCollisionBake,
+  type BakedLevelCollisionData,
 } from '../../shared/level/levelMeshCollisionUtils';
+import { TDM_MAP_COLLISION_BAKE } from '../../shared/level/tdmMapConfig';
 import { LevelPhysicsWorld } from '../../shared/physics/levelPhysicsWorld';
 import { initRapier } from '../../shared/physics/rapierInit';
 import { setMapPhysics } from '../../shared/level/mapMeshMovement';
-import { loadKillhouseGroundCollider } from '../../shared/level/killhouseGroundCollider';
+import { loadTdmMapGroundCollider } from '../../shared/level/tdmMapGroundCollider';
 import { loadFiringRangeGroundCollider } from '../../shared/level/firingRangeGroundCollider';
 import { loadFiringRangeCrateColliders } from '../../shared/level/loadFiringRangeCrateColliders';
 import {
@@ -38,6 +41,19 @@ function attachPhysicsColliderDebug(scene: THREE.Scene, object: THREE.Object3D):
   scene.add(object);
 }
 
+/**
+ * Chrono-Bowl's source GLB is sculpt-dense (~4.2M tris) — merging it at runtime
+ * would stall the browser. Load the decimated bake the server also uses so both
+ * sides collide against identical geometry.
+ */
+async function fetchTdmMapCollisionBake(): Promise<BakedLevelCollisionData> {
+  const response = await fetch(`/3d/${TDM_MAP_COLLISION_BAKE}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${TDM_MAP_COLLISION_BAKE} (${response.status})`);
+  }
+  return parseLevelCollisionBake(await response.arrayBuffer());
+}
+
 export async function buildClientMapPhysics(
   map: MapCollisionDef,
   collisionRoots?: readonly THREE.Object3D[],
@@ -50,7 +66,22 @@ export async function buildClientMapPhysics(
   clientPhysics.init();
   clearPhysicsColliderDebug();
 
-  if (map.usesMeshCollision && collisionRoots?.length) {
+  if (map.usesMeshCollision && map.id === 'killhouse_small') {
+    const { positions, indices } = await fetchTdmMapCollisionBake();
+    clientPhysics.loadTrimesh(positions, indices);
+    loadTdmMapGroundCollider(clientPhysics);
+
+    console.info(
+      `[ClientPhysics] Loaded ${map.label} baked trimesh (${Math.round(indices.length / 3)} tris)`,
+    );
+
+    if (isPhysicsColliderDebugEnabled() && scene) {
+      const debugGeometry = new THREE.BufferGeometry();
+      debugGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      debugGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      attachPhysicsColliderDebug(scene, createTrimeshColliderDebugMesh(debugGeometry));
+    }
+  } else if (map.usesMeshCollision && collisionRoots?.length) {
     const meshes = collectLevelCollisionMeshes(collisionRoots);
     const geometry = buildMergedLevelCollisionGeometry(meshes);
     const positions = geometry.attributes.position.array as Float32Array;
@@ -58,7 +89,7 @@ export async function buildClientMapPhysics(
     clientPhysics.loadTrimesh(positions, indices);
 
     if (map.id === 'killhouse_small') {
-      loadKillhouseGroundCollider(clientPhysics);
+      loadTdmMapGroundCollider(clientPhysics);
     } else if (map.id === 'firing_range') {
       loadFiringRangeGroundCollider(clientPhysics);
       const crateCount = loadFiringRangeCrateColliders(clientPhysics);
