@@ -5,7 +5,12 @@ import { DEFAULT_MAP_ID, getMapDef, mapHasMinimap, normalizeMapId, setClientMapD
 import { normalizeGameMode, type GameMode } from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
-import { PointerInput } from '../input/PointerInput';
+import { POINTER_PING, PointerInput } from '../input/PointerInput';
+import { TeamPingIndicators } from '../ui/TeamPingIndicators';
+import { PingDirectionIndicatorHud } from '../ui/PingDirectionIndicatorHud';
+import { readCrosshairWorldRay } from '../combat/aiming';
+import { raycastLevelBullets } from '../combat/levelBulletRaycast';
+import { TEAM_PING_MAX_DISTANCE } from '../../shared/network/ping';
 import { ProjectileManager } from '../combat/ProjectileManager';
 import { GrenadeManager } from '../combat/GrenadeManager';
 import { GrenadeArcPreview } from '../combat/GrenadeArcPreview';
@@ -164,6 +169,10 @@ export class Game {
   private grenadeArcPreview!: GrenadeArcPreview;
   private input = new KeyboardInput();
   private pointer = new PointerInput();
+  private teamPings = new TeamPingIndicators();
+  private pingDirectionHud = new PingDirectionIndicatorHud();
+  private readonly pingRayOrigin = new THREE.Vector3();
+  private readonly pingRayDirection = new THREE.Vector3();
   private projectiles!: ProjectileManager;
   private worldBuilder: WorldBuilder | null = null;
   private shieldDomeManager!: ShieldDomeManager;
@@ -465,6 +474,7 @@ export class Game {
     );
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
+    this.scene.add(this.teamPings.group);
 
     void this.initMapPhysics(mapId);
   }
@@ -514,6 +524,7 @@ export class Game {
     this.playerControls.setMinimapHud(this.minimapHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setGrenadeThreatIndicatorHud(this.grenadeThreatHud);
+    this.playerControls.setPingDirectionIndicatorHud(this.pingDirectionHud);
     this.playerControls.setShieldRechargeHud(this.shieldRechargeHud);
     this.playerControls.setShieldDomeHud(this.shieldDomeHud);
     this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
@@ -624,6 +635,9 @@ export class Game {
       },
     );
     this.network.onLocalDamaged((damage) => this.handleLocalDamaged(damage));
+    this.network.onTeamPing((data) => {
+      this.teamPings.spawn(data.x, data.y, data.z, data.pingerId);
+    });
     this.network.onLocalLoadoutChange((snapshot) => {
       const prevWeapons = this.player.getInventoryWeapons();
       this.player.applyLoadoutFromSnapshot(snapshot);
@@ -725,6 +739,9 @@ export class Game {
 
   private handleLocalCombatChange(state: LocalCombatState): void {
     const prev = this.localCombat;
+    // Update early so closeInventory/closeTacticalMap see the current alive
+    // state and don't re-lock the pointer for a dead player.
+    this.localCombat = state;
 
     if (
       prev.shieldRecharging &&
@@ -744,7 +761,11 @@ export class Game {
     if (!state.alive && this.wasAlive) {
       this.messageHud.push('You died');
       this.closeInventory();
-      this.playerControls.controls.unlock();
+      this.closeTacticalMap();
+      // Block input without the pause overlay — release the pointer softly
+      // and refuse re-locks until respawn.
+      this.playerControls.setDeadBlocked(true);
+      this.playerControls.controls.unlockSoft();
       this.crosshairHud.setVisible(false);
       const killerId = this.pendingKillerId ?? this.lastCombatShooterId;
       this.killCam.activate(killerId);
@@ -755,10 +776,19 @@ export class Game {
       this.killCam.deactivate();
       this.lastCombatShooterId = null;
       this.network.applyLocalSpawn(this.player);
+      this.playerControls.setDeadBlocked(false);
+      if (
+        this.playerControls.isPlaying &&
+        !this.matchEndHandled &&
+        !this.inventoryOpen &&
+        !this.tacticalMapOverlay.isOpen()
+      ) {
+        this.playerControls.controls.lock();
+        this.crosshairHud.setVisible(true);
+      }
     }
 
     this.wasAlive = state.alive;
-    this.localCombat = state;
     this.shieldDomeAbility?.setServerState(
       state.shieldDomeEndAt,
       state.shieldDomeCooldownEndAt,
@@ -898,14 +928,11 @@ export class Game {
     );
   }
 
-  private closeTacticalMap(): void {
+  private closeTacticalMap(options?: { deferRelock?: boolean }): void {
     if (!this.tacticalMapOverlay.isOpen()) return;
     this.tacticalMapOverlay.setOpen(false);
     this.playerControls.setTacticalMapOpen(false);
-    if (this.playerControls.isPlaying && this.localCombat.alive && !this.inventoryOpen) {
-      this.playerControls.controls.lock();
-      this.crosshairHud.setVisible(true);
-    }
+    this.relockAfterPanelClose(options?.deferRelock === true);
   }
 
   private toggleTacticalMap(): void {
@@ -936,22 +963,77 @@ export class Game {
 
     const playerPos = this.player.object.position;
     const { yaw } = this.player.getNetworkAim();
+    const blips = this.network.getMinimapBlips();
+    for (const ping of this.teamPings.getMinimapPings()) {
+      blips.push({ x: ping.x, z: ping.z, kind: 'ping' });
+    }
     return {
       x: playerPos.x,
       z: playerPos.z,
       yaw,
-      blips: this.network.getMinimapBlips(),
+      blips,
     };
   }
 
-  private closeInventory(): void {
+  /** Middle mouse — mark the aimed spot for same-team members. */
+  private triggerTeamPing(camera: THREE.Camera): void {
+    if (!this.network) return;
+
+    readCrosshairWorldRay(
+      camera,
+      window.innerWidth,
+      window.innerHeight,
+      0,
+      0,
+      this.pingRayOrigin,
+      this.pingRayDirection,
+    );
+
+    const hit = raycastLevelBullets(
+      this.pingRayOrigin.x,
+      this.pingRayOrigin.y,
+      this.pingRayOrigin.z,
+      this.pingRayDirection.x,
+      this.pingRayDirection.y,
+      this.pingRayDirection.z,
+      TEAM_PING_MAX_DISTANCE,
+    );
+    // Pull the marker slightly toward the camera so it sits off the surface.
+    const distance = Math.max(0, (hit?.distance ?? TEAM_PING_MAX_DISTANCE) - 0.2);
+
+    this.network.sendTeamPing(
+      this.pingRayOrigin.x + this.pingRayDirection.x * distance,
+      this.pingRayOrigin.y + this.pingRayDirection.y * distance,
+      this.pingRayOrigin.z + this.pingRayDirection.z * distance,
+    );
+  }
+
+  private closeInventory(options?: { deferRelock?: boolean }): void {
     if (!this.inventoryOpen) return;
     this.inventoryOpen = false;
     this.inventoryHud.setOpen(false);
     this.playerControls.setInventoryOpen(false);
-    if (this.playerControls.isPlaying && this.localCombat.alive) {
+    this.relockAfterPanelClose(options?.deferRelock === true);
+  }
+
+  /**
+   * Re-capture the pointer after a panel closes. Closing with ESC must defer
+   * the lock until the browser finishes processing the key — locking during
+   * it gets kicked back out and shows the pause overlay.
+   */
+  private relockAfterPanelClose(defer: boolean): void {
+    const tryLock = () => {
+      if (!this.playerControls.isPlaying || !this.localCombat.alive) return;
+      if (this.inventoryOpen || this.tacticalMapOverlay.isOpen()) return;
+      if (this.playerControls.controls.isLocked) return;
       this.playerControls.controls.lock();
       this.crosshairHud.setVisible(true);
+    };
+
+    if (defer) {
+      window.setTimeout(tryLock, 250);
+    } else {
+      tryLock();
     }
   }
 
@@ -1003,6 +1085,20 @@ export class Game {
 
     if (this.tacticalMapOverlay.isOpen() && !this.playerControls.isPlaying) {
       this.closeTacticalMap();
+    }
+
+    // ESC dismisses open panels without pausing, and dismisses the pause
+    // overlay itself. While the pointer is locked the browser swallows ESC
+    // to exit pointer lock (that's the pause path), so this only fires when
+    // the pointer is already free.
+    if (this.input.isJustPressed('Escape')) {
+      if (this.inventoryOpen) {
+        this.closeInventory({ deferRelock: true });
+      } else if (this.tacticalMapOverlay.isOpen()) {
+        this.closeTacticalMap({ deferRelock: true });
+      } else if (this.playerControls.isPauseOverlayVisible) {
+        this.playerControls.resumeFromPause();
+      }
     }
 
     if (
@@ -1104,6 +1200,9 @@ export class Game {
       this.projectiles,
     );
     let camera = this.getActiveCamera();
+    if (canAct && this.pointer.isJustPressed(POINTER_PING)) {
+      this.triggerTeamPing(camera);
+    }
     this.network?.syncShieldDomeCharges(
       this.shieldDomeChargeManager,
       delta,
@@ -1131,6 +1230,13 @@ export class Game {
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);
+    this.teamPings.update(delta, this.player.object.position);
+    this.pingDirectionHud.sync(
+      camera ?? null,
+      this.teamPings.getActivePings(),
+      this.network?.getSessionId() ?? '',
+      this.player.object.position,
+    );
     this.updateGrenadeThreatIndicators(camera ?? null);
     this.terrain?.update(this.simElapsedSec, {
       playerPos: this.player.object.position,

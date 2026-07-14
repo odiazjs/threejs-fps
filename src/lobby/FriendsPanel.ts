@@ -11,7 +11,12 @@ import type {
   GameInviteMessage,
   GameInviteSentMessage,
 } from '../../shared/network/gameInvite';
-import { MAX_PARTY_SIZE, type PartySnapshotMessage } from '../../shared/network/party';
+import {
+  MAX_PARTY_SIZE,
+  isValidPartyTeamId,
+  type PartySnapshotMessage,
+} from '../../shared/network/party';
+import { TEAM_COLORS, TEAM_NAMES } from '../../shared/combat/teams';
 import {
   apiListFriends,
   apiRespondFriendRequest,
@@ -58,6 +63,9 @@ export class FriendsPanel {
   private readonly leaveBtn: HTMLButtonElement;
   private readonly friendlyFireToggle: HTMLLabelElement;
   private readonly friendlyFireCheckbox: HTMLInputElement;
+  private readonly teamPicker: HTMLElement;
+  private readonly teamBlueBtn: HTMLButtonElement;
+  private readonly teamOrangeBtn: HTMLButtonElement;
   private readonly launchBtn: HTMLButtonElement;
   private readonly loading = LoadingOverlay.shared();
   private readonly pending = new Map<string, FriendRequestMessage>();
@@ -87,6 +95,9 @@ export class FriendsPanel {
     this.leaveBtn = document.getElementById('party-leave-btn') as HTMLButtonElement;
     this.friendlyFireToggle = document.getElementById('friendly-fire-toggle') as HTMLLabelElement;
     this.friendlyFireCheckbox = document.getElementById('friendly-fire-checkbox') as HTMLInputElement;
+    this.teamPicker = document.getElementById('party-team-picker')!;
+    this.teamBlueBtn = document.getElementById('party-team-blue-btn') as HTMLButtonElement;
+    this.teamOrangeBtn = document.getElementById('party-team-orange-btn') as HTMLButtonElement;
     this.launchBtn = document.getElementById('lobby-join-btn') as HTMLButtonElement;
 
     this.addBtn.addEventListener('click', () => {
@@ -103,6 +114,15 @@ export class FriendsPanel {
     });
     this.leaveBtn.addEventListener('click', () => {
       void this.leaveParty();
+    });
+    this.teamBlueBtn.addEventListener('click', () => this.pickTeam(0));
+    this.teamOrangeBtn.addEventListener('click', () => this.pickTeam(1));
+    this.friendlyFireCheckbox.addEventListener('change', () => {
+      if (!this.party?.isHost) {
+        this.friendlyFireCheckbox.checked = this.party?.friendlyFire ?? false;
+        return;
+      }
+      this.lobby.setPartyFriendlyFire(this.friendlyFireCheckbox.checked);
     });
     this.friendsTabBtn.addEventListener('click', () => this.setListTab('friends'));
     this.partyTabBtn.addEventListener('click', () => this.setListTab('party'));
@@ -597,7 +617,7 @@ export class FriendsPanel {
     const isHost = this.party?.isHost ?? false;
     const canStart = isHost && partySize >= 2 && !this.launching && !this.isBusy();
     const canLeave = partySize > 1 && !isHost;
-    const showHostControls = isHost && partySize >= 2;
+    const showPartyControls = partySize >= 2;
     const blockPartyActions = this.launching;
 
     const slotEl = document.getElementById('party-slot-count');
@@ -605,8 +625,14 @@ export class FriendsPanel {
       slotEl.textContent = `${partySize}/${MAX_PARTY_SIZE}`;
     }
 
-    this.friendlyFireToggle.hidden = !showHostControls;
-    this.friendlyFireCheckbox.disabled = blockPartyActions;
+    this.friendlyFireToggle.hidden = !showPartyControls;
+    this.friendlyFireCheckbox.checked = this.party?.friendlyFire ?? false;
+    this.friendlyFireCheckbox.disabled = blockPartyActions || !isHost;
+    this.friendlyFireToggle.title = isHost
+      ? 'Allow damage between teammates (testing)'
+      : 'Only the party host can change friendly fire';
+
+    this.updateTeamPicker(showPartyControls, blockPartyActions);
     this.addBtn.disabled = false;
     this.input.disabled = false;
 
@@ -651,6 +677,29 @@ export class FriendsPanel {
 
   private hasActiveParty(): boolean {
     return this.getPartySize() >= 2;
+  }
+
+  private getMyTeamId(): number {
+    const viewerUserId = this.party?.viewerUserId;
+    const me = this.party?.members.find((member) => member.userId === viewerUserId);
+    return me && isValidPartyTeamId(me.teamId) ? me.teamId : 0;
+  }
+
+  private pickTeam(teamId: number): void {
+    if (!this.hasActiveParty() || this.launching) return;
+    if (this.getMyTeamId() === teamId) return;
+    this.lobby.setPartyTeam(teamId);
+  }
+
+  private updateTeamPicker(show: boolean, blocked: boolean): void {
+    this.teamPicker.hidden = !show;
+    if (!show) return;
+
+    const myTeamId = this.getMyTeamId();
+    this.teamBlueBtn.classList.toggle('is-active', myTeamId === 0);
+    this.teamOrangeBtn.classList.toggle('is-active', myTeamId === 1);
+    this.teamBlueBtn.disabled = blocked;
+    this.teamOrangeBtn.disabled = blocked;
   }
 
   private setListTab(tab: SocialListTab): void {
@@ -745,11 +794,21 @@ export class FriendsPanel {
 
     identity.append(row, status);
 
+    const badges = document.createElement('div');
+    badges.className = 'party-member-badges';
+
+    const teamId = isValidPartyTeamId(member.teamId) ? member.teamId : 0;
+    const team = document.createElement('span');
+    team.className = 'party-member-team';
+    team.textContent = TEAM_NAMES[teamId]!.toUpperCase();
+    team.style.setProperty('--team-color', TEAM_COLORS[teamId]!);
+
     const role = document.createElement('span');
     role.className = `party-member-role${member.isHost ? ' party-member-role--host' : ''}`;
     role.textContent = member.isHost ? 'HOST' : 'MEMBER';
 
-    item.append(identity, role);
+    badges.append(team, role);
+    item.append(identity, badges);
     return item;
   }
 

@@ -467,6 +467,15 @@ export class NetworkManager {
     this.onLocalDamagedHandlers.push(handler);
   }
 
+  sendTeamPing(x: number, y: number, z: number): void {
+    if (!this.roomClient.connected) return;
+    this.roomClient.sendTeamPing({ x, y, z });
+  }
+
+  onTeamPing(handler: (data: import('../../shared/network/ping').TeamPingMessage) => void): void {
+    this.roomClient.onTeamPing(handler);
+  }
+
   getLocalSnapshot() {
     return this.roomClient.getLocalSnapshot();
   }

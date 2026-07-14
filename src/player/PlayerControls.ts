@@ -9,6 +9,7 @@ import type { HealthHud } from '../ui/HealthHud';
 import type { KillFeedHud } from '../ui/KillFeedHud';
 import type { DamageIndicatorHud } from '../ui/DamageIndicatorHud';
 import type { GrenadeThreatIndicatorHud } from '../ui/GrenadeThreatIndicatorHud';
+import type { PingDirectionIndicatorHud } from '../ui/PingDirectionIndicatorHud';
 import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import type { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
@@ -24,6 +25,7 @@ export class PlayerControls {
   private killFeedHud: KillFeedHud | null = null;
   private damageIndicatorHud: DamageIndicatorHud | null = null;
   private grenadeThreatIndicatorHud: GrenadeThreatIndicatorHud | null = null;
+  private pingDirectionIndicatorHud: PingDirectionIndicatorHud | null = null;
   private shieldRechargeHud: ShieldRechargeHud | null = null;
   private shieldDomeHud: ShieldDomeHud | null = null;
   private weaponPickupHud: WeaponPickupHud | null = null;
@@ -38,6 +40,7 @@ export class PlayerControls {
   private isPaused = false;
   private inventoryOpen = false;
   private tacticalMapOpen = false;
+  private deadBlocked = false;
 
   private readonly blocker: HTMLElement;
   private readonly instructionsTitle: HTMLElement;
@@ -82,6 +85,10 @@ export class PlayerControls {
 
   setGrenadeThreatIndicatorHud(hud: GrenadeThreatIndicatorHud): void {
     this.grenadeThreatIndicatorHud = hud;
+  }
+
+  setPingDirectionIndicatorHud(hud: PingDirectionIndicatorHud): void {
+    this.pingDirectionIndicatorHud = hud;
   }
 
   setShieldRechargeHud(hud: ShieldRechargeHud): void {
@@ -129,6 +136,11 @@ export class PlayerControls {
     this.tacticalMapOpen = open;
   }
 
+  /** While dead, clicking must not re-lock the pointer — wait for respawn. */
+  setDeadBlocked(blocked: boolean): void {
+    this.deadBlocked = blocked;
+  }
+
   get isLocked(): boolean {
     return this.controls.isLocked;
   }
@@ -136,6 +148,32 @@ export class PlayerControls {
   /** In-game and not ESC-paused (HUD active; may be soft-unlocked). */
   get isPlaying(): boolean {
     return this.hasLockedOnce && !this.isPaused;
+  }
+
+  /** ESC pause screen currently covering the game. */
+  get isPauseOverlayVisible(): boolean {
+    return this.isPaused && this.hasLockedOnce;
+  }
+
+  /** ESC on the pause overlay — hide it and resume play. */
+  resumeFromPause(): void {
+    if (!this.isPauseOverlayVisible) return;
+    this.isPaused = false;
+    this.blocker.style.display = 'none';
+    this.leaveButton.hidden = true;
+    this.setPlayHudVisible(true);
+    this.crosshairHud?.setVisible(!this.deadBlocked);
+    document.addEventListener('contextmenu', this.preventContextMenu);
+
+    // Deferred so the browser finishes processing the ESC press first —
+    // locking during it gets immediately kicked back out. If the browser
+    // still refuses (pointer-lock cooldown after an ESC exit), the next
+    // click re-locks via the body click handler.
+    window.setTimeout(() => {
+      if (this.isPaused || this.deadBlocked) return;
+      if (this.inventoryOpen || this.tacticalMapOpen) return;
+      if (!this.controls.isLocked) this.controls.lock();
+    }, 250);
   }
 
   private initUI(): void {
@@ -147,7 +185,7 @@ export class PlayerControls {
     });
 
     document.body.addEventListener('click', (event) => {
-      if (this.inventoryOpen || this.tacticalMapOpen) return;
+      if (this.inventoryOpen || this.tacticalMapOpen || this.deadBlocked) return;
       if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
       if (event.target === this.leaveButton) return;
       this.onEngage?.();
@@ -167,42 +205,14 @@ export class PlayerControls {
       this.isPaused = false;
       this.blocker.style.display = 'none';
       this.leaveButton.hidden = true;
-      this.crosshairHud?.setVisible(true);
-      this.staminaHud?.setVisible(true);
-      this.throwableHud?.setVisible(true);
-      this.ammoHud?.setVisible(true);
-      this.healthHud?.setVisible(true);
-      this.shieldRechargeHud?.setVisible(true);
-      this.shieldDomeHud?.setVisible(true);
-      this.weaponPickupHud?.setVisible(true);
-      this.shieldPickupHud?.setVisible(true);
-      this.killFeedHud?.setVisible(true);
-      this.damageIndicatorHud?.setVisible(true);
-      this.grenadeThreatIndicatorHud?.setVisible(true);
-      this.teamHud?.setVisible(true);
-      this.controlsHelpHud?.setVisible(true);
-      this.minimapHud?.setVisible(true);
+      this.setPlayHudVisible(true);
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
     this.controls.onUnlock = () => {
       this.isPaused = true;
       this.blocker.style.display = 'flex';
-      this.crosshairHud?.setVisible(false);
-      this.staminaHud?.setVisible(false);
-      this.throwableHud?.setVisible(false);
-      this.ammoHud?.setVisible(false);
-      this.healthHud?.setVisible(false);
-      this.shieldRechargeHud?.setVisible(false);
-      this.shieldDomeHud?.setVisible(false);
-      this.weaponPickupHud?.setVisible(false);
-      this.shieldPickupHud?.setVisible(false);
-      this.killFeedHud?.setVisible(false);
-      this.damageIndicatorHud?.setVisible(false);
-      this.grenadeThreatIndicatorHud?.setVisible(false);
-      this.teamHud?.setVisible(false);
-      this.controlsHelpHud?.setVisible(false);
-      this.minimapHud?.setVisible(false);
+      this.setPlayHudVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
 
       if (this.hasLockedOnce) {
@@ -213,6 +223,25 @@ export class PlayerControls {
         this.leaveButton.hidden = true;
       }
     };
+  }
+
+  private setPlayHudVisible(visible: boolean): void {
+    this.crosshairHud?.setVisible(visible);
+    this.staminaHud?.setVisible(visible);
+    this.throwableHud?.setVisible(visible);
+    this.ammoHud?.setVisible(visible);
+    this.healthHud?.setVisible(visible);
+    this.shieldRechargeHud?.setVisible(visible);
+    this.shieldDomeHud?.setVisible(visible);
+    this.weaponPickupHud?.setVisible(visible);
+    this.shieldPickupHud?.setVisible(visible);
+    this.killFeedHud?.setVisible(visible);
+    this.damageIndicatorHud?.setVisible(visible);
+    this.grenadeThreatIndicatorHud?.setVisible(visible);
+    this.pingDirectionIndicatorHud?.setVisible(visible);
+    this.teamHud?.setVisible(visible);
+    this.controlsHelpHud?.setVisible(visible);
+    this.minimapHud?.setVisible(visible);
   }
 
   setLeaveEnabled(enabled: boolean): void {

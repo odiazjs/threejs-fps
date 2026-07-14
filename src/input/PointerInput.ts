@@ -1,5 +1,7 @@
 /** Left mouse button — primary fire. */
 export const POINTER_SHOOT = 0;
+/** Middle mouse button — team ping. */
+export const POINTER_PING = 1;
 /** Right mouse button — aim down sights. */
 export const POINTER_ADS = 2;
 
@@ -25,6 +27,8 @@ export class PointerInput {
   }
 
   private onMouseDown = (e: MouseEvent): void => {
+    // Middle click autoscroll would fight the ping binding.
+    if (e.button === POINTER_PING) e.preventDefault();
     if (!this.buttons[e.button]) {
       this.justPressed.add(e.button);
     }

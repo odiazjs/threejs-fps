@@ -99,6 +99,12 @@ import type { KillFeedMessage, PlayerDamagedMessage, PlayerHitMessage } from '..
 import type { ReloadMessage, ReloadStopMessage } from '../../../shared/network/reload.js';
 import type { SwitchWeaponMessage, EquipMeleeMessage } from '../../../shared/network/weapon.js';
 import type { MeleeAttackMessage } from '../../../shared/network/meleeAttack.js';
+import {
+  TEAM_PING_DISTANCE_SLACK,
+  TEAM_PING_MAX_DISTANCE,
+  type TeamPingMessage,
+  type TeamPingRequest,
+} from '../../../shared/network/ping.js';
 import type { AutoFireStopMessage } from '../../../shared/network/autoFireStop.js';
 import type { WeaponShotSoundMessage } from '../../../shared/network/weaponShot.js';
 import {
@@ -207,6 +213,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly botPhysics = new Map<string, PlayerPhysicsState>();
   private readonly botMoveState = new Map<string, TrainingBotMoveState>();
   private readonly userIdBySession = new Map<string, string>();
+  /** Party-picked team sides — assignTdmTeams keeps these across reshuffles. */
+  private readonly requestedTeamBySession = new Map<string, number>();
   private readonly defaultLoadoutBySession = new Map<string, WeaponLoadoutPresetWeapons>();
   /** Per-session Armory effective stats, frozen at join for match combat. */
   private readonly weaponStatsBySession = new Map<string, Map<string, WeaponEffectiveStats>>();
@@ -238,7 +246,6 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     await loadMapPhysicsForServer(this.mapDef);
 
     if (this.gameMode === 'tdm') {
-      this.state.friendlyFire = false;
       this.state.matchPhase = 'waiting';
       this.state.matchDurationSec = TDM_MATCH_DURATION_SEC;
       this.state.expectedPlayers = this.expectedPlayers > 0
@@ -607,30 +614,35 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private assignTdmTeams(): void {
     const humans = [...this.state.players.entries()]
       .filter(([sessionId]) => !isTrainingBotSessionId(sessionId))
-      .sort(([sessionIdA], [sessionIdB]) => sessionIdA.localeCompare(sessionIdB))
-      .map(([, player]) => player);
+      .sort(([sessionIdA], [sessionIdB]) => sessionIdA.localeCompare(sessionIdB));
     const count = humans.length;
     const teamCount = resolveTdmTeamCount(count);
     this.state.teamCount = teamCount;
 
-    if (count === 2) {
-      humans[0]!.teamId = 0;
-      humans[1]!.teamId = 1;
-      return;
+    // Players who picked a side in the party lobby keep it; everyone else is
+    // spread across the remaining slots to keep teams as even as possible.
+    const teamSizes = Array.from({ length: teamCount }, () => 0);
+    const unassigned: PlayerState[] = [];
+
+    for (const [sessionId, player] of humans) {
+      const requested = this.requestedTeamBySession.get(sessionId);
+      if (requested !== undefined && isValidTdmTeamId(requested, teamCount)) {
+        player.teamId = requested;
+        teamSizes[requested]! += 1;
+      } else {
+        unassigned.push(player);
+      }
     }
 
-    if (count === 3) {
-      humans[0]!.teamId = 0;
-      humans[1]!.teamId = 1;
-      humans[2]!.teamId = 2;
-      return;
-    }
-
-    if (count >= 4) {
-      humans[0]!.teamId = 0;
-      humans[1]!.teamId = 0;
-      humans[2]!.teamId = 1;
-      humans[3]!.teamId = 1;
+    for (const player of unassigned) {
+      let minTeam = 0;
+      for (let teamId = 1; teamId < teamCount; teamId++) {
+        if (teamSizes[teamId]! < teamSizes[minTeam]!) {
+          minTeam = teamId;
+        }
+      }
+      player.teamId = minTeam;
+      teamSizes[minTeam]! += 1;
     }
   }
 
@@ -1358,6 +1370,26 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       client.send('shieldChargePickupGranted', { index });
     },
 
+    teamPing: (client: Client, data: TeamPingRequest) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+
+      const x = Number(data.x);
+      const y = Number(data.y);
+      const z = Number(data.z);
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return;
+
+      const distance = Math.hypot(x - player.x, y - player.y, z - player.z);
+      if (distance > TEAM_PING_MAX_DISTANCE + TEAM_PING_DISTANCE_SLACK) return;
+
+      const payload: TeamPingMessage = { pingerId: client.sessionId, x, y, z };
+      for (const target of this.clients) {
+        const targetPlayer = this.state.players.get(target.sessionId);
+        if (!targetPlayer || targetPlayer.teamId !== player.teamId) continue;
+        target.send('teamPing', payload);
+      }
+    },
+
     throwGrenade: (client: Client, data: GrenadeThrowRequest) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
@@ -1634,9 +1666,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       registerGameUser(userId);
       await this.cacheDefaultLoadoutForSession(client.sessionId, userId);
     }
-    player.teamId = this.isTdm()
-      ? this.pickBalancedTdmTeam()
-      : this.resolveTeamId(options.teamId);
+    const requestedTeam = Number(options.teamId);
+    if (this.isTdm()) {
+      if (isValidTdmTeamId(requestedTeam, this.state.teamCount)) {
+        this.requestedTeamBySession.set(client.sessionId, requestedTeam);
+        player.teamId = requestedTeam;
+      } else {
+        player.teamId = this.pickBalancedTdmTeam();
+      }
+    } else {
+      player.teamId = this.resolveTeamId(options.teamId);
+    }
     player.hp = PLAYER_MAX_HP;
     const shield = resetPlayerShield();
     player.shieldLevel = shield.shieldLevel;
@@ -1658,6 +1698,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const userId = this.userIdBySession.get(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.userIdBySession.delete(client.sessionId);
+    this.requestedTeamBySession.delete(client.sessionId);
     if (userId) {
       restoreLobbyPresenceAfterGame(userId);
     }

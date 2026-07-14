@@ -1,17 +1,40 @@
 export const MAX_PARTY_SIZE = 4;
 
+/** Party members pick between the first two sides (Blue / Orange). */
+export const PARTY_TEAM_IDS = [0, 1] as const;
+
+export function isValidPartyTeamId(teamId: number): boolean {
+  return teamId === 0 || teamId === 1;
+}
+
 export interface PartyMember {
   userId: string;
   username: string;
   isHost: boolean;
+  /** Preferred team side (0 = Blue, 1 = Orange). */
+  teamId: number;
 }
 
 export interface PartySnapshotMessage {
   partyId: string;
   members: PartyMember[];
   isHost: boolean;
+  /** User id of the member this snapshot was sent to. */
+  viewerUserId: string;
   /** Guest user ids with a pending invite (host client only). */
   pendingInviteUserIds: string[];
+  /** Host-controlled match option, visible to every member. */
+  friendlyFire: boolean;
+}
+
+/** Any member sets their own preferred team side. */
+export interface SetPartyTeamMessage {
+  teamId: number;
+}
+
+/** Host toggles friendly fire for the upcoming match. */
+export interface SetPartyFriendlyFireMessage {
+  friendlyFire: boolean;
 }
 
 export interface LeavePartyMessage {

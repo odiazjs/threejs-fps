@@ -724,6 +724,26 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
+.party-member-badges {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.party-member-team {
+  flex-shrink: 0;
+  padding: 0.28rem 0.5rem;
+  border: 1px solid var(--team-color, var(--hud-cyan-border));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--team-color, var(--hud-cyan)) 14%, transparent);
+  color: var(--team-color, var(--hud-cyan));
+  font-family: var(--hud-font);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
 .friends-empty {
   font-size: 0.78rem;
   opacity: 0.45;
@@ -800,6 +820,76 @@
   font-weight: 500;
   color: var(--hud-cyan-dim);
   letter-spacing: 0.04em;
+}
+
+.party-team-picker {
+  margin-bottom: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 242, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.party-team-picker[hidden] {
+  display: none;
+}
+
+.party-team-picker-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.party-team-picker-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.party-team-btn {
+  padding: 0.45rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--hud-font);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.party-team-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.party-team-btn--blue.is-active {
+  border-color: #6a9fd4;
+  background: rgba(106, 159, 212, 0.18);
+  color: #a8cbf0;
+  box-shadow: 0 0 10px rgba(106, 159, 212, 0.35);
+}
+
+.party-team-btn--orange.is-active {
+  border-color: #e5a088;
+  background: rgba(229, 160, 136, 0.18);
+  color: #f4c4b2;
+  box-shadow: 0 0 10px rgba(229, 160, 136, 0.35);
+}
+
+.party-team-btn--blue:hover:not(:disabled):not(.is-active) {
+  border-color: rgba(106, 159, 212, 0.55);
+  color: #a8cbf0;
+}
+
+.party-team-btn--orange:hover:not(:disabled):not(.is-active) {
+  border-color: rgba(229, 160, 136, 0.55);
+  color: #f4c4b2;
 }
 
 .friendly-fire-toggle {

@@ -39,6 +39,7 @@ const BLIP_COLORS: Record<MinimapBlip['kind'], string> = {
   self: '#5ce8ff',
   teammate: '#6aa8ff',
   enemy: '#ff7a62',
+  ping: '#00f2ff',
 };
 
 export class MinimapRenderer {
@@ -150,6 +151,11 @@ export class MinimapRenderer {
     const point = this.worldToCanvas(blip.x, blip.z, bounds);
     const color = BLIP_COLORS[blip.kind];
 
+    if (blip.kind === 'ping') {
+      this.drawPingTriangle(ctx, point.x, point.y, color);
+      return;
+    }
+
     if (blip.kind === 'self' && blip.yaw != null) {
       this.drawFacingWedge(ctx, point.x, point.y, blip.yaw, color);
     }
@@ -159,6 +165,31 @@ export class MinimapRenderer {
     ctxBeginCircle(ctx, point.x, point.y, radius);
     ctx.fillStyle = color;
     ctx.fill();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  /** Downward-pointing neon triangle for team pings. */
+  private drawPingTriangle(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    color: string,
+  ): void {
+    const size = this.style.blipRadiusOther * 1.5;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y + size);
+    ctx.lineTo(x - size * 0.9, y - size);
+    ctx.lineTo(x + size * 0.9, y - size);
+    ctx.closePath();
+
+    ctx.shadowColor = withAlpha(color, 0.9);
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.shadowBlur = 0;
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.lineWidth = 1;
     ctx.stroke();

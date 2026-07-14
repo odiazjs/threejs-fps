@@ -32,6 +32,8 @@ import {
 
   MAX_PARTY_SIZE,
 
+  isValidPartyTeamId,
+
   type LeavePartyMessage,
 
   type PartyMember,
@@ -39,6 +41,10 @@ import {
   type PartySnapshotMessage,
 
   type RequestPartySnapshotMessage,
+
+  type SetPartyFriendlyFireMessage,
+
+  type SetPartyTeamMessage,
 
 } from '../../../shared/network/party.js';
 
@@ -79,6 +85,8 @@ interface PartyMemberRecord {
 
   isHost: boolean;
 
+  teamId: number;
+
 }
 
 
@@ -112,6 +120,8 @@ interface Party {
   members: Map<string, PartyMemberRecord>;
 
   pendingInvites: Map<string, PendingGameInvite>;
+
+  friendlyFire: boolean;
 
 }
 
@@ -463,6 +473,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
         isHost: false,
 
+        teamId: this.pickBalancedPartyTeam(hostParty),
+
       });
 
       this.partyHostByUserId.set(responderUserId, hostParty.hostUserId);
@@ -557,7 +569,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const friendlyFire = data.friendlyFire === true;
+      // Friendly fire lives on the party so every member sees the host's choice.
+      const friendlyFire = party.friendlyFire || data.friendlyFire === true;
       const mapId = normalizeMapId(data.mapId);
       const gameMode = normalizeGameMode(data.gameMode);
 
@@ -588,7 +601,12 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
         for (const member of launchMembers) {
-          const launch: GameLaunchMessage = { roomId, mapId, gameMode };
+          const launch: GameLaunchMessage = {
+            roomId,
+            mapId,
+            gameMode,
+            teamId: member.teamId,
+          };
           setPendingGameLaunch(member.userId, launch);
           member.client.send('gameLaunch', launch);
         }
@@ -608,6 +626,56 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
     },
 
 
+
+    setPartyTeam: (client: Client, data: SetPartyTeamMessage) => {
+
+      const userId = this.getUserId(client);
+
+      if (!userId) return;
+
+      const party = this.getPartyForUser(userId);
+
+      const member = party?.members.get(userId);
+
+      if (!party || !member) return;
+
+      const teamId = Number(data.teamId);
+
+      if (!isValidPartyTeamId(teamId) || member.teamId === teamId) return;
+
+      member.teamId = teamId;
+
+      this.broadcastParty(party);
+
+    },
+
+    setPartyFriendlyFire: (client: Client, data: SetPartyFriendlyFireMessage) => {
+
+      const userId = this.getUserId(client);
+
+      if (!userId) return;
+
+      const party = this.getPartyForUser(userId);
+
+      if (!party) return;
+
+      if (party.hostUserId !== userId) {
+
+        this.sendError(client, 'Only the party host can change friendly fire');
+
+        return;
+
+      }
+
+      const friendlyFire = data.friendlyFire === true;
+
+      if (party.friendlyFire === friendlyFire) return;
+
+      party.friendlyFire = friendlyFire;
+
+      this.broadcastParty(party);
+
+    },
 
     leaveParty: (client: Client, _data: LeavePartyMessage) => {
 
@@ -916,6 +984,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
             isHost: true,
 
+            teamId: 0,
+
           },
 
         ],
@@ -923,6 +993,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       ]),
 
       pendingInvites: new Map(),
+
+      friendlyFire: false,
 
     };
 
@@ -1050,6 +1122,26 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
+  /** New members join whichever side currently has fewer players. */
+  private pickBalancedPartyTeam(party: Party): number {
+
+    let team0 = 0;
+
+    let team1 = 0;
+
+    for (const member of party.members.values()) {
+
+      if (member.teamId === 1) team1 += 1;
+      else team0 += 1;
+
+    }
+
+    return team0 <= team1 ? 0 : 1;
+
+  }
+
+
+
   private sendPartySnapshot(client: Client, party: Party, viewerUserId: string): void {
 
     const members: PartyMember[] = [...party.members.values()].map((member) => ({
@@ -1059,6 +1151,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       username: member.username,
 
       isHost: member.isHost,
+
+      teamId: member.teamId,
 
     }));
 
@@ -1082,7 +1176,11 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       isHost,
 
+      viewerUserId,
+
       pendingInviteUserIds,
+
+      friendlyFire: party.friendlyFire,
 
     };
 

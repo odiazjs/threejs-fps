@@ -5,6 +5,7 @@ import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
 import type { GrenadeDetonateRequest, GrenadeThrowRequest } from '../../shared/network/grenade';
+import type { TeamPingMessage, TeamPingRequest } from '../../shared/network/ping';
 import type { PickupGrenadeMessage } from '../../shared/network/grenadePickup';
 import type { ShieldChargeSpawnMessage } from '../../shared/network/shieldDrop';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
@@ -161,6 +162,7 @@ export class RoomClient {
   private onWeaponPickupGrantedHandlers: WeaponPickupGrantedHandler[] = [];
   private onKillFeedHandlers: KillFeedHandler[] = [];
   private onLocalDamagedHandlers: LocalDamagedHandler[] = [];
+  private onTeamPingHandlers: Array<(data: TeamPingMessage) => void> = [];
 
   get sessionId(): string | null {
     return this.room?.sessionId ?? null;
@@ -264,6 +266,7 @@ export class RoomClient {
     this.bindWeaponDropMessages();
     this.bindKillMessages();
     this.bindDamagedMessages();
+    this.bindTeamPingMessages();
   }
 
   private async joinByIdWithRetry(
@@ -500,6 +503,10 @@ export class RoomClient {
     this.room?.send('meleeAttack', {});
   }
 
+  sendTeamPing(data: TeamPingRequest): void {
+    this.room?.send('teamPing', data);
+  }
+
   sendThrowGrenade(data: GrenadeThrowRequest): void {
     this.room?.send('throwGrenade', data);
   }
@@ -609,6 +616,16 @@ export class RoomClient {
   private bindDamagedMessages(): void {
     this.room?.onMessage('damaged', (data: PlayerDamagedMessage) => {
       this.onLocalDamagedHandlers.forEach((handler) => handler(data));
+    });
+  }
+
+  onTeamPing(handler: (data: TeamPingMessage) => void): void {
+    this.onTeamPingHandlers.push(handler);
+  }
+
+  private bindTeamPingMessages(): void {
+    this.room?.onMessage('teamPing', (data: TeamPingMessage) => {
+      this.onTeamPingHandlers.forEach((handler) => handler(data));
     });
   }
 

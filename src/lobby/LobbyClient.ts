@@ -17,7 +17,12 @@ import type {
   GameInviteSentMessage,
   GameLaunchMessage,
 } from '../../shared/network/gameInvite';
-import type { PartySnapshotMessage, RequestPartySnapshotMessage } from '../../shared/network/party';
+import type {
+  PartySnapshotMessage,
+  RequestPartySnapshotMessage,
+  SetPartyFriendlyFireMessage,
+  SetPartyTeamMessage,
+} from '../../shared/network/party';
 import { LobbyState } from '../../shared/schema/LobbyState';
 import { getServerUrl } from '../config/serverUrl';
 
@@ -75,6 +80,16 @@ export class LobbyClient {
 
   leaveParty(partyId: string): void {
     this.room?.send('leaveParty', { partyId });
+  }
+
+  setPartyTeam(teamId: number): void {
+    const payload: SetPartyTeamMessage = { teamId };
+    this.room?.send('setPartyTeam', payload);
+  }
+
+  setPartyFriendlyFire(friendlyFire: boolean): void {
+    const payload: SetPartyFriendlyFireMessage = { friendlyFire };
+    this.room?.send('setPartyFriendlyFire', payload);
   }
 
   setAppView(view: AppPresenceView): void {

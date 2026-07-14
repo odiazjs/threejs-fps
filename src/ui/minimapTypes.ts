@@ -19,7 +19,7 @@ export interface MinimapLayout {
   }>;
 }
 
-export type MinimapBlipKind = 'self' | 'teammate' | 'enemy';
+export type MinimapBlipKind = 'self' | 'teammate' | 'enemy' | 'ping';
 
 export interface MinimapBlip {
   x: number;
