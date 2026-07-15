@@ -51,10 +51,46 @@ export function prepareFbxWeaponMesh(model: THREE.Group, config: FbxWeaponMeshCo
   muzzle.position.copy(content.worldToLocal(new THREE.Vector3(muzzleX, muzzleY, muzzleZ)));
   content.add(muzzle);
 
+  const ventInset = 0.12;
+  const ventLateral = Math.max(boundsSize.x, boundsSize.z) * 0.42;
+  const ventY = muzzleY;
+  let ventLeftX: number;
+  let ventRightX: number;
+  let ventLeftZ: number;
+  let ventRightZ: number;
+  if (barrelAlongZ) {
+    const ventZ = muzzleZ - boundsSize.z * ventInset;
+    ventLeftX = (bounds.min.x + bounds.max.x) * 0.5 - ventLateral;
+    ventRightX = (bounds.min.x + bounds.max.x) * 0.5 + ventLateral;
+    ventLeftZ = ventZ;
+    ventRightZ = ventZ;
+  } else {
+    const ventX = muzzleX - boundsSize.x * ventInset;
+    ventLeftZ = (bounds.min.z + bounds.max.z) * 0.5 - ventLateral;
+    ventRightZ = (bounds.min.z + bounds.max.z) * 0.5 + ventLateral;
+    ventLeftX = ventX;
+    ventRightX = ventX;
+  }
+
+  const ventLeft = new THREE.Object3D();
+  ventLeft.name = 'muzzle_vent_l';
+  ventLeft.position.copy(
+    content.worldToLocal(new THREE.Vector3(ventLeftX, ventY, ventLeftZ)),
+  );
+  content.add(ventLeft);
+
+  const ventRight = new THREE.Object3D();
+  ventRight.name = 'muzzle_vent_r';
+  ventRight.position.copy(
+    content.worldToLocal(new THREE.Vector3(ventRightX, ventY, ventRightZ)),
+  );
+  content.add(ventRight);
+
   const root = new THREE.Group();
   root.name = config.rootName;
   root.add(content);
   root.userData.weaponMuzzle = muzzle;
+  root.userData.weaponSideVents = [ventLeft, ventRight];
 
   return root;
 }
@@ -74,6 +110,12 @@ export function cloneFbxWeaponMesh(root: THREE.Group): THREE.Group {
   const muzzle = clone.getObjectByName('muzzle');
   if (muzzle) {
     clone.userData.weaponMuzzle = muzzle;
+  }
+
+  const ventLeft = clone.getObjectByName('muzzle_vent_l');
+  const ventRight = clone.getObjectByName('muzzle_vent_r');
+  if (ventLeft && ventRight) {
+    clone.userData.weaponSideVents = [ventLeft, ventRight];
   }
 
   return clone;

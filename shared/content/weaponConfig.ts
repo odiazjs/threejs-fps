@@ -110,6 +110,26 @@ export interface MuzzleFlashConfig {
   readonly streakCount?: number;
   /** Cone half-angle (radians) for streaks — match `pelletSpreadRad`. */
   readonly streakSpreadRad?: number;
+  /** Lateral sparks from barrel side vents — subtle on pistols, loud on shotguns. */
+  readonly sideVents?: SideVentFlashConfig;
+}
+
+/** Per-weapon side-port muzzle sparks (Apex-style lateral gas bleed). */
+export interface SideVentFlashConfig {
+  /** Particles emitted from each side vent per shot. */
+  readonly particleCount: number;
+  /** Outward speed of lateral sparks (world units / s). */
+  readonly particleSpeed: number;
+  /** 0 = forward, 1 = purely lateral along ±X in flash space. */
+  readonly lateralBias: number;
+  /** Sprite size multiplier on main flash `coreScale` (default ~0.5). */
+  readonly particleSizeScale?: number;
+  /** Multiplier on main flash duration (default 1). */
+  readonly durationScale?: number;
+  /** Bright horizontal wisps per vent — 0 = particles only. */
+  readonly streakCount?: number;
+  /** Optional palette override; defaults to main flash colors. */
+  readonly colors?: readonly [number, number, number];
 }
 
 export interface WeaponSwayConfig {
@@ -125,6 +145,8 @@ export interface WeaponSoundClip {
   readonly src: string;
   /** Gain for this clip (defaults to `WeaponSoundsConfig.volume`, then 1). */
   readonly volume?: number;
+  /** Wet reverb mix for this clip (0 = dry, 1 = full wet). */
+  readonly reverbLevel?: number;
 }
 
 export interface WeaponSoundsConfig {
@@ -140,6 +162,8 @@ export interface WeaponSoundsConfig {
   readonly reloadComplete?: string | WeaponSoundClip;
   /** Default gain for clips that omit their own `volume` (default 1). */
   readonly volume?: number;
+  /** Fallback wet reverb when a clip omits its own `reverbLevel`. */
+  readonly reverbLevel?: number;
 }
 
 export type WeaponShotSoundVariant = 'single' | 'auto';

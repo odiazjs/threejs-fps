@@ -118,6 +118,7 @@ export class NetworkManager {
         shooterWorldPos: _shooterWorldPos,
         weaponId: built.weaponId,
         muzzleFlash: pelletIndex === 0 ? built.muzzleFlash : undefined,
+        sideVentOffsets: pelletIndex === 0 ? built.sideVentOffsets : undefined,
         projectileStyle: built.projectileStyle,
         projectileGravity: built.projectileGravity,
         boltSizeScale: built.boltSizeScale,

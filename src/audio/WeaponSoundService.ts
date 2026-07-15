@@ -6,6 +6,11 @@ import type {
   WeaponSoundsConfig,
 } from '../../shared/content/weaponConfig';
 import type { WeaponSpatialAudioConfig } from '../content/audioConfig';
+import {
+  clampReverbLevel,
+  createArenaReverbImpulse,
+  reverbDryWetGains,
+} from './reverbBus';
 
 const DEFAULT_VOLUME = 1;
 /** Samples below this amplitude are treated as silence when trimming auto loops. */
@@ -19,19 +24,41 @@ interface LoadedSoundBuffer {
   autoLoopEnd: number;
 }
 
+interface ResolvedSoundClip {
+  url: string;
+  volume: number;
+  reverbLevel: number;
+}
+
 function resolveSoundClip(
   clip: string | WeaponSoundClip | undefined,
   defaultVolume: number,
-): { url: string; volume: number } | null {
+  defaultReverbLevel = 0,
+): ResolvedSoundClip | null {
   if (!clip) return null;
 
   if (typeof clip === 'string') {
-    return { url: clip, volume: defaultVolume };
+    return {
+      url: clip,
+      volume: defaultVolume,
+      reverbLevel: clampReverbLevel(defaultReverbLevel),
+    };
   }
 
   return {
     url: clip.src,
     volume: clip.volume ?? defaultVolume,
+    reverbLevel: clampReverbLevel(clip.reverbLevel ?? defaultReverbLevel),
+  };
+}
+
+function soundDefaults(sounds: WeaponSoundsConfig): {
+  volume: number;
+  reverbLevel: number;
+} {
+  return {
+    volume: sounds.volume ?? DEFAULT_VOLUME,
+    reverbLevel: clampReverbLevel(sounds.reverbLevel),
   };
 }
 
@@ -140,7 +167,8 @@ export function collectWeaponSoundUrls(configs: readonly WeaponConfig[]): string
 
 interface RemoteAutoFireNodes {
   source: AudioBufferSourceNode;
-  gain: GainNode;
+  dryGain: GainNode;
+  wetGain: GainNode;
   panner: PannerNode;
   url: string;
 }
@@ -148,9 +176,11 @@ interface RemoteAutoFireNodes {
 export class WeaponSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private reverbConvolver: ConvolverNode | null = null;
   private readonly buffers = new Map<string, LoadedSoundBuffer>();
   private autoSource: AudioBufferSourceNode | null = null;
-  private autoGain: GainNode | null = null;
+  private autoDryGain: GainNode | null = null;
+  private autoWetGain: GainNode | null = null;
   private activeAutoUrl: string | null = null;
   private reloadSource: AudioBufferSourceNode | null = null;
   private readonly remoteAutoFire = new Map<string, RemoteAutoFireNodes>();
@@ -197,30 +227,30 @@ export class WeaponSoundService {
   playSingleShot(sounds: WeaponSoundsConfig | undefined): void {
     if (!sounds) return;
 
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const defaults = soundDefaults(sounds);
     const clip =
-      resolveSoundClip(sounds.singleShot, defaultVolume) ??
-      resolveSoundClip(sounds.autoShot, defaultVolume);
+      resolveSoundClip(sounds.singleShot, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.autoShot, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
 
-    this.playOneShot(clip.url, clip.volume);
+    this.playOneShot(clip.url, clip.volume, clip.reverbLevel);
   }
 
   /** Loops the auto clip while the trigger is held (silence trimmed from loop bounds). */
   startAutoFire(sounds: WeaponSoundsConfig | undefined): void {
     if (!sounds) return;
 
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const defaults = soundDefaults(sounds);
     const clip =
-      resolveSoundClip(sounds.autoShot, defaultVolume) ??
-      resolveSoundClip(sounds.singleShot, defaultVolume);
+      resolveSoundClip(sounds.autoShot, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.singleShot, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
 
     if (this.activeAutoUrl === clip.url && this.autoSource) return;
 
     this.stopAutoFire();
     this.ensureContext();
-    if (!this.context || !this.masterGain) return;
+    if (!this.context || !this.masterGain || !this.reverbConvolver) return;
 
     const loaded = this.buffers.get(clip.url);
     if (!loaded) return;
@@ -235,14 +265,21 @@ export class WeaponSoundService {
     source.loopStart = loaded.autoLoopStart;
     source.loopEnd = loaded.autoLoopEnd;
 
-    const gain = this.context.createGain();
-    gain.gain.value = clip.volume;
-    source.connect(gain);
-    gain.connect(this.masterGain);
+    const { dry, wet } = reverbDryWetGains(clip.volume, clip.reverbLevel);
+    const dryGain = this.context.createGain();
+    dryGain.gain.value = dry;
+    const wetGain = this.context.createGain();
+    wetGain.gain.value = wet;
+
+    source.connect(dryGain);
+    dryGain.connect(this.masterGain);
+    source.connect(wetGain);
+    wetGain.connect(this.reverbConvolver);
     source.start(0, loaded.autoLoopStart);
 
     this.autoSource = source;
-    this.autoGain = gain;
+    this.autoDryGain = dryGain;
+    this.autoWetGain = wetGain;
     this.activeAutoUrl = clip.url;
   }
 
@@ -266,15 +303,14 @@ export class WeaponSoundService {
   playReload(sounds: WeaponSoundsConfig | undefined, reloadSec?: number): void {
     if (!sounds) return;
 
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
-    const clip = resolveSoundClip(sounds.reload, defaultVolume);
+    const defaults = soundDefaults(sounds);
+    const clip = resolveSoundClip(sounds.reload, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
 
     this.stopReload();
     this.ensureContext();
     const loaded = this.buffers.get(clip.url);
     if (!loaded) {
-      // Still attempt play after ensure — preload may race on first reload.
       void this.preload([clip.url]).then(() => {
         const ready = this.buffers.get(clip.url);
         if (!ready) return;
@@ -282,6 +318,7 @@ export class WeaponSoundService {
           clip.url,
           clip.volume,
           reloadPlaybackRate(ready.buffer, reloadSec),
+          clip.reverbLevel,
         );
       });
       return;
@@ -291,44 +328,45 @@ export class WeaponSoundService {
       clip.url,
       clip.volume,
       reloadPlaybackRate(loaded.buffer, reloadSec),
+      clip.reverbLevel,
     );
   }
 
   /** Per-shell insert (shotgun) — natural playback, no duration stretch. */
   playReloadPartial(sounds: WeaponSoundsConfig | undefined): void {
     if (!sounds) return;
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const defaults = soundDefaults(sounds);
     const clip =
-      resolveSoundClip(sounds.reloadPartial, defaultVolume) ??
-      resolveSoundClip(sounds.reload, defaultVolume);
+      resolveSoundClip(sounds.reloadPartial, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.reload, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
-    this.playReloadInsertClip(clip.url, clip.volume);
+    this.playReloadInsertClip(clip.url, clip.volume, clip.reverbLevel);
   }
 
   /** Magazine became full after a shell-style reload. */
   playReloadComplete(sounds: WeaponSoundsConfig | undefined): void {
     if (!sounds) return;
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const defaults = soundDefaults(sounds);
     const clip =
-      resolveSoundClip(sounds.reloadComplete, defaultVolume) ??
-      resolveSoundClip(sounds.reloadPartial, defaultVolume) ??
-      resolveSoundClip(sounds.reload, defaultVolume);
+      resolveSoundClip(sounds.reloadComplete, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.reloadPartial, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.reload, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
-    this.playReloadInsertClip(clip.url, clip.volume);
+    this.playReloadInsertClip(clip.url, clip.volume, clip.reverbLevel);
   }
 
-  private playReloadInsertClip(url: string, volume: number): void {
+  private playReloadInsertClip(url: string, volume: number, reverbLevel: number): void {
     this.stopReload();
     this.ensureContext();
     const loaded = this.buffers.get(url);
     if (!loaded) {
       void this.preload([url]).then(() => {
         if (!this.buffers.get(url)) return;
-        this.playReloadOneShot(url, volume, 1);
+        this.playReloadOneShot(url, volume, 1, reverbLevel);
       });
       return;
     }
-    this.playReloadOneShot(url, volume, 1);
+    this.playReloadOneShot(url, volume, 1, reverbLevel);
   }
 
   stopReload(): void {
@@ -391,23 +429,23 @@ export class WeaponSoundService {
     if (!sounds || !this.spatialConfig) return;
 
     if (phase === 'autoStart') {
-      const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+      const defaults = soundDefaults(sounds);
       // Looping auto only when a dedicated auto clip exists; otherwise remotes
       // hear per-shot SFX from projectile spawns.
-      if (!resolveSoundClip(sounds.autoShot, defaultVolume)) return;
+      if (!resolveSoundClip(sounds.autoShot, defaults.volume, defaults.reverbLevel)) return;
       this.startRemoteAutoFire(sessionId, sounds, position);
       return;
     }
 
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const defaults = soundDefaults(sounds);
     const clip =
-      resolveSoundClip(sounds.singleShot, defaultVolume) ??
-      resolveSoundClip(sounds.autoShot, defaultVolume);
+      resolveSoundClip(sounds.singleShot, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.autoShot, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
 
     const volume = clip.volume * this.spatialConfig.remoteVolumeScale;
     _shotPos.copy(position);
-    this.playSpatialOneShot(clip.url, volume, _shotPos);
+    this.playSpatialOneShot(clip.url, volume, _shotPos, clip.reverbLevel);
   }
 
   stopRemoteAutoFire(sessionId: string): void {
@@ -421,7 +459,8 @@ export class WeaponSoundService {
     }
 
     nodes.source.disconnect();
-    nodes.gain.disconnect();
+    nodes.dryGain.disconnect();
+    nodes.wetGain.disconnect();
     nodes.panner.disconnect();
     this.remoteAutoFire.delete(sessionId);
   }
@@ -449,10 +488,10 @@ export class WeaponSoundService {
   ): void {
     if (!this.spatialConfig) return;
 
-    const defaultVolume = sounds.volume ?? DEFAULT_VOLUME;
+    const defaults = soundDefaults(sounds);
     const clip =
-      resolveSoundClip(sounds.autoShot, defaultVolume) ??
-      resolveSoundClip(sounds.singleShot, defaultVolume);
+      resolveSoundClip(sounds.autoShot, defaults.volume, defaults.reverbLevel) ??
+      resolveSoundClip(sounds.singleShot, defaults.volume, defaults.reverbLevel);
     if (!clip) return;
 
     const existing = this.remoteAutoFire.get(sessionId);
@@ -465,7 +504,7 @@ export class WeaponSoundService {
 
     this.stopRemoteAutoFire(sessionId);
     this.ensureContext();
-    if (!this.context || !this.masterGain) return;
+    if (!this.context || !this.masterGain || !this.reverbConvolver) return;
 
     const loaded = this.buffers.get(clip.url);
     if (!loaded) return;
@@ -480,20 +519,28 @@ export class WeaponSoundService {
     source.loopStart = loaded.autoLoopStart;
     source.loopEnd = loaded.autoLoopEnd;
 
-    const gain = this.context.createGain();
-    gain.gain.value = clip.volume * this.spatialConfig.remoteVolumeScale;
+    const { dry, wet } = reverbDryWetGains(
+      clip.volume * this.spatialConfig.remoteVolumeScale,
+      clip.reverbLevel,
+    );
+    const dryGain = this.context.createGain();
+    dryGain.gain.value = dry;
+    const wetGain = this.context.createGain();
+    wetGain.gain.value = wet;
 
     const panner = this.createSpatialPanner();
     panner.positionX.value = position.x;
     panner.positionY.value = position.y;
     panner.positionZ.value = position.z;
 
-    source.connect(gain);
-    gain.connect(panner);
+    source.connect(dryGain);
+    dryGain.connect(panner);
+    source.connect(wetGain);
+    wetGain.connect(this.reverbConvolver);
     panner.connect(this.masterGain);
     source.start(0, loaded.autoLoopStart);
 
-    this.remoteAutoFire.set(sessionId, { source, gain, panner, url: clip.url });
+    this.remoteAutoFire.set(sessionId, { source, dryGain, wetGain, panner, url: clip.url });
   }
 
   private createSpatialPanner(): PannerNode {
@@ -508,9 +555,14 @@ export class WeaponSoundService {
     return panner;
   }
 
-  private playReloadOneShot(url: string, volume: number, playbackRate: number): void {
+  private playReloadOneShot(
+    url: string,
+    volume: number,
+    playbackRate: number,
+    reverbLevel: number,
+  ): void {
     this.ensureContext();
-    if (!this.context || !this.masterGain) return;
+    if (!this.context || !this.masterGain || !this.reverbConvolver) return;
 
     const loaded = this.buffers.get(url);
     if (!loaded) return;
@@ -522,13 +574,9 @@ export class WeaponSoundService {
     const source = this.context.createBufferSource();
     source.buffer = loaded.buffer;
     const rate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
-    // `.value` is the reliable path across browsers; setValueAtTime alone can no-op.
     source.playbackRate.value = rate;
 
-    const gain = this.context.createGain();
-    gain.gain.value = volume;
-    source.connect(gain);
-    gain.connect(this.masterGain);
+    this.connectDryWet(source, volume, reverbLevel, this.masterGain);
     source.onended = () => {
       if (this.reloadSource === source) this.reloadSource = null;
     };
@@ -536,9 +584,14 @@ export class WeaponSoundService {
     this.reloadSource = source;
   }
 
-  private playOneShot(url: string, volume: number, playbackRate = 1): void {
+  private playOneShot(
+    url: string,
+    volume: number,
+    reverbLevel = 0,
+    playbackRate = 1,
+  ): void {
     this.ensureContext();
-    if (!this.context || !this.masterGain) return;
+    if (!this.context || !this.masterGain || !this.reverbConvolver) return;
 
     const loaded = this.buffers.get(url);
     if (!loaded) return;
@@ -552,16 +605,18 @@ export class WeaponSoundService {
     const rate = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1;
     source.playbackRate.value = rate;
 
-    const gain = this.context.createGain();
-    gain.gain.value = volume;
-    source.connect(gain);
-    gain.connect(this.masterGain);
+    this.connectDryWet(source, volume, reverbLevel, this.masterGain);
     source.start();
   }
 
-  private playSpatialOneShot(url: string, volume: number, position: THREE.Vector3): void {
+  private playSpatialOneShot(
+    url: string,
+    volume: number,
+    position: THREE.Vector3,
+    reverbLevel = 0,
+  ): void {
     this.ensureContext();
-    if (!this.context || !this.masterGain || !this.spatialConfig) return;
+    if (!this.context || !this.masterGain || !this.reverbConvolver || !this.spatialConfig) return;
 
     const loaded = this.buffers.get(url);
     if (!loaded) return;
@@ -573,25 +628,50 @@ export class WeaponSoundService {
     const source = this.context.createBufferSource();
     source.buffer = loaded.buffer;
 
-    const gain = this.context.createGain();
-    gain.gain.value = volume;
-
     const panner = this.createSpatialPanner();
     panner.positionX.value = position.x;
     panner.positionY.value = position.y;
     panner.positionZ.value = position.z;
 
-    source.connect(gain);
-    gain.connect(panner);
+    const { dry, wet } = reverbDryWetGains(volume, reverbLevel);
+    const dryGain = this.context.createGain();
+    dryGain.gain.value = dry;
+    const wetGain = this.context.createGain();
+    wetGain.gain.value = wet;
+
+    source.connect(dryGain);
+    dryGain.connect(panner);
+    source.connect(wetGain);
+    wetGain.connect(this.reverbConvolver);
     panner.connect(this.masterGain);
     source.start();
   }
 
+  private connectDryWet(
+    source: AudioBufferSourceNode,
+    volume: number,
+    reverbLevel: number,
+    destination: AudioNode,
+  ): void {
+    const { dry, wet } = reverbDryWetGains(volume, reverbLevel);
+    const dryGain = this.context!.createGain();
+    dryGain.gain.value = dry;
+    const wetGain = this.context!.createGain();
+    wetGain.gain.value = wet;
+
+    source.connect(dryGain);
+    dryGain.connect(destination);
+    source.connect(wetGain);
+    wetGain.connect(this.reverbConvolver!);
+  }
+
   private clearAutoNodes(): void {
     this.autoSource?.disconnect();
-    this.autoGain?.disconnect();
+    this.autoDryGain?.disconnect();
+    this.autoWetGain?.disconnect();
     this.autoSource = null;
-    this.autoGain = null;
+    this.autoDryGain = null;
+    this.autoWetGain = null;
     this.activeAutoUrl = null;
   }
 
@@ -602,5 +682,9 @@ export class WeaponSoundService {
     this.masterGain = this.context.createGain();
     this.masterGain.gain.value = 1;
     this.masterGain.connect(this.context.destination);
+
+    this.reverbConvolver = this.context.createConvolver();
+    this.reverbConvolver.buffer = createArenaReverbImpulse(this.context);
+    this.reverbConvolver.connect(this.masterGain);
   }
 }

@@ -44,6 +44,7 @@ const SPLASH_KIND_BY_HIT: Record<Exclude<ResolvedHitKind, 'miss'>, HitSplashKind
 
 export class ProjectileManager {
   private readonly projectiles: Projectile[] = [];
+  private readonly fadingProjectiles: Projectile[] = [];
   private readonly projectilePool: Projectile[] = [];
   private readonly splashes: HitSplash[] = [];
   private readonly muzzleFlashes: MuzzleFlash[] = [];
@@ -118,6 +119,8 @@ export class ProjectileManager {
       muzzleFlash?: MuzzleFlashConfig;
       /** Uniform boost on the muzzle flash (e.g. ADS compensation). */
       muzzleFlashScale?: number;
+      /** Side-vent attach offsets in flash-local space. */
+      sideVentOffsets?: readonly THREE.Vector3[];
       boltColors?: readonly [number, number, number];
       projectileStyle?: 'bolt' | 'bioLiquid';
       projectileGravity?: number;
@@ -142,6 +145,7 @@ export class ProjectileManager {
         params.hitRayDirection,
         options.muzzleFlash,
         options.muzzleFlashScale ?? 1,
+        options.sideVentOffsets,
       );
       this.scene.add(flash.object);
       this.muzzleFlashes.push(flash);
@@ -181,6 +185,7 @@ export class ProjectileManager {
       sizeScale: options?.boltSizeScale,
     });
     this.scene.add(projectile.object);
+    this.scene.add(projectile.smokeTrail.object);
     this.projectiles.push(projectile);
     this.meta.set(projectile, {
       canHitPlayers,
@@ -236,6 +241,17 @@ export class ProjectileManager {
       this.projectiles.splice(i, 1);
     }
 
+    for (let i = this.fadingProjectiles.length - 1; i >= 0; i--) {
+      const fading = this.fadingProjectiles[i]!;
+      if (fading.updateFadingSmoke(delta)) continue;
+
+      fading.disposeSmokeTrail();
+      if (this.projectilePool.length < PROJECTILE_POOL_SIZE) {
+        this.projectilePool.push(fading);
+      }
+      this.fadingProjectiles.splice(i, 1);
+    }
+
     for (let i = this.splashes.length - 1; i >= 0; i--) {
       const splash = this.splashes[i]!;
       if (splash.update(delta)) continue;
@@ -262,6 +278,11 @@ export class ProjectileManager {
 
   private releaseProjectile(projectile: Projectile): void {
     projectile.release();
+    if (projectile.smokeTrail.isActive()) {
+      this.fadingProjectiles.push(projectile);
+      return;
+    }
+    projectile.disposeSmokeTrail();
     if (this.projectilePool.length < PROJECTILE_POOL_SIZE) {
       this.projectilePool.push(projectile);
     }

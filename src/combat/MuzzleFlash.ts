@@ -1,18 +1,24 @@
 import * as THREE from 'three';
-import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
+import type { MuzzleFlashConfig, SideVentFlashConfig } from '../../shared/content/weaponConfig';
 
 const FIRE_FORWARD = new THREE.Vector3(0, 0, -1);
 const _dir = new THREE.Vector3();
+const LATERAL_AXIS = new THREE.Vector3(1, 0, 0);
 /** Scales the additive sphere burst relative to `coreScale` (particles unchanged). */
 const DEFAULT_GLOW_SPHERE_SCALE = 0.42;
 const DEFAULT_PARTICLE_SIZE_SCALE = 1.8;
+const DEFAULT_SIDE_VENT_PARTICLE_SIZE_SCALE = 0.5;
 
 /** Streak travel speed relative to `particleSpeed`. */
 const STREAK_SPEED_SCALE = 0.85;
 const STREAK_LENGTH = 0.5;
 const STREAK_RADIUS = 0.022;
+/** Side-vent horizontal wisps — shorter and wider than bore streaks. */
+const VENT_STREAK_LENGTH = 0.38;
+const VENT_STREAK_RADIUS = 0.028;
 
 let streakGeometry: THREE.CylinderGeometry | null = null;
+let ventStreakGeometry: THREE.CylinderGeometry | null = null;
 
 /** Shared elongated streak geometry — oriented along +Y, rotated per streak. */
 function getStreakGeometry(): THREE.CylinderGeometry {
@@ -31,6 +37,23 @@ function getStreakGeometry(): THREE.CylinderGeometry {
   return streakGeometry;
 }
 
+/** Shared horizontal wisp geometry — oriented along +X, rotated per vent streak. */
+function getVentStreakGeometry(): THREE.CylinderGeometry {
+  if (!ventStreakGeometry) {
+    ventStreakGeometry = new THREE.CylinderGeometry(
+      VENT_STREAK_RADIUS * 0.35,
+      VENT_STREAK_RADIUS,
+      VENT_STREAK_LENGTH,
+      5,
+      1,
+      true,
+    );
+    ventStreakGeometry.rotateZ(-Math.PI * 0.5);
+    ventStreakGeometry.translate(VENT_STREAK_LENGTH * 0.5, 0, 0);
+  }
+  return ventStreakGeometry;
+}
+
 type FlashLayer = {
   mesh: THREE.Mesh;
   baseScale: number;
@@ -41,6 +64,17 @@ type FlashStreak = {
   mesh: THREE.Mesh;
   direction: THREE.Vector3;
   speed: number;
+};
+
+type SideVentBurst = {
+  lateralSign: number;
+  points: THREE.Points;
+  positions: Float32Array;
+  velocities: THREE.Vector3[];
+  particleCount: number;
+  particleBaseSize: number;
+  streaks: FlashStreak[];
+  streakMaterial: THREE.MeshBasicMaterial | null;
 };
 
 export class MuzzleFlash {
@@ -59,6 +93,8 @@ export class MuzzleFlash {
   private readonly particlePositions: Float32Array;
   private readonly particleVelocities: THREE.Vector3[] = [];
   private readonly particleCount: number;
+  private readonly sideVentBursts: SideVentBurst[] = [];
+  private readonly sideVentDurationScale: number;
 
   constructor(
     origin: THREE.Vector3,
@@ -66,11 +102,14 @@ export class MuzzleFlash {
     config: MuzzleFlashConfig,
     /** Uniform boost on the whole burst (e.g. >1 while ADS so the zoomed-in flash still pops). */
     scale = 1,
+    /** Side-vent attach offsets in flash-local space (from weapon sockets). */
+    sideVentOffsets?: readonly THREE.Vector3[],
   ) {
     this.duration = config.duration;
     this.particleCount = config.particleCount;
     this.lightIntensity = config.lightIntensity * scale;
     this.particleFall = Math.max(0, config.particleFall ?? 0);
+    this.sideVentDurationScale = config.sideVents?.durationScale ?? 1;
     const particleSizeScale = config.particleSizeScale ?? DEFAULT_PARTICLE_SIZE_SCALE;
     // Point sprite size is world-space (not affected by object scale) — boost it directly.
     this.particleBaseSize = config.coreScale * particleSizeScale * scale;
@@ -201,6 +240,125 @@ export class MuzzleFlash {
       }),
     );
     this.object.add(this.points);
+
+    if (config.sideVents && sideVentOffsets?.length) {
+      this.buildSideVentBursts(config, scale, sideVentOffsets);
+    }
+  }
+
+  private buildSideVentBursts(
+    config: MuzzleFlashConfig,
+    scale: number,
+    sideVentOffsets: readonly THREE.Vector3[],
+  ): void {
+    const ventConfig = config.sideVents as SideVentFlashConfig;
+    const [colorA, colorB, colorC] = ventConfig.colors ?? config.colors;
+    const particleSizeScale =
+      ventConfig.particleSizeScale ?? DEFAULT_SIDE_VENT_PARTICLE_SIZE_SCALE;
+    const ventParticleSize = config.coreScale * particleSizeScale * scale;
+    const lateralBias = Math.min(1, Math.max(0, ventConfig.lateralBias));
+    const forwardMix = 1 - lateralBias;
+    const streakCount = Math.max(0, Math.round(ventConfig.streakCount ?? 0));
+    const palette = [
+      new THREE.Color(colorA),
+      new THREE.Color(colorB),
+      new THREE.Color(colorC),
+    ];
+
+    for (const offset of sideVentOffsets) {
+      const lateralSign = offset.x < 0 ? -1 : 1;
+      const positions = new Float32Array(ventConfig.particleCount * 3);
+      const particleColors = new Float32Array(ventConfig.particleCount * 3);
+      const velocities: THREE.Vector3[] = [];
+      const jitter = config.coreScale * 0.22;
+
+      for (let i = 0; i < ventConfig.particleCount; i++) {
+        const i3 = i * 3;
+        positions[i3] = offset.x + (Math.random() - 0.5) * jitter * 0.35;
+        positions[i3 + 1] = offset.y + (Math.random() - 0.5) * jitter;
+        positions[i3 + 2] = offset.z + (Math.random() - 0.5) * jitter * 0.45;
+
+        const speed = ventConfig.particleSpeed * scale * (0.65 + Math.random() * 0.7);
+        velocities.push(
+          new THREE.Vector3(
+            lateralSign * speed * lateralBias * (0.75 + Math.random() * 0.5),
+            (Math.random() - 0.5) * speed * 0.35,
+            -speed * forwardMix * (0.35 + Math.random() * 0.55),
+          ),
+        );
+
+        const tone = palette[i % 3];
+        particleColors[i3] = tone.r;
+        particleColors[i3 + 1] = tone.g;
+        particleColors[i3 + 2] = tone.b;
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geometry.setAttribute('color', new THREE.BufferAttribute(particleColors, 3));
+
+      const points = new THREE.Points(
+        geometry,
+        new THREE.PointsMaterial({
+          size: ventParticleSize,
+          vertexColors: true,
+          transparent: true,
+          opacity: 1,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+          sizeAttenuation: true,
+        }),
+      );
+      this.object.add(points);
+
+      const streaks: FlashStreak[] = [];
+      let streakMaterial: THREE.MeshBasicMaterial | null = null;
+      if (streakCount > 0) {
+        streakMaterial = new THREE.MeshBasicMaterial({
+          color: colorA,
+          transparent: true,
+          opacity: 0.92,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+          side: THREE.DoubleSide,
+        });
+
+        for (let i = 0; i < streakCount; i++) {
+          const direction = LATERAL_AXIS.clone().multiplyScalar(lateralSign);
+          direction.y += (Math.random() - 0.5) * 0.18;
+          direction.z += (Math.random() - 0.5) * 0.12 - forwardMix * 0.08;
+          direction.normalize();
+
+          const mesh = new THREE.Mesh(getVentStreakGeometry(), streakMaterial);
+          mesh.position.copy(offset);
+          mesh.quaternion.setFromUnitVectors(LATERAL_AXIS, direction);
+          mesh.scale.set(1 + Math.random() * 0.35, 0.35 + Math.random() * 0.25, 1);
+          this.object.add(mesh);
+          streaks.push({
+            mesh,
+            direction,
+            speed:
+              ventConfig.particleSpeed *
+              scale *
+              STREAK_SPEED_SCALE *
+              (0.9 + Math.random() * 0.35),
+          });
+        }
+      }
+
+      this.sideVentBursts.push({
+        lateralSign,
+        points,
+        positions,
+        velocities,
+        particleCount: ventConfig.particleCount,
+        particleBaseSize: ventParticleSize,
+        streaks,
+        streakMaterial,
+      });
+    }
   }
 
   /** @returns false when the effect is finished */
@@ -248,6 +406,32 @@ export class MuzzleFlash {
     }
     this.points.geometry.attributes.position.needsUpdate = true;
 
+    const ventT = this.age / (this.duration * this.sideVentDurationScale);
+    const ventFade = ventT >= 1 ? 0 : (1 - ventT) * (1 - ventT);
+    for (const burst of this.sideVentBursts) {
+      const pointMaterial = burst.points.material as THREE.PointsMaterial;
+      pointMaterial.opacity = ventFade;
+      pointMaterial.size = burst.particleBaseSize * (0.4 + ventFade * 0.6);
+
+      for (let i = 0; i < burst.particleCount; i++) {
+        const velocity = burst.velocities[i];
+        const i3 = i * 3;
+        burst.positions[i3] += velocity.x * delta;
+        burst.positions[i3 + 1] += velocity.y * delta;
+        burst.positions[i3 + 2] += velocity.z * delta;
+        velocity.multiplyScalar(1 - delta * 5.5);
+      }
+      burst.points.geometry.attributes.position.needsUpdate = true;
+
+      if (burst.streakMaterial) {
+        burst.streakMaterial.opacity = ventFade * 0.92;
+        for (const streak of burst.streaks) {
+          streak.mesh.position.addScaledVector(streak.direction, streak.speed * delta * 0.42);
+          streak.mesh.scale.x += streak.speed * delta * 0.22;
+        }
+      }
+    }
+
     return true;
   }
 
@@ -260,6 +444,12 @@ export class MuzzleFlash {
     this.streakMaterial?.dispose();
     this.streakMaterial = null;
     this.streaks.length = 0;
+    for (const burst of this.sideVentBursts) {
+      burst.streakMaterial?.dispose();
+      burst.points.geometry.dispose();
+      (burst.points.material as THREE.Material).dispose();
+    }
+    this.sideVentBursts.length = 0;
     this.points.geometry.dispose();
     (this.points.material as THREE.Material).dispose();
     this.object.removeFromParent();

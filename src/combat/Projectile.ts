@@ -4,6 +4,7 @@ import {
   ProjectileBoltVisual,
   type ProjectileBoltStyle,
 } from './ProjectileBoltVisual';
+import { ProjectileSmokeTrail } from './ProjectileSmokeTrail';
 import type { ResolvedProjectilePath } from './projectilePathResolve';
 
 const _posePos = new THREE.Vector3();
@@ -35,6 +36,7 @@ export interface ProjectileVisualOptions {
 
 export class Projectile {
   readonly object = new THREE.Group();
+  readonly smokeTrail = new ProjectileSmokeTrail();
 
   private readonly bolt: ProjectileBoltVisual;
   private readonly aimOrigin = new THREE.Vector3();
@@ -69,6 +71,7 @@ export class Projectile {
       style: visualOptions.style ?? 'bolt',
       sizeScale: visualOptions.sizeScale,
     });
+    this.smokeTrail.reset(visualOptions.sizeScale ?? 1);
     this.bolt.setPose(params.visualOrigin, this.aimDir);
   }
 
@@ -90,7 +93,10 @@ export class Projectile {
 
     const step = this.speed * delta;
     if (step <= 1e-8) {
+      this.setBoltPoseAtDistance(this.distanceAlongRay);
       this.bolt.tick(delta);
+      this.smokeTrail.emit(_posePos, _visualDir, delta);
+      this.smokeTrail.update(delta);
       return { alive: true };
     }
 
@@ -100,18 +106,24 @@ export class Projectile {
       this.distanceAlongRay = resolved.hitDistance;
       this.setBoltPoseAtDistance(this.distanceAlongRay);
       this.bolt.tick(delta);
+      this.smokeTrail.emit(_posePos, _visualDir, delta);
+      this.smokeTrail.update(delta);
       return { alive: false, resolvedHit: resolved };
     }
 
     if (this.age >= PROJECTILE_MAX_AGE) {
       this.setBoltPoseAtDistance(this.distanceAlongRay);
       this.bolt.tick(delta);
+      this.smokeTrail.emit(_posePos, _visualDir, delta);
+      this.smokeTrail.update(delta);
       return { alive: false };
     }
 
     this.distanceAlongRay = nextDist;
     this.setBoltPoseAtDistance(nextDist);
     this.bolt.tick(delta);
+    this.smokeTrail.emit(_posePos, _visualDir, delta);
+    this.smokeTrail.update(delta);
     return { alive: true };
   }
 
@@ -138,6 +150,16 @@ export class Projectile {
   release(): void {
     this.resolved = null;
     this.gravity = 0;
+    this.smokeTrail.stopEmitting();
     this.object.removeFromParent();
+  }
+
+  /** Keep updating smoke after the bolt is gone until wisps fade out. */
+  updateFadingSmoke(delta: number): boolean {
+    return this.smokeTrail.update(delta);
+  }
+
+  disposeSmokeTrail(): void {
+    this.smokeTrail.dispose();
   }
 }

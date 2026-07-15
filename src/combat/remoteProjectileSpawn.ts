@@ -11,12 +11,14 @@ import { PROJECTILE_SPAWN_OFFSET, PROJECTILE_SPEED } from './projectileConfig';
 const _direction = new THREE.Vector3();
 const _visualOrigin = new THREE.Vector3();
 const _hitRayOrigin = new THREE.Vector3();
+const _sideVentOffsets: THREE.Vector3[] = [];
 
 export interface RemoteProjectileSpawn {
   params: ProjectileSpawnParams;
   weaponId: WeaponId;
   boltColors?: readonly [number, number, number];
   muzzleFlash?: MuzzleFlashConfig;
+  sideVentOffsets?: readonly THREE.Vector3[];
   projectileStyle?: 'bolt' | 'bioLiquid';
   projectileGravity?: number;
   /** Smaller varied bolts for multi-pellet weapons (shotgun buckshot). */
@@ -46,6 +48,19 @@ export function buildRemoteProjectileSpawn(
   const isPellet = (weaponConfig?.pelletCount ?? 1) > 1;
   const baseSpeed = weaponConfig?.projectileSpeed ?? PROJECTILE_SPEED;
 
+  let sideVentOffsets: readonly THREE.Vector3[] | undefined;
+  if (weaponConfig?.muzzleFlash.sideVents && shooter) {
+    const count = shooter.readActiveSideVentFlashOffsets(
+      _visualOrigin,
+      _direction,
+      _sideVentOffsets,
+      weaponId,
+    );
+    if (count > 0) {
+      sideVentOffsets = _sideVentOffsets;
+    }
+  }
+
   return {
     params: {
       hitRayOrigin: _hitRayOrigin.clone(),
@@ -57,6 +72,7 @@ export function buildRemoteProjectileSpawn(
     weaponId,
     boltColors: weaponConfig?.muzzleFlash?.colors,
     muzzleFlash: weaponConfig?.muzzleFlash,
+    sideVentOffsets,
     projectileStyle: weaponConfig?.projectileStyle,
     projectileGravity: weaponConfig?.projectileGravity,
     boltSizeScale: isPellet ? 0.7 + Math.random() * 0.3 : undefined,

@@ -5,6 +5,8 @@ import { getBoltCoreGeometry, getBoltCoreMaterial, getBoltGlowGeometry, getBoltG
 import { touchBioLiquidBoltAssets } from './bioLiquidBoltShared';
 import { prewarmHitSplashesGpu, warmHitSplashPool } from './hitSplashPool';
 import { MuzzleFlash } from './MuzzleFlash';
+import { ProjectileSmokeTrail } from './ProjectileSmokeTrail';
+import { touchSmokeTrailAssets } from './smokeTrailShared';
 
 const PREWARM_POSITION = new THREE.Vector3(0, -10_000, 0);
 const PREWARM_DIRECTION = new THREE.Vector3(0, 0, -1);
@@ -32,6 +34,7 @@ export async function runShaderPrewarm(
 
   warmHitSplashPool();
   touchBoltVisualAssets();
+  touchSmokeTrailAssets();
 
   const shieldBreak = new ShieldBreakFx();
   shieldBreak.play();
@@ -45,6 +48,12 @@ export async function runShaderPrewarm(
     muzzleFlashes.push(flash);
   }
 
+  const smokeTrail = new ProjectileSmokeTrail();
+  smokeTrail.reset();
+  smokeTrail.emit(PREWARM_POSITION, PREWARM_DIRECTION, 0.02);
+  smokeTrail.update(0.02);
+  holder.add(smokeTrail.object);
+
   try {
     await prewarmHitSplashesGpu(renderer, scene, camera);
     await renderer.compileAsync(scene, camera);
@@ -54,6 +63,7 @@ export async function runShaderPrewarm(
     for (const flash of muzzleFlashes) {
       flash.dispose();
     }
+    smokeTrail.dispose();
     scene.remove(holder);
   }
 }

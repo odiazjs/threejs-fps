@@ -35,7 +35,7 @@ import {
 } from '../../shared/combat/meleeHit';
 import { bodyPartVolumesFromBoneRefs, type BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
-import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readScreenHoldWorldPosition } from '../combat/aiming';
+import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readWeaponSideVentFlashOffsets, readScreenHoldWorldPosition } from '../combat/aiming';
 import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
@@ -194,6 +194,7 @@ export class Player {
   private shieldRechargeAuraFx: ShieldRechargeAuraFx | null = null;
   private onShieldBreakListener: (() => void) | null = null;
   private muzzleOrigin = new THREE.Vector3();
+  private readonly sideVentOffsets: THREE.Vector3[] = [];
   private aimDirection = new THREE.Vector3();
   private hitRayOrigin = new THREE.Vector3();
   private readonly shooterWorldPos = new THREE.Vector3();
@@ -1005,6 +1006,32 @@ export class Player {
     this.object.updateMatrixWorld(true);
     readWeaponMuzzleWorldPosition(mesh, position);
     return true;
+  }
+
+  /** Side-vent offsets in flash-local space for the active (or matching) weapon mesh. */
+  readActiveSideVentFlashOffsets(
+    muzzleOrigin: THREE.Vector3,
+    fireDirection: THREE.Vector3,
+    out: THREE.Vector3[],
+    weaponId?: string,
+  ): number {
+    if (!this.loadout || this.camera) return 0;
+
+    let mesh = this.loadout.getActive()?.mesh;
+    if (weaponId) {
+      for (let i = 0; i < LOADOUT_SIZE; i++) {
+        const slot = this.loadout.getSlot(i);
+        if (slot?.config.id === weaponId) {
+          mesh = slot.mesh;
+          break;
+        }
+      }
+    }
+
+    if (!mesh) return 0;
+
+    this.object.updateMatrixWorld(true);
+    return readWeaponSideVentFlashOffsets(mesh, muzzleOrigin, fireDirection, out);
   }
 
   getNetworkAim(): { yaw: number; pitch: number } {
@@ -2139,6 +2166,16 @@ export class Player {
     readWeaponMuzzleWorldPosition(active.mesh, this.muzzleOrigin);
     this.aimDirection.copy(this.hitRayDirection);
 
+    const hasSideVents = Boolean(active.config.muzzleFlash.sideVents);
+    const sideVentCount = hasSideVents
+      ? readWeaponSideVentFlashOffsets(
+          active.mesh,
+          this.muzzleOrigin,
+          this.hitRayDirection,
+          this.sideVentOffsets,
+        )
+      : 0;
+
     const feet = this.object.position;
     this.shooterWorldPos.set(
       feet.x,
@@ -2205,6 +2242,8 @@ export class Player {
           // One muzzle flash for the whole shell — not per pellet.
           muzzleFlash: pelletIndex === 0 ? active.config.muzzleFlash : undefined,
           muzzleFlashScale,
+          sideVentOffsets:
+            pelletIndex === 0 && sideVentCount > 0 ? this.sideVentOffsets : undefined,
           boltColors: active.config.muzzleFlash?.colors,
           projectileStyle: active.config.projectileStyle,
           projectileGravity: active.config.projectileGravity,
