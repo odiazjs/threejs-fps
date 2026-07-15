@@ -29,6 +29,8 @@ export interface ProjectileVisualOptions {
   style?: ProjectileBoltStyle;
   /** Visual-only sag (world units / s²). Hits stay on the aim ray. */
   gravity?: number;
+  /** Uniform bolt scale (shotgun pellets run smaller than rifle bolts). */
+  sizeScale?: number;
 }
 
 export class Projectile {
@@ -65,6 +67,7 @@ export class Projectile {
     this.bolt.configure({
       colors: visualOptions.colors,
       style: visualOptions.style ?? 'bolt',
+      sizeScale: visualOptions.sizeScale,
     });
     this.bolt.setPose(params.visualOrigin, this.aimDir);
   }

@@ -5,9 +5,21 @@ const _up = new THREE.Vector3();
 const _forward = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
 
+/** Organic buckshot scatter — jitters the deterministic ring per shell/pellet. */
+export interface PelletScatterOptions {
+  /** Rotates the whole ring (randomize once per shell so patterns differ). */
+  ringPhase?: number;
+  /** 0..1 multiplier on `spreadRad` for this pellet (radial jitter). */
+  radiusScale?: number;
+  /** Radians added to this pellet's ring slot (angular jitter). */
+  angleJitter?: number;
+}
+
 /**
  * Build a unit direction for one shotgun pellet.
- * Pellet 0 stays on the aim ray; remaining pellets sit on a ring at `spreadRad`.
+ * Pellet 0 stays on the aim ray; remaining pellets sit on a ring at `spreadRad`,
+ * optionally scattered by `PelletScatterOptions` so shells read as buckshot
+ * rather than a perfect hexagon.
  */
 export function readPelletDirection(
   aimDir: THREE.Vector3,
@@ -15,6 +27,7 @@ export function readPelletDirection(
   pelletCount: number,
   spreadRad: number,
   out: THREE.Vector3,
+  scatter?: PelletScatterOptions,
 ): THREE.Vector3 {
   _forward.copy(aimDir);
   if (_forward.lengthSq() < 1e-8) {
@@ -37,9 +50,13 @@ export function readPelletDirection(
 
   const ringCount = Math.max(1, pelletCount - 1);
   const ringIndex = pelletIndex - 1;
-  const yaw = (ringIndex / ringCount) * Math.PI * 2;
-  const sinPitch = Math.sin(spreadRad);
-  const cosPitch = Math.cos(spreadRad);
+  const yaw =
+    (ringIndex / ringCount) * Math.PI * 2 +
+    (scatter?.ringPhase ?? 0) +
+    (scatter?.angleJitter ?? 0);
+  const radius = spreadRad * THREE.MathUtils.clamp(scatter?.radiusScale ?? 1, 0, 1);
+  const sinPitch = Math.sin(radius);
+  const cosPitch = Math.cos(radius);
 
   out
     .copy(_forward)

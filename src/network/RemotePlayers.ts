@@ -120,7 +120,7 @@ export class RemotePlayers {
     void player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
   }
 
-  interpolate(delta: number, camera: THREE.Camera): void {
+  interpolate(delta: number, camera: THREE.Camera, localTeamId: number): void {
     const worldTime = this.roomClient.getWorldTime();
     const nowSec = performance.now() / 1000;
     this.uiVisibility.prune(nowSec);
@@ -135,11 +135,16 @@ export class RemotePlayers {
       void player.syncRemoteCharacterModel(worldTime);
       player.updateRemoteWeapon(delta, worldTime);
       const feet = player.getFeetPosition();
+      // Training bots are always hostile regardless of team assignment.
+      const isTeammate =
+        !isTrainingBotSessionId(sessionId) && player.getTeamId() === localTeamId;
+      player.setEnemyHighlight(!isTeammate);
       const visibility = this.uiVisibility.resolve(
         sessionId,
         camera,
         feet,
         player.isAlive(),
+        isTeammate,
         nowSec,
       );
       player.updateRemoteHealthBar(camera, visibility);

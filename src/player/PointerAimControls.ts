@@ -4,6 +4,7 @@ import {
   applyLookPitch,
   applyLookYaw,
 } from './playerAim';
+import { getStoredMouseSensitivity } from '../settings/mouseSensitivity';
 
 const MOUSE_SENSITIVITY = 0.002;
 
@@ -16,7 +17,10 @@ export class PointerAimControls {
   readonly pitchRig: THREE.Object3D;
 
   isLocked = false;
+  /** Per-frame ADS modifier — overwritten by Player, do not persist here. */
   pointerSpeed = 1;
+  /** User setting from the lobby SETTINGS menu (localStorage). */
+  userSensitivity = getStoredMouseSensitivity();
   lookYaw = 0;
   lookPitch = 0;
 
@@ -79,8 +83,9 @@ export class PointerAimControls {
   private onMouseMove(event: MouseEvent): void {
     if (!this.isLocked) return;
 
-    this.lookYaw -= event.movementX * MOUSE_SENSITIVITY * this.pointerSpeed;
-    this.lookPitch -= event.movementY * MOUSE_SENSITIVITY * this.pointerSpeed;
+    const sensitivity = MOUSE_SENSITIVITY * this.userSensitivity * this.pointerSpeed;
+    this.lookYaw -= event.movementX * sensitivity;
+    this.lookPitch -= event.movementY * sensitivity;
     this.lookPitch = THREE.MathUtils.clamp(this.lookPitch, -AIM_PITCH_LIMIT, AIM_PITCH_LIMIT);
     this.applyLook();
   }

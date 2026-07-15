@@ -70,10 +70,16 @@ export class RemotePlayerUiVisibility {
     camera: THREE.Camera,
     targetFeet: THREE.Vector3,
     alive: boolean,
+    isTeammate = false,
     nowSec = performance.now() / 1000,
   ): RemotePlayerUiVisibilityState {
     if (!alive) {
       return { nameVisible: false, healthBarVisible: false };
+    }
+
+    // Teammates are always readable — no look-cone, distance, or combat gate.
+    if (isTeammate) {
+      return { nameVisible: true, healthBarVisible: true };
     }
 
     return {

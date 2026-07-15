@@ -19,13 +19,32 @@ export interface ResolvedProjectilePath {
   hitDistance: number;
   hitKind: ResolvedHitKind;
   readonly hitPoint: THREE.Vector3;
+  /** Surface normal at the impact — only set for 'world' hits (decals). */
+  hitNormal?: THREE.Vector3;
   playerSessionId?: string;
   bodyPart?: BodyPartId;
 }
 
 const _segmentEnd = new THREE.Vector3();
 const _hitPoint = new THREE.Vector3();
+const _hitNormal = new THREE.Vector3();
 const _playerHitPoint = new THREE.Vector3();
+
+/** AABB fallback rays carry no normal — face the decal back at the shooter. */
+function readHitNormal(
+  hit: { nx?: number; ny?: number; nz?: number },
+  dx: number,
+  dy: number,
+  dz: number,
+): THREE.Vector3 {
+  if (hit.nx !== undefined && hit.ny !== undefined && hit.nz !== undefined) {
+    _hitNormal.set(hit.nx, hit.ny, hit.nz);
+  } else {
+    _hitNormal.set(-dx, -dy, -dz);
+  }
+  if (_hitNormal.lengthSq() < 1e-8) _hitNormal.set(0, 1, 0);
+  return _hitNormal.normalize().clone();
+}
 
 const MIN_VISUAL_TRACER_DISTANCE = PROJECTILE_RAY_SKIN * 2;
 
@@ -67,6 +86,7 @@ export function resolveProjectilePath(
   if (options.visualOnly) {
     let hitDistance = missTracerDistance;
     let hitKind: ResolvedHitKind = 'miss';
+    let hitNormal: THREE.Vector3 | undefined;
     _hitPoint.set(ox + dx * hitDistance, oy + dy * hitDistance, oz + dz * hitDistance);
 
     const levelHit = raycastLevelBullets(
@@ -87,6 +107,7 @@ export function resolveProjectilePath(
       hitDistance = levelHit.distance;
       hitKind = 'world';
       _hitPoint.set(levelHit.x, levelHit.y, levelHit.z);
+      hitNormal = readHitNormal(levelHit, dx, dy, dz);
     }
 
     if (shieldDomeManager && shieldDomeManager.hasAnyActiveDome(worldTime)) {
@@ -105,6 +126,7 @@ export function resolveProjectilePath(
         if (shieldDist > MIN_VISUAL_TRACER_DISTANCE && shieldDist < hitDistance) {
           hitDistance = shieldDist;
           hitKind = 'shield';
+          hitNormal = undefined;
           _hitPoint.copy(shieldPoint);
         }
       }
@@ -114,11 +136,13 @@ export function resolveProjectilePath(
       hitDistance,
       hitKind,
       hitPoint: _hitPoint.clone(),
+      hitNormal,
     };
   }
 
   let bestDist = resolveDistance;
   let bestKind: ResolvedHitKind = 'miss';
+  let bestNormal: THREE.Vector3 | undefined;
   _hitPoint.set(ox + dx * bestDist, oy + dy * bestDist, oz + dz * bestDist);
 
   const levelHit = raycastLevelBullets(
@@ -135,6 +159,7 @@ export function resolveProjectilePath(
     bestDist = levelHit.distance;
     bestKind = 'world';
     _hitPoint.set(levelHit.x, levelHit.y, levelHit.z);
+    bestNormal = readHitNormal(levelHit, dx, dy, dz);
   }
 
   if (shieldDomeManager && shieldDomeManager.hasAnyActiveDome(worldTime)) {
@@ -153,6 +178,7 @@ export function resolveProjectilePath(
       if (shieldDist > 0 && shieldDist < bestDist) {
         bestDist = shieldDist;
         bestKind = 'shield';
+        bestNormal = undefined;
         _hitPoint.copy(shieldPoint);
       }
     }
@@ -191,6 +217,7 @@ export function resolveProjectilePath(
     hitDistance: bestDist,
     hitKind: bestKind,
     hitPoint: _hitPoint.clone(),
+    hitNormal: bestNormal,
   };
 }
 

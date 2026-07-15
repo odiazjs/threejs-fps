@@ -6,7 +6,7 @@ import type { WeaponId } from '../../shared/content/weaponIds';
 import { isPickableWeaponId, isWeaponId, LOADOUT_SIZE, MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import type { LoadoutSlotSnapshot } from '../../shared/loadout/loadoutSlots';
 import { WeaponAmmo, type AmmoState } from './WeaponAmmo';
-import { WeaponRecoil } from './WeaponRecoil';
+import { WeaponFeel } from '../gunfeel/WeaponFeel';
 import { createWeaponMesh } from '../content/weaponMeshes';
 
 const SWITCH_READY_SEC = 0.2;
@@ -114,7 +114,8 @@ export class WeaponSlot {
   private readonly baseConfig: WeaponConfig;
   config: WeaponConfig;
   readonly ammo: WeaponAmmo;
-  readonly recoil: WeaponRecoil;
+  /** Recoil + kickback bundle — per-slot so spring state follows the weapon. */
+  readonly feel: WeaponFeel;
   readonly mesh: THREE.Group;
 
   constructor(config: WeaponConfig) {
@@ -123,7 +124,7 @@ export class WeaponSlot {
     // even before match upgrade sync (and as a fallback if that sync fails).
     this.config = withEffectiveWeaponStats(config, shippedEffectiveStats(config.id));
     this.ammo = new WeaponAmmo(this.config);
-    this.recoil = new WeaponRecoil(this.config.recoil);
+    this.feel = new WeaponFeel(this.config.recoil, config.id);
     this.mesh = createWeaponMesh(config.id);
     this.mesh.visible = false;
   }
@@ -139,7 +140,7 @@ export class WeaponSlot {
   applyEffectiveStats(stats: WeaponEffectiveStats): void {
     this.config = withEffectiveWeaponStats(this.baseConfig, stats);
     this.ammo.applyConfig(this.config);
-    this.recoil.setConfig(this.config.recoil);
+    this.feel.setConfig(this.config.recoil);
   }
 
   get fireInterval(): number {
@@ -368,7 +369,7 @@ export class WeaponLoadout {
         previous.ammo.cancelReload();
       }
       this.meleeEquipped = true;
-      this.meleeSlot.recoil.reset();
+      this.meleeSlot.feel.reset();
     }
 
     this.syncMeshVisibility();
@@ -389,7 +390,7 @@ export class WeaponLoadout {
     previous?.ammo.cancelReload();
     this.activeIndex = slotIndex;
     this.syncMeshVisibility();
-    this.getActive()?.recoil.reset();
+    this.getActive()?.feel.reset();
     this.switchCooldown = SWITCH_READY_SEC;
     return true;
   }
@@ -420,7 +421,7 @@ export class WeaponLoadout {
   resetForRespawn(reserveRounds?: number): void {
     for (const slot of this.allWeaponSlots()) {
       slot.ammo.refill(reserveRounds);
-      slot.recoil.reset();
+      slot.feel.reset();
     }
     this.meleeEquipped = false;
     this.switchCooldown = 0;
@@ -476,7 +477,7 @@ export class WeaponLoadout {
 
   reset(): void {
     for (const slot of this.allWeaponSlots()) {
-      slot.recoil.reset();
+      slot.feel.reset();
     }
     this.meleeEquipped = false;
     this.switchCooldown = 0;

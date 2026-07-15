@@ -1,6 +1,5 @@
 import type * as THREE from 'three';
 import { PointerAimControls } from './PointerAimControls';
-import type { ControlsHelpHud } from '../ui/ControlsHelpHud';
 import type { CrosshairHud } from '../ui/CrosshairHud';
 import type { ThrowableHud } from '../ui/ThrowableHud';
 import type { StaminaHud } from '../ui/StaminaHud';
@@ -31,7 +30,6 @@ export class PlayerControls {
   private weaponPickupHud: WeaponPickupHud | null = null;
   private shieldPickupHud: ShieldPickupHud | null = null;
   private teamHud: TeamHud | null = null;
-  private controlsHelpHud: ControlsHelpHud | null = null;
   private minimapHud: MinimapHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
   private onLeave: (() => void) | null = null;
@@ -109,10 +107,6 @@ export class PlayerControls {
 
   setTeamHud(hud: TeamHud): void {
     this.teamHud = hud;
-  }
-
-  setControlsHelpHud(hud: ControlsHelpHud): void {
-    this.controlsHelpHud = hud;
   }
 
   setMinimapHud(hud: MinimapHud): void {
@@ -240,7 +234,6 @@ export class PlayerControls {
     this.grenadeThreatIndicatorHud?.setVisible(visible);
     this.pingDirectionIndicatorHud?.setVisible(visible);
     this.teamHud?.setVisible(visible);
-    this.controlsHelpHud?.setVisible(visible);
     this.minimapHud?.setVisible(visible);
   }
 

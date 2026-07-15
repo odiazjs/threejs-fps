@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
+import { getBoltHaloTexture } from './boltVisualShared';
 import { createHitSplashSparkMaterial } from './hitSplashShared';
 import {
   HIT_SPLASH_PLAYER_DURATION,
@@ -31,6 +32,8 @@ export class HitSplash {
   private readonly duration: number;
   private readonly gravity: number;
   private readonly points: THREE.Points;
+  private readonly flash: THREE.Sprite;
+  private readonly flashBaseScale: number;
   private readonly particlePositions: Float32Array;
   private readonly particleVelocities: THREE.Vector3[] = [];
   private readonly spawnVelocities: THREE.Vector3[] = [];
@@ -50,12 +53,29 @@ export class HitSplash {
     const particleScale = scale * HIT_SPLASH_PARTICLE_SCALE;
     this.duration = isPlayer ? HIT_SPLASH_PLAYER_DURATION : HIT_SPLASH_WORLD_DURATION;
     this.gravity = 14 * scale;
-    this.burstSpeed = (isPlayer ? 5.5 : 4.2) * scale;
+    this.burstSpeed = (isPlayer ? 6.5 : 5.2) * scale;
     this.upwardBias = isPlayer ? 0.45 : 0.3;
 
-    const sparkCount = isPlayer ? 18 : 10;
+    const sparkCount = isPlayer ? 28 : 18;
     this.particleCount = sparkCount;
     this.particleBaseSize = (isPlayer ? 0.12 : 0.09) * particleScale;
+
+    // Bright camera-facing pop at the impact point — sells the hit even when
+    // the sparks are viewed edge-on or from far away.
+    this.flashBaseScale = (isPlayer ? 0.85 : 0.6) * scale;
+    this.flash = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: getBoltHaloTexture(),
+        color: isPlayer ? 0xff7744 : 0x9ef4ff,
+        transparent: true,
+        opacity: 1,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    this.flash.scale.setScalar(this.flashBaseScale);
+    this.object.add(this.flash);
 
     this.particlePositions = new Float32Array(sparkCount * 3);
     const particleColors = new Float32Array(sparkCount * 3);
@@ -117,6 +137,9 @@ export class HitSplash {
     const pointMaterial = this.points.material as THREE.PointsMaterial;
     pointMaterial.opacity = 1;
     pointMaterial.size = this.particleBaseSize;
+
+    this.flash.material.opacity = 1;
+    this.flash.scale.setScalar(this.flashBaseScale);
   }
 
   private flushPositionBuffer(): void {
@@ -136,6 +159,12 @@ export class HitSplash {
     const pointMaterial = this.points.material as THREE.PointsMaterial;
     pointMaterial.opacity = fade;
     pointMaterial.size = this.particleBaseSize * (0.25 + fade * 0.75);
+
+    // Flash pops instantly and burns out over the first third of the effect,
+    // swelling as it fades so the impact reads as a small energy burst.
+    const flashT = Math.min(1, t * 3);
+    this.flash.material.opacity = 1 - flashT;
+    this.flash.scale.setScalar(this.flashBaseScale * (1 + flashT * 1.6));
 
     const positions = this.particlePositions;
     for (let i = 0; i < this.particleCount; i++) {
@@ -162,6 +191,7 @@ export class HitSplash {
   disposePermanent(): void {
     this.points.geometry.dispose();
     (this.points.material as THREE.Material).dispose();
+    this.flash.material.dispose();
     this.object.removeFromParent();
   }
 }

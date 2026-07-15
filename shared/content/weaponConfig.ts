@@ -103,6 +103,13 @@ export interface MuzzleFlashConfig {
    * Higher values make ejecta feel heavier / more liquid.
    */
   readonly particleFall?: number;
+  /**
+   * Bright elongated streaks fanned on a cone — one per pellet, so
+   * multi-barrel weapons visibly blast N projectiles at once. 0/omitted = off.
+   */
+  readonly streakCount?: number;
+  /** Cone half-angle (radians) for streaks — match `pelletSpreadRad`. */
+  readonly streakSpreadRad?: number;
 }
 
 export interface WeaponSwayConfig {

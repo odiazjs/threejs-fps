@@ -5,6 +5,7 @@ import type { PlayerHitTarget } from '../../shared/combat/playerHitbox';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import type { MuzzleFlashConfig } from '../../shared/content/weaponConfig';
 import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
+import { BulletHoleDecals } from './BulletHoleDecals';
 import { HitSplash, type HitSplashKind } from './HitSplash';
 import { acquireHitSplash, initHitSplashPool, releaseHitSplash } from './hitSplashPool';
 import { MuzzleFlash } from './MuzzleFlash';
@@ -53,9 +54,11 @@ export class ProjectileManager {
   private getWorldTime: (() => number) | null = null;
   private resolveWeaponMaxHitDistance: ((weaponId: WeaponId) => number | undefined) | null = null;
   private worldSplashCooldown = 0;
+  private readonly bulletHoles: BulletHoleDecals;
 
   constructor(private readonly scene: Scene) {
     initHitSplashPool(scene);
+    this.bulletHoles = new BulletHoleDecals(scene);
   }
 
   setWeaponMaxHitDistanceResolver(
@@ -113,9 +116,13 @@ export class ProjectileManager {
       /** Armory-upgraded max hit distance; preferred over catalog resolver. */
       maxHitDistance?: number;
       muzzleFlash?: MuzzleFlashConfig;
+      /** Uniform boost on the muzzle flash (e.g. ADS compensation). */
+      muzzleFlashScale?: number;
       boltColors?: readonly [number, number, number];
       projectileStyle?: 'bolt' | 'bioLiquid';
       projectileGravity?: number;
+      /** Uniform bolt scale (shotgun pellets run smaller). */
+      boltSizeScale?: number;
     },
   ): void {
     const visualOnly = options?.visualOnly ?? !(options?.canHitPlayers ?? false);
@@ -134,6 +141,7 @@ export class ProjectileManager {
         params.visualOrigin,
         params.hitRayDirection,
         options.muzzleFlash,
+        options.muzzleFlashScale ?? 1,
       );
       this.scene.add(flash.object);
       this.muzzleFlashes.push(flash);
@@ -170,6 +178,7 @@ export class ProjectileManager {
       colors: options?.boltColors,
       style: options?.projectileStyle,
       gravity: options?.projectileGravity,
+      sizeScale: options?.boltSizeScale,
     });
     this.scene.add(projectile.object);
     this.projectiles.push(projectile);
@@ -185,6 +194,7 @@ export class ProjectileManager {
 
   update(delta: number, _worldTime = 0): void {
     this.worldSplashCooldown = Math.max(0, this.worldSplashCooldown - delta);
+    this.bulletHoles.update(delta);
 
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const projectile = this.projectiles[i];
@@ -212,6 +222,11 @@ export class ProjectileManager {
             resolved.hitPoint,
             SPLASH_KIND_BY_HIT[resolved.hitKind],
           );
+        }
+
+        // Bullet holes only on level geometry — never on players or shields.
+        if (resolved.hitKind === 'world' && resolved.hitNormal) {
+          this.bulletHoles.spawn(resolved.hitPoint, resolved.hitNormal);
         }
       } else if (result.hit) {
         this.spawnSplash(result.hit.point, 'world');
@@ -266,8 +281,9 @@ export class ProjectileManager {
 
   private spawnSplash(point: Vector3, kind: HitSplashKind): void {
     if (kind === 'world') {
+      // Short cooldown so shotgun volleys still land several visible bursts.
       if (this.worldSplashCooldown > 0) return;
-      this.worldSplashCooldown = 0.06;
+      this.worldSplashCooldown = 0.025;
     }
 
     if (this.splashes.length >= MAX_CONCURRENT_SPLASHES) {

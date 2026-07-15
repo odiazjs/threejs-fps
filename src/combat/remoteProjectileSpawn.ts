@@ -19,6 +19,8 @@ export interface RemoteProjectileSpawn {
   muzzleFlash?: MuzzleFlashConfig;
   projectileStyle?: 'bolt' | 'bioLiquid';
   projectileGravity?: number;
+  /** Smaller varied bolts for multi-pellet weapons (shotgun buckshot). */
+  boltSizeScale?: number;
 }
 
 /** Build dummy tracer spawn data for a remote player's shot. */
@@ -41,17 +43,22 @@ export function buildRemoteProjectileSpawn(
     _hitRayOrigin.copy(_visualOrigin).addScaledVector(_direction, PROJECTILE_SPAWN_OFFSET);
   }
 
+  const isPellet = (weaponConfig?.pelletCount ?? 1) > 1;
+  const baseSpeed = weaponConfig?.projectileSpeed ?? PROJECTILE_SPEED;
+
   return {
     params: {
       hitRayOrigin: _hitRayOrigin.clone(),
       hitRayDirection: _direction.clone(),
       visualOrigin: _visualOrigin.clone(),
-      speed: weaponConfig?.projectileSpeed ?? PROJECTILE_SPEED,
+      // Pellets vary in flight speed so the remote swarm spreads in depth too.
+      speed: isPellet ? baseSpeed * (0.85 + Math.random() * 0.3) : baseSpeed,
     },
     weaponId,
     boltColors: weaponConfig?.muzzleFlash?.colors,
     muzzleFlash: weaponConfig?.muzzleFlash,
     projectileStyle: weaponConfig?.projectileStyle,
     projectileGravity: weaponConfig?.projectileGravity,
+    boltSizeScale: isPellet ? 0.7 + Math.random() * 0.3 : undefined,
   };
 }

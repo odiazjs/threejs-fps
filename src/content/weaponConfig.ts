@@ -477,17 +477,22 @@ export const PLASMA_SHOTGUN_CONFIG: WeaponConfig = {
     },
   },
   muzzleFlash: {
-    coreScale: 0.22,
-    duration: 0.12,
-    particleCount: 16,
-    particleSpeed: 28,
-    particleSpread: 0.7,
+    coreScale: 0.34,
+    duration: 0.17,
+    particleCount: 38,
+    particleSpeed: 34,
+    // Wide lateral scatter — the blast fans out instead of a single tongue.
+    particleSpread: 2.9,
     colors: [0xe8f7ff, 0x6ecbff, 0x3a7dff],
-    lightIntensity: 4.2,
-    lightDistance: 5.5,
-    glowScale: 0.7,
+    lightIntensity: 7.5,
+    lightDistance: 8.5,
+    glowScale: 0.95,
     glowLayers: 3,
-    particleSizeScale: 1.5,
+    particleSizeScale: 1.8,
+    // One streak per pellet, on the same cone as pelletSpreadRad — the flash
+    // itself reads as six projectiles leaving the barrels.
+    streakCount: 6,
+    streakSpreadRad: 0.105,
   },
   sway: { intensity: 1.2 },
   sounds: {

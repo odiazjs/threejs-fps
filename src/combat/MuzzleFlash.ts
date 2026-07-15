@@ -7,10 +7,40 @@ const _dir = new THREE.Vector3();
 const DEFAULT_GLOW_SPHERE_SCALE = 0.42;
 const DEFAULT_PARTICLE_SIZE_SCALE = 1.8;
 
+/** Streak travel speed relative to `particleSpeed`. */
+const STREAK_SPEED_SCALE = 0.85;
+const STREAK_LENGTH = 0.5;
+const STREAK_RADIUS = 0.022;
+
+let streakGeometry: THREE.CylinderGeometry | null = null;
+
+/** Shared elongated streak geometry — oriented along +Y, rotated per streak. */
+function getStreakGeometry(): THREE.CylinderGeometry {
+  if (!streakGeometry) {
+    streakGeometry = new THREE.CylinderGeometry(
+      STREAK_RADIUS * 0.4,
+      STREAK_RADIUS,
+      STREAK_LENGTH,
+      5,
+      1,
+      true,
+    );
+    // Pivot at the tail so streaks grow away from the muzzle.
+    streakGeometry.translate(0, STREAK_LENGTH * 0.5, 0);
+  }
+  return streakGeometry;
+}
+
 type FlashLayer = {
   mesh: THREE.Mesh;
   baseScale: number;
   expand: number;
+};
+
+type FlashStreak = {
+  mesh: THREE.Mesh;
+  direction: THREE.Vector3;
+  speed: number;
 };
 
 export class MuzzleFlash {
@@ -23,6 +53,8 @@ export class MuzzleFlash {
   private readonly particleFall: number;
   private readonly light: THREE.PointLight;
   private readonly layers: FlashLayer[] = [];
+  private readonly streaks: FlashStreak[] = [];
+  private streakMaterial: THREE.MeshBasicMaterial | null = null;
   private readonly points: THREE.Points;
   private readonly particlePositions: Float32Array;
   private readonly particleVelocities: THREE.Vector3[] = [];
@@ -32,15 +64,19 @@ export class MuzzleFlash {
     origin: THREE.Vector3,
     direction: THREE.Vector3,
     config: MuzzleFlashConfig,
+    /** Uniform boost on the whole burst (e.g. >1 while ADS so the zoomed-in flash still pops). */
+    scale = 1,
   ) {
     this.duration = config.duration;
     this.particleCount = config.particleCount;
-    this.lightIntensity = config.lightIntensity;
+    this.lightIntensity = config.lightIntensity * scale;
     this.particleFall = Math.max(0, config.particleFall ?? 0);
     const particleSizeScale = config.particleSizeScale ?? DEFAULT_PARTICLE_SIZE_SCALE;
-    this.particleBaseSize = config.coreScale * particleSizeScale;
+    // Point sprite size is world-space (not affected by object scale) — boost it directly.
+    this.particleBaseSize = config.coreScale * particleSizeScale * scale;
 
     this.object.position.copy(origin);
+    this.object.scale.setScalar(scale);
     _dir.copy(direction).normalize();
     this.object.quaternion.setFromUnitVectors(FIRE_FORWARD, _dir);
 
@@ -75,6 +111,45 @@ export class MuzzleFlash {
     this.light = new THREE.PointLight(colorB, config.lightIntensity, config.lightDistance);
     this.light.decay = 2;
     this.object.add(this.light);
+
+    // Pellet streaks — one bright tongue per barrel, fanned on the pellet cone.
+    const streakCount = Math.max(0, Math.round(config.streakCount ?? 0));
+    if (streakCount > 0) {
+      const spread = config.streakSpreadRad ?? 0.1;
+      const ringPhase = Math.random() * Math.PI * 2;
+      this.streakMaterial = new THREE.MeshBasicMaterial({
+        color: colorA,
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+        side: THREE.DoubleSide,
+      });
+
+      const up = new THREE.Vector3(0, 1, 0);
+      for (let i = 0; i < streakCount; i++) {
+        // First streak rides the bore; the rest fan out on the cone ring.
+        const onRing = i > 0;
+        const angle = ringPhase + ((i - 1) / Math.max(1, streakCount - 1)) * Math.PI * 2;
+        const radius = onRing ? spread * (0.75 + Math.random() * 0.35) : 0;
+        const direction = new THREE.Vector3(
+          Math.sin(radius) * Math.cos(angle),
+          Math.sin(radius) * Math.sin(angle),
+          -Math.cos(radius),
+        );
+
+        const mesh = new THREE.Mesh(getStreakGeometry(), this.streakMaterial);
+        mesh.quaternion.setFromUnitVectors(up, direction);
+        mesh.scale.set(1, 0.4 + Math.random() * 0.3, 1);
+        this.object.add(mesh);
+        this.streaks.push({
+          mesh,
+          direction,
+          speed: config.particleSpeed * STREAK_SPEED_SCALE * (0.85 + Math.random() * 0.3),
+        });
+      }
+    }
 
     this.particlePositions = new Float32Array(config.particleCount * 3);
     const particleColors = new Float32Array(config.particleCount * 3);
@@ -146,6 +221,15 @@ export class MuzzleFlash {
       material.opacity = flash * (layer === this.layers[0] ? 1 : 0.72);
     }
 
+    if (this.streakMaterial) {
+      this.streakMaterial.opacity = flash * 0.9;
+      for (const streak of this.streaks) {
+        // Tail races away from the muzzle while the tongue stretches out.
+        streak.mesh.position.addScaledVector(streak.direction, streak.speed * delta * 0.35);
+        streak.mesh.scale.y += streak.speed * delta * 0.16;
+      }
+    }
+
     const pointMaterial = this.points.material as THREE.PointsMaterial;
     pointMaterial.opacity = flash;
     pointMaterial.size = this.particleBaseSize * (0.35 + flash * 0.65);
@@ -172,6 +256,10 @@ export class MuzzleFlash {
       layer.mesh.geometry.dispose();
       (layer.mesh.material as THREE.Material).dispose();
     }
+    // Streak geometry is shared/module-level — only the material is per-flash.
+    this.streakMaterial?.dispose();
+    this.streakMaterial = null;
+    this.streaks.length = 0;
     this.points.geometry.dispose();
     (this.points.material as THREE.Material).dispose();
     this.object.removeFromParent();

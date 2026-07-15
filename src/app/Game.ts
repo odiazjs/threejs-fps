@@ -40,7 +40,6 @@ import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
 import { TeamHud } from '../ui/TeamHud';
 import { KillFeedHud } from '../ui/KillFeedHud';
-import { ControlsHelpHud } from '../ui/ControlsHelpHud';
 import { MinimapHud } from '../ui/MinimapHud';
 import { TacticalMapOverlay } from '../ui/TacticalMapOverlay';
 import { CrosshairHud } from '../ui/CrosshairHud';
@@ -141,7 +140,6 @@ export class Game {
   private teamHud = new TeamHud();
   private killFeedHud = new KillFeedHud();
   private crosshairHud = new CrosshairHud();
-  private controlsHelpHud = new ControlsHelpHud();
   private minimapHud = new MinimapHud();
   private tacticalMapOverlay = new TacticalMapOverlay();
   private damageIndicatorHud = new DamageIndicatorHud();
@@ -500,6 +498,9 @@ export class Game {
 
   private initPlayer(mapId: MapId, gameMode?: GameMode): void {
     this.player = Player.createLocal();
+    // World-space barrel smoke for the local player's weapon.
+    const gunJuiceGroup = this.player.getGunJuiceGroup();
+    if (gunJuiceGroup) this.scene.add(gunJuiceGroup);
     const mapDef = getMapDef(mapId);
     if (mapDef.emptyStartingLoadout) {
       this.player.applyEmptyLoadout();
@@ -520,7 +521,6 @@ export class Game {
     this.playerControls.setTeamHud(this.teamHud);
     this.playerControls.setKillFeedHud(this.killFeedHud);
     this.playerControls.setCrosshairHud(this.crosshairHud);
-    this.playerControls.setControlsHelpHud(this.controlsHelpHud);
     this.playerControls.setMinimapHud(this.minimapHud);
     this.playerControls.setDamageIndicatorHud(this.damageIndicatorHud);
     this.playerControls.setGrenadeThreatIndicatorHud(this.grenadeThreatHud);

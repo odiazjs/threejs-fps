@@ -120,6 +120,7 @@ export class NetworkManager {
         muzzleFlash: pelletIndex === 0 ? built.muzzleFlash : undefined,
         projectileStyle: built.projectileStyle,
         projectileGravity: built.projectileGravity,
+        boltSizeScale: built.boltSizeScale,
       });
 
       // Auto weapons without a loop clip (e.g. bio-liquid) play one SFX per tracer.
@@ -692,7 +693,7 @@ export class NetworkManager {
   interpolateRemotes(delta: number, camera: THREE.Camera): void {
     if (!this.roomClient.connected) return;
     this.weaponSounds?.updateListener(camera);
-    this.remotePlayers.interpolate(delta, camera);
+    this.remotePlayers.interpolate(delta, camera, this.localCombat.teamId);
     this.weaponSounds?.updateRemoteAutoFirePositions((sessionId) => {
       const remote = this.remotePlayers.getPlayer(sessionId);
       if (!remote) return null;

@@ -71,7 +71,8 @@ import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
 import type { PointerAimControls } from './PointerAimControls';
 import { WeaponPose } from './WeaponPose';
-import { WeaponSway } from './WeaponSway';
+import { WeaponSwaySystem } from '../gunfeel/WeaponSwaySystem';
+import { GunJuice } from '../gunfeel/GunJuice';
 import { KatanaSlashTrailFx, KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
 import { createHitCapsuleDebugMesh, isHitCapsuleDebugEnabled, updateHitCapsuleDebugMesh } from '../combat/HitCapsuleDebugMesh';
 import {
@@ -89,7 +90,12 @@ import {
   REMOTE_DEATH_DISPLAY_SEC,
   REMOTE_DEATH_GROUND_DROP,
 } from '../../shared/combat/characterAnim';
-import { getDefaultShieldPoints, SHIELD_DEFAULT_LEVEL } from '../../shared/combat/shield';
+import {
+  getDefaultShieldPoints,
+  getShieldCapacity,
+  SHIELD_DEFAULT_LEVEL,
+} from '../../shared/combat/shield';
+import { EnemyOutlineFx } from '../effects/EnemyOutlineFx';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import {
   CROUCH_EYE_DROP,
@@ -105,6 +111,8 @@ import {
   measureViewWeaponWallPullback,
 } from '../../shared/physics/forwardWallClearance';
 import { aimDirectionFromYawPitch } from '../../shared/combat/meleeHit';
+/** Gap between the top of the character mesh and the nameplate anchor. */
+const REMOTE_UI_HEAD_CLEARANCE = 0.12;
 const MOVE_SPEED = 3;
 const CROUCH_CAMERA_BLEND_SPEED = 12;
 const REMOTE_INTERPOLATION_SPEED = 12;
@@ -177,7 +185,9 @@ export class Player {
   private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteKatanaAxisDebug: AxisDebugArrows | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
-  private remoteHeadTopOffset = EYE_HEIGHT + 0.38;
+  private remoteHeadTopOffset = EYE_HEIGHT + REMOTE_UI_HEAD_CLEARANCE;
+  private enemyOutline: EnemyOutlineFx | null = null;
+  private enemyHighlighted = false;
   private damageNumberStack: DamageNumberStack | null = null;
   private shieldBreakFx: ShieldBreakFx | null = null;
   private meleeHitFx: MeleeHitFx | null = null;
@@ -190,7 +200,12 @@ export class Player {
   private hitRayDirection = new THREE.Vector3();
   private readonly pelletDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
-  private weaponSway: WeaponSway | null = null;
+  private weaponSway: WeaponSwaySystem | null = null;
+  /** Screen flash + barrel smoke layers (world-space; group added by Game). */
+  private gunJuice: GunJuice | null = null;
+  /** Previous-frame pointer look, for look-lag deltas + recoil smoothing speed. */
+  private prevLookYaw = 0;
+  private prevLookPitch = 0;
   private grenadeViewModel: GrenadeViewModel | null = null;
   private katanaSlashFx: KatanaSlashTrailFx | null = null;
   private onShoot: ShootCallback | null = null;
@@ -292,7 +307,8 @@ export class Player {
         this.loadout.getActive()!.config.view,
         this.loadout.getActive()!.config.adsTime,
       );
-      this.weaponSway = new WeaponSway();
+      this.weaponSway = new WeaponSwaySystem();
+      this.gunJuice = new GunJuice();
       this.grenadeViewModel = new GrenadeViewModel(this.camera);
       this.katanaSlashFx = new KatanaSlashTrailFx();
       this.katanaSlashFx.attachToCamera(this.camera);
@@ -336,6 +352,11 @@ export class Player {
 
   setMapCollisionDef(map: MapCollisionDef): void {
     this.mapCollisionDef = map;
+  }
+
+  /** World-space gun juice (barrel smoke) — Game adds this to the scene root. */
+  getGunJuiceGroup(): THREE.Group | null {
+    return this.gunJuice?.group ?? null;
   }
 
   static createRemote(_color = 0x6a9fd4): Player {
@@ -474,6 +495,7 @@ export class Player {
     this.bodyPartBones = resolveBodyPartBones(this.characterInstance.root);
     this.bindRemoteCharacterRig(template);
     this.refreshRemoteUiTopOffset();
+    this.syncEnemyOutline();
   }
 
   private bindRemoteCharacterRig(template: CharacterTemplate): void {
@@ -1106,7 +1128,14 @@ export class Player {
         }
       }
 
-      this.remoteHealthBar?.update(snapshot.hp, snapshot.alive, snapshot.teamId, snapshot.username);
+      this.remoteHealthBar?.update(
+        snapshot.hp,
+        snapshot.alive,
+        snapshot.teamId,
+        snapshot.username,
+        snapshot.shieldPoints,
+        getShieldCapacity(snapshot.shieldLevel),
+      );
     }
 
     this.hp = snapshot.hp;
@@ -1179,6 +1208,25 @@ export class Player {
     this.remoteHealthBar?.updateLayout(camera);
   }
 
+  /** Enemies get a red rim glow on the model plus red nameplate styling. */
+  setEnemyHighlight(isEnemy: boolean): void {
+    if (this.camera) return;
+    this.enemyHighlighted = isEnemy;
+    this.remoteHealthBar?.setEnemyStyle(isEnemy);
+    this.syncEnemyOutline();
+  }
+
+  private syncEnemyOutline(): void {
+    const modelRoot = this.characterInstance?.root ?? null;
+    if (!this.enemyHighlighted || !this.isAlive() || !modelRoot) {
+      this.enemyOutline?.detach();
+      return;
+    }
+    this.enemyOutline ??= new EnemyOutlineFx();
+    // No-op when already attached to the current model root.
+    this.enemyOutline.attach(modelRoot);
+  }
+
   private syncRemoteUiHeight(): void {
     if (!this.remoteHealthBar) return;
 
@@ -1190,14 +1238,14 @@ export class Player {
 
   private refreshRemoteUiTopOffset(): void {
     if (!this.characterInstance) {
-      this.remoteHeadTopOffset = EYE_HEIGHT + 0.38;
+      this.remoteHeadTopOffset = EYE_HEIGHT + REMOTE_UI_HEAD_CLEARANCE;
       return;
     }
 
     this.remoteHeadTopOffset = computeTopOffsetAboveFeet(
       this.characterInstance.root,
       this.object,
-      0.38,
+      REMOTE_UI_HEAD_CLEARANCE,
     );
   }
 
@@ -1325,8 +1373,16 @@ export class Player {
     this.grenadeThrowKick.update(delta);
     this.explosionCameraShake.update(delta);
 
+    // Mouse look delta this frame — feeds look-lag and recoil smoothing.
+    const lookDeltaYaw = (this.aimControls?.lookYaw ?? 0) - this.prevLookYaw;
+    const lookDeltaPitch = (this.aimControls?.lookPitch ?? 0) - this.prevLookPitch;
+    this.prevLookYaw = this.aimControls?.lookYaw ?? 0;
+    this.prevLookPitch = this.aimControls?.lookPitch ?? 0;
+    const lookSpeed = delta > 0 ? Math.hypot(lookDeltaYaw, lookDeltaPitch) / delta : 0;
+
     if (!canAct) {
       this.stopWeaponAutoFire();
+      this.gunJuice?.update(delta, null, false);
       this.headBob.update(delta, false, false);
       if (this.headRig) this.headBob.apply(this.headRig, false);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
@@ -1433,37 +1489,52 @@ export class Player {
         const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
         this.aimControls.pointerSpeed = THREE.MathUtils.lerp(1, adsLookSensitivity, adsBlend);
       }
-      this.weaponSway?.update(
-        delta,
-        isWalking,
-        isSprinting,
+      const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
+      this.weaponSway?.setWeapon(active.config.id);
+      this.weaponSway?.update(delta, {
+        moveX: (input.isPressed('KeyD') ? 1 : 0) - (input.isPressed('KeyA') ? 1 : 0),
+        moveZ: (input.isPressed('KeyW') ? 1 : 0) - (input.isPressed('KeyS') ? 1 : 0),
+        lookDeltaYaw,
+        lookDeltaPitch,
+        walking: isWalking,
+        sprinting: isSprinting,
         shooting,
-        this.physics.grounded,
-        meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0),
-        active.config.sway,
-        ammoState.reloading,
-      );
+        grounded: this.physics.grounded,
+        adsBlend,
+        reloading: ammoState.reloading,
+        // Sniper stabilizer — Shift while scoped (sprint needs W + ground anyway).
+        holdingBreath: input.isPressed('ShiftLeft'),
+      });
 
-      // Fire before recoil.update so onShot kick lerps in this frame (not next).
+      // Fast counter-tracking dampens incoming recoil (Apex recoil smoothing).
+      active.feel.setLookVelocity(lookSpeed);
+
+      // Fire before feel.update so onShot kick integrates this frame (not next).
       this.updateFire(delta, pointer, projectiles);
       this.updateMeleeAttack(delta, input, pointer, projectiles);
 
-      active.recoil.update(delta, shooting, ads);
+      active.feel.update(delta, shooting, ads);
       const baseRotation = this.getActiveMeshBaseRotation();
       this.applyActiveWeaponPose(ammoState.reloading ? baseRotation : undefined);
       this.weaponPose?.applyCamera(this.camera);
       const weaponRotation = this.weaponPose?.getWeaponRotation(baseRotation) ?? baseRotation;
       if (!ammoState.reloading) {
-        active.recoil.applyWeaponVisual(
-          active.mesh,
-          weaponRotation,
-          this.weaponPose?.adsBlend ?? 0,
-        );
+        // Layer order: pose position (already applied) → pose rotation →
+        // spring kickback (additive) → sway/look-lag (additive).
+        active.mesh.rotation.copy(weaponRotation);
+        active.feel.applyWeaponVisual(active.mesh);
         this.weaponSway?.apply(active.mesh, weaponRotation);
       }
       // While reloading, applyActiveWeaponPose already wrote position + rotation.
+
+      // Barrel smoke + screen-flash decay track the live muzzle position.
+      if (this.gunJuice) {
+        readWeaponMuzzleWorldPosition(active.mesh, this.muzzleOrigin);
+        this.gunJuice.update(delta, this.muzzleOrigin, shooting);
+      }
     } else if (this.throwableEquipped) {
       this.stopWeaponAutoFire();
+      this.gunJuice?.update(delta, null, false);
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
       this.weaponPose?.applyCamera(this.camera);
@@ -1476,6 +1547,7 @@ export class Player {
       );
     } else {
       this.stopWeaponAutoFire();
+      this.gunJuice?.update(delta, null, false);
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
     }
@@ -1597,6 +1669,8 @@ export class Player {
   dispose(): void {
     this.remoteHealthBar?.dispose();
     this.remoteHealthBar = null;
+    this.enemyOutline?.detach();
+    this.enemyOutline = null;
     this.damageNumberStack?.dispose();
     this.damageNumberStack = null;
     this.shieldBreakFx?.dispose();
@@ -1619,6 +1693,8 @@ export class Player {
     this.matchWeaponStatsById = null;
     this.grenadeViewModel?.dispose();
     this.grenadeViewModel = null;
+    this.gunJuice?.dispose();
+    this.gunJuice = null;
     this.katanaSlashFx?.dispose();
     this.katanaSlashFx = null;
     this.hitCapsuleDebug = null;
@@ -2041,7 +2117,8 @@ export class Player {
       }
     }
 
-    active.recoil.onShot(this.weaponPose?.adsBlend ?? 0);
+    active.feel.onShot(this.weaponPose?.adsBlend ?? 0);
+    this.gunJuice?.onShot(active.config.id);
     this.object.updateMatrixWorld(true);
     this.camera.updateMatrixWorld(true);
     active.mesh.updateMatrixWorld(true);
@@ -2076,6 +2153,19 @@ export class Player {
       (active.config.pelletSpreadRad ?? 0) *
       (1 - adsBlend * (1 - adsSpreadScale));
 
+    // Buckshot scatter: rotate the pellet ring per shell and jitter each
+    // pellet so shots pattern like a real shotgun, not a fixed hexagon. The
+    // scattered direction is used for hits, tracer, AND the network message,
+    // so what you see is exactly what everyone else sees.
+    const ringPhase = Math.random() * Math.PI * 2;
+
+    // ADS pulls the muzzle to screen center and tightens the pellet cone,
+    // which shrinks the read of the blast — over-scale the flash and pellet
+    // bolts while scoped so the feedback stays as loud as hipfire.
+    const isMultiPellet = pelletCount > 1;
+    const muzzleFlashScale = isMultiPellet ? 1 + adsBlend * 0.8 : 1 + adsBlend * 0.25;
+    const pelletAdsBoost = 1 + adsBlend * 0.4;
+
     for (let pelletIndex = 0; pelletIndex < pelletCount; pelletIndex++) {
       readPelletDirection(
         this.hitRayDirection,
@@ -2083,15 +2173,28 @@ export class Player {
         pelletCount,
         spreadRad,
         this.pelletDirection,
+        pelletCount > 1
+          ? {
+              ringPhase,
+              radiusScale: 0.55 + Math.random() * 0.45,
+              angleJitter: (Math.random() - 0.5) * 0.5,
+            }
+          : undefined,
       );
+
+      // Each pellet reads as its own projectile: slightly smaller bolt with
+      // its own flight speed so the swarm spreads out in depth immediately.
+      const isPellet = isMultiPellet;
+      const pelletSpeed = isPellet
+        ? active.config.projectileSpeed * (0.85 + Math.random() * 0.3)
+        : active.config.projectileSpeed;
 
       projectiles.spawn(
         {
           hitRayOrigin: this.hitRayOrigin,
-          hitRayDirection:
-            pelletCount > 1 ? this.pelletDirection.clone() : this.hitRayDirection,
+          hitRayDirection: isPellet ? this.pelletDirection.clone() : this.hitRayDirection,
           visualOrigin: this.muzzleOrigin,
-          speed: active.config.projectileSpeed,
+          speed: pelletSpeed,
         },
         {
           ...this.projectileSpawnOptions,
@@ -2101,9 +2204,13 @@ export class Player {
           maxHitDistance: active.config.maxHitDistance,
           // One muzzle flash for the whole shell — not per pellet.
           muzzleFlash: pelletIndex === 0 ? active.config.muzzleFlash : undefined,
+          muzzleFlashScale,
           boltColors: active.config.muzzleFlash?.colors,
           projectileStyle: active.config.projectileStyle,
           projectileGravity: active.config.projectileGravity,
+          boltSizeScale: isPellet
+            ? (0.7 + Math.random() * 0.3) * pelletAdsBoost
+            : undefined,
         },
       );
       this.onShoot?.(this.muzzleOrigin, this.pelletDirection, { pelletIndex });
@@ -2112,8 +2219,8 @@ export class Player {
     return true;
   }
 
-  private getActiveRecoil() {
-    return this.loadout?.getActive()?.recoil ?? null;
+  private getActiveFeel() {
+    return this.loadout?.getActive()?.feel ?? null;
   }
 
   private applyActiveRecoilAim(): void {
@@ -2125,9 +2232,9 @@ export class Player {
     }
 
     const basePitch = this.aimControls?.lookPitch ?? this.pitchRig.rotation.x;
-    const recoil = this.getActiveRecoil();
-    if (recoil) {
-      recoil.applyAim(this.yawRecoilRig, this.pitchRecoilRig, basePitch);
+    const feel = this.getActiveFeel();
+    if (feel) {
+      feel.applyAim(this.yawRecoilRig, this.pitchRecoilRig, basePitch);
     } else {
       this.yawRecoilRig.rotation.set(0, 0, 0);
       this.pitchRecoilRig.rotation.set(0, 0, 0);

@@ -15,6 +15,22 @@ body.game-page * {
   -webkit-user-select: none;
   user-select: none;
 }
+/* Single-frame heavy-weapon muzzle impact flash (opacity driven by GunJuice). */
+#gunfire-screen-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(255, 250, 235, 0.9) 0%,
+    rgba(255, 240, 210, 0.35) 45%,
+    rgba(255, 235, 200, 0.12) 100%
+  );
+}
+
 #blocker {
   position: fixed;
   inset: 0;
@@ -135,63 +151,6 @@ body.game-page * {
 #crosshair.hit .crosshair-reticle span {
   background: rgb(255, 72, 58);
   box-shadow: 0 0 8px rgba(255, 60, 45, 0.9);
-}
-#controls-help-hud {
-  position: fixed;
-  top: 1.25rem;
-  left: 1.25rem;
-  z-index: 5;
-  width: min(17.5rem, 42vw);
-  max-height: calc(100vh - 2.5rem);
-  padding: 0.75rem 0.85rem 0.7rem;
-  pointer-events: none;
-  overflow: hidden auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 242, 255, 0.35) transparent;
-}
-#controls-help-hud[hidden] {
-  display: none !important;
-}
-.controls-help-title {
-  margin-bottom: 0.55rem;
-}
-.controls-help-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.28rem;
-}
-.controls-help-list--nested {
-  margin-top: 0.2rem;
-}
-.controls-help-section {
-  margin-top: 0.65rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid rgba(0, 242, 255, 0.14);
-}
-.controls-help-section-label {
-  color: var(--hud-cyan-dim);
-  font-size: 0.56rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-.controls-help-row {
-  display: grid;
-  grid-template-columns: minmax(4.8rem, 5.4rem) minmax(0, 1fr);
-  align-items: baseline;
-  gap: 0.55rem;
-  font-size: 0.68rem;
-  line-height: 1.25;
-}
-.controls-help-keys {
-  color: var(--hud-cyan-soft);
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-.controls-help-desc {
-  color: rgba(255, 255, 255, 0.72);
-  font-weight: 500;
-  letter-spacing: 0.03em;
 }
 #stamina-hud {
   position: fixed;
@@ -364,9 +323,8 @@ body.game-page * {
 }
 #minimap-hud {
   position: fixed;
-  left: 1.5rem;
-  /* Clear the health bar + throwable indicator stacked in the bottom-left. */
-  bottom: 12rem;
+  left: 1.25rem;
+  top: 1.25rem;
   width: 222px;
   padding: 0.65rem 0.7rem 0.7rem;
   pointer-events: none;
@@ -552,12 +510,13 @@ body.game-page * {
 }
 #team-hud {
   position: fixed;
-  right: 1.5rem;
-  bottom: calc(1.5rem + 7.25rem);
+  left: 1.5rem;
+  /* Sits directly above the local health/shield bars + throwable stack. */
+  bottom: 12rem;
   width: min(260px, 44vw);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 0.6rem;
   pointer-events: none;
   z-index: 5;
@@ -1031,6 +990,28 @@ body.game-page * {
   letter-spacing: 0.02em;
   white-space: nowrap;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.remote-health-bar.enemy .remote-health-bar-name {
+  text-shadow:
+    0 0 6px rgba(255, 59, 48, 0.95),
+    0 0 14px rgba(255, 59, 48, 0.6),
+    0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.remote-health-bar-shield-track {
+  height: 5px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+  background: rgba(10, 12, 14, 0.85);
+  border: 1px solid rgba(120, 220, 255, 0.28);
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+.remote-health-bar-shield-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4fd8ff, #4fd8ffcc);
+  box-shadow: 0 0 6px rgba(79, 216, 255, 0.55);
+  transition: width 80ms linear;
 }
 .remote-health-bar-track {
   height: 8px;

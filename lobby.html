@@ -502,6 +502,27 @@
             value="14"
           />
         </div>
+        <div class="settings-option">
+          <div class="settings-option-header">
+            <label for="mouse-sensitivity" class="settings-label">Mouse sensitivity</label>
+            <span id="mouse-sensitivity-value" class="settings-value">100%</span>
+          </div>
+          <input
+            id="mouse-sensitivity"
+            class="settings-slider"
+            type="range"
+            min="20"
+            max="300"
+            step="5"
+            value="100"
+          />
+        </div>
+        <div class="settings-option">
+          <div class="settings-option-header">
+            <span class="settings-label">Controls</span>
+          </div>
+          <div id="settings-controls-list" class="settings-controls-list"></div>
+        </div>
       </main>
       <button id="settings-back-btn" class="secondary-btn settings-back-btn" type="button">
         BACK TO LOBBY
