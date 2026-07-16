@@ -30,7 +30,6 @@ import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
 import { KillCam } from '../render/KillCam';
-import { resolveGrassQuality } from '../render/grassQuality';
 import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
 import type { LightBeams } from '../world/LightBeams';
 import { StaminaHud } from '../ui/StaminaHud';
@@ -124,7 +123,6 @@ import {
   MATCH_RESULTS_MUSIC_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
-import type { TerrainBuilder } from '../world/TerrainBuilder';
 import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
@@ -192,7 +190,6 @@ export class Game {
   private shieldDomeAbility: ShieldDomeAbility | null = null;
   private renderContext = new RenderContext();
   private readonly killCam = new KillCam();
-  private terrain: TerrainBuilder | null = null;
   private droneField: DroneField | null = null;
   private lightBeams: LightBeams | null = null;
   private lastFrameMs = 0;
@@ -473,15 +470,13 @@ export class Game {
   }
 
   private initWorld(mapId: MapId): void {
-    const grassQuality = resolveGrassQuality(this.renderContext.renderer);
     const world = new WorldBuilder(mapId)
       .build()
       .withLighting()
-      .withTerrain(grassQuality)
+      .withTerrain()
       .withLevel()
       .withDrones()
       .withLightBeams();
-    this.terrain = world.getTerrain();
     this.droneField = world.getDroneField();
     this.lightBeams = world.getLightBeams();
     this.scene = world.getScene();
@@ -1402,10 +1397,6 @@ export class Game {
       this.player.object.position,
     );
     this.updateGrenadeThreatIndicators(camera ?? null);
-    this.terrain?.update(this.simElapsedSec, {
-      playerPos: this.player.object.position,
-      cameraPos: camera?.position,
-    });
     this.droneField?.update(this.network?.getWorldTime() ?? 0, camera ?? undefined, delta);
     this.lightBeams?.update(this.simElapsedSec);
 

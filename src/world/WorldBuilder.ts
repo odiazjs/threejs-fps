@@ -9,7 +9,6 @@ import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
 import { FiringRangeMap } from './FiringRangeMap';
 import { TdmMap } from './TdmMap';
-import type { GrassQualityProfile } from '../render/grassQuality';
 import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
 export class WorldBuilder {
@@ -58,9 +57,9 @@ export class WorldBuilder {
     return this;
   }
 
-  withTerrain(quality?: GrassQualityProfile): this {
+  withTerrain(): this {
     if (!this.mapDef.outdoor) return this;
-    this.terrainBuilder = new TerrainBuilder(quality);
+    this.terrainBuilder = new TerrainBuilder();
     this.sceneBuilder.addObject(this.terrainBuilder.build());
     return this;
   }
