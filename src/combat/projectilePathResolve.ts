@@ -59,6 +59,11 @@ export function resolveProjectilePath(
     ownerSessionId: string;
     /** Optional Armory-upgraded range override for this shot. */
     maxHitDistance?: number;
+    /**
+     * Lobby / VFX-only: force a world impact at this distance along the ray
+     * (e.g. drone mesh hit). Does not affect gameplay resolve.
+     */
+    forcedHitDistance?: number;
   },
   hitTargets: readonly ProjectileHitTarget[] | null,
   shieldDomeManager: ShieldDomeManager | null,
@@ -108,6 +113,18 @@ export function resolveProjectilePath(
       hitKind = 'world';
       _hitPoint.set(levelHit.x, levelHit.y, levelHit.z);
       hitNormal = readHitNormal(levelHit, dx, dy, dz);
+    }
+
+    const forced = options.forcedHitDistance;
+    if (
+      forced !== undefined
+      && forced > MIN_VISUAL_TRACER_DISTANCE
+      && forced < hitDistance
+    ) {
+      hitDistance = forced;
+      hitKind = 'world';
+      _hitPoint.set(ox + dx * hitDistance, oy + dy * hitDistance, oz + dz * hitDistance);
+      hitNormal = readHitNormal({}, dx, dy, dz);
     }
 
     if (shieldDomeManager && shieldDomeManager.hasAnyActiveDome(worldTime)) {

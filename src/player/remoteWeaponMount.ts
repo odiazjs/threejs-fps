@@ -66,8 +66,6 @@ const MELEE_IDLE_MOUNT: RemoteWeaponMount = {
   weaponRotation: new THREE.Euler(90, -180, 90),
 };
 
-const DEFAULT_MOUNT = RIFLE_AIMING_RIFLE_MOUNT;
-
 export function getRemoteWeaponMount(modelFile: string, weaponId: WeaponId): RemoteWeaponMount {
   if (weaponId === MELEE_WEAPON_ID) {
     return MELEE_IDLE_MOUNT;
@@ -79,10 +77,12 @@ export function getRemoteWeaponMount(modelFile: string, weaponId: WeaponId): Rem
   if (weaponId === 'pistol') {
     if (modelFile === CHARACTER_MODEL_FILES.pistolRun) return PISTOL_RUN_MOUNT;
     if (modelFile === CHARACTER_MODEL_FILES.pistolWalk) return PISTOL_WALK_MOUNT;
+    if (modelFile === CHARACTER_MODEL_FILES.pistolShooting) return PISTOL_IDLE_PISTOL_MOUNT;
     return PISTOL_IDLE_PISTOL_MOUNT;
   }
 
   if (modelFile === CHARACTER_MODEL_FILES.lobby) return RIFLE_AIMING_RIFLE_MOUNT;
+  if (modelFile === CHARACTER_MODEL_FILES.rifleShooting) return RIFLE_AIMING_RIFLE_MOUNT;
   if (modelFile === CHARACTER_MODEL_FILES.rifleRunShoot) return RIFLE_RUN_MOUNT;
   if (modelFile === CHARACTER_MODEL_FILES.rifleWalking) return RIFLE_WALK_MOUNT;
   if (modelFile === CHARACTER_MODEL_FILES.reloadSprint) return RIFLE_RUN_MOUNT;

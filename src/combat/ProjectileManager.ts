@@ -34,6 +34,7 @@ export interface ProjectileHitTarget extends PlayerHitTarget {
 interface ProjectileMeta {
   canHitPlayers: boolean;
   visualOnly: boolean;
+  spawnBulletHoles: boolean;
   ownerTeamId: number;
   ownerSessionId: string;
   shooterId?: string;
@@ -178,6 +179,10 @@ export class ProjectileManager {
       weaponId?: WeaponId;
       /** Armory-upgraded max hit distance; preferred over catalog resolver. */
       maxHitDistance?: number;
+      /** Visual-only world impact distance (lobby drone hits, etc.). */
+      forcedHitDistance?: number;
+      /** When false, skip bullet-hole decals on world impacts (lobby drone shots). */
+      spawnBulletHoles?: boolean;
       muzzleFlash?: MuzzleFlashConfig;
       /** Uniform boost on the muzzle flash (e.g. ADS compensation). */
       muzzleFlashScale?: number;
@@ -232,6 +237,7 @@ export class ProjectileManager {
         weaponId: options?.weaponId,
         ownerSessionId,
         maxHitDistance: resolvedMaxHit,
+        forcedHitDistance: options?.forcedHitDistance,
       },
       hitTargets,
       this.shieldDomeManager,
@@ -251,6 +257,7 @@ export class ProjectileManager {
     this.meta.set(projectile, {
       canHitPlayers,
       visualOnly,
+      spawnBulletHoles: options?.spawnBulletHoles ?? true,
       ownerTeamId: options?.ownerTeamId ?? -1,
       ownerSessionId,
       shooterId: options?.shooterId,
@@ -291,7 +298,12 @@ export class ProjectileManager {
         }
 
         // Bullet holes only on level geometry — never on players or shields.
-        if (resolved.hitKind === 'world' && resolved.hitNormal) {
+        const meta = this.meta.get(projectile);
+        if (
+          resolved.hitKind === 'world'
+          && resolved.hitNormal
+          && (meta?.spawnBulletHoles ?? true)
+        ) {
           this.bulletHoles.spawn(resolved.hitPoint, resolved.hitNormal);
         }
       } else if (result.hit) {

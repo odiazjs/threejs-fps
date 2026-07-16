@@ -14,6 +14,8 @@ export const CHARACTER_MODEL_FILES = {
   lobby: 'Rifle Idle Texture.fbx',
   rifleAimingIdle: 'Rifle Aiming Idle.fbx',
   pistolIdle: 'Pistol Idle.fbx',
+  rifleShooting: 'Rifle Shooting.fbx',
+  pistolShooting: 'Pistol Shooting.fbx',
   rifleRunShoot: 'Running Shoot Rifle.fbx',
   pistolRun: 'Pistol Run.fbx',
   rifleWalking: 'Rifle Walking.fbx',
@@ -522,6 +524,15 @@ export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<Chara
     switchingWeapon: false,
     meleeAttacking: false,
   });
+}
+
+/** Standing fire loop for lobby drone interaction. */
+export function loadLobbyShootCharacterTemplate(weaponId: WeaponId): Promise<CharacterTemplate> {
+  const modelFile =
+    weaponId === 'pistol'
+      ? CHARACTER_MODEL_FILES.pistolShooting
+      : CHARACTER_MODEL_FILES.rifleShooting;
+  return loadCharacterTemplateByFile(modelFile);
 }
 
 export function loadDeathCharacterTemplate(): Promise<CharacterTemplate> {
