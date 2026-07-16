@@ -84,6 +84,8 @@ import { ShieldChargePickups } from '../world/ShieldChargePickups';
 import { WeaponDrops } from '../world/WeaponDrops';
 import { isValidDropSlot, canPickupWeaponDrop } from '../../shared/loadout/loadoutSlots';
 import { runShaderPrewarm } from '../combat/prewarmCombatFx';
+import { buildCharacterShaderPrewarm } from '../combat/prewarmCharacterFx';
+import { initFxLightPool } from '../effects/FxLightPool';
 import { preloadGrenadeModel } from '../content/grenadeModel';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
@@ -126,6 +128,8 @@ import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
 const MAX_FRAME_DELTA_SEC = 0.25;
+const EMPTY_ROSTER: never[] = [];
+const NOOP_PICKUP = (): void => {};
 const _grenadeThreatPlayerCenter = new THREE.Vector3();
 
 export class Game {
@@ -133,6 +137,14 @@ export class Game {
   private player!: Player;
   private playerControls!: PlayerControls;
   private network!: NetworkManager;
+  // Stable pickup-complete handlers — allocating closures per frame in the
+  // render loop adds steady GC pressure.
+  private readonly onWeaponPickupComplete = (target: { index: number }): void => {
+    this.network.sendPickupWeaponDrop(target.index);
+  };
+  private readonly onShieldPickupComplete = (target: { index: number }): void => {
+    this.network.sendPickupShieldCharge(target.index);
+  };
   private staminaHud = new StaminaHud();
   private throwableHud = new ThrowableHud();
   private ammoHud = new AmmoHud();
@@ -329,11 +341,21 @@ export class Game {
     this.applyActiveMap();
     this.initResize();
     onLoadingMessage?.('Compiling shaders...');
+    // Park pooled combat resources + a character clone in the scene so the
+    // compile pass below builds every program combat will need. Without this
+    // the first shot / first hit / first enemy sighting compiles shaders
+    // mid-fight (the light pool keeps the scene light count constant, which
+    // otherwise forces a whole-scene lit-shader recompile per new light).
+    initFxLightPool(this.scene);
+    this.projectiles.prewarmGpuResources();
+    const characterPrewarm = await buildCharacterShaderPrewarm(this.scene);
     await runShaderPrewarm(
       this.renderContext.renderer,
       this.scene,
       this.getActiveCamera(),
     );
+    this.projectiles.finishGpuPrewarm();
+    characterPrewarm?.dispose();
     this.impactSounds.primeEnemyHit();
     await this.initNetwork(credentials, joinIntent);
     this.applyActiveMap();
@@ -1122,11 +1144,11 @@ export class Game {
     const match = resolveMatchSnapshot(this.network?.getMatchState() ?? null);
     const worldTime = this.network?.getWorldTime() ?? 0;
     this.matchCountdownOverlay.update(match, worldTime);
-    this.matchResultsOverlay.update(
-      match,
-      this.localCombat.teamId,
-      this.network?.getAllPlayers() ?? [],
-    );
+    // Only build the (allocating) full roster snapshot once the match has
+    // actually ended — the overlay ignores it otherwise.
+    const resultsRoster =
+      match?.phase === 'ended' ? (this.network?.getAllPlayers() ?? EMPTY_ROSTER) : EMPTY_ROSTER;
+    this.matchResultsOverlay.update(match, this.localCombat.teamId, resultsRoster);
     this.matchHud.update(match, worldTime, this.playerControls.isPlaying);
 
     const matchPhase = match?.phase ?? null;
@@ -1315,7 +1337,8 @@ export class Game {
           feet.x,
           feet.z,
         );
-        const snapshot = this.network.getLocalSnapshot();
+        // Only build the (allocating) local snapshot when actually aiming at a drop.
+        const snapshot = weaponPickupHit ? this.network.getLocalSnapshot() : null;
         const pickupTarget =
           weaponPickupHit &&
           snapshot &&
@@ -1328,14 +1351,14 @@ export class Game {
             : null;
 
         if (pickupTarget) {
-          this.shieldPickupHud.update(null, false, () => {});
+          this.shieldPickupHud.update(null, false, NOOP_PICKUP);
           this.weaponPickupHud.update(
             pickupTarget,
             this.input.isPressed('KeyF'),
-            (target) => this.network.sendPickupWeaponDrop(target.index),
+            this.onWeaponPickupComplete,
           );
         } else {
-          this.weaponPickupHud.update(null, false, () => {});
+          this.weaponPickupHud.update(null, false, NOOP_PICKUP);
           const shieldPickupHit =
             this.localCombat.shieldCharges < MAX_SHIELD_CHARGES
               ? this.shieldChargePickups.raycastFromCamera(camera)
@@ -1343,12 +1366,12 @@ export class Game {
           this.shieldPickupHud.update(
             shieldPickupHit ? { index: shieldPickupHit.index } : null,
             this.input.isPressed('KeyF'),
-            (target) => this.network.sendPickupShieldCharge(target.index),
+            this.onShieldPickupComplete,
           );
         }
       } else {
-        this.weaponPickupHud.update(null, false, () => {});
-        this.shieldPickupHud.update(null, false, () => {});
+        this.weaponPickupHud.update(null, false, NOOP_PICKUP);
+        this.shieldPickupHud.update(null, false, NOOP_PICKUP);
       }
 
       if (this.inventoryOpen) {

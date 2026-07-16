@@ -63,9 +63,11 @@ export function buildRemoteProjectileSpawn(
 
   return {
     params: {
-      hitRayOrigin: _hitRayOrigin.clone(),
-      hitRayDirection: _direction.clone(),
-      visualOrigin: _visualOrigin.clone(),
+      // Scratch vectors, not clones: ProjectileManager.spawn copies them
+      // synchronously, and each pellet is spawned before the next build call.
+      hitRayOrigin: _hitRayOrigin,
+      hitRayDirection: _direction,
+      visualOrigin: _visualOrigin,
       // Pellets vary in flight speed so the remote swarm spreads in depth too.
       speed: isPellet ? baseSpeed * (0.85 + Math.random() * 0.3) : baseSpeed,
     },

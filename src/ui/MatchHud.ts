@@ -11,6 +11,13 @@ export class MatchHud {
   private readonly timerEl: HTMLElement;
   private readonly scoresEl: HTMLElement;
 
+  // Persistent DOM + last-rendered values so the per-frame update only
+  // mutates text nodes when something actually changed (GC/layout friendly).
+  private readonly scoreEls: HTMLElement[] = [];
+  private readonly lastScores: number[] = [];
+  private builtTeamCount = -1;
+  private lastTimerText = '';
+
   constructor() {
     this.root = document.getElementById('match-hud')!;
     this.timerEl = this.root.querySelector('.match-hud-timer')!;
@@ -33,18 +40,51 @@ export class MatchHud {
       match.matchEndAt,
       match.matchDurationSec,
     );
-    this.timerEl.textContent = formatMatchTimer(remaining);
+    const timerText = formatMatchTimer(remaining);
+    if (timerText !== this.lastTimerText) {
+      this.lastTimerText = timerText;
+      this.timerEl.textContent = timerText;
+    }
 
-    this.scoresEl.replaceChildren();
     const teamCount = Math.max(1, match.teamCount);
+    if (teamCount !== this.builtTeamCount) {
+      this.rebuildScoreRow(teamCount);
+    }
+
+    for (let teamId = 0; teamId < teamCount; teamId++) {
+      const score = match.teamScores[teamId] ?? 0;
+      if (score !== this.lastScores[teamId]) {
+        this.lastScores[teamId] = score;
+        this.scoreEls[teamId]!.textContent = String(score);
+      }
+    }
+
+    this.root.hidden = false;
+  }
+
+  private rebuildScoreRow(teamCount: number): void {
+    this.builtTeamCount = teamCount;
+    this.scoreEls.length = 0;
+    this.lastScores.length = 0;
+    this.scoresEl.replaceChildren();
+
     for (let teamId = 0; teamId < teamCount; teamId++) {
       const entry = document.createElement('div');
       entry.className = 'match-hud-score';
-      const color = TEAM_COLORS[teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0];
-      const name = TEAM_NAMES[teamId % TEAM_NAMES.length] ?? `Team ${teamId + 1}`;
-      const score = match.teamScores[teamId] ?? 0;
-      entry.innerHTML = `<span class="match-hud-team" style="color:${color}">${name}</span><span class="match-hud-points">${score}</span>`;
+
+      const teamEl = document.createElement('span');
+      teamEl.className = 'match-hud-team';
+      teamEl.style.color = TEAM_COLORS[teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0]!;
+      teamEl.textContent = TEAM_NAMES[teamId % TEAM_NAMES.length] ?? `Team ${teamId + 1}`;
+      entry.appendChild(teamEl);
+
+      const pointsEl = document.createElement('span');
+      pointsEl.className = 'match-hud-points';
+      entry.appendChild(pointsEl);
+
       this.scoresEl.appendChild(entry);
+      this.scoreEls.push(pointsEl);
+      this.lastScores.push(-1);
 
       if (teamId < teamCount - 1) {
         const sep = document.createElement('span');
@@ -53,8 +93,6 @@ export class MatchHud {
         this.scoresEl.appendChild(sep);
       }
     }
-
-    this.root.hidden = false;
   }
 }
 

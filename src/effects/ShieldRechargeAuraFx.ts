@@ -1,10 +1,13 @@
 import * as THREE from 'three';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
+import { acquireFxLight, releaseFxLight } from './FxLightPool';
 
 const CENTER_Y = PLAYER_HIT_CAPSULE_HEIGHT * 0.52;
 const AURA_RADIUS = 0.82;
 const PARTICLE_COUNT = 56;
 const CYAN_BRIGHT = 0x9afbff;
+
+const _lightWorld = new THREE.Vector3();
 
 interface OrbitalParticle {
   readonly angle: number;
@@ -20,7 +23,8 @@ export class ShieldRechargeAuraFx {
 
   private active = false;
   private elapsed = 0;
-  private readonly light: THREE.PointLight;
+  /** Borrowed from FxLightPool — adding lights at runtime recompiles all lit shaders. */
+  private light: THREE.PointLight | null = null;
   private readonly particles: THREE.Points;
   private readonly particleOffsets: OrbitalParticle[];
   private readonly particlePositions: Float32Array;
@@ -28,9 +32,6 @@ export class ShieldRechargeAuraFx {
   constructor() {
     this.object.position.y = CENTER_Y;
     this.object.visible = false;
-
-    this.light = new THREE.PointLight(CYAN_BRIGHT, 0, 4.5, 2);
-    this.object.add(this.light);
 
     this.particleOffsets = [];
     this.particlePositions = new Float32Array(PARTICLE_COUNT * 3);
@@ -76,6 +77,11 @@ export class ShieldRechargeAuraFx {
   setActive(active: boolean): void {
     if (active && !this.active) {
       this.elapsed = 0;
+      this.light ??= acquireFxLight(CYAN_BRIGHT, 4.5);
+    }
+    if (!active && this.light) {
+      releaseFxLight(this.light);
+      this.light = null;
     }
     this.active = active;
     this.object.visible = active;
@@ -93,7 +99,10 @@ export class ShieldRechargeAuraFx {
     const pulse = 0.5 + Math.sin(this.elapsed * 5.2) * 0.22;
     const ramp = 0.55 + progress * 0.45;
 
-    this.light.intensity = 1.1 + pulse * 1.4 + progress * 0.35;
+    if (this.light) {
+      this.light.position.copy(this.object.getWorldPosition(_lightWorld));
+      this.light.intensity = 1.1 + pulse * 1.4 + progress * 0.35;
+    }
 
     const positions = this.particlePositions;
     for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -112,6 +121,8 @@ export class ShieldRechargeAuraFx {
   }
 
   dispose(): void {
+    releaseFxLight(this.light);
+    this.light = null;
     this.particles.geometry.dispose();
     (this.particles.material as THREE.Material).dispose();
     this.object.removeFromParent();

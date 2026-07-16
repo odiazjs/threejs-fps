@@ -103,7 +103,7 @@ export class RemotePlayers {
     player.attachToScene(this.scene);
     this.players.set(sessionId, player);
 
-    void player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
+    player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
   }
 
   private updatePlayer(sessionId: string, snapshot: PlayerSnapshot): void {
@@ -117,7 +117,7 @@ export class RemotePlayers {
     }
 
     player.setFromSnapshot(snapshot);
-    void player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
+    player.syncRemoteCharacterModel(this.roomClient.getWorldTime());
   }
 
   interpolate(delta: number, camera: THREE.Camera, localTeamId: number): void {
@@ -132,7 +132,7 @@ export class RemotePlayers {
 
     for (const [sessionId, player] of this.players) {
       player.interpolateRemote(delta);
-      void player.syncRemoteCharacterModel(worldTime);
+      player.syncRemoteCharacterModel(worldTime);
       player.updateRemoteWeapon(delta, worldTime);
       const feet = player.getFeetPosition();
       // Training bots are always hostile regardless of team assignment.

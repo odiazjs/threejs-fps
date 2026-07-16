@@ -33,8 +33,14 @@ import { readProjectileShooterWorldPos } from '../combat/damageIndicatorMath';
 import { buildRemoteProjectileSpawn } from '../combat/remoteProjectileSpawn';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
-import type { ShieldDomeManager } from '../combat/ShieldDomeManager';
-import type { ShieldDomeChargeManager } from '../combat/ShieldDomeChargeManager';
+import type {
+  ShieldDomeManager,
+  ShieldDomePlayerSync,
+} from '../combat/ShieldDomeManager';
+import type {
+  ShieldDomeChargeManager,
+  ShieldDomeChargePlayerSync,
+} from '../combat/ShieldDomeChargeManager';
 import { RemotePlayerUiVisibility } from '../player/remotePlayerUiVisibility';
 
 const _shooterWorldPos = new THREE.Vector3();
@@ -396,15 +402,35 @@ export class NetworkManager {
     this.roomClient.sendStartShieldDomeCharge();
   }
 
+  // Scratch buffers reused every frame — these syncs run in the render loop,
+  // so building fresh snapshot arrays per frame hammers the GC.
+  private readonly shieldDomeSyncScratch: ShieldDomePlayerSync[] = [];
+  private readonly shieldDomeChargeSyncScratch: ShieldDomeChargePlayerSync[] = [];
+
   syncShieldDomes(manager: ShieldDomeManager): void {
     const worldTime = this.getWorldTime();
-    const players = this.roomClient.getAllPlayerSnapshots().map((snapshot) => ({
-      sessionId: snapshot.sessionId,
-      shieldDomeEndAt: snapshot.shieldDomeEndAt,
-      shieldDomeCenterX: snapshot.shieldDomeCenterX,
-      shieldDomeCenterY: snapshot.shieldDomeCenterY,
-      shieldDomeCenterZ: snapshot.shieldDomeCenterZ,
-    }));
+    const players = this.shieldDomeSyncScratch;
+    let count = 0;
+    this.roomClient.forEachPlayerState((sessionId, state) => {
+      let entry = players[count];
+      if (!entry) {
+        entry = {
+          sessionId: '',
+          shieldDomeEndAt: 0,
+          shieldDomeCenterX: 0,
+          shieldDomeCenterY: 0,
+          shieldDomeCenterZ: 0,
+        };
+        players.push(entry);
+      }
+      entry.sessionId = sessionId;
+      entry.shieldDomeEndAt = state.shieldDomeEndAt;
+      entry.shieldDomeCenterX = state.shieldDomeCenterX;
+      entry.shieldDomeCenterY = state.shieldDomeCenterY;
+      entry.shieldDomeCenterZ = state.shieldDomeCenterZ;
+      count++;
+    });
+    players.length = count;
     manager.syncFromPlayers(players, worldTime);
   }
 
@@ -415,18 +441,38 @@ export class NetworkManager {
   ): void {
     const worldTime = this.getWorldTime();
     const localSessionId = this.roomClient.sessionId ?? '';
-    const players = this.roomClient.getAllPlayerSnapshots().map((snapshot) => ({
-      sessionId: snapshot.sessionId,
-      shieldDomeChargeEndAt: snapshot.shieldDomeChargeEndAt,
-      shieldDomeCenterX: snapshot.shieldDomeCenterX,
-      shieldDomeCenterY: snapshot.shieldDomeCenterY,
-      shieldDomeCenterZ: snapshot.shieldDomeCenterZ,
-      x: snapshot.x,
-      y: snapshot.y,
-      z: snapshot.z,
-      yaw: snapshot.yaw,
-      pitch: snapshot.pitch,
-    }));
+    const players = this.shieldDomeChargeSyncScratch;
+    let count = 0;
+    this.roomClient.forEachPlayerState((sessionId, state) => {
+      let entry = players[count];
+      if (!entry) {
+        entry = {
+          sessionId: '',
+          shieldDomeChargeEndAt: 0,
+          shieldDomeCenterX: 0,
+          shieldDomeCenterY: 0,
+          shieldDomeCenterZ: 0,
+          x: 0,
+          y: 0,
+          z: 0,
+          yaw: 0,
+          pitch: 0,
+        };
+        players.push(entry);
+      }
+      entry.sessionId = sessionId;
+      entry.shieldDomeChargeEndAt = state.shieldDomeChargeEndAt;
+      entry.shieldDomeCenterX = state.shieldDomeCenterX;
+      entry.shieldDomeCenterY = state.shieldDomeCenterY;
+      entry.shieldDomeCenterZ = state.shieldDomeCenterZ;
+      entry.x = state.x;
+      entry.y = state.y;
+      entry.z = state.z;
+      entry.yaw = state.yaw;
+      entry.pitch = state.pitch;
+      count++;
+    });
+    players.length = count;
     manager.syncFromPlayers(
       players,
       worldTime,

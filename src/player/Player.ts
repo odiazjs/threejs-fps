@@ -65,7 +65,6 @@ import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMoun
 import { RemoteHealthBar } from './RemoteHealthBar';
 import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
 import { DamageNumberStack, DAMAGE_NUMBER_HEIGHT_SCALE } from '../ui/DamageNumberStack';
-import { ShieldBreakFx } from '../effects/ShieldBreakFx';
 import { MeleeHitFx } from '../effects/MeleeHitFx';
 import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
@@ -188,8 +187,9 @@ export class Player {
   private remoteHeadTopOffset = EYE_HEIGHT + REMOTE_UI_HEAD_CLEARANCE;
   private enemyOutline: EnemyOutlineFx | null = null;
   private enemyHighlighted = false;
+  /** Model file currently being loaded async — dedupes per-frame sync calls. */
+  private remoteModelLoadingFile: string | null = null;
   private damageNumberStack: DamageNumberStack | null = null;
-  private shieldBreakFx: ShieldBreakFx | null = null;
   private meleeHitFx: MeleeHitFx | null = null;
   private shieldRechargeAuraFx: ShieldRechargeAuraFx | null = null;
   private onShieldBreakListener: (() => void) | null = null;
@@ -361,22 +361,34 @@ export class Player {
   }
 
   static createRemote(_color = 0x6a9fd4): Player {
-    const player = new Player(false);
-    player.prepareShieldBreakFx();
-    return player;
+    return new Player(false);
   }
 
   static async preloadGameCharacterModels(): Promise<void> {
     await preloadGameCharacterModels();
   }
 
-  async syncRemoteCharacterModel(worldTime: number): Promise<void> {
+  /**
+   * Called every frame per remote player — the common "model already
+   * displayed" path must stay synchronous and allocation-free (an async
+   * method allocates a Promise even when it early-returns, which adds up
+   * to real GC pressure across players × frames).
+   */
+  syncRemoteCharacterModel(worldTime: number): void {
     if (this.camera) return;
 
     this.tickRemoteDeath();
     if (!this.alive) {
       if (this.remoteDeathActive && this.object.visible) {
-        await this.ensureRemoteDeathModel();
+        if (
+          this.displayedCharacterModelFile !== CHARACTER_MODEL_FILES.death
+          && this.remoteModelLoadingFile !== CHARACTER_MODEL_FILES.death
+        ) {
+          this.remoteModelLoadingFile = CHARACTER_MODEL_FILES.death;
+          void this.ensureRemoteDeathModel().finally(() => {
+            this.remoteModelLoadingFile = null;
+          });
+        }
         return;
       }
       this.object.visible = false;
@@ -387,12 +399,19 @@ export class Player {
     const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
     if (this.displayedCharacterModelFile === modelFile && this.characterInstance) return;
+    if (this.remoteModelLoadingFile === modelFile) return;
 
-    const template = await loadGameCharacterTemplate(weaponId, pose);
-    this.setCharacterModel(template);
-    this.applyRemoteAim();
-    this.characterInstance?.update(0);
-    this.applyRemoteSpinePitch();
+    this.remoteModelLoadingFile = modelFile;
+    void loadGameCharacterTemplate(weaponId, pose)
+      .then((template) => {
+        this.setCharacterModel(template);
+        this.applyRemoteAim();
+        this.characterInstance?.update(0);
+        this.applyRemoteSpinePitch();
+      })
+      .finally(() => {
+        this.remoteModelLoadingFile = null;
+      });
   }
 
   private beginRemoteDeathSequence(): void {
@@ -966,8 +985,19 @@ export class Player {
     return this.currentPitch;
   }
 
-  /** Cached bone-driven hit capsules — refreshed once per remote frame. */
+  private bodyHitVolumesDirty = true;
+
+  /**
+   * Cached bone-driven hit capsules — recomputed lazily on first query after
+   * each remote pose update. Building the volumes allocates dozens of small
+   * objects, so doing it per remote per frame (instead of only when a shot
+   * actually needs them) was a measurable GC pressure source.
+   */
   getBodyHitVolumes(): readonly BodyPartVolume[] | null {
+    if (this.bodyHitVolumesDirty) {
+      this.refreshCombatHitVolumes();
+      this.bodyHitVolumesDirty = false;
+    }
     return this.bodyHitVolumes.length > 0 ? this.bodyHitVolumes : null;
   }
 
@@ -1150,7 +1180,6 @@ export class Player {
           this.showDamageNumber(totalDamage);
         }
         if (this.shieldPoints > 0 && snapshot.shieldPoints <= 0) {
-          this.playShieldBreakFx();
           this.onShieldBreakListener?.();
         }
       }
@@ -1214,7 +1243,9 @@ export class Player {
     this.applyRemoteAim();
     this.characterInstance?.update(delta);
     this.applyRemoteSpinePitch();
-    this.refreshCombatHitVolumes();
+    // Mark hit capsules stale; they're rebuilt lazily in getBodyHitVolumes()
+    // only when a shot/melee query actually needs them.
+    this.bodyHitVolumesDirty = true;
     this.syncHitCapsuleDebug();
   }
 
@@ -1222,7 +1253,7 @@ export class Player {
     if (!this.hitCapsuleDebug) return;
 
     const space = this.bodyRoot ?? this.object;
-    const volumes = this.bodyHitVolumes.length > 0 ? this.bodyHitVolumes : null;
+    const volumes = this.getBodyHitVolumes();
     updateHitCapsuleDebugMesh(this.hitCapsuleDebug, volumes, space);
   }
 
@@ -1291,21 +1322,8 @@ export class Player {
     this.onShieldBreakListener = listener;
   }
 
-  private prepareShieldBreakFx(): void {
-    if (this.camera || this.shieldBreakFx) return;
-    this.shieldBreakFx = new ShieldBreakFx();
-    this.object.add(this.shieldBreakFx.object);
-  }
-
-  private playShieldBreakFx(): void {
-    if (this.camera) return;
-    this.prepareShieldBreakFx();
-    this.shieldBreakFx!.play();
-  }
-
   updateDamageNumbers(delta: number, camera: THREE.Camera): void {
     this.damageNumberStack?.update(delta, camera);
-    this.shieldBreakFx?.update(delta, camera);
     this.meleeHitFx?.update(delta, camera);
   }
 
@@ -1700,8 +1718,6 @@ export class Player {
     this.enemyOutline = null;
     this.damageNumberStack?.dispose();
     this.damageNumberStack = null;
-    this.shieldBreakFx?.dispose();
-    this.shieldBreakFx = null;
     this.meleeHitFx?.dispose();
     this.meleeHitFx = null;
     this.shieldRechargeAuraFx?.dispose();
@@ -2229,7 +2245,8 @@ export class Player {
       projectiles.spawn(
         {
           hitRayOrigin: this.hitRayOrigin,
-          hitRayDirection: isPellet ? this.pelletDirection.clone() : this.hitRayDirection,
+          // No clone: spawn() copies the direction before the next pellet iteration.
+          hitRayDirection: isPellet ? this.pelletDirection : this.hitRayDirection,
           visualOrigin: this.muzzleOrigin,
           speed: pelletSpeed,
         },

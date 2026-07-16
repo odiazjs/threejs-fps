@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { acquireFxLight, releaseFxLight } from './FxLightPool';
 
 const PARTICLE_COUNT = 48;
 const CYAN = 0x00e8ff;
@@ -25,7 +26,8 @@ export class ShieldDomeChargeFx {
   private readonly particles: THREE.Points;
   private readonly particleData: ChargeParticle[];
   private readonly positions: Float32Array;
-  private readonly light: THREE.PointLight;
+  /** Borrowed from FxLightPool — adding lights at runtime recompiles all lit shaders. */
+  private light: THREE.PointLight | null = null;
   private elapsed = 0;
 
   constructor() {
@@ -74,8 +76,7 @@ export class ShieldDomeChargeFx {
     );
     this.object.add(this.particles);
 
-    this.light = new THREE.PointLight(CYAN_BRIGHT, 0, 3.5, 2);
-    this.object.add(this.light);
+    this.light = acquireFxLight(CYAN_BRIGHT, 3.5);
   }
 
   update(
@@ -144,12 +145,14 @@ export class ShieldDomeChargeFx {
     this.particles.geometry.attributes.position!.needsUpdate = true;
     (this.particles.material as THREE.PointsMaterial).opacity =
       (0.35 + ramp * 0.55) * pulse;
-    this.light.position.set(
-      _origin.x + _forward.x * 0.2,
-      _origin.y + _forward.y * 0.2,
-      _origin.z + _forward.z * 0.2,
-    );
-    this.light.intensity = 0.6 + ramp * 1.4 + pulse * 0.35;
+    if (this.light) {
+      this.light.position.set(
+        _origin.x + _forward.x * 0.2,
+        _origin.y + _forward.y * 0.2,
+        _origin.z + _forward.z * 0.2,
+      );
+      this.light.intensity = 0.6 + ramp * 1.4 + pulse * 0.35;
+    }
   }
 
   /** First-person view — fx.object must be parented to the camera. */
@@ -193,11 +196,18 @@ export class ShieldDomeChargeFx {
     this.particles.geometry.attributes.position!.needsUpdate = true;
     (this.particles.material as THREE.PointsMaterial).opacity =
       (0.45 + ramp * 0.55) * pulse;
-    this.light.position.set(0, 0, -0.25);
-    this.light.intensity = 0.8 + ramp * 1.6 + pulse * 0.4;
+    if (this.light) {
+      // Pool lights live at scene level — camera-local (0,0,-0.25) in world space.
+      camera.getWorldPosition(this.light.position);
+      camera.getWorldDirection(_forward);
+      this.light.position.addScaledVector(_forward, 0.25);
+      this.light.intensity = 0.8 + ramp * 1.6 + pulse * 0.4;
+    }
   }
 
   dispose(): void {
+    releaseFxLight(this.light);
+    this.light = null;
     this.particles.geometry.dispose();
     (this.particles.material as THREE.Material).dispose();
     this.object.removeFromParent();

@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
+import { acquireFxLight, releaseFxLight } from './FxLightPool';
 
 const DURATION_SEC = 0.32;
 const SPARK_COUNT = 14;
 const MAX_SPHERE_RADIUS = 0.62;
+
+const _lightWorld = new THREE.Vector3();
 
 const CYAN = new THREE.Color(MAP_PALETTE.neonCyan);
 const WHITE = new THREE.Color(0xffffff);
@@ -24,7 +27,8 @@ export class MeleeHitFx {
   private readonly coreMaterial: THREE.MeshBasicMaterial;
   private readonly glow: THREE.Mesh;
   private readonly glowMaterial: THREE.MeshBasicMaterial;
-  private readonly light: THREE.PointLight;
+  /** Borrowed from FxLightPool — adding lights at runtime recompiles all lit shaders. */
+  private light: THREE.PointLight | null = null;
   private readonly sparks: THREE.Points;
   private readonly sparkPositions: Float32Array;
   private readonly sparkVelocities: THREE.Vector3[] = [];
@@ -48,10 +52,6 @@ export class MeleeHitFx {
     });
     this.glow = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), this.glowMaterial);
     this.object.add(this.glow);
-
-    this.light = new THREE.PointLight(MAP_PALETTE.neonCyan, 0, 2.8);
-    this.light.decay = 2;
-    this.object.add(this.light);
 
     this.sparkPositions = new Float32Array(SPARK_COUNT * 3);
     const sparkColors = new Float32Array(SPARK_COUNT * 3);
@@ -105,12 +105,20 @@ export class MeleeHitFx {
     this.glow.scale.setScalar(0.02);
     this.coreMaterial.opacity = 1;
     this.glowMaterial.opacity = 0.9;
-    this.light.intensity = 3.2;
+
+    this.light ??= acquireFxLight(MAP_PALETTE.neonCyan, 2.8);
+    if (this.light) {
+      this.object.updateWorldMatrix(true, false);
+      this.light.position.copy(this.object.getWorldPosition(_lightWorld));
+      this.light.intensity = 3.2;
+    }
   }
 
   update(delta: number, _camera: THREE.Camera): boolean {
     if (this.age >= DURATION_SEC) {
       this.object.visible = false;
+      releaseFxLight(this.light);
+      this.light = null;
       return false;
     }
 
@@ -124,7 +132,10 @@ export class MeleeHitFx {
     this.glow.scale.setScalar(radius);
     this.coreMaterial.opacity = fade;
     this.glowMaterial.opacity = fade * 0.75;
-    this.light.intensity = 3.5 * fade * (1 - t * 0.4);
+    if (this.light) {
+      this.light.position.copy(this.object.getWorldPosition(_lightWorld));
+      this.light.intensity = 3.5 * fade * (1 - t * 0.4);
+    }
 
     const sparkFade = fade * (1 - t * 0.25);
     (this.sparks.material as THREE.PointsMaterial).opacity = sparkFade;
@@ -143,6 +154,8 @@ export class MeleeHitFx {
   }
 
   dispose(): void {
+    releaseFxLight(this.light);
+    this.light = null;
     this.core.geometry.dispose();
     this.coreMaterial.dispose();
     this.glow.geometry.dispose();

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { acquireFxLight, releaseFxLight } from './FxLightPool';
 
 const DURATION_SEC = 0.55;
 const SPARK_COUNT = 36;
@@ -24,7 +25,8 @@ export class ExplosionFx {
   private readonly coreMaterial: THREE.MeshBasicMaterial;
   private readonly glow: THREE.Mesh;
   private readonly glowMaterial: THREE.MeshBasicMaterial;
-  private readonly light: THREE.PointLight;
+  /** Borrowed from FxLightPool — adding lights at runtime recompiles all lit shaders. */
+  private light: THREE.PointLight | null = null;
   private readonly sparks: THREE.Points;
   private readonly sparkPositions: Float32Array;
   private readonly sparkVelocities: THREE.Vector3[] = [];
@@ -48,10 +50,6 @@ export class ExplosionFx {
     });
     this.glow = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), this.glowMaterial);
     this.object.add(this.glow);
-
-    this.light = new THREE.PointLight(0xff6622, 0, 8);
-    this.light.decay = 2;
-    this.object.add(this.light);
 
     this.sparkPositions = new Float32Array(SPARK_COUNT * 3);
     const sparkColors = new Float32Array(SPARK_COUNT * 3);
@@ -86,6 +84,12 @@ export class ExplosionFx {
     this.object.visible = true;
     this.age = 0;
 
+    this.light ??= acquireFxLight(0xff6622, 8);
+    if (this.light) {
+      this.light.position.set(worldX, worldY, worldZ);
+      this.light.intensity = 0;
+    }
+
     for (let i = 0; i < SPARK_COUNT; i++) {
       const vel = this.sparkVelocities[i]!;
       const theta = Math.random() * Math.PI * 2;
@@ -107,6 +111,8 @@ export class ExplosionFx {
   update(delta: number): boolean {
     if (this.age >= DURATION_SEC) {
       this.object.visible = false;
+      releaseFxLight(this.light);
+      this.light = null;
       return false;
     }
 
@@ -120,7 +126,7 @@ export class ExplosionFx {
     this.glow.scale.setScalar(radius);
     this.coreMaterial.opacity = fade;
     this.glowMaterial.opacity = fade * 0.85;
-    this.light.intensity = fade * 3.2;
+    if (this.light) this.light.intensity = fade * 3.2;
 
     for (let i = 0; i < SPARK_COUNT; i++) {
       const vel = this.sparkVelocities[i]!;
@@ -137,6 +143,8 @@ export class ExplosionFx {
   }
 
   dispose(): void {
+    releaseFxLight(this.light);
+    this.light = null;
     this.core.geometry.dispose();
     this.coreMaterial.dispose();
     this.glow.geometry.dispose();

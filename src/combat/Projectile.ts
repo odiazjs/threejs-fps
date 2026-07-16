@@ -10,6 +10,21 @@ import type { ResolvedProjectilePath } from './projectilePathResolve';
 const _posePos = new THREE.Vector3();
 const _visualDir = new THREE.Vector3();
 
+// update() runs for every live projectile every frame — reuse result objects
+// (consumed synchronously by ProjectileManager) instead of allocating each call.
+const ALIVE_RESULT: ProjectileUpdateResult = { alive: true };
+const DEAD_RESULT: {
+  alive: false;
+  hit?: ProjectileHit;
+  resolvedHit?: ResolvedProjectilePath;
+} = { alive: false };
+
+function deadResult(resolvedHit?: ResolvedProjectilePath): ProjectileUpdateResult {
+  DEAD_RESULT.hit = undefined;
+  DEAD_RESULT.resolvedHit = resolvedHit;
+  return DEAD_RESULT;
+}
+
 export type ProjectileHit = {
   point: THREE.Vector3;
 };
@@ -58,6 +73,9 @@ export class Projectile {
     resolved: ResolvedProjectilePath,
     visualOptions: ProjectileVisualOptions = {},
   ): void {
+    // Pooled instances may be parked hidden (GPU prewarm) — always re-show.
+    this.object.visible = true;
+    this.smokeTrail.object.visible = true;
     this.aimOrigin.copy(params.hitRayOrigin);
     this.aimDir.copy(params.hitRayDirection);
     this.visualOrigin.copy(params.visualOrigin);
@@ -75,6 +93,21 @@ export class Projectile {
     this.bolt.setPose(params.visualOrigin, this.aimDir);
   }
 
+  /**
+   * Pose a pooled instance for the shader-compile prewarm pass: configures a
+   * bolt style (so its meshes are visible for compile) and emits one smoke
+   * puff so every material/geometry combo is live before first combat use.
+   */
+  prewarmAt(position: THREE.Vector3, direction: THREE.Vector3, style: ProjectileBoltStyle): void {
+    this.object.visible = true;
+    this.bolt.configure({ style });
+    this.bolt.setPose(position, direction);
+    this.smokeTrail.reset();
+    this.smokeTrail.emit(position, direction, 1);
+    this.smokeTrail.update(0.016);
+    this.smokeTrail.stopEmitting();
+  }
+
   getAimOrigin(target: THREE.Vector3): THREE.Vector3 {
     return target.copy(this.aimOrigin);
   }
@@ -88,7 +121,7 @@ export class Projectile {
 
     const resolved = this.resolved;
     if (!resolved) {
-      return { alive: false };
+      return deadResult();
     }
 
     const step = this.speed * delta;
@@ -97,7 +130,7 @@ export class Projectile {
       this.bolt.tick(delta);
       this.smokeTrail.emit(_posePos, _visualDir, delta);
       this.smokeTrail.update(delta);
-      return { alive: true };
+      return ALIVE_RESULT;
     }
 
     const nextDist = this.distanceAlongRay + step;
@@ -108,7 +141,7 @@ export class Projectile {
       this.bolt.tick(delta);
       this.smokeTrail.emit(_posePos, _visualDir, delta);
       this.smokeTrail.update(delta);
-      return { alive: false, resolvedHit: resolved };
+      return deadResult(resolved);
     }
 
     if (this.age >= PROJECTILE_MAX_AGE) {
@@ -116,7 +149,7 @@ export class Projectile {
       this.bolt.tick(delta);
       this.smokeTrail.emit(_posePos, _visualDir, delta);
       this.smokeTrail.update(delta);
-      return { alive: false };
+      return deadResult();
     }
 
     this.distanceAlongRay = nextDist;
@@ -124,7 +157,7 @@ export class Projectile {
     this.bolt.tick(delta);
     this.smokeTrail.emit(_posePos, _visualDir, delta);
     this.smokeTrail.update(delta);
-    return { alive: true };
+    return ALIVE_RESULT;
   }
 
   private setBoltPoseAtDistance(distance: number): void {

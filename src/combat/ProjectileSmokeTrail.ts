@@ -29,7 +29,11 @@ export class ProjectileSmokeTrail {
   readonly object = new THREE.Group();
 
   private readonly maxParticles: number;
-  private readonly particles: SmokePuff[] = [];
+  // Fixed ring buffer of pre-allocated puffs. All puffs share one lifetime,
+  // so they expire in insertion order — the head is always the oldest.
+  private readonly puffs: SmokePuff[];
+  private puffHead = 0;
+  private puffCount = 0;
   private readonly positions: Float32Array;
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.PointsMaterial;
@@ -41,6 +45,10 @@ export class ProjectileSmokeTrail {
 
   constructor(maxParticles = DEFAULT_MAX_PARTICLES) {
     this.maxParticles = maxParticles;
+    this.puffs = new Array<SmokePuff>(maxParticles);
+    for (let i = 0; i < maxParticles; i++) {
+      this.puffs[i] = { age: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: 0 };
+    }
     this.positions = new Float32Array(maxParticles * 3);
 
     this.geometry = new THREE.BufferGeometry();
@@ -64,7 +72,8 @@ export class ProjectileSmokeTrail {
   }
 
   reset(intensity = 1): void {
-    this.particles.length = 0;
+    this.puffHead = 0;
+    this.puffCount = 0;
     this.emitting = true;
     this.emitCooldown = 0;
     this.intensity = Math.max(0.45, intensity);
@@ -77,7 +86,7 @@ export class ProjectileSmokeTrail {
   }
 
   isActive(): boolean {
-    return this.emitting || this.particles.length > 0;
+    return this.emitting || this.puffCount > 0;
   }
 
   emit(origin: THREE.Vector3, direction: THREE.Vector3, delta: number): void {
@@ -96,33 +105,34 @@ export class ProjectileSmokeTrail {
     _drift.z += (Math.random() - 0.5) * 0.55;
 
     for (let n = 0; n < PUFFS_PER_EMIT; n++) {
-      this.particles.push({
-        age: 0,
-        x: origin.x + _behind.x + (Math.random() - 0.5) * 0.035,
-        y: origin.y + _behind.y + (Math.random() - 0.5) * 0.035,
-        z: origin.z + _behind.z + (Math.random() - 0.5) * 0.035,
-        vx: _drift.x + (Math.random() - 0.5) * 0.25,
-        vy: _drift.y + (Math.random() - 0.5) * 0.15,
-        vz: _drift.z + (Math.random() - 0.5) * 0.25,
-        size: PUFF_BASE_SIZE * this.intensity * (0.85 + Math.random() * 0.45),
-      });
-    }
+      // When full, overwrite the oldest puff by advancing the ring head.
+      let slot: number;
+      if (this.puffCount === this.maxParticles) {
+        slot = this.puffHead;
+        this.puffHead = (this.puffHead + 1) % this.maxParticles;
+      } else {
+        slot = (this.puffHead + this.puffCount) % this.maxParticles;
+        this.puffCount++;
+      }
 
-    while (this.particles.length > this.maxParticles) {
-      this.particles.shift();
+      const puff = this.puffs[slot]!;
+      puff.age = 0;
+      puff.x = origin.x + _behind.x + (Math.random() - 0.5) * 0.035;
+      puff.y = origin.y + _behind.y + (Math.random() - 0.5) * 0.035;
+      puff.z = origin.z + _behind.z + (Math.random() - 0.5) * 0.035;
+      puff.vx = _drift.x + (Math.random() - 0.5) * 0.25;
+      puff.vy = _drift.y + (Math.random() - 0.5) * 0.15;
+      puff.vz = _drift.z + (Math.random() - 0.5) * 0.25;
+      puff.size = PUFF_BASE_SIZE * this.intensity * (0.85 + Math.random() * 0.45);
     }
   }
 
   /** @returns false when all puffs have faded and emitting is off */
   update(delta: number): boolean {
     let maxOpacity = 0;
-    for (let i = this.particles.length - 1; i >= 0; i--) {
-      const puff = this.particles[i]!;
+    for (let i = 0; i < this.puffCount; i++) {
+      const puff = this.puffs[(this.puffHead + i) % this.maxParticles]!;
       puff.age += delta;
-      if (puff.age >= PUFF_LIFE_SEC) {
-        this.particles.splice(i, 1);
-        continue;
-      }
 
       puff.x += puff.vx * delta;
       puff.y += puff.vy * delta;
@@ -132,13 +142,24 @@ export class ProjectileSmokeTrail {
       puff.vz *= 1 - delta * 2.2;
 
       const lifeT = puff.age / PUFF_LIFE_SEC;
-      const fade = (1 - lifeT) * (1 - lifeT * 0.35);
-      maxOpacity = Math.max(maxOpacity, fade);
+      if (lifeT < 1) {
+        const fade = (1 - lifeT) * (1 - lifeT * 0.35);
+        maxOpacity = Math.max(maxOpacity, fade);
+      }
     }
 
-    const count = this.particles.length;
+    // Same lifetime for every puff → expired ones are always at the head.
+    while (
+      this.puffCount > 0
+      && this.puffs[this.puffHead]!.age >= PUFF_LIFE_SEC
+    ) {
+      this.puffHead = (this.puffHead + 1) % this.maxParticles;
+      this.puffCount--;
+    }
+
+    const count = this.puffCount;
     for (let i = 0; i < count; i++) {
-      const puff = this.particles[i]!;
+      const puff = this.puffs[(this.puffHead + i) % this.maxParticles]!;
       const i3 = i * 3;
       this.positions[i3] = puff.x;
       this.positions[i3 + 1] = puff.y;
@@ -155,7 +176,8 @@ export class ProjectileSmokeTrail {
   }
 
   dispose(): void {
-    this.particles.length = 0;
+    this.puffHead = 0;
+    this.puffCount = 0;
     this.emitting = false;
     this.geometry.setDrawRange(0, 0);
     this.object.removeFromParent();

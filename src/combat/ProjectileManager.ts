@@ -21,6 +21,10 @@ import {
   resolveProjectilePath,
   type ResolvedHitKind,
 } from './projectilePathResolve';
+import { PICKABLE_WEAPON_CONFIGS } from '../content/weaponConfig';
+
+const PREWARM_POSITION = new THREE.Vector3(0, -10_000, 0);
+const PREWARM_DIRECTION = new THREE.Vector3(0, 0, -1);
 
 export interface ProjectileHitTarget extends PlayerHitTarget {
   sessionId: string;
@@ -56,6 +60,11 @@ export class ProjectileManager {
   private resolveWeaponMaxHitDistance: ((weaponId: WeaponId) => number | undefined) | null = null;
   private worldSplashCooldown = 0;
   private readonly bulletHoles: BulletHoleDecals;
+  /**
+   * Muzzle flashes pooled per weapon config — constructing GPU buffers and
+   * materials per shot (10/s on autos) causes GC hitches during fights.
+   */
+  private readonly muzzleFlashPool = new Map<MuzzleFlashConfig, MuzzleFlash[]>();
 
   constructor(private readonly scene: Scene) {
     initHitSplashPool(scene);
@@ -82,6 +91,59 @@ export class ProjectileManager {
   ): void {
     this.getHitTargets = getHitTargets;
     this.onPlayerHit = onPlayerHit;
+  }
+
+  private prewarmFlashes: MuzzleFlash[] = [];
+
+  /**
+   * Pre-build every pooled GPU resource the first shot/hit would otherwise
+   * create mid-fight: parked projectiles (bolt visuals + smoke trails), one
+   * pooled muzzle flash per weapon config, and a bullet-hole decal.
+   *
+   * Everything is left VISIBLE (parked far below the map) so the caller's
+   * renderer.compileAsync pass compiles their programs; call
+   * finishGpuPrewarm() afterwards to hide them into the pools. Keeping the
+   * instances alive keeps their programs in three's program cache — the old
+   * prewarm disposed its throwaway instances, which released the compiled
+   * programs and made the first real shot compile everything again.
+   */
+  prewarmGpuResources(projectileCount = 12): void {
+    while (this.projectilePool.length < Math.min(projectileCount, PROJECTILE_POOL_SIZE)) {
+      const projectile = new Projectile();
+      // Alternate styles so both bolt and bio-liquid programs get compiled.
+      const style = this.projectilePool.length % 2 === 0 ? 'bolt' : 'bioLiquid';
+      projectile.prewarmAt(PREWARM_POSITION, PREWARM_DIRECTION, style);
+      this.scene.add(projectile.object);
+      this.scene.add(projectile.smokeTrail.object);
+      this.projectilePool.push(projectile);
+    }
+
+    for (const config of PICKABLE_WEAPON_CONFIGS) {
+      if (!config.muzzleFlash) continue;
+      if (this.muzzleFlashPool.get(config.muzzleFlash)?.length) continue;
+      const flash = new MuzzleFlash(
+        PREWARM_POSITION,
+        PREWARM_DIRECTION,
+        config.muzzleFlash,
+      );
+      this.scene.add(flash.object);
+      this.prewarmFlashes.push(flash);
+    }
+
+    this.bulletHoles.prewarm();
+  }
+
+  /** Hide the prewarm set into the pools once shaders are compiled. */
+  finishGpuPrewarm(): void {
+    for (const projectile of this.projectilePool) {
+      projectile.object.visible = false;
+      projectile.smokeTrail.object.visible = false;
+    }
+    for (const flash of this.prewarmFlashes) {
+      this.releaseMuzzleFlash(flash);
+    }
+    this.prewarmFlashes.length = 0;
+    this.bulletHoles.finishPrewarm();
   }
 
   tryMeleeHit(
@@ -140,14 +202,13 @@ export class ProjectileManager {
       while (this.muzzleFlashes.length >= MAX_CONCURRENT_MUZZLE_FLASHES) {
         this.evictOldestMuzzleFlash();
       }
-      const flash = new MuzzleFlash(
+      const flash = this.acquireMuzzleFlash(
         params.visualOrigin,
         params.hitRayDirection,
         options.muzzleFlash,
         options.muzzleFlashScale ?? 1,
         options.sideVentOffsets,
       );
-      this.scene.add(flash.object);
       this.muzzleFlashes.push(flash);
     }
 
@@ -264,9 +325,47 @@ export class ProjectileManager {
       const flash = this.muzzleFlashes[i];
       if (flash.update(delta)) continue;
 
-      flash.dispose();
+      this.releaseMuzzleFlash(flash);
       this.muzzleFlashes.splice(i, 1);
     }
+  }
+
+  private acquireMuzzleFlash(
+    origin: Vector3,
+    direction: Vector3,
+    config: MuzzleFlashConfig,
+    scale: number,
+    sideVentOffsets?: readonly THREE.Vector3[],
+  ): MuzzleFlash {
+    const ventCount = sideVentOffsets?.length ?? 0;
+    const pool = this.muzzleFlashPool.get(config);
+    if (pool) {
+      // Vent burst meshes are built at construction — only reuse a matching shape.
+      for (let i = pool.length - 1; i >= 0; i--) {
+        if (pool[i]!.ventBurstCount !== ventCount) continue;
+        const flash = pool.splice(i, 1)[0]!;
+        flash.restart(origin, direction, scale, sideVentOffsets);
+        return flash;
+      }
+    }
+
+    const flash = new MuzzleFlash(origin, direction, config, scale, sideVentOffsets);
+    this.scene.add(flash.object);
+    return flash;
+  }
+
+  private releaseMuzzleFlash(flash: MuzzleFlash): void {
+    flash.deactivate();
+    let pool = this.muzzleFlashPool.get(flash.config);
+    if (!pool) {
+      pool = [];
+      this.muzzleFlashPool.set(flash.config, pool);
+    }
+    if (pool.length < MAX_CONCURRENT_MUZZLE_FLASHES) {
+      pool.push(flash);
+      return;
+    }
+    flash.dispose();
   }
 
   private acquireProjectile(): Projectile {
@@ -297,7 +396,7 @@ export class ProjectileManager {
   private evictOldestMuzzleFlash(): void {
     const oldest = this.muzzleFlashes.shift();
     if (!oldest) return;
-    oldest.dispose();
+    this.releaseMuzzleFlash(oldest);
   }
 
   private spawnSplash(point: Vector3, kind: HitSplashKind): void {

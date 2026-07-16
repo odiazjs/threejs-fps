@@ -84,6 +84,27 @@ export class BulletHoleDecals {
 
   constructor(private readonly scene: THREE.Scene) {}
 
+  /**
+   * Build one pooled decal ahead of time so the first wall hit doesn't pay
+   * for canvas-texture creation, material compile, and GPU upload mid-fight.
+   * Left visible (transparent, parked far below the map) so the shader
+   * prewarm compile pass picks it up; hide with finishPrewarm().
+   */
+  prewarm(): void {
+    if (this.holes.length > 0) return;
+    const hole = this.acquire();
+    hole.mesh.position.set(0, -10_000, 0);
+    hole.mesh.visible = true;
+    hole.material.opacity = 0;
+    hole.active = false;
+  }
+
+  finishPrewarm(): void {
+    for (const hole of this.holes) {
+      if (!hole.active) hole.mesh.visible = false;
+    }
+  }
+
   spawn(point: THREE.Vector3, normal: THREE.Vector3): void {
     const hole = this.acquire();
     const mesh = hole.mesh;

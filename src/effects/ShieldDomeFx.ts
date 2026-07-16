@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SHIELD_DOME_RADIUS } from '../../shared/combat/shieldDomeAbility';
+import { acquireFxLight, releaseFxLight } from './FxLightPool';
 import { createHexShieldMaterial } from './shieldHexMaterial';
 
 const DOME_COLOR = 0x00f0ff;
@@ -41,7 +42,8 @@ export class ShieldDomeFx {
   private readonly fillMaterial: THREE.MeshBasicMaterial;
   private readonly rimMaterial: THREE.MeshBasicMaterial;
   private readonly ringMaterial: THREE.MeshBasicMaterial;
-  private readonly light: THREE.PointLight;
+  /** Borrowed from FxLightPool — adding lights at runtime recompiles all lit shaders. */
+  private light: THREE.PointLight | null = null;
   private elapsed = 0;
 
   constructor(centerX: number, centerY: number, centerZ: number) {
@@ -71,11 +73,20 @@ export class ShieldDomeFx {
     this.baseRing.position.y = 0.02;
     this.object.add(this.baseRing);
 
-    this.light = new THREE.PointLight(DOME_COLOR_BRIGHT, 1.4, SHIELD_DOME_RADIUS * 4, 2);
-    this.light.position.y = SHIELD_DOME_RADIUS * 0.5;
-    this.object.add(this.light);
-
     this.object.position.set(centerX, centerY, centerZ);
+
+    this.light = acquireFxLight(DOME_COLOR_BRIGHT, SHIELD_DOME_RADIUS * 4);
+    if (this.light) {
+      this.light.position.set(centerX, centerY + SHIELD_DOME_RADIUS * 0.5, centerZ);
+      this.light.intensity = 1.4;
+    }
+  }
+
+  /** Hide a prewarm-only instance and return its borrowed light to the pool. */
+  parkForPrewarm(): void {
+    this.object.visible = false;
+    releaseFxLight(this.light);
+    this.light = null;
   }
 
   update(delta: number, camera: THREE.Camera | null): void {
@@ -88,7 +99,7 @@ export class ShieldDomeFx {
     this.fillMaterial.opacity = shellOpacity;
     this.rimMaterial.opacity = 0.12 + pulse * 0.05;
     this.ringMaterial.opacity = 0.16 + pulse * 0.06;
-    this.light.intensity = 1.0 + pulse * 0.35;
+    if (this.light) this.light.intensity = 1.0 + pulse * 0.35;
 
     if (camera) {
       this.material.uniforms.uCameraPos.value.copy(camera.position);
@@ -96,6 +107,8 @@ export class ShieldDomeFx {
   }
 
   dispose(): void {
+    releaseFxLight(this.light);
+    this.light = null;
     this.hexMesh.geometry.dispose();
     this.fillMesh.geometry.dispose();
     this.rimMesh.geometry.dispose();

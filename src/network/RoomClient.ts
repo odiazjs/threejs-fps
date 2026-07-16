@@ -397,6 +397,15 @@ export class RoomClient {
     return player ? toSnapshot(player) : null;
   }
 
+  /** Alloc-free iteration over raw player schema state (hot-path friendly). */
+  forEachPlayerState(callback: (sessionId: string, player: PlayerState) => void): void {
+    if (!this.room) return;
+    const state = this.room.state as FpsState;
+    state.players?.forEach((player, sessionId) => {
+      callback(sessionId, player as PlayerState);
+    });
+  }
+
   getAllPlayerSnapshots(): Array<PlayerSnapshot & { sessionId: string }> {
     if (!this.room) return [];
 

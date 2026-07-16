@@ -125,7 +125,12 @@ export class RemoteHealthBar {
     this.root.classList.toggle('health-only', this.healthBarVisible && !this.nameVisible);
   }
 
+  private lastTransform = '';
+
   updateLayout(camera: THREE.Camera): void {
+    // CSS2DRenderer skips hidden objects; skip the string churn too.
+    if (!this.object.visible) return;
+
     this.object.position.y = this.topOffset;
     this.object.getWorldPosition(_anchor);
     const dist = Math.max(camera.position.distanceTo(_anchor), REF_DISTANCE * 0.35);
@@ -140,9 +145,14 @@ export class RemoteHealthBar {
     const scale = THREE.MathUtils.clamp(REF_DISTANCE / dist, MIN_SCALE, MAX_SCALE);
     const screenLift = SCREEN_LIFT_PX + farT * FAR_SCREEN_LIFT_MAX;
 
-    this.root.style.transformOrigin = '50% 100%';
-    this.root.style.transform =
-      `translate(-50%, -100%) translateY(-${screenLift}px) scale(${scale})`;
+    // Quantize so tiny distance jitter doesn't force a new style string every frame.
+    const transform =
+      `translate(-50%, -100%) translateY(-${screenLift.toFixed(1)}px) scale(${scale.toFixed(3)})`;
+    if (transform !== this.lastTransform) {
+      this.lastTransform = transform;
+      this.root.style.transformOrigin = '50% 100%';
+      this.root.style.transform = transform;
+    }
   }
 
   dispose(): void {
