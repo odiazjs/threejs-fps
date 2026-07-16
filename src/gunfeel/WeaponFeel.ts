@@ -4,24 +4,30 @@ import { KickbackSystem } from './KickbackSystem';
 import { RecoilSystem } from './RecoilSystem';
 
 /**
- * Per-weapon-slot feel bundle: camera recoil (pattern + smoothing + curve
- * recovery) and procedural kickback (weapon + camera springs).
+ * Per-weapon-slot feel bundle: camera recoil + procedural kickback.
  *
- * One instance lives on each WeaponSlot — switching weapons switches feel
- * state with it, so a sniper's slow-settling springs never bleed into the
- * pistol.
+ * Auto weapons bake pattern recoil into look on stop-fire. Semi / burst /
+ * melee recover pattern recoil with Hooke's-law springs (same camera spring
+ * as KickbackSystem).
  */
 export class WeaponFeel {
   readonly recoil: RecoilSystem;
   readonly kickback: KickbackSystem;
 
-  constructor(recoilConfig: RecoilConfig, weaponId: string) {
-    this.recoil = new RecoilSystem(recoilConfig, weaponId);
+  private readonly bakeScratch = { pitch: 0, yaw: 0 };
+
+  constructor(recoilConfig: RecoilConfig, weaponId: string, bakeOnStop = false) {
+    this.recoil = new RecoilSystem(recoilConfig, weaponId, bakeOnStop);
     this.kickback = new KickbackSystem(weaponId);
   }
 
   setConfig(config: RecoilConfig): void {
     this.recoil.setConfig(config);
+  }
+
+  /** Toggle bake-on-stop (true for `fireMode: 'auto'` weapons). */
+  setBakeOnStop(bakeOnStop: boolean): void {
+    this.recoil.setBakeOnStop(bakeOnStop);
   }
 
   reset(): void {
@@ -43,6 +49,19 @@ export class WeaponFeel {
   update(delta: number, shooting: boolean, ads: boolean): void {
     this.recoil.update(delta, shooting, ads);
     this.kickback.update(delta);
+  }
+
+  /**
+   * Apply any pending recoil bake into permanent look. Call after `update`
+   * and before `applyAim` so the camera stays continuous.
+   */
+  consumeRecoilBake(out: { pitch: number; yaw: number }): boolean {
+    return this.recoil.consumeBake(out);
+  }
+
+  /** Shared scratch for Player — avoids per-frame object allocation. */
+  getRecoilBakeScratch(): { pitch: number; yaw: number } {
+    return this.bakeScratch;
   }
 
   /** Camera: pattern offset on the recoil rigs (yaw parent / pitch child). */

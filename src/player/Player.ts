@@ -1559,6 +1559,20 @@ export class Player {
       this.updateMeleeAttack(delta, input, pointer, projectiles);
 
       active.feel.update(delta, shooting, ads);
+      // Fold temporary recoil into permanent look so stopping fire doesn't
+      // yank the camera back down to the pre-spray aim.
+      if (this.aimControls) {
+        const bake = active.feel.getRecoilBakeScratch();
+        if (active.feel.consumeRecoilBake(bake)) {
+          this.aimControls.lookPitch = THREE.MathUtils.clamp(
+            this.aimControls.lookPitch + bake.pitch,
+            -AIM_PITCH_LIMIT,
+            AIM_PITCH_LIMIT,
+          );
+          this.aimControls.lookYaw += bake.yaw;
+          this.aimControls.applyLook();
+        }
+      }
       const baseRotation = this.getActiveMeshBaseRotation();
       this.applyActiveWeaponPose(ammoState.reloading ? baseRotation : undefined);
       this.weaponPose?.applyCamera(this.camera);

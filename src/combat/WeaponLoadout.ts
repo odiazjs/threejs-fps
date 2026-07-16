@@ -124,7 +124,7 @@ export class WeaponSlot {
     // even before match upgrade sync (and as a fallback if that sync fails).
     this.config = withEffectiveWeaponStats(config, shippedEffectiveStats(config.id));
     this.ammo = new WeaponAmmo(this.config);
-    this.feel = new WeaponFeel(this.config.recoil, config.id);
+    this.feel = new WeaponFeel(this.config.recoil, config.id, config.fireMode === 'auto');
     this.mesh = createWeaponMesh(config.id);
     this.mesh.visible = false;
   }

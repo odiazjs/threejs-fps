@@ -24,12 +24,16 @@ export interface SpringParams {
 export interface RecoilFeel {
   /** Error-margin: each pattern kick is jittered by ±bloom fraction. */
   readonly bloom: number;
-  /** Recovery waits this long after the last shot. */
+  /** Wait after the last shot before bake (auto) or spring recovery (semi). */
   readonly recoveryDelaySec: number;
-  /** Length of the curve-driven return toward the look origin. */
+  /**
+   * Legacy curve duration — unused. Semi/burst recover via Kickback camera
+   * Hooke's-law springs instead.
+   */
   readonly recoveryDurationSec: number;
+  /** @deprecated Unused — recovery is spring-driven for non-auto. */
   readonly recoveryCurve: RecoveryCurve;
-  /** How fast the view eases toward accumulated kick (higher = snappier). */
+  /** How fast the view eases toward accumulated kick while firing. */
   readonly aimSmoothSpeed: number;
   /** Mouse angular speed (rad/s) where recoil smoothing starts engaging. */
   readonly smoothingThreshold: number;
