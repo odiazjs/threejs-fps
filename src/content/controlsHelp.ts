@@ -26,7 +26,7 @@ export const GAME_CONTROLS_HELP: readonly ControlHelpEntry[] = [
 
 export const INVENTORY_CONTROLS_HELP: readonly ControlHelpEntry[] = [
   { keys: 'Tab', description: 'Close inventory' },
-  { keys: 'Hold F', description: 'Drop item' },
-  { keys: 'LMB', description: 'Equip item' },
+  { keys: 'Drag out', description: 'Drop weapon / shield' },
+  { keys: 'LMB', description: 'Equip item / switch loadout' },
   { keys: 'RMB', description: 'Examine item' },
 ];

@@ -61,12 +61,16 @@ export function onGameOverlayClosed(handler: () => void): () => void {
   };
 }
 
-export function closeGameOverlay(): void {
+function removeGameOverlayIframe(): void {
   if (!overlay) return;
   overlay.remove();
   overlay = null;
   document.body.style.overflow = '';
   LoadingOverlay.shared().reset();
+}
+
+export function closeGameOverlay(): void {
+  removeGameOverlayIframe();
   resumeLobbyMusic();
   resumeBackgroundScene?.();
   for (const handler of closedHandlers) {
@@ -79,16 +83,17 @@ export function closeGameOverlay(): void {
  * fullscreen iframe so ticks can play without another click on the game page.
  */
 export async function launchGameOverlay(): Promise<void> {
+  stopLobbyMusic();
+  pauseBackgroundScene?.();
+
   const tickPlayer = getCountdownTickPlayer();
   await Promise.all([
     tickPlayer.preload('tick', MATCH_COUNTDOWN_TICK_AUDIO),
     tickPlayer.preload('gameStart', MATCH_GAME_START_AUDIO),
   ]);
   tickPlayer.unlock();
-  stopLobbyMusic();
-  pauseBackgroundScene?.();
 
-  closeGameOverlay();
+  removeGameOverlayIframe();
   ensureMessageHandler();
 
   const iframe = document.createElement('iframe');

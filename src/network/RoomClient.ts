@@ -4,6 +4,7 @@ import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
+import type { ApplyLoadoutResultMessage } from '../../shared/network/applyLoadout';
 import type { GrenadeDetonateRequest, GrenadeThrowRequest } from '../../shared/network/grenade';
 import type { TeamPingMessage, TeamPingRequest } from '../../shared/network/ping';
 import type { PickupGrenadeMessage } from '../../shared/network/grenadePickup';
@@ -108,6 +109,7 @@ function toAmmoBoxSnapshot(box: AmmoBoxState): AmmoBoxSnapshot {
 function toShieldChargeSnapshot(charge: ShieldChargeState): ShieldChargeSnapshot {
   return {
     x: charge.x,
+    y: charge.y,
     z: charge.z,
     collected: charge.collected,
   };
@@ -125,6 +127,7 @@ function toGrenadePickupSnapshot(pickup: GrenadePickupState): GrenadePickupSnaps
 function toWeaponDropSnapshot(drop: WeaponDropState): WeaponDropSnapshot {
   return {
     x: drop.x,
+    y: drop.y,
     z: drop.z,
     yaw: drop.yaw,
     weaponId: drop.weaponId,
@@ -160,6 +163,7 @@ export class RoomClient {
   private onGrenadeExplosionHandlers: GrenadeExplosionHandler[] = [];
   private onWeaponDropChangeHandlers: WeaponDropChangeHandler[] = [];
   private onWeaponPickupGrantedHandlers: WeaponPickupGrantedHandler[] = [];
+  private onApplyLoadoutResultHandlers: Array<(data: ApplyLoadoutResultMessage) => void> = [];
   private onKillFeedHandlers: KillFeedHandler[] = [];
   private onLocalDamagedHandlers: LocalDamagedHandler[] = [];
   private onTeamPingHandlers: Array<(data: TeamPingMessage) => void> = [];
@@ -264,6 +268,7 @@ export class RoomClient {
     this.bindGrenadePickupMessages();
     this.bindGrenadeCombatMessages();
     this.bindWeaponDropMessages();
+    this.bindApplyLoadoutMessages();
     this.bindKillMessages();
     this.bindDamagedMessages();
     this.bindTeamPingMessages();
@@ -379,6 +384,10 @@ export class RoomClient {
 
   onWeaponPickupGranted(handler: WeaponPickupGrantedHandler): void {
     this.onWeaponPickupGrantedHandlers.push(handler);
+  }
+
+  onApplyLoadoutResult(handler: (data: ApplyLoadoutResultMessage) => void): void {
+    this.onApplyLoadoutResultHandlers.push(handler);
   }
 
   onKillFeed(handler: KillFeedHandler): void {
@@ -504,6 +513,18 @@ export class RoomClient {
     this.room?.send('switchWeapon', { slot });
   }
 
+  sendApplyLoadout(
+    loadoutId: string,
+    primaryWeaponId?: string,
+    secondaryWeaponId?: string,
+  ): void {
+    this.room?.send('applyLoadout', {
+      loadoutId,
+      primaryWeaponId,
+      secondaryWeaponId,
+    });
+  }
+
   sendEquipMelee(equipped: boolean): void {
     this.room?.send('equipMelee', { equipped });
   }
@@ -589,6 +610,7 @@ export class RoomClient {
       this.onShieldChargeChangeHandlers.forEach((handler) =>
         handler(data.index, {
           x: data.x,
+          y: data.y,
           z: data.z,
           collected: false,
         }),
@@ -601,6 +623,7 @@ export class RoomClient {
       this.onWeaponDropChangeHandlers.forEach((handler) =>
         handler(data.index, {
           x: data.x,
+          y: data.y,
           z: data.z,
           yaw: data.yaw,
           weaponId: data.weaponId,
@@ -611,6 +634,12 @@ export class RoomClient {
 
     this.room?.onMessage('weaponPickupGranted', (data: WeaponPickupGrantedMessage) => {
       this.onWeaponPickupGrantedHandlers.forEach((handler) => handler(data));
+    });
+  }
+
+  private bindApplyLoadoutMessages(): void {
+    this.room?.onMessage('applyLoadoutResult', (data: ApplyLoadoutResultMessage) => {
+      this.onApplyLoadoutResultHandlers.forEach((handler) => handler(data));
     });
   }
 

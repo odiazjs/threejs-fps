@@ -34,7 +34,6 @@ import { resolveGrassQuality } from '../render/grassQuality';
 import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
 import type { LightBeams } from '../world/LightBeams';
 import { StaminaHud } from '../ui/StaminaHud';
-import { ThrowableHud } from '../ui/ThrowableHud';
 import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
 import { HealthHud } from '../ui/HealthHud';
@@ -52,6 +51,8 @@ import {
 import type { ActiveGrenadeSnapshot } from '../combat/GrenadeManager';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { InventoryHud } from '../ui/InventoryHud';
+import { LoadoutSwitcherHud } from '../ui/LoadoutSwitcherHud';
+import { apiListLoadouts } from '../auth/loadoutsApi';
 import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
@@ -146,7 +147,6 @@ export class Game {
     this.network.sendPickupShieldCharge(target.index);
   };
   private staminaHud = new StaminaHud();
-  private throwableHud = new ThrowableHud();
   private ammoHud = new AmmoHud();
   private healthHud = new HealthHud();
   private teamHud = new TeamHud();
@@ -162,6 +162,8 @@ export class Game {
       name: config.name,
     })),
   );
+  private loadoutSwitcherHud = new LoadoutSwitcherHud();
+  private loadoutsFetchSeq = 0;
   private shieldRechargeHud = new ShieldRechargeHud();
   private shieldDomeHud = new ShieldDomeHud();
   private weaponPickupHud = new WeaponPickupHud();
@@ -208,6 +210,12 @@ export class Game {
   private readonly matchSounds = new MatchSoundService();
   private audioUnlocked = false;
   private inventoryOpen = false;
+  /** While set, ignore stale server loadout snapshots that would undo a Tab switch. */
+  private pendingLoadoutApply: {
+    loadoutId: string;
+    primaryWeaponId: string;
+    secondaryWeaponId: string;
+  } | null = null;
   private matchEndHandled = false;
   private matchEnd30Played = false;
   private matchEnd10Played = false;
@@ -308,6 +316,7 @@ export class Game {
       mapDef.getShieldPositions?.().forEach((pos, index) => {
         this.shieldChargePickups.applySnapshot(index, {
           x: pos.x,
+          y: 0,
           z: pos.z,
           collected: false,
         });
@@ -315,6 +324,7 @@ export class Game {
       mapDef.getInitialWeaponSpawns?.().forEach((spawn, index) => {
         this.weaponDrops.applySnapshot(index, {
           x: spawn.x,
+          y: 0,
           z: spawn.z,
           yaw: spawn.yaw,
           weaponId: spawn.weaponId,
@@ -537,7 +547,6 @@ export class Game {
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
     this.player.bindAimControls(this.playerControls.controls);
     this.playerControls.setStaminaHud(this.staminaHud);
-    this.playerControls.setThrowableHud(this.throwableHud);
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);
     this.playerControls.setTeamHud(this.teamHud);
@@ -603,6 +612,44 @@ export class Game {
       this.refreshInventoryHud();
     });
 
+    this.inventoryHud.setOnCloseRequest(() => {
+      this.closeInventory();
+    });
+
+    this.loadoutSwitcherHud.setOnApplyRequest((request) => {
+      this.pendingLoadoutApply = {
+        loadoutId: request.loadoutId,
+        primaryWeaponId: request.primaryWeaponId,
+        secondaryWeaponId: request.secondaryWeaponId,
+      };
+      const equipped = this.player.applyArmoryLoadout(
+        request.primaryWeaponId,
+        request.secondaryWeaponId,
+      );
+      this.refreshInventoryHud();
+      if (!equipped) {
+        this.pendingLoadoutApply = null;
+        this.loadoutSwitcherHud.clearPending(request.loadoutId);
+        this.messageHud.push('Could not equip that loadout');
+        return;
+      }
+      this.messageHud.push('Loadout equipped');
+      if (!this.network?.sendApplyLoadout(
+        request.loadoutId,
+        request.primaryWeaponId,
+        request.secondaryWeaponId,
+      )) {
+        // Local equip already applied; server sync will retry next open if needed.
+        console.warn('[Game] applyLoadout not sent — room not connected');
+      }
+    });
+    this.loadoutSwitcherHud.setOnPendingTimeout((loadoutId) => {
+      // Keep the local equip — server may still catch up. Only clear pending gate.
+      if (this.pendingLoadoutApply?.loadoutId === loadoutId) {
+        this.pendingLoadoutApply = null;
+      }
+    });
+
     document.addEventListener('keydown', this.onTabKeyDown);
   }
 
@@ -660,12 +707,57 @@ export class Game {
     this.network.onTeamPing((data) => {
       this.teamPings.spawn(data.x, data.y, data.z, data.pingerId);
     });
+    this.network.onApplyLoadoutResult((result) => {
+      this.loadoutSwitcherHud.clearPending(result.loadoutId || undefined);
+      if (!result.ok) {
+        this.pendingLoadoutApply = null;
+        const snapshot = this.network.getLocalSnapshot();
+        if (snapshot) {
+          this.player.applyLoadoutFromSnapshot(snapshot);
+          if (this.inventoryOpen) this.refreshInventoryHud();
+        }
+        this.messageHud.push(result.error ?? 'Could not equip loadout');
+        return;
+      }
+      if (result.primaryWeaponId && result.secondaryWeaponId) {
+        this.pendingLoadoutApply = null;
+        this.applyLocalLoadoutPreset(
+          result.primaryWeaponId,
+          result.secondaryWeaponId,
+        );
+      }
+    });
     this.network.onLocalLoadoutChange((snapshot) => {
+      const pending = this.pendingLoadoutApply;
+      if (pending) {
+        const serverMatchesPending =
+          snapshot.weaponSlot0 === pending.primaryWeaponId &&
+          snapshot.weaponSlot1 === pending.secondaryWeaponId;
+        if (!serverMatchesPending) {
+          // Stale move/patch still has the old guns — keep the optimistic loadout.
+          return;
+        }
+        this.pendingLoadoutApply = null;
+        this.loadoutSwitcherHud.clearPending(pending.loadoutId);
+      }
+
       const prevWeapons = this.player.getInventoryWeapons();
+      const nextSlotIds = [
+        snapshot.weaponSlot0 || null,
+        snapshot.weaponSlot1 || null,
+        snapshot.weaponSlot2 || null,
+      ];
+      const loadoutChanged = prevWeapons.some(
+        (weapon, index) => weapon.weaponId !== nextSlotIds[index],
+      );
+      if (loadoutChanged) {
+        this.player.unequipThrowable({ discardCook: true });
+      }
       this.player.applyLoadoutFromSnapshot(snapshot);
+      const nextWeapons = this.player.getInventoryWeapons();
       if (
         prevWeapons.some(
-          (weapon, index) => weapon.occupied && !this.player.getInventoryWeapons()[index]?.occupied,
+          (weapon, index) => weapon.occupied && !nextWeapons[index]?.occupied,
         )
       ) {
         this.messageHud.push('Weapon dropped');
@@ -929,25 +1021,57 @@ export class Game {
     this.grenadeThreatHud.sync(camera, this.nearbyGrenadeThreatsScratch);
   }
 
-  private refreshInventoryHud(dropKeyHeld = false): void {
+  private refreshInventoryHud(): void {
     const snapshot = this.network?.getLocalSnapshot();
     const players = this.network?.getAllPlayers() ?? [];
     const unitsInField = players.filter((player) => player.alive).length;
     const kills = snapshot?.matchKills ?? 0;
+    const weapons = this.player.getInventoryWeapons();
 
-    this.inventoryHud.update(
-      {
-        weapons: this.player.getInventoryWeapons(),
-        melee: this.player.getInventoryMelee(),
-        shieldCharges: this.player.getInventory().getShieldCharges(),
-        grenadeCount: this.player.getInventory().getGrenadeCount(),
-        grenadeEquipped: this.player.isThrowableEquipped(),
-        operatorName: this.localCombat.username,
-        killDeath: `${kills}/0`,
-        unitsInField,
-      },
-      dropKeyHeld,
-    );
+    this.inventoryHud.update({
+      weapons,
+      melee: this.player.getInventoryMelee(),
+      shieldCharges: this.player.getInventory().getShieldCharges(),
+      grenadeCount: this.player.getInventory().getGrenadeCount(),
+      grenadeEquipped: this.player.isThrowableEquipped(),
+      operatorName: this.localCombat.username,
+      killDeath: `${kills}/0`,
+      unitsInField,
+    });
+
+    this.loadoutSwitcherHud.setActiveSlots({
+      primaryWeaponId: weapons[0]?.weaponId ?? null,
+      secondaryWeaponId: weapons[1]?.weaponId ?? null,
+    });
+  }
+
+  private async refreshLoadoutSwitcher(): Promise<void> {
+    const seq = ++this.loadoutsFetchSeq;
+    try {
+      const { loadouts } = await apiListLoadouts();
+      if (seq !== this.loadoutsFetchSeq) return;
+      this.loadoutSwitcherHud.setLoadouts(loadouts);
+      this.refreshInventoryHud();
+    } catch (error) {
+      console.warn('[Game] failed to load Armory loadouts', error);
+      if (seq !== this.loadoutsFetchSeq) return;
+      this.loadoutSwitcherHud.setLoadouts([]);
+    }
+  }
+
+  /** Apply a primary/secondary pair locally (inventory + view) before/after server ack. */
+  private applyLocalLoadoutPreset(
+    primaryWeaponId: string,
+    secondaryWeaponId: string,
+  ): void {
+    if (!this.player.applyArmoryLoadout(primaryWeaponId, secondaryWeaponId)) {
+      console.warn('[Game] loadout weapons not recognized', {
+        primaryWeaponId,
+        secondaryWeaponId,
+      });
+      return;
+    }
+    this.refreshInventoryHud();
   }
 
   private closeTacticalMap(options?: { deferRelock?: boolean }): void {
@@ -1065,16 +1189,20 @@ export class Game {
     }
 
     this.inventoryOpen = !this.inventoryOpen;
-    this.inventoryHud.setOpen(this.inventoryOpen);
+    // Mark panel mode before releasing the pointer so accidental unlock
+    // events never show the pause overlay.
     this.playerControls.setInventoryOpen(this.inventoryOpen);
+    this.inventoryHud.setOpen(this.inventoryOpen);
 
     if (this.inventoryOpen) {
       this.playerControls.controls.unlockSoft();
       this.crosshairHud.setVisible(false);
       this.refreshInventoryHud();
+      void this.refreshLoadoutSwitcher();
       return;
     }
 
+    this.pendingLoadoutApply = null;
     if (this.playerControls.isPlaying && this.localCombat.alive) {
       this.playerControls.controls.lock();
       this.crosshairHud.setVisible(true);
@@ -1101,11 +1229,16 @@ export class Game {
     const delta = Math.min(rawDeltaSec, MAX_FRAME_DELTA_SEC);
     this.simElapsedSec += delta;
 
-    if (this.inventoryOpen && !this.playerControls.isPlaying) {
+    // Only dismiss panels when ESC pause overlay is up — soft-unlock (Tab) must
+    // keep inventory open while the match keeps simulating.
+    if (this.inventoryOpen && this.playerControls.isPauseOverlayVisible) {
       this.closeInventory();
     }
 
-    if (this.tacticalMapOverlay.isOpen() && !this.playerControls.isPlaying) {
+    if (
+      this.tacticalMapOverlay.isOpen() &&
+      this.playerControls.isPauseOverlayVisible
+    ) {
       this.closeTacticalMap();
     }
 
@@ -1149,7 +1282,12 @@ export class Game {
     const resultsRoster =
       match?.phase === 'ended' ? (this.network?.getAllPlayers() ?? EMPTY_ROSTER) : EMPTY_ROSTER;
     this.matchResultsOverlay.update(match, this.localCombat.teamId, resultsRoster);
-    this.matchHud.update(match, worldTime, this.playerControls.isPlaying);
+    // Keep match timer visible during Tab inventory (soft-unlock), not only when locked.
+    this.matchHud.update(
+      match,
+      worldTime,
+      this.playerControls.isPlaying || this.inventoryOpen,
+    );
 
     const matchPhase = match?.phase ?? null;
     if (
@@ -1201,12 +1339,16 @@ export class Game {
     const tdmBlocksInput =
       match?.gameMode === 'tdm' && match.phase !== 'playing';
 
+    // Panels unlock the pointer but must NOT pause the match. Combat input
+    // is gated; physics/world/network keep running while isPlaying.
+    const panelOpen =
+      this.inventoryOpen || this.tacticalMapOverlay.isOpen();
     const canAct =
       !tdmBlocksInput &&
+      this.playerControls.isPlaying &&
       this.playerControls.isLocked &&
       this.localCombat.alive &&
-      !this.inventoryOpen &&
-      !this.tacticalMapOverlay.isOpen();
+      !panelOpen;
 
     if (this.playerControls.isPlaying) {
       this.unlockGameAudio();
@@ -1284,10 +1426,6 @@ export class Game {
       );
 
       this.staminaHud.update(this.player.getSprintState());
-      this.throwableHud.update(
-        this.player.getInventory().getGrenadeCount(),
-        this.player.isThrowableEquipped(),
-      );
       const ammo = this.player.getAmmoState();
       if (ammo) this.ammoHud.update(ammo);
 
@@ -1375,7 +1513,7 @@ export class Game {
       }
 
       if (this.inventoryOpen) {
-        this.refreshInventoryHud(this.input.isPressed('KeyF'));
+        this.refreshInventoryHud();
       }
     }
 

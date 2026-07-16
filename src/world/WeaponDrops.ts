@@ -3,7 +3,7 @@ import { WEAPON_PICKUP_AIM_MAX_DISTANCE, WEAPON_PICKUP_MAX_DISTANCE } from '../.
 import { isPickableWeaponId } from '../../shared/content/weaponIds';
 import type { WeaponDropSnapshot } from '../network/types';
 import { createWeaponDropMesh } from './weaponDropVisual';
-import { resolvePickupSurfaceY } from './pickupSurface';
+import { resolvePickupPlacementY } from './pickupSurface';
 
 export interface WeaponDropRaycastHit {
   index: number;
@@ -42,7 +42,7 @@ export class WeaponDrops {
       this.root.add(drop);
     }
 
-    const groundY = resolvePickupSurfaceY(snapshot.x, snapshot.z);
+    const groundY = resolvePickupPlacementY(snapshot.x, snapshot.z, snapshot.y);
     drop.position.set(snapshot.x, groundY, snapshot.z);
     drop.rotation.y = snapshot.yaw;
   }

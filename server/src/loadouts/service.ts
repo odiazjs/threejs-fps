@@ -264,3 +264,18 @@ export async function getDefaultWeaponLoadoutWeapons(
     return null;
   }
 }
+
+/** Used by match rooms when a player switches a saved Armory loadout mid-match. */
+export async function getWeaponLoadoutWeaponsById(
+  userId: string,
+  loadoutId: string,
+): Promise<WeaponLoadoutPresetWeapons | null> {
+  const row = await findOwnedLoadout(userId, loadoutId);
+  if (!row) return null;
+
+  try {
+    return await resolveLoadoutWeaponPair(row.primaryWeaponId, row.secondaryWeaponId);
+  } catch {
+    return null;
+  }
+}

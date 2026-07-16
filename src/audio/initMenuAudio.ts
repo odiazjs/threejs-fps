@@ -17,6 +17,34 @@ const lobbyMusic = new LoopingSoundService();
 
 let uiReady: Promise<void> | null = null;
 let lobbyMusicReady: Promise<void> | null = null;
+let lobbyMusicEnabled = true;
+let cancelPendingAutostart: (() => void) | null = null;
+
+function clearPendingAutostart(): void {
+  cancelPendingAutostart?.();
+  cancelPendingAutostart = null;
+}
+
+function bindLobbyMusicAutostart(): void {
+  clearPendingAutostart();
+
+  const start = (): void => {
+    if (!lobbyMusicEnabled) return;
+    lobbyMusic.unlock();
+    lobbyMusic.setActive(true);
+  };
+
+  const onPointerDown = (): void => start();
+  const onKeyDown = (): void => start();
+
+  document.addEventListener('pointerdown', onPointerDown, { once: true });
+  document.addEventListener('keydown', onKeyDown, { once: true });
+
+  cancelPendingAutostart = () => {
+    document.removeEventListener('pointerdown', onPointerDown);
+    document.removeEventListener('keydown', onKeyDown);
+  };
+}
 
 export function initUiSounds(): Promise<void> {
   if (!uiReady) {
@@ -34,16 +62,10 @@ export function initLobbyMusic(): Promise<void> {
   if (!lobbyMusicReady) {
     lobbyMusic.setVolume(getStoredLobbyMusicVolume());
     lobbyMusicReady = lobbyMusic.preload(LOBBY_MUSIC_AUDIO.src).then(() => {
-      const start = (): void => {
-        lobbyMusic.unlock();
-        lobbyMusic.setActive(true);
-      };
-
-      document.addEventListener('pointerdown', start, { once: true });
-      document.addEventListener('keydown', start, { once: true });
+      bindLobbyMusicAutostart();
 
       window.addEventListener('pagehide', () => {
-        lobbyMusic.stop();
+        stopLobbyMusic();
       });
     });
   }
@@ -51,13 +73,17 @@ export function initLobbyMusic(): Promise<void> {
 }
 
 export function stopLobbyMusic(): void {
-  lobbyMusic.stop();
+  lobbyMusicEnabled = false;
+  clearPendingAutostart();
+  lobbyMusic.setActive(false);
 }
 
 export function resumeLobbyMusic(): void {
+  lobbyMusicEnabled = true;
   if (!lobbyMusicReady) return;
   lobbyMusic.unlock();
   lobbyMusic.setActive(true);
+  bindLobbyMusicAutostart();
 }
 
 export function setLobbyMusicVolume(volume: number): void {

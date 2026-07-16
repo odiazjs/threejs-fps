@@ -19,6 +19,7 @@ import { GrenadeViewModel } from './GrenadeViewModel';
 import { getWeaponConfig, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
 import {
+  isPickableWeaponId,
   isWeaponId,
   LOADOUT_SIZE,
   LOADOUT_WEAPON_IDS,
@@ -780,6 +781,34 @@ export class Player {
     }
   }
 
+  /** Equip an Armory primary/secondary pair locally (inventory + view model). */
+  applyArmoryLoadout(primaryWeaponId: string, secondaryWeaponId: string): boolean {
+    if (!this.loadout || !this.camera) return false;
+    if (!isPickableWeaponId(primaryWeaponId) || !isPickableWeaponId(secondaryWeaponId)) {
+      return false;
+    }
+    if (primaryWeaponId === secondaryWeaponId) return false;
+
+    this.unequipThrowable({ discardCook: true });
+    this.loadout.applyServerSlots(
+      {
+        weaponSlot0: primaryWeaponId,
+        weaponSlot1: secondaryWeaponId,
+        weaponSlot2: EMPTY_WEAPON_SLOT,
+      },
+      primaryWeaponId,
+    );
+    this.reapplyMatchWeaponStats();
+    this.targetActiveWeaponId = primaryWeaponId;
+    this.loadout.setRemoteActiveWeapon(primaryWeaponId);
+    const active = this.loadout.getActive();
+    if (active) {
+      this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
+      this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    }
+    return true;
+  }
+
   applyEmptyLoadout(): void {
     if (!this.loadout) return;
 
@@ -1434,6 +1463,26 @@ export class Player {
       if (this.yawRecoilRig && this.pitchRecoilRig) {
         this.applyActiveRecoilAim();
       }
+      // Keep gravity / grounding while inventory is open so the match doesn't
+      // feel frozen — only combat + WASD are disabled (canAct).
+      const idle = stepPlayerPhysicsClient(
+        this.object.position.x,
+        this.object.position.y,
+        this.object.position.z,
+        this.physics,
+        0,
+        0,
+        false,
+        delta,
+        this.mapCollisionDef,
+      );
+      this.object.position.set(idle.x, idle.y, idle.z);
+      this.physics = idle.state;
+      if (this.physics.grounded) {
+        this.locomotionJumping = false;
+      }
+      this.loadout?.update(delta);
+      this.weaponPose?.applyCamera(this.camera);
       return;
     }
 

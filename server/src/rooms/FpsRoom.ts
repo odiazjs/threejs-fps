@@ -144,8 +144,18 @@ import {
 } from '../../../shared/loadout/loadoutSlots.js';
 import { applyWeaponLoadoutPreset } from '../../../shared/loadout/weaponLoadoutPreset.js';
 import type { WeaponLoadoutPresetWeapons } from '../../../shared/loadout/weaponLoadoutPreset.js';
-import { getDefaultWeaponLoadoutWeapons } from '../loadouts/service.js';
-import { getPlayerWeaponEffectiveStatsById } from '../weapons/service.js';
+import {
+  getDefaultWeaponLoadoutWeapons,
+  getWeaponLoadoutWeaponsById,
+} from '../loadouts/service.js';
+import type {
+  ApplyLoadoutMessage,
+  ApplyLoadoutResultMessage,
+} from '../../../shared/network/applyLoadout.js';
+import {
+  getPlayerWeaponEffectiveStatsById,
+  resolveLoadoutWeaponPair,
+} from '../weapons/service.js';
 import type { WeaponEffectiveStats } from '../../../shared/content/weaponUpgrades.js';
 import { MAX_SHIELD_CHARGES, MAX_GRENADES } from '../../../shared/inventory/inventoryLimits.js';
 import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupRespawn.js';
@@ -266,6 +276,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     for (const pos of this.mapDef.getShieldPositions?.() ?? this.mapDef.shieldPositions) {
       const charge = new ShieldChargeState();
       charge.x = pos.x;
+      charge.y = this.mapDef.sampleGroundHeight(pos.x, pos.z);
       charge.z = pos.z;
       this.state.shieldCharges.push(charge);
     }
@@ -296,6 +307,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.tickMatchState();
       this.tickWorldPickupRespawns();
       this.tickGrenades();
+    });
+
+    // Explicit registration so mid-match loadout switches work even if the
+    // class-field `messages` map was built from an older room process.
+    this.onMessage('applyLoadout', (client: Client, data: ApplyLoadoutMessage) => {
+      void this.handleApplyLoadout(client, data);
     });
   }
 
@@ -878,16 +895,23 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     return true;
   }
 
+  private playerFeetY(player: PlayerState): number {
+    const eyeHeight = player.crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
+    return player.y - eyeHeight;
+  }
+
   private spawnWeaponDrop(
     x: number,
     z: number,
     yaw: number,
     weaponId: string,
+    y = this.mapDef.sampleGroundHeight(x, z),
   ): number {
     if (!isPickableWeaponId(weaponId)) return -1;
 
     const drop = new WeaponDropState();
     drop.x = x;
+    drop.y = y;
     drop.z = z;
     drop.yaw = yaw;
     drop.weaponId = weaponId;
@@ -896,6 +920,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.broadcast('weaponDrop', {
       index: dropIndex,
       x: drop.x,
+      y: drop.y,
       z: drop.z,
       yaw: drop.yaw,
       weaponId: drop.weaponId,
@@ -903,15 +928,21 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     return dropIndex;
   }
 
-  private spawnShieldCharge(x: number, z: number): number {
+  private spawnShieldCharge(
+    x: number,
+    z: number,
+    y = this.mapDef.sampleGroundHeight(x, z),
+  ): number {
     const charge = new ShieldChargeState();
     charge.x = x;
+    charge.y = y;
     charge.z = z;
     this.state.shieldCharges.push(charge);
     const index = this.state.shieldCharges.length - 1;
     this.broadcast('shieldChargeSpawn', {
       index,
       x: charge.x,
+      y: charge.y,
       z: charge.z,
     });
     return index;
@@ -1157,7 +1188,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (!isPickableWeaponId(weaponId)) return;
 
       setLoadoutSlotWeapon(player, slot, EMPTY_WEAPON_SLOT);
-      this.spawnWeaponDrop(player.x, player.z, player.yaw, weaponId);
+      this.spawnWeaponDrop(
+        player.x,
+        player.z,
+        player.yaw,
+        weaponId,
+        this.playerFeetY(player),
+      );
 
       if (player.activeWeaponId === weaponId) {
         const nextSlot = findLowestOccupiedLoadoutSlot(player);
@@ -1178,7 +1215,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (player.shieldCharges <= 0) return;
 
       player.shieldCharges -= 1;
-      const index = this.spawnShieldCharge(player.x, player.z);
+      const index = this.spawnShieldCharge(
+        player.x,
+        player.z,
+        this.playerFeetY(player),
+      );
       this.cancelShieldRecharge(player);
       client.send('shieldChargeDropGranted', { index });
     },
@@ -1215,6 +1256,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
           player.z,
           player.yaw,
           resolution.replacedWeaponId,
+          this.playerFeetY(player),
         );
         if (
           this.holsteredWeaponIdBySession.get(client.sessionId)
@@ -1918,6 +1960,73 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     if (this.mapDef.respawnGrenadeCount !== undefined) {
       player.grenadeCount = this.mapDef.respawnGrenadeCount;
     }
+  }
+
+  private async handleApplyLoadout(
+    client: Client,
+    data: ApplyLoadoutMessage,
+  ): Promise<void> {
+    const reply = (payload: ApplyLoadoutResultMessage): void => {
+      client.send('applyLoadoutResult', payload);
+    };
+
+    const player = this.state.players.get(client.sessionId);
+    if (!player?.alive) {
+      reply({ loadoutId: '', ok: false, error: 'You must be alive to switch loadouts' });
+      return;
+    }
+
+    const loadoutId = typeof data?.loadoutId === 'string' ? data.loadoutId.trim() : '';
+    if (!loadoutId) {
+      reply({ loadoutId: '', ok: false, error: 'Invalid loadout' });
+      return;
+    }
+
+    const userId = this.userIdBySession.get(client.sessionId);
+    const primary =
+      typeof data.primaryWeaponId === 'string' ? data.primaryWeaponId.trim() : '';
+    const secondary =
+      typeof data.secondaryWeaponId === 'string' ? data.secondaryWeaponId.trim() : '';
+
+    let preset: WeaponLoadoutPresetWeapons | null = null;
+    try {
+      // Prefer weapons from the Armory UI card (already shown to this user).
+      if (primary && secondary) {
+        preset = await resolveLoadoutWeaponPair(primary, secondary);
+      } else if (userId) {
+        preset = await getWeaponLoadoutWeaponsById(userId, loadoutId);
+      }
+    } catch (error) {
+      console.error('[FpsRoom] applyLoadout failed', { userId, loadoutId, error });
+      reply({ loadoutId, ok: false, error: 'Failed to load loadout' });
+      return;
+    }
+
+    if (!preset) {
+      reply({ loadoutId, ok: false, error: 'Loadout not found' });
+      return;
+    }
+
+    this.defaultLoadoutBySession.set(client.sessionId, preset);
+    this.holsteredWeaponIdBySession.delete(client.sessionId);
+    player.activeWeaponId = applyWeaponLoadoutPreset(player, preset);
+    sanitizeLoadoutSlots(player);
+    player.reloading = false;
+    player.reloadEndAt = 0;
+    this.cancelShieldRecharge(player);
+    this.startWeaponSwitchAnim(player);
+    console.info('[FpsRoom] applyLoadout ok', {
+      sessionId: client.sessionId,
+      loadoutId,
+      primary: preset.primaryWeaponId,
+      secondary: preset.secondaryWeaponId,
+    });
+    reply({
+      loadoutId,
+      ok: true,
+      primaryWeaponId: preset.primaryWeaponId,
+      secondaryWeaponId: preset.secondaryWeaponId,
+    });
   }
 
   private async cacheDefaultLoadoutForSession(

@@ -10,3 +10,15 @@ export function resolvePickupSurfaceY(x: number, z: number): number {
   }
   return map.sampleGroundHeight(x, z);
 }
+
+/**
+ * Prefer an authored / server feet Y (platforms, player drops), but never place
+ * below the local surface sample (crate tops, terrain).
+ */
+export function resolvePickupPlacementY(x: number, z: number, storedY?: number): number {
+  const surfaceY = resolvePickupSurfaceY(x, z);
+  if (typeof storedY === 'number' && Number.isFinite(storedY)) {
+    return Math.max(storedY, surfaceY);
+  }
+  return surfaceY;
+}

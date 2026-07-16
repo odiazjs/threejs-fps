@@ -5,6 +5,7 @@ export interface DropShieldChargeMessage {}
 export interface ShieldChargeSpawnMessage {
   readonly index: number;
   readonly x: number;
+  readonly y: number;
   readonly z: number;
 }
 

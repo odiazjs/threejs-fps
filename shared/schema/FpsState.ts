@@ -58,6 +58,7 @@ export class AmmoBoxState extends Schema {
 
 export class ShieldChargeState extends Schema {
   @type('number') x = 0;
+  @type('number') y = 0;
   @type('number') z = 0;
   @type('boolean') collected = false;
 }
@@ -71,6 +72,7 @@ export class GrenadePickupState extends Schema {
 
 export class WeaponDropState extends Schema {
   @type('number') x = 0;
+  @type('number') y = 0;
   @type('number') z = 0;
   @type('number') yaw = 0;
   @type('string') weaponId = 'pistol';

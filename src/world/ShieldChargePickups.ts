@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { SHIELD_PICKUP_MAX_DISTANCE } from '../../shared/network/shieldPickup';
 import type { ShieldChargeSnapshot } from '../network/types';
 import { loadShieldChargeTemplate } from './shieldChargeVisual';
-import { resolvePickupSurfaceY } from './pickupSurface';
+import { resolvePickupPlacementY } from './pickupSurface';
 
 export interface ShieldChargeRaycastHit {
   index: number;
@@ -99,7 +99,7 @@ export class ShieldChargePickups {
       this.root.add(pickup);
     }
 
-    const y = resolvePickupSurfaceY(snapshot.x, snapshot.z);
+    const y = resolvePickupPlacementY(snapshot.x, snapshot.z, snapshot.y);
     pickup.position.set(snapshot.x, y, snapshot.z);
     pickup.visible = true;
   }

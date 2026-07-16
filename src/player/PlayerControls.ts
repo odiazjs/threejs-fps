@@ -1,7 +1,6 @@
 import type * as THREE from 'three';
 import { PointerAimControls } from './PointerAimControls';
 import type { CrosshairHud } from '../ui/CrosshairHud';
-import type { ThrowableHud } from '../ui/ThrowableHud';
 import type { StaminaHud } from '../ui/StaminaHud';
 import type { AmmoHud } from '../ui/AmmoHud';
 import type { HealthHud } from '../ui/HealthHud';
@@ -12,13 +11,13 @@ import type { PingDirectionIndicatorHud } from '../ui/PingDirectionIndicatorHud'
 import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import type { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
+import type { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import type { TeamHud } from '../ui/TeamHud';
 import type { MinimapHud } from '../ui/MinimapHud';
 
 export class PlayerControls {
   readonly controls: PointerAimControls;
   private staminaHud: StaminaHud | null = null;
-  private throwableHud: ThrowableHud | null = null;
   private ammoHud: AmmoHud | null = null;
   private healthHud: HealthHud | null = null;
   private killFeedHud: KillFeedHud | null = null;
@@ -55,10 +54,6 @@ export class PlayerControls {
 
   setStaminaHud(hud: StaminaHud): void {
     this.staminaHud = hud;
-  }
-
-  setThrowableHud(hud: ThrowableHud): void {
-    this.throwableHud = hud;
   }
 
   setAmmoHud(hud: AmmoHud): void {
@@ -204,6 +199,16 @@ export class PlayerControls {
     };
 
     this.controls.onUnlock = () => {
+      // Soft-unlock / panel mode must never show the pause overlay.
+      if (
+        this.inventoryOpen ||
+        this.tacticalMapOpen ||
+        this.controls.isSoftUnlocked
+      ) {
+        this.isPaused = false;
+        this.blocker.style.display = 'none';
+        return;
+      }
       this.isPaused = true;
       this.blocker.style.display = 'flex';
       this.setPlayHudVisible(false);
@@ -217,12 +222,19 @@ export class PlayerControls {
         this.leaveButton.hidden = true;
       }
     };
+
+    // Soft unlock (Tab inventory, key 5): match keeps simulating, HUD stays up.
+    this.controls.onSoftUnlock = () => {
+      this.isPaused = false;
+      this.blocker.style.display = 'none';
+      this.leaveButton.hidden = true;
+      this.setPlayHudVisible(true);
+    };
   }
 
   private setPlayHudVisible(visible: boolean): void {
     this.crosshairHud?.setVisible(visible);
     this.staminaHud?.setVisible(visible);
-    this.throwableHud?.setVisible(visible);
     this.ammoHud?.setVisible(visible);
     this.healthHud?.setVisible(visible);
     this.shieldRechargeHud?.setVisible(visible);

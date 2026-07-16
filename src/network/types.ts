@@ -65,6 +65,7 @@ export interface AmmoBoxSnapshot {
 
 export interface ShieldChargeSnapshot {
   x: number;
+  y: number;
   z: number;
   collected: boolean;
 }
@@ -78,6 +79,7 @@ export interface GrenadePickupSnapshot {
 
 export interface WeaponDropSnapshot {
   x: number;
+  y: number;
   z: number;
   yaw: number;
   weaponId: string;

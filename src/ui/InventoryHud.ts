@@ -26,17 +26,19 @@ export interface InventoryViewState {
   unitsInField: number;
 }
 
-const DROP_HOLD_MS = 3000;
-const DROP_UI_DELAY_MS = 500;
-const DROP_RING_RADIUS = 34;
-const DROP_RING_CIRCUMFERENCE = 2 * Math.PI * DROP_RING_RADIUS;
 const EXAMINE_HIDE_MS = 2400;
+const PANEL_CLOSE_MS = 280;
+/** Pixels of movement before a press becomes a drag (not a click-to-equip). */
+const DRAG_THRESHOLD_PX = 8;
 
-type DropTarget = { kind: 'weapon'; slotIndex: number } | { kind: 'shield' };
+const SLOT_LABELS = ['Primary Weapon', 'Secondary Weapon', 'Tertiary Weapon'] as const;
+
+type DragKind = { kind: 'weapon'; slotIndex: number } | { kind: 'shield' };
 
 export class InventoryHud {
   private open = false;
   private readonly root: HTMLElement;
+  private readonly panel: HTMLElement;
   private readonly loadoutRoot: HTMLElement;
   private readonly operatorNameEl: HTMLElement;
   private readonly kdEl: HTMLElement;
@@ -49,21 +51,30 @@ export class InventoryHud {
   private readonly grenadeCountEl: HTMLElement;
   private readonly examineTooltip: HTMLElement;
   private readonly weaponSlots: HTMLElement[] = [];
-  private dropHoldTarget: DropTarget | null = null;
-  private dropHoldStart = 0;
-  private dropRafId = 0;
+  private readonly dragGhost: HTMLElement;
   private examineHideTimer = 0;
-  private hoveredDropTarget: DropTarget | null = null;
+  private closeTimer = 0;
   private shieldDroppable = false;
   private onWeaponDropRequest: ((slotIndex: number) => void) | null = null;
   private onShieldDropRequest: (() => void) | null = null;
   private onWeaponEquipRequest: ((slotIndex: number) => void) | null = null;
   private onMeleeEquipRequest: (() => void) | null = null;
+  private onCloseRequest: (() => void) | null = null;
   private slotOccupied: boolean[] = [];
   private slotWeaponIds: (WeaponId | null)[] = [];
+  private slotNames: string[] = [];
+
+  private dragPointerId: number | null = null;
+  private dragKind: DragKind | null = null;
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private dragActive = false;
+  private suppressNextClick = false;
+  private dragSourceEl: HTMLElement | null = null;
 
   constructor(weaponOrder: readonly { id: WeaponId; name: string }[]) {
     this.root = document.getElementById('inventory-overlay')!;
+    this.panel = document.getElementById('inventory-panel')!;
     this.loadoutRoot = document.getElementById('inventory-loadout')!;
     this.operatorNameEl = document.getElementById('inventory-operator-name')!;
     this.kdEl = document.getElementById('inventory-kd')!;
@@ -76,41 +87,36 @@ export class InventoryHud {
     this.grenadeCountEl = document.getElementById('inventory-grenade-count')!;
     this.examineTooltip = document.getElementById('inventory-examine-tooltip')!;
 
+    this.dragGhost = document.createElement('div');
+    this.dragGhost.className = 'inventory-drag-ghost';
+    this.dragGhost.hidden = true;
+    this.root.appendChild(this.dragGhost);
+
     for (let i = 0; i < weaponOrder.length; i++) {
       const weapon = weaponOrder[i]!;
+      const label = SLOT_LABELS[i] ?? `Weapon ${i + 1}`;
       const slot = document.createElement('div');
-      slot.className = 'inventory-slot-frame inventory-weapon-slot';
+      slot.className = 'inventory-card inventory-weapon-slot';
       slot.dataset.slotIndex = String(i);
       slot.innerHTML = `
+        <div class="inventory-card-label">${label}</div>
         <div class="inventory-slot-key">${i + 1}</div>
         <div class="inventory-icon-wrap">
           <img class="inventory-weapon-icon" src="${WEAPON_ICON_SRC[weapon.id]}" alt="" />
         </div>
         <div class="inventory-weapon-name">${weapon.name}</div>
-        <div class="inventory-drop-overlay" hidden>
-          <svg class="inventory-drop-spinner" viewBox="0 0 80 80" aria-hidden="true">
-            <circle class="inventory-drop-ring-bg" cx="40" cy="40" r="${DROP_RING_RADIUS}" />
-            <circle class="inventory-drop-ring-fill" cx="40" cy="40" r="${DROP_RING_RADIUS}" />
-          </svg>
-          <div class="inventory-drop-timer">Dropping in 3.0s</div>
-        </div>
       `;
 
-      slot.addEventListener('mouseenter', () => {
-        this.hoveredDropTarget = this.slotOccupied[i]
-          ? { kind: 'weapon', slotIndex: i }
-          : null;
-      });
-      slot.addEventListener('mouseleave', () => {
-        if (this.hoveredDropTarget?.kind === 'weapon' && this.hoveredDropTarget.slotIndex === i) {
-          this.hoveredDropTarget = null;
-        }
-        if (this.dropHoldTarget?.kind === 'weapon' && this.dropHoldTarget.slotIndex === i) {
-          this.cancelDropHold();
-        }
+      slot.addEventListener('pointerdown', (event) => {
+        if (!this.open || event.button !== 0 || !this.slotOccupied[i]) return;
+        this.beginDrag(event, { kind: 'weapon', slotIndex: i }, slot);
       });
       slot.addEventListener('click', (event) => {
         if (!this.open || !this.slotOccupied[i] || event.button !== 0) return;
+        if (this.suppressNextClick) {
+          this.suppressNextClick = false;
+          return;
+        }
         this.onWeaponEquipRequest?.(i);
       });
       slot.addEventListener('contextmenu', (event) => {
@@ -120,14 +126,11 @@ export class InventoryHud {
         if (weaponId) this.showExamine(weaponId);
       });
 
-      const ring = slot.querySelector('.inventory-drop-ring-fill') as SVGCircleElement;
-      ring.style.strokeDasharray = String(DROP_RING_CIRCUMFERENCE);
-      ring.style.strokeDashoffset = String(DROP_RING_CIRCUMFERENCE);
-
       this.loadoutRoot.appendChild(slot);
       this.weaponSlots.push(slot);
       this.slotOccupied.push(false);
       this.slotWeaponIds.push(null);
+      this.slotNames.push(weapon.name);
     }
 
     const shieldIcon = document.getElementById('inventory-shield-icon') as HTMLImageElement;
@@ -136,22 +139,9 @@ export class InventoryHud {
     const meleeIcon = document.getElementById('inventory-melee-icon') as HTMLImageElement;
     meleeIcon.src = WEAPON_ICON_SRC.katana;
 
-    const shieldRing = this.shieldRow.querySelector(
-      '.inventory-drop-ring-fill',
-    ) as SVGCircleElement;
-    shieldRing.style.strokeDasharray = String(DROP_RING_CIRCUMFERENCE);
-    shieldRing.style.strokeDashoffset = String(DROP_RING_CIRCUMFERENCE);
-
-    this.shieldRow.addEventListener('mouseenter', () => {
-      this.hoveredDropTarget = this.shieldDroppable ? { kind: 'shield' } : null;
-    });
-    this.shieldRow.addEventListener('mouseleave', () => {
-      if (this.hoveredDropTarget?.kind === 'shield') {
-        this.hoveredDropTarget = null;
-      }
-      if (this.dropHoldTarget?.kind === 'shield') {
-        this.cancelDropHold();
-      }
+    this.shieldRow.addEventListener('pointerdown', (event) => {
+      if (!this.open || event.button !== 0 || !this.shieldDroppable) return;
+      this.beginDrag(event, { kind: 'shield' }, this.shieldRow);
     });
     this.shieldRow.addEventListener('contextmenu', (event) => {
       if (!this.open) return;
@@ -168,6 +158,19 @@ export class InventoryHud {
       event.preventDefault();
       this.showExamine('katana');
     });
+
+    this.root.querySelector('.inventory-backdrop')?.addEventListener('click', () => {
+      if (!this.open || this.dragKind) return;
+      this.onCloseRequest?.();
+    });
+
+    window.addEventListener('pointermove', this.onPointerMove);
+    window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerUp);
+  }
+
+  setOnCloseRequest(handler: (() => void) | null): void {
+    this.onCloseRequest = handler;
   }
 
   setOnWeaponDropRequest(handler: (slotIndex: number) => void): void {
@@ -196,16 +199,30 @@ export class InventoryHud {
   }
 
   setOpen(open: boolean): void {
+    if (open === this.open) return;
     this.open = open;
-    this.root.hidden = !open;
-    if (!open) {
-      this.cancelDropHold();
+
+    if (this.closeTimer) {
+      window.clearTimeout(this.closeTimer);
+      this.closeTimer = 0;
+    }
+
+    if (open) {
+      this.root.hidden = false;
+      void this.root.offsetWidth;
+      this.root.classList.add('is-open');
+    } else {
+      this.root.classList.remove('is-open');
+      this.cancelDrag();
       this.hideExamine();
-      this.hoveredDropTarget = null;
+      this.closeTimer = window.setTimeout(() => {
+        if (!this.open) this.root.hidden = true;
+        this.closeTimer = 0;
+      }, PANEL_CLOSE_MS);
     }
   }
 
-  update(state: InventoryViewState, dropKeyHeld = false): void {
+  update(state: InventoryViewState): void {
     this.operatorNameEl.textContent = state.operatorName;
     this.kdEl.textContent = state.killDeath;
     this.unitsEl.textContent = String(state.unitsInField);
@@ -217,12 +234,13 @@ export class InventoryHud {
 
       this.slotOccupied[i] = weapon.occupied;
       this.slotWeaponIds[i] = weapon.weaponId;
+      this.slotNames[i] = weapon.occupied ? weapon.name : 'Empty';
       slot.classList.toggle('active', weapon.active);
       slot.classList.toggle('empty', !weapon.occupied);
       slot.classList.toggle('droppable', weapon.occupied);
 
       const nameEl = slot.querySelector('.inventory-weapon-name');
-      if (nameEl) nameEl.textContent = weapon.name;
+      if (nameEl) nameEl.textContent = weapon.occupied ? weapon.name : 'Empty';
 
       const icon = slot.querySelector('.inventory-weapon-icon') as HTMLImageElement;
       if (icon) {
@@ -240,130 +258,148 @@ export class InventoryHud {
 
     this.shieldDroppable = state.shieldCharges > 0;
     this.shieldRow.classList.toggle('droppable', this.shieldDroppable);
+    this.shieldRow.classList.toggle('empty', state.shieldCharges <= 0);
     this.shieldCountEl.textContent = String(state.shieldCharges);
 
     this.grenadeRow.classList.toggle('active', state.grenadeEquipped);
     this.grenadeRow.classList.toggle('empty', state.grenadeCount <= 0);
     this.grenadeCountEl.textContent = String(state.grenadeCount);
+  }
 
-    if (dropKeyHeld && this.hoveredDropTarget) {
-      this.syncDropHold(this.hoveredDropTarget);
-    } else {
-      this.cancelDropHold();
+  private beginDrag(event: PointerEvent, kind: DragKind, sourceEl: HTMLElement): void {
+    if (this.dragPointerId !== null) return;
+
+    this.dragPointerId = event.pointerId;
+    this.dragKind = kind;
+    this.dragStartX = event.clientX;
+    this.dragStartY = event.clientY;
+    this.dragActive = false;
+    this.dragSourceEl = sourceEl;
+    this.suppressNextClick = false;
+
+    try {
+      sourceEl.setPointerCapture(event.pointerId);
+    } catch {
+      // Capture optional — window listeners still track the drag.
     }
   }
 
-  private syncDropHold(target: DropTarget): void {
-    if (target.kind === 'weapon' && !this.slotOccupied[target.slotIndex]) {
-      this.cancelDropHold();
-      return;
-    }
-    if (target.kind === 'shield' && !this.shieldDroppable) {
-      this.cancelDropHold();
-      return;
-    }
-
-    if (
-      this.dropHoldTarget?.kind !== target.kind ||
-      (target.kind === 'weapon' &&
-        this.dropHoldTarget?.kind === 'weapon' &&
-        this.dropHoldTarget.slotIndex !== target.slotIndex)
-    ) {
-      this.startDropHold(target);
+  private onPointerMove = (event: PointerEvent): void => {
+    if (this.dragPointerId === null || event.pointerId !== this.dragPointerId || !this.dragKind) {
       return;
     }
 
-    if (!this.dropHoldStart) {
-      this.startDropHold(target);
+    const dx = event.clientX - this.dragStartX;
+    const dy = event.clientY - this.dragStartY;
+    if (!this.dragActive && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) {
+      this.activateDrag();
     }
-  }
+    if (!this.dragActive) return;
 
-  private startDropHold(target: DropTarget): void {
-    this.cancelDropHold();
-    this.dropHoldTarget = target;
-    this.dropHoldStart = performance.now();
-    this.tickDropHold();
-  }
-
-  private getDropHost(target: DropTarget): HTMLElement | null {
-    if (target.kind === 'shield') return this.shieldRow;
-    return this.weaponSlots[target.slotIndex] ?? null;
-  }
-
-  private setDropOverlayVisible(target: DropTarget, visible: boolean): void {
-    const host = this.getDropHost(target);
-    if (!host) return;
-
-    const overlay = host.querySelector('.inventory-drop-overlay') as HTMLElement | null;
-    if (visible) {
-      overlay?.removeAttribute('hidden');
-      host.classList.add('dropping');
-    } else {
-      overlay?.setAttribute('hidden', '');
-      host.classList.remove('dropping');
-      const ring = host.querySelector('.inventory-drop-ring-fill') as SVGCircleElement | null;
-      if (ring) {
-        ring.style.strokeDashoffset = String(DROP_RING_CIRCUMFERENCE);
-      }
-    }
-  }
-
-  private tickDropHold = (): void => {
-    if (!this.dropHoldTarget) return;
-
-    const elapsed = performance.now() - this.dropHoldStart;
-    const showUi = elapsed >= DROP_UI_DELAY_MS;
-    const host = this.getDropHost(this.dropHoldTarget);
-
-    if (showUi) {
-      this.setDropOverlayVisible(this.dropHoldTarget, true);
-
-      const uiElapsed = elapsed - DROP_UI_DELAY_MS;
-      const uiDuration = DROP_HOLD_MS - DROP_UI_DELAY_MS;
-      const progress = Math.min(1, uiElapsed / uiDuration);
-      const remaining = Math.max(0, DROP_HOLD_MS - elapsed) / 1000;
-
-      const timerEl = host?.querySelector('.inventory-drop-timer');
-      if (timerEl) {
-        timerEl.textContent = `Dropping in ${remaining.toFixed(1)}s`;
-      }
-
-      const ring = host?.querySelector('.inventory-drop-ring-fill') as SVGCircleElement | null;
-      if (ring) {
-        ring.style.strokeDashoffset = String(
-          DROP_RING_CIRCUMFERENCE * (1 - progress),
-        );
-      }
-    } else {
-      this.setDropOverlayVisible(this.dropHoldTarget, false);
-    }
-
-    if (elapsed >= DROP_HOLD_MS) {
-      const target = this.dropHoldTarget;
-      this.cancelDropHold();
-      if (target?.kind === 'weapon') {
-        this.onWeaponDropRequest?.(target.slotIndex);
-      } else if (target?.kind === 'shield') {
-        this.onShieldDropRequest?.();
-      }
-      return;
-    }
-
-    this.dropRafId = requestAnimationFrame(this.tickDropHold);
+    this.positionGhost(event.clientX, event.clientY);
+    const overScene = this.isOverDropZone(event.clientX, event.clientY);
+    this.root.classList.toggle('is-drag-drop-ready', overScene);
+    this.dragGhost.classList.toggle('is-drop-ready', overScene);
   };
 
-  private cancelDropHold(): void {
-    if (this.dropRafId) {
-      cancelAnimationFrame(this.dropRafId);
-      this.dropRafId = 0;
+  private onPointerUp = (event: PointerEvent): void => {
+    if (this.dragPointerId === null || event.pointerId !== this.dragPointerId) return;
+
+    const kind = this.dragKind;
+    const wasDragging = this.dragActive;
+    const overScene = wasDragging && this.isOverDropZone(event.clientX, event.clientY);
+
+    this.endDragVisuals();
+
+    if (wasDragging && kind && overScene) {
+      this.suppressNextClick = true;
+      if (kind.kind === 'weapon') {
+        this.onWeaponDropRequest?.(kind.slotIndex);
+      } else {
+        this.onShieldDropRequest?.();
+      }
+    } else if (wasDragging) {
+      // Drag cancelled back onto the panel — don't equip.
+      this.suppressNextClick = true;
     }
 
-    if (this.dropHoldTarget) {
-      this.setDropOverlayVisible(this.dropHoldTarget, false);
+    this.dragPointerId = null;
+    this.dragKind = null;
+    this.dragActive = false;
+    this.dragSourceEl = null;
+  };
+
+  private activateDrag(): void {
+    if (!this.dragKind || !this.dragSourceEl) return;
+    this.dragActive = true;
+    this.suppressNextClick = true;
+    this.root.classList.add('is-dragging');
+    this.dragSourceEl.classList.add('is-drag-source');
+    this.populateGhost(this.dragKind);
+    this.dragGhost.hidden = false;
+    this.hideExamine();
+  }
+
+  private populateGhost(kind: DragKind): void {
+    if (kind.kind === 'weapon') {
+      const weaponId = this.slotWeaponIds[kind.slotIndex];
+      const name = this.slotNames[kind.slotIndex] ?? 'Weapon';
+      const iconSrc = weaponId ? WEAPON_ICON_SRC[weaponId] : '';
+      this.dragGhost.innerHTML = `
+        <div class="inventory-drag-ghost-icon">
+          ${iconSrc ? `<img src="${iconSrc}" alt="" />` : ''}
+        </div>
+        <div class="inventory-drag-ghost-label">${name}</div>
+        <div class="inventory-drag-ghost-hint">Drop to discard</div>
+      `;
+      return;
     }
 
-    this.dropHoldTarget = null;
-    this.dropHoldStart = 0;
+    this.dragGhost.innerHTML = `
+      <div class="inventory-drag-ghost-icon">
+        <img src="${SHIELD_CHARGE_ICON_SRC}" alt="" />
+      </div>
+      <div class="inventory-drag-ghost-label">Shield Charge</div>
+      <div class="inventory-drag-ghost-hint">Drop to discard</div>
+    `;
+  }
+
+  private positionGhost(clientX: number, clientY: number): void {
+    this.dragGhost.style.transform = `translate(${clientX}px, ${clientY}px) translate(-50%, -50%)`;
+  }
+
+  private isOverDropZone(clientX: number, clientY: number): boolean {
+    const panelRect = this.panel.getBoundingClientRect();
+    return (
+      clientX < panelRect.left ||
+      clientX > panelRect.right ||
+      clientY < panelRect.top ||
+      clientY > panelRect.bottom
+    );
+  }
+
+  private endDragVisuals(): void {
+    this.root.classList.remove('is-dragging', 'is-drag-drop-ready');
+    this.dragGhost.hidden = true;
+    this.dragGhost.classList.remove('is-drop-ready');
+    this.dragGhost.innerHTML = '';
+    this.dragSourceEl?.classList.remove('is-drag-source');
+  }
+
+  private cancelDrag(): void {
+    if (this.dragPointerId !== null && this.dragSourceEl) {
+      try {
+        this.dragSourceEl.releasePointerCapture(this.dragPointerId);
+      } catch {
+        // Already released.
+      }
+    }
+    this.endDragVisuals();
+    this.dragPointerId = null;
+    this.dragKind = null;
+    this.dragActive = false;
+    this.dragSourceEl = null;
+    this.suppressNextClick = false;
   }
 
   private showExamine(weaponId: WeaponId): void {

@@ -76,6 +76,7 @@ export class NetworkManager {
   private readonly recentLocalHits = new Map<string, number>();
   private readonly onLocalLoadoutHandlers: Array<(snapshot: PlayerSnapshot) => void> = [];
   private readonly onLocalDamagedHandlers: LocalDamagedHandler[] = [];
+  private lastLoadoutKey = '';
 
   constructor(
     scene: THREE.Scene,
@@ -255,7 +256,17 @@ export class NetworkManager {
         shieldDomeEndAt: snapshot.shieldDomeEndAt,
         shieldDomeCooldownEndAt: snapshot.shieldDomeCooldownEndAt,
       };
-      this.onLocalLoadoutHandlers.forEach((handler) => handler(snapshot));
+      // Position/move patches must not re-apply loadout (that was reverting Tab switches).
+      const loadoutKey = [
+        snapshot.weaponSlot0,
+        snapshot.weaponSlot1,
+        snapshot.weaponSlot2,
+        snapshot.activeWeaponId,
+      ].join('|');
+      if (loadoutKey !== this.lastLoadoutKey) {
+        this.lastLoadoutKey = loadoutKey;
+        this.onLocalLoadoutHandlers.forEach((handler) => handler(snapshot));
+      }
       this.onLocalPlayerChange(this.localCombat);
     });
 
@@ -289,6 +300,12 @@ export class NetworkManager {
         shieldDomeEndAt: snapshot.shieldDomeEndAt,
         shieldDomeCooldownEndAt: snapshot.shieldDomeCooldownEndAt,
       };
+      this.lastLoadoutKey = [
+        snapshot.weaponSlot0,
+        snapshot.weaponSlot1,
+        snapshot.weaponSlot2,
+        snapshot.activeWeaponId,
+      ].join('|');
       this.onLocalLoadoutHandlers.forEach((handler) => handler(snapshot));
       this.onLocalPlayerChange(this.localCombat);
     }
@@ -481,6 +498,22 @@ export class NetworkManager {
       localCamera,
     );
     manager.update(delta, worldTime);
+  }
+
+  sendApplyLoadout(
+    loadoutId: string,
+    primaryWeaponId?: string,
+    secondaryWeaponId?: string,
+  ): boolean {
+    if (!this.roomClient.connected) return false;
+    this.roomClient.sendApplyLoadout(loadoutId, primaryWeaponId, secondaryWeaponId);
+    return true;
+  }
+
+  onApplyLoadoutResult(
+    handler: (data: import('../../shared/network/applyLoadout').ApplyLoadoutResultMessage) => void,
+  ): void {
+    this.roomClient.onApplyLoadoutResult(handler);
   }
 
   sendDropWeapon(slot: number): void {

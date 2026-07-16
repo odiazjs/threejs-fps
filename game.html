@@ -91,14 +91,6 @@
         <div class="stamina-cooldown"></div>
       </div>
     </div>
-    <div id="throwable-hud" hidden>
-      <div class="throwable-key">G</div>
-      <div class="throwable-icon" aria-hidden="true"></div>
-      <div class="throwable-meta">
-        <div class="throwable-name">Grenade</div>
-        <div id="throwable-count" class="throwable-count">0</div>
-      </div>
-    </div>
     <div id="shield-dome-hud" hidden>
       <div class="shield-dome-label">SHIELD DOME [Q]</div>
       <div class="shield-dome-track">
@@ -172,12 +164,12 @@
     </div>
     <div id="inventory-overlay" hidden>
       <div class="inventory-backdrop" aria-hidden="true"></div>
-      <div class="inventory-panel hud-panel hud-brackets">
+      <aside id="inventory-panel" class="inventory-panel inventory-panel--left" aria-label="Inventory">
         <header class="inventory-header">
           <div class="inventory-header-title">
             <span class="inventory-header-label">INVENTORY</span>
             <span class="inventory-header-operator"
-              >— OPERATOR: <span id="inventory-operator-name">Player</span></span
+              >OPERATOR <span id="inventory-operator-name">Player</span></span
             >
           </div>
           <div class="inventory-header-stats">
@@ -185,20 +177,18 @@
               <span class="inventory-stat-label">K/D</span>
               <span id="inventory-kd" class="inventory-stat-value">0/0</span>
             </div>
-            <div class="inventory-stat-pill inventory-stat-pill--alert">
+            <div class="inventory-stat-pill inventory-stat-pill--alert" title="Units in field">
               <span class="inventory-stat-icon" aria-hidden="true">▲</span>
-              <span class="inventory-stat-label">Units In-Field</span>
               <span id="inventory-units" class="inventory-stat-value">0</span>
             </div>
           </div>
         </header>
+
         <section class="inventory-section">
-          <div class="inventory-section-label hud-label">LOADOUT</div>
-          <div id="inventory-loadout" class="inventory-loadout-grid"></div>
-        </section>
-        <section class="inventory-section inventory-section--melee">
-          <div class="inventory-section-label hud-label">MELEE</div>
-          <div id="inventory-melee-row" class="inventory-slot-frame inventory-melee-slot">
+          <div class="inventory-section-label">ACTIVE LOADOUT</div>
+          <div id="inventory-loadout" class="inventory-loadout-stack"></div>
+          <div id="inventory-melee-row" class="inventory-card inventory-melee-slot">
+            <div class="inventory-card-label">Melee</div>
             <div class="inventory-slot-key">X</div>
             <div class="inventory-icon-wrap">
               <img id="inventory-melee-icon" class="inventory-weapon-icon" alt="" />
@@ -206,49 +196,48 @@
             <div id="inventory-melee-name" class="inventory-weapon-name">Katana</div>
           </div>
         </section>
+
         <section class="inventory-section">
-          <div class="inventory-section-label hud-label">SHIELD RECHARGES</div>
-          <div id="inventory-shield-row" class="inventory-slot-frame inventory-item-row">
+          <div class="inventory-section-label">UTILITIES</div>
+          <div id="inventory-shield-row" class="inventory-card inventory-utility-card">
+            <div class="inventory-card-label">Shields</div>
             <div class="inventory-icon-wrap inventory-item-icon-wrap">
               <img id="inventory-shield-icon" class="inventory-item-icon" alt="" />
             </div>
-            <div class="inventory-item-details">
-              <div class="inventory-item-name">Shield Charge</div>
-              <div class="inventory-item-desc">Restores shield protection</div>
-            </div>
             <div id="inventory-shield-count" class="inventory-item-count">0</div>
-            <div class="inventory-shield-deco" aria-hidden="true">✦</div>
-            <div class="inventory-drop-overlay" hidden>
-              <svg class="inventory-drop-spinner" viewBox="0 0 80 80" aria-hidden="true">
-                <circle class="inventory-drop-ring-bg" cx="40" cy="40" r="34" />
-                <circle class="inventory-drop-ring-fill" cx="40" cy="40" r="34" />
-              </svg>
-              <div class="inventory-drop-timer">Dropping in 3.0s</div>
-            </div>
           </div>
-        </section>
-        <section class="inventory-section">
-          <div class="inventory-section-label hud-label">THROWABLES</div>
-          <div id="inventory-grenade-row" class="inventory-slot-frame inventory-item-row">
+          <div id="inventory-grenade-row" class="inventory-card inventory-utility-card">
+            <div class="inventory-card-label">Grenades</div>
             <div class="inventory-slot-key">G</div>
             <div class="inventory-icon-wrap inventory-item-icon-wrap">
               <div id="inventory-grenade-icon" class="inventory-grenade-icon" aria-hidden="true"></div>
             </div>
-            <div class="inventory-item-details">
-              <div class="inventory-item-name">Frag Grenade</div>
-              <div class="inventory-item-desc">Arc throw · 4s fuse · area damage</div>
-            </div>
             <div id="inventory-grenade-count" class="inventory-item-count">0</div>
           </div>
         </section>
-        <footer class="inventory-footer">
-          <div class="inventory-control"><kbd>TAB</kbd> CLOSE</div>
-          <div class="inventory-control"><kbd>HOLD F</kbd> DROP</div>
-          <div class="inventory-control"><kbd>LMB</kbd> EQUIP</div>
-          <div class="inventory-control"><kbd>RMB</kbd> EXAMINE</div>
-        </footer>
+
         <div id="inventory-examine-tooltip" class="inventory-examine-tooltip" hidden></div>
-      </div>
+      </aside>
+
+      <aside
+        id="loadout-switcher-panel"
+        class="inventory-panel inventory-panel--right"
+        aria-label="Loadouts"
+      >
+        <header class="inventory-header">
+          <div class="inventory-header-title">
+            <span class="inventory-header-label">LOADOUTS</span>
+            <span class="inventory-header-operator">SWITCH ANYTIME</span>
+          </div>
+        </header>
+        <section class="inventory-section loadout-switcher-section">
+          <div class="inventory-section-label">SAVED PRESETS</div>
+          <div id="loadout-switcher-list" class="inventory-loadout-stack"></div>
+          <div id="loadout-switcher-empty" class="loadout-switcher-empty" hidden>
+            No saved loadouts yet. Create one in the Armory.
+          </div>
+        </section>
+      </aside>
     </div>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
