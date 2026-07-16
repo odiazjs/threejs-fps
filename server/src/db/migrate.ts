@@ -19,6 +19,10 @@ async function main(): Promise<void> {
   await upsertCurrentWeaponCatalog();
   console.log('[db] weapon catalog upserted');
 
+  const { upsertCurrentStoreCatalog } = await import('./seed/upsertStoreItems.js');
+  await upsertCurrentStoreCatalog();
+  console.log('[db] store catalog upserted');
+
   await closeDb();
 }
 

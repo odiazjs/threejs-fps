@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 import type { PartyMember } from '../../shared/network/party';
-import { MELEE_WEAPON_ID, type WeaponId } from '../../shared/content/weaponIds';
+import { isPickableWeaponId, MELEE_WEAPON_ID, type WeaponId } from '../../shared/content/weaponIds';
+import { getCharacterMeshFile } from '../content/activeCharacterMesh';
 import {
   createCharacterInstance,
   loadGameIdleCharacterTemplate,
+  loadGameIdleCharacterTemplateForMesh,
   loadLobbyShootCharacterTemplate,
   resolveCharacterRig,
   type CharacterInstance,
@@ -83,8 +85,10 @@ export class LobbyScene {
   private readonly performanceHud = new LobbyPerfHud();
   private readonly localUserId: string;
   private readonly remoteAvatars = new Map<string, LobbyPartyAvatar>();
-  private characterTemplate: CharacterTemplate | null = null;
   private partyMembers: PartyMember[] = [];
+  /** Cache key `${characterId}::${primaryWeaponId}` per remote user. */
+  private readonly remoteAvatarLookKeys = new Map<string, string>();
+  private remoteAvatarLoadToken = 0;
   private animationId = 0;
   private active = true;
   private avatarLoadToken = 0;
@@ -222,6 +226,13 @@ export class LobbyScene {
     await this.applyLobbyLoadout(weaponId);
   }
 
+  /** Force remount using current default loadout + equipped character mesh. */
+  async remountCharacter(): Promise<void> {
+    if (this.shootingAtDrone) return;
+    const weaponId = await fetchDefaultPrimaryWeaponId();
+    await this.applyLobbyLoadout(weaponId);
+  }
+
   private async bootstrapAvatar(): Promise<void> {
     try {
       await preloadWeaponMeshes();
@@ -268,7 +279,6 @@ export class LobbyScene {
     if (token !== this.avatarLoadToken) return;
 
     this.clearLocalCharacter();
-    this.characterTemplate = template;
     this.characterInstance = createCharacterInstance(template);
     this.bodyRoot.add(this.characterInstance.root);
     this.attachLobbyWeapon(template, weaponId);
@@ -334,7 +344,19 @@ export class LobbyScene {
       avatar.dispose();
     }
     this.remoteAvatars.clear();
+    this.remoteAvatarLookKeys.clear();
     this.syncRemoteAvatars();
+  }
+
+  private resolveMemberPrimaryWeapon(member: PartyMember): WeaponId {
+    const raw = member.primaryWeaponId?.trim() ?? '';
+    if (isPickableWeaponId(raw)) return raw;
+    return this.equippedWeaponId ?? FALLBACK_LOBBY_WEAPON;
+  }
+
+  private remoteLookKey(member: PartyMember): string {
+    const characterId = member.selectedCharacterId || 'basic';
+    return `${characterId}::${this.resolveMemberPrimaryWeapon(member)}`;
   }
 
   private syncRemoteAvatars(): void {
@@ -347,28 +369,59 @@ export class LobbyScene {
       if (!remoteIds.has(userId)) {
         avatar.dispose();
         this.remoteAvatars.delete(userId);
+        this.remoteAvatarLookKeys.delete(userId);
       }
     }
 
-    if (!this.characterTemplate || !this.equippedWeaponId) return;
-
     const offsets = partyMemberOffsets(remoteMembers.length);
+    const loadToken = ++this.remoteAvatarLoadToken;
     remoteMembers.forEach((member, index) => {
-      let avatar = this.remoteAvatars.get(member.userId);
-      if (!avatar) {
-        avatar = new LobbyPartyAvatar(
-          member.username,
-          this.characterTemplate!,
-          this.equippedWeaponId!,
-          index * 1.7,
-        );
-        this.scene.add(avatar.root);
-        this.remoteAvatars.set(member.userId, avatar);
+      const lookKey = this.remoteLookKey(member);
+      const existing = this.remoteAvatars.get(member.userId);
+      if (existing && this.remoteAvatarLookKeys.get(member.userId) === lookKey) {
+        existing.setPositionX(offsets[index] ?? 0);
+        return;
       }
-      avatar.setPositionX(offsets[index] ?? 0);
+
+      if (existing) {
+        existing.dispose();
+        this.remoteAvatars.delete(member.userId);
+        this.remoteAvatarLookKeys.delete(member.userId);
+      }
+
+      void this.spawnRemoteAvatar(member, offsets[index] ?? 0, index * 1.7, loadToken);
     });
 
     this.avatar.position.x = 0;
+  }
+
+  private async spawnRemoteAvatar(
+    member: PartyMember,
+    positionX: number,
+    spinPhase: number,
+    loadToken: number,
+  ): Promise<void> {
+    const characterId = member.selectedCharacterId || 'basic';
+    const weaponId = this.resolveMemberPrimaryWeapon(member);
+    const lookKey = `${characterId}::${weaponId}`;
+
+    try {
+      const meshFile = getCharacterMeshFile(characterId);
+      const template = await loadGameIdleCharacterTemplateForMesh(meshFile, weaponId);
+      if (loadToken !== this.remoteAvatarLoadToken) return;
+      if (!this.partyMembers.some((entry) => entry.userId === member.userId)) return;
+
+      const previous = this.remoteAvatars.get(member.userId);
+      previous?.dispose();
+
+      const avatar = new LobbyPartyAvatar(member.username, template, weaponId, spinPhase);
+      avatar.setPositionX(positionX);
+      this.scene.add(avatar.root);
+      this.remoteAvatars.set(member.userId, avatar);
+      this.remoteAvatarLookKeys.set(member.userId, lookKey);
+    } catch (error) {
+      console.warn('[LobbyScene] Failed to load party avatar', member.userId, error);
+    }
   }
 
   private updateCamera(memberCount: number): void {
@@ -487,7 +540,6 @@ export class LobbyScene {
       if (token !== this.avatarLoadToken || !this.shootingAtDrone) return;
 
       this.clearLocalCharacter();
-      this.characterTemplate = template;
       this.characterInstance = createCharacterInstance(template);
       this.bodyRoot.add(this.characterInstance.root);
       this.attachLobbyWeapon(template, weaponId);
@@ -876,8 +928,8 @@ export class LobbyScene {
       avatar.dispose();
     }
     this.remoteAvatars.clear();
+    this.remoteAvatarLookKeys.clear();
     this.clearLocalCharacter();
-    this.characterTemplate = null;
     this.equippedWeaponId = null;
     this.grassField.dispose();
     this.labelRenderer.domElement.remove();

@@ -48,6 +48,7 @@
     <link rel="stylesheet" href="/src/styles/pages.css" />
     <link rel="stylesheet" href="/src/styles/lobby-hud.css" />
     <link rel="stylesheet" href="/src/styles/armory-hud.css" />
+    <link rel="stylesheet" href="/src/styles/store-hud.css" />
     <link rel="stylesheet" href="/src/styles/snackbar.css" />
   </head>
   <body class="lobby-page app-shell">
@@ -64,6 +65,7 @@
             LEADERBOARD
           </button>
           <button id="lobby-weapons-btn" class="lobby-nav-item" type="button">ARMORY</button>
+          <button id="lobby-store-btn" class="lobby-nav-item" type="button">STORE</button>
           <button id="lobby-settings-btn" class="lobby-nav-item" type="button">SETTINGS</button>
         </nav>
 
@@ -484,6 +486,72 @@
       </button>
     </section>
 
+    <section id="app-view-store" class="app-view" data-view="store" hidden>
+      <div class="store-ui">
+        <aside class="store-catalog-panel hud-panel" aria-label="Store catalog">
+          <header class="store-catalog-header">
+            <div class="store-catalog-heading">
+              <p class="store-catalog-eyebrow">UNLOCKABLES</p>
+              <h2 class="store-catalog-title">OPERATOR STORE</h2>
+            </div>
+            <aside class="plasma-minerals-chip plasma-minerals-chip--armory" aria-label="Plasma minerals">
+              <span class="plasma-minerals-label">PLASMA MINERALS</span>
+              <span class="plasma-minerals-value" data-plasma-minerals>—</span>
+              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>GET MORE</button>
+            </aside>
+          </header>
+          <div
+            id="store-item-grid"
+            class="store-item-grid"
+            role="listbox"
+            aria-label="Store items"
+          ></div>
+        </aside>
+
+        <div class="store-preview-column" aria-label="Store item preview">
+          <header class="store-preview-header">
+            <p class="store-preview-eyebrow" id="store-detail-type">ITEM PREVIEW</p>
+            <h2 class="store-preview-title" id="store-detail-name">SELECT AN ITEM</h2>
+          </header>
+
+          <div class="store-preview-stage">
+            <div class="store-preview-atmosphere" aria-hidden="true"></div>
+            <div class="store-preview-platform" aria-hidden="true"></div>
+            <div id="store-canvas"></div>
+            <aside class="store-detail-callout" aria-label="Item details">
+              <p class="store-detail-callout-label">Detailed View:</p>
+              <p id="store-detail-desc" class="store-detail-desc">
+                Select an item from the catalog.
+              </p>
+            </aside>
+          </div>
+
+          <footer class="store-action-footer">
+            <p id="store-detail-status" class="store-detail-status"></p>
+            <div class="store-action-row" id="store-action-row">
+              <button type="button" class="store-purchase-btn" id="store-purchase-btn">
+                <span class="store-purchase-btn-label">PURCHASE</span>
+                <span class="store-purchase-btn-divider" aria-hidden="true"></span>
+                <span class="store-purchase-btn-price" id="store-detail-price">—</span>
+              </button>
+              <button type="button" class="store-sell-btn" id="store-sell-btn" hidden disabled>
+                <span class="store-sell-btn-label">SELL BACK</span>
+                <span class="store-sell-btn-divider" aria-hidden="true"></span>
+                <span class="store-sell-btn-price" id="store-sell-refund">—</span>
+              </button>
+              <button type="button" class="store-equip-btn" id="store-equip-btn" disabled>
+                EQUIP
+              </button>
+            </div>
+          </footer>
+        </div>
+
+        <button id="store-back-btn" class="secondary-btn weapons-back-btn store-back-bar" type="button">
+          BACK TO LOBBY
+        </button>
+      </div>
+    </section>
+
     <section id="app-view-settings" class="app-view" data-view="settings" hidden>
       <main class="settings-shell hud-panel hud-panel--md">
         <h1 class="settings-title hud-title">SETTINGS</h1>
@@ -528,6 +596,55 @@
         BACK TO LOBBY
       </button>
     </section>
+
+    <div
+      id="store-confirm-modal"
+      class="store-dialog-modal hud-overlay-scrim"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="store-confirm-title"
+      data-confirm-mode="purchase"
+    >
+      <div class="store-dialog-backdrop" data-store-confirm-cancel aria-hidden="true"></div>
+      <div class="store-dialog-panel hud-panel" role="document">
+        <p class="store-dialog-eyebrow" id="store-confirm-eyebrow">CONFIRM PURCHASE</p>
+        <h2 id="store-confirm-title" class="store-dialog-title">UNLOCK ITEM?</h2>
+        <p class="store-dialog-body" id="store-confirm-body">
+          Spend <span id="store-confirm-price">0</span> plasma minerals to unlock
+          <span id="store-confirm-name">this item</span>?
+        </p>
+        <div class="store-dialog-actions">
+          <button type="button" class="armory-btn" id="store-confirm-cancel">
+            CANCEL
+          </button>
+          <button type="button" class="armory-btn armory-btn--primary" id="store-confirm-ok">
+            CONFIRM
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="store-congrats-modal"
+      class="store-dialog-modal hud-overlay-scrim"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="store-congrats-title"
+    >
+      <div class="store-dialog-backdrop" aria-hidden="true"></div>
+      <div class="store-dialog-panel hud-panel" role="document">
+        <p class="store-dialog-eyebrow">UNLOCK COMPLETE</p>
+        <h2 id="store-congrats-title" class="store-dialog-title">CONGRATULATIONS</h2>
+        <p class="store-dialog-body">
+          You have unlocked <span id="store-congrats-name">this model</span>.
+        </p>
+        <button type="button" class="armory-btn armory-btn--primary" id="store-congrats-dismiss">
+          CONTINUE
+        </button>
+      </div>
+    </div>
 
     <div
       id="plasma-minerals-store-modal"

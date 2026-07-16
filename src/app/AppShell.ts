@@ -7,15 +7,18 @@ import type { FriendsPanel } from '../lobby/FriendsPanel';
 import { LeaderboardView } from '../lobby/views/LeaderboardView';
 import { refreshLobbyProfileStats } from '../lobby/lobbyProfileStats';
 import { SettingsView } from '../lobby/views/SettingsView';
+import { consumeCharacterMeshReload } from '../content/activeCharacterMesh';
+import { StoreView } from '../lobby/views/StoreView';
 import { WeaponsView } from '../lobby/views/WeaponsView';
 
-export type ShellView = 'lobby' | 'weapons' | 'leaderboard' | 'settings';
+export type ShellView = 'lobby' | 'weapons' | 'leaderboard' | 'settings' | 'store';
 
 const PAGE_CLASS_BY_VIEW: Record<ShellView, string> = {
   lobby: 'lobby-page',
   weapons: 'weapons-page',
   leaderboard: 'leaderboard-page',
   settings: 'settings-page',
+  store: 'store-page',
 };
 
 const TITLE_BY_VIEW: Record<ShellView, string> = {
@@ -23,16 +26,25 @@ const TITLE_BY_VIEW: Record<ShellView, string> = {
   weapons: 'Three.js FPS — Weapons',
   leaderboard: 'Three.js FPS — Leaderboard',
   settings: 'Three.js FPS — Settings',
+  store: 'Three.js FPS — Store',
 };
 
 const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
   weapons: 'Loading weapons...',
   leaderboard: 'Loading leaderboard...',
+  store: 'Loading store...',
 };
 
 export function parseShellViewFromUrl(): ShellView {
   const view = new URLSearchParams(window.location.search).get('view');
-  if (view === 'weapons' || view === 'leaderboard' || view === 'settings') return view;
+  if (
+    view === 'weapons'
+    || view === 'leaderboard'
+    || view === 'settings'
+    || view === 'store'
+  ) {
+    return view;
+  }
   return 'lobby';
 }
 
@@ -41,6 +53,7 @@ export class AppShell {
   private readonly weaponsView = new WeaponsView();
   private readonly leaderboardView = new LeaderboardView();
   private readonly settingsView = new SettingsView();
+  private readonly storeView = new StoreView();
   private readonly loading = LoadingOverlay.shared();
   private navigating = false;
 
@@ -56,6 +69,9 @@ export class AppShell {
     document.getElementById('lobby-weapons-btn')!.addEventListener('click', () => {
       void this.showView('weapons');
     });
+    document.getElementById('lobby-store-btn')!.addEventListener('click', () => {
+      void this.showView('store');
+    });
     document.getElementById('lobby-leaderboard-btn')!.addEventListener('click', () => {
       void this.showView('leaderboard');
     });
@@ -63,6 +79,9 @@ export class AppShell {
       void this.showView('settings');
     });
     document.getElementById('weapons-back-btn')!.addEventListener('click', () => {
+      void this.showView('lobby');
+    });
+    document.getElementById('store-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
     });
     document.getElementById('leaderboard-back-btn')!.addEventListener('click', () => {
@@ -118,6 +137,7 @@ export class AppShell {
     this.weaponsView.unmount();
     this.leaderboardView.unmount();
     this.settingsView.unmount();
+    this.storeView.unmount();
     this.lobbyScene.dispose();
     void this.lobbyClient.disconnect();
   }
@@ -145,7 +165,13 @@ export class AppShell {
   }
 
   private applyBodyClass(view: ShellView): void {
-    document.body.classList.remove('lobby-page', 'weapons-page', 'leaderboard-page', 'settings-page');
+    document.body.classList.remove(
+      'lobby-page',
+      'weapons-page',
+      'leaderboard-page',
+      'settings-page',
+      'store-page',
+    );
     document.body.classList.add(PAGE_CLASS_BY_VIEW[view]);
   }
 
@@ -158,6 +184,8 @@ export class AppShell {
       this.weaponsView.unmount();
     } else if (view === 'leaderboard') {
       this.leaderboardView.unmount();
+    } else if (view === 'store') {
+      this.storeView.unmount();
     } else {
       this.settingsView.unmount();
     }
@@ -170,7 +198,13 @@ export class AppShell {
     if (view === 'lobby') {
       this.lobbyScene.setActive(true);
       void refreshLobbyProfileStats();
-      void this.lobbyScene.refreshFromDefaultLoadout();
+      // Refresh party + local look after store / armory changes.
+      this.lobbyClient.requestPartySnapshot();
+      if (consumeCharacterMeshReload()) {
+        void this.lobbyScene.remountCharacter();
+      } else {
+        void this.lobbyScene.refreshFromDefaultLoadout();
+      }
       return;
     }
 
@@ -185,6 +219,8 @@ export class AppShell {
     try {
       if (view === 'weapons') {
         await this.weaponsView.mount();
+      } else if (view === 'store') {
+        await this.storeView.mount();
       } else {
         await this.leaderboardView.mount();
       }
@@ -193,6 +229,9 @@ export class AppShell {
       if (view === 'weapons') {
         await waitForPaint();
         this.weaponsView.refreshViewport();
+      } else if (view === 'store') {
+        await waitForPaint();
+        this.storeView.refreshViewport();
       }
     }
   }

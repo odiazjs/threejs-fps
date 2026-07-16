@@ -4,6 +4,12 @@ import { initAppSession } from '../app/bootstrap';
 import { runClientAssetPrewarm } from '../assets/clientAssetPrewarm';
 import { isClientAssetPrewarmComplete } from '../assets/clientAssetPrewarmState';
 import { logout } from '../auth/playerSession';
+import { apiListStoreItems } from '../auth/storeApi';
+import {
+  consumeCharacterMeshReload,
+  setActiveCharacterId,
+} from '../content/activeCharacterMesh';
+import { clearCharacterMeshCache } from '../player/characterModel';
 import { bootstrapDebugFlags } from '../debug/debugQuery';
 import { FriendsPanel } from './FriendsPanel';
 import { LobbyClient } from './LobbyClient';
@@ -38,6 +44,15 @@ async function startLobby(): Promise<void> {
     }
 
     const session = await initAppSession();
+    try {
+      const store = await apiListStoreItems();
+      setActiveCharacterId(store.selectedCharacterId);
+      clearCharacterMeshCache();
+      // Initial LobbyScene load applies selection; don't remount again on first paint.
+      consumeCharacterMeshReload();
+    } catch (error) {
+      console.warn('[Lobby] Could not sync store character', error);
+    }
     const scene = new LobbyScene(document.getElementById('lobby-canvas')!, session.userId);
     setGameOverlayBackgroundHooks(
       () => scene.setActive(false),

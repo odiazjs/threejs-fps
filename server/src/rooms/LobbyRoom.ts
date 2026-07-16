@@ -48,6 +48,10 @@ import {
 
 } from '../../../shared/network/party.js';
 
+import { readPartyMemberCosmetics } from '../lobby/partyCharacters.js';
+
+import { setRefreshPartyHandler } from '../lobby/partyNotify.js';
+
 import type { SetAppViewMessage } from '../../../shared/network/appView.js';
 
 import { LobbyPlayerState, LobbyState } from '../../../shared/schema/LobbyState.js';
@@ -190,6 +194,28 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
   private readonly partiesByHostUserId = new Map<string, Party>();
 
   private readonly partyHostByUserId = new Map<string, string>();
+
+
+
+  onCreate(): void {
+
+    setRefreshPartyHandler((userId) => {
+
+      const party = this.getPartyForUser(userId);
+
+      if (party) this.broadcastParty(party);
+
+    });
+
+  }
+
+
+
+  onDispose(): void {
+
+    setRefreshPartyHandler(null);
+
+  }
 
 
 
@@ -738,7 +764,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       const party = this.getPartyForUser(userId);
       if (party) {
-        this.sendPartySnapshot(client, party, userId);
+        void this.sendPartySnapshot(client, party, userId);
         return;
       }
 
@@ -954,7 +980,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       existing.members.get(userId)!.client = client;
 
-      this.sendPartySnapshot(client, existing, userId);
+      void this.sendPartySnapshot(client, existing, userId);
 
       return existing;
 
@@ -1004,7 +1030,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     this.partyHostByUserId.set(userId, userId);
 
-    this.sendPartySnapshot(client, party, userId);
+    void this.sendPartySnapshot(client, party, userId);
 
     return party;
 
@@ -1114,7 +1140,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     for (const member of party.members.values()) {
 
-      this.sendPartySnapshot(member.client, party, member.userId);
+      void this.sendPartySnapshot(member.client, party, member.userId);
 
     }
 
@@ -1142,19 +1168,35 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-  private sendPartySnapshot(client: Client, party: Party, viewerUserId: string): void {
+  private async sendPartySnapshot(client: Client, party: Party, viewerUserId: string): Promise<void> {
 
-    const members: PartyMember[] = [...party.members.values()].map((member) => ({
+    const cosmetics = await readPartyMemberCosmetics(
 
-      userId: member.userId,
+      [...party.members.keys()],
 
-      username: member.username,
+    );
 
-      isHost: member.isHost,
+    const members: PartyMember[] = [...party.members.values()].map((member) => {
 
-      teamId: member.teamId,
+      const look = cosmetics.get(member.userId);
 
-    }));
+      return {
+
+        userId: member.userId,
+
+        username: member.username,
+
+        isHost: member.isHost,
+
+        teamId: member.teamId,
+
+        selectedCharacterId: look?.selectedCharacterId ?? 'basic',
+
+        primaryWeaponId: look?.primaryWeaponId ?? 'plasma_rifle',
+
+      };
+
+    });
 
 
 

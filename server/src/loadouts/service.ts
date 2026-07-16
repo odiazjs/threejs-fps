@@ -15,6 +15,7 @@ import type { AuthContext } from '../auth/middleware.js';
 import { getDb } from '../db/index.js';
 import { weaponLoadouts } from '../db/schema/weaponLoadouts.js';
 import { ensureUser } from '../db/users.js';
+import { refreshPartyForUser } from '../lobby/partyNotify.js';
 import { resolveLoadoutWeaponPair } from '../weapons/service.js';
 
 function toSummary(row: typeof weaponLoadouts.$inferSelect): WeaponLoadoutSummary {
@@ -137,6 +138,9 @@ export async function createWeaponLoadout(
       throw new Error('Could not create loadout');
     }
 
+    if (makeDefault) {
+      refreshPartyForUser(auth.sub);
+    }
     return { loadout: toSummary(row) };
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -171,6 +175,7 @@ export async function updateWeaponLoadout(
   const pair = await resolveLoadoutWeaponPair(nextPrimary, nextSecondary);
   const makeDefault = input.isDefault === true;
   const clearDefault = input.isDefault === false && existing.isDefault;
+  const affectsPartyDefault = makeDefault || clearDefault || existing.isDefault;
 
   if (makeDefault) {
     await clearDefaultFlag(auth.sub, loadoutId);
@@ -198,9 +203,13 @@ export async function updateWeaponLoadout(
     if (clearDefault) {
       await promoteDefaultIfNeeded(auth.sub);
       const refreshed = await findOwnedLoadout(auth.sub, loadoutId);
+      refreshPartyForUser(auth.sub);
       return { loadout: toSummary(refreshed ?? row) };
     }
 
+    if (affectsPartyDefault) {
+      refreshPartyForUser(auth.sub);
+    }
     return { loadout: toSummary(row) };
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -237,6 +246,7 @@ export async function deleteWeaponLoadout(
 
   if (existing.isDefault) {
     await promoteDefaultIfNeeded(auth.sub);
+    refreshPartyForUser(auth.sub);
   }
 
   return { success: true };

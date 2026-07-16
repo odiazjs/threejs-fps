@@ -131,7 +131,9 @@
 }
 
 .app-view--loading #weapons-canvas,
+.app-view--loading #store-canvas,
 .app-view--loading .weapons-ui,
+.app-view--loading .store-ui,
 .app-view--loading .leaderboard-shell,
 .app-view--loading .leaderboard-back-btn {
   visibility: hidden;

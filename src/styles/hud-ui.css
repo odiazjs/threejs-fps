@@ -35,6 +35,7 @@ textarea,
 .weapons-page,
 .leaderboard-page,
 .settings-page,
+.store-page,
 .game-page,
 .auth-page {
   font-family: var(--hud-font);
@@ -45,7 +46,8 @@ textarea,
 .lobby-page,
 .weapons-page,
 .leaderboard-page,
-.settings-page {
+.settings-page,
+.store-page {
   min-height: 100vh;
   background:
     radial-gradient(ellipse 80% 50% at 50% 100%, rgba(0, 120, 140, 0.12), transparent 55%),

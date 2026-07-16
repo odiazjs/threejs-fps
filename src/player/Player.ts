@@ -1295,7 +1295,7 @@ export class Player {
     this.remoteHealthBar?.updateLayout(camera);
   }
 
-  /** Enemies get a red rim glow on the model plus red nameplate styling. */
+  /** Enemies get a red silhouette outline plus red nameplate styling. */
   setEnemyHighlight(isEnemy: boolean): void {
     if (this.camera) return;
     this.enemyHighlighted = isEnemy;

@@ -85,6 +85,20 @@
       "when": 1783750000000,
       "tag": "0011_plasma_shotgun_base_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783760000000,
+      "tag": "0012_character_store",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783770000000,
+      "tag": "0013_store_items",
+      "breakpoints": true
     }
   ]
 }

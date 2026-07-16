@@ -13,6 +13,10 @@ export interface PartyMember {
   isHost: boolean;
   /** Preferred team side (0 = Blue, 1 = Orange). */
   teamId: number;
+  /** Equipped store character item id (e.g. basic, silver). */
+  selectedCharacterId: string;
+  /** Primary weapon from the player's default loadout. */
+  primaryWeaponId: string;
 }
 
 export interface PartySnapshotMessage {

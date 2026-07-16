@@ -4,6 +4,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import type { BodyPartBoneRefs } from '../../shared/combat/bodyPartPose';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import { MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
+import { getActiveCharacterMeshFile } from '../content/activeCharacterMesh';
 
 const ASSET_BASE = '/3d/';
 const TARGET_HEIGHT = 1.65;
@@ -362,7 +363,22 @@ export interface CharacterInstance {
 const templateCache = new Map<string, CharacterTemplate>();
 const loadPromises = new Map<string, Promise<CharacterTemplate>>();
 
+interface CharacterMeshTemplate {
+  scene: THREE.Group;
+  fitScale: number;
+  bones: CharacterBoneNames;
+}
+
+const characterMeshPromises = new Map<string, Promise<CharacterMeshTemplate>>();
+
 const SKIN_WEIGHT_WARNING = 'more than 4 skinning weights';
+
+/** Drop cached mesh/pose templates after the player equips a different store character. */
+export function clearCharacterMeshCache(): void {
+  characterMeshPromises.clear();
+  templateCache.clear();
+  loadPromises.clear();
+}
 
 function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
   const originalWarn = console.warn;
@@ -388,40 +404,70 @@ function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
   });
 }
 
-async function loadCharacterTemplateByFile(modelFile: string): Promise<CharacterTemplate> {
-  const cached = templateCache.get(modelFile);
+function loadCharacterMeshTemplateByFile(meshFile: string): Promise<CharacterMeshTemplate> {
+  const cached = characterMeshPromises.get(meshFile);
   if (cached) return cached;
 
-  const pending = loadPromises.get(modelFile);
+  const promise = (async () => {
+    const loader = new FBXLoader();
+    loader.setResourcePath(ASSET_BASE);
+    const fbx = await loadFbx(loader, assetUrl(meshFile));
+    const { scene, fitScale } = prepareModel(fbx);
+    const bones = detectBoneNames(fbx) ?? DEFAULT_BONES;
+    return { scene, fitScale, bones };
+  })();
+
+  characterMeshPromises.set(meshFile, promise);
+  return promise;
+}
+
+function templateCacheKey(poseFile: string, meshFile: string): string {
+  return `${meshFile}::${poseFile}`;
+}
+
+async function loadCharacterTemplateByFile(
+  modelFile: string,
+  meshFile: string = getActiveCharacterMeshFile(),
+): Promise<CharacterTemplate> {
+  const cacheKey = templateCacheKey(modelFile, meshFile);
+  const cached = templateCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = loadPromises.get(cacheKey);
   if (pending) return pending;
 
   const promise = (async () => {
     const loader = new FBXLoader();
     loader.setResourcePath(ASSET_BASE);
-    const fbx = await loadFbx(loader, assetUrl(modelFile));
+
+    // Same Mixamo rig: equipped store mesh + pose FBX animation clip.
+    const [meshTemplate, animFbx] = await Promise.all([
+      loadCharacterMeshTemplateByFile(meshFile),
+      loadFbx(loader, assetUrl(modelFile)),
+    ]);
+
     const oneShot = ONE_SHOT_MODEL_FILES.has(modelFile);
-    let clip = pickAnimationClip(fbx.animations);
+    let clip = pickAnimationClip(animFbx.animations);
     if (ROOT_MOTION_STRIP_MODEL_FILES.has(modelFile) && clip) {
       clip = stripRootMotionFromClip(clip);
     }
-    const { scene, fitScale } = prepareModel(fbx);
-    const bones = detectBoneNames(fbx) ?? DEFAULT_BONES;
+
     const template: CharacterTemplate = {
       modelFile,
-      scene,
+      scene: cloneSkeleton(meshTemplate.scene) as THREE.Group,
       clip,
       clipDurationSec: clip?.duration ?? 0,
-      bones,
-      fitScale,
+      bones: meshTemplate.bones,
+      fitScale: meshTemplate.fitScale,
       oneShot,
     };
-    templateCache.set(modelFile, template);
+    templateCache.set(cacheKey, template);
     return template;
   })().finally(() => {
-    loadPromises.delete(modelFile);
+    loadPromises.delete(cacheKey);
   });
 
-  loadPromises.set(modelFile, promise);
+  loadPromises.set(cacheKey, promise);
   return promise;
 }
 
@@ -504,26 +550,37 @@ export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
 export function loadGameCharacterTemplate(
   weaponId: WeaponId,
   pose: RemoteCharacterPose,
+  meshFile: string = getActiveCharacterMeshFile(),
 ): Promise<CharacterTemplate> {
-  return loadCharacterTemplateByFile(gameModelFileForWeapon(weaponId, pose));
+  return loadCharacterTemplateByFile(gameModelFileForWeapon(weaponId, pose), meshFile);
 }
 
 export function loadLobbyCharacterTemplate(): Promise<CharacterTemplate> {
   return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.lobby);
 }
 
+const IDLE_REMOTE_POSE: RemoteCharacterPose = {
+  sprinting: false,
+  walking: false,
+  walkingBackward: false,
+  jumping: false,
+  crouching: false,
+  reloading: false,
+  switchingWeapon: false,
+  meleeAttacking: false,
+};
+
 /** @deprecated Use loadGameCharacterTemplate. */
 export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<CharacterTemplate> {
-  return loadGameCharacterTemplate(weaponId, {
-    sprinting: false,
-    walking: false,
-    walkingBackward: false,
-    jumping: false,
-    crouching: false,
-    reloading: false,
-    switchingWeapon: false,
-    meleeAttacking: false,
-  });
+  return loadGameCharacterTemplate(weaponId, IDLE_REMOTE_POSE);
+}
+
+/** Idle pose template skinned with an arbitrary store character mesh. */
+export function loadGameIdleCharacterTemplateForMesh(
+  meshFile: string,
+  weaponId: WeaponId,
+): Promise<CharacterTemplate> {
+  return loadGameCharacterTemplate(weaponId, IDLE_REMOTE_POSE, meshFile);
 }
 
 /** Standing fire loop for lobby drone interaction. */
