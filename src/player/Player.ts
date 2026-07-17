@@ -41,6 +41,8 @@ import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
+import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
+import { getCharacterMeshFile } from '../content/activeCharacterMesh';
 import { EMPTY_WEAPON_SLOT } from '../../shared/loadout/loadoutSlots';
 import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
 import { GrenadeThrowKick } from './GrenadeThrowKick';
@@ -179,6 +181,9 @@ export class Player {
   private lookRigFollowsHead = false;
   private characterInstance: CharacterInstance | null = null;
   private displayedCharacterModelFile: string | null = null;
+  private displayedCharacterMeshFile: string | null = null;
+  /** Per-player store character id from the server (remotes only). */
+  private remoteSelectedCharacterId = DEFAULT_CHARACTER_ITEM_ID;
   private meleeAttackAnimConsumed = false;
   private meleeHitResolved = false;
   private weaponSwitchAnimConsumed = false;
@@ -381,11 +386,16 @@ export class Player {
     this.tickRemoteDeath();
     if (!this.alive) {
       if (this.remoteDeathActive && this.object.visible) {
+        const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
+        const deathKey = `${meshFile}::${CHARACTER_MODEL_FILES.death}`;
         if (
-          this.displayedCharacterModelFile !== CHARACTER_MODEL_FILES.death
-          && this.remoteModelLoadingFile !== CHARACTER_MODEL_FILES.death
+          !(
+            this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.death
+            && this.displayedCharacterMeshFile === meshFile
+          )
+          && this.remoteModelLoadingFile !== deathKey
         ) {
-          this.remoteModelLoadingFile = CHARACTER_MODEL_FILES.death;
+          this.remoteModelLoadingFile = deathKey;
           void this.ensureRemoteDeathModel().finally(() => {
             this.remoteModelLoadingFile = null;
           });
@@ -399,11 +409,19 @@ export class Player {
     const weaponId = this.targetActiveWeaponId;
     const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
-    if (this.displayedCharacterModelFile === modelFile && this.characterInstance) return;
-    if (this.remoteModelLoadingFile === modelFile) return;
+    const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
+    const displayKey = `${meshFile}::${modelFile}`;
+    if (
+      this.displayedCharacterModelFile === modelFile
+      && this.displayedCharacterMeshFile === meshFile
+      && this.characterInstance
+    ) {
+      return;
+    }
+    if (this.remoteModelLoadingFile === displayKey) return;
 
-    this.remoteModelLoadingFile = modelFile;
-    void loadGameCharacterTemplate(weaponId, pose)
+    this.remoteModelLoadingFile = displayKey;
+    void loadGameCharacterTemplate(weaponId, pose, meshFile)
       .then((template) => {
         this.setCharacterModel(template);
         this.applyRemoteAim();
@@ -445,11 +463,16 @@ export class Player {
 
   private async ensureRemoteDeathModel(): Promise<void> {
     if (this.camera || this.alive) return;
-    if (this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.death && this.characterInstance) {
+    const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
+    if (
+      this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.death
+      && this.displayedCharacterMeshFile === meshFile
+      && this.characterInstance
+    ) {
       return;
     }
 
-    const template = await loadDeathCharacterTemplate();
+    const template = await loadDeathCharacterTemplate(meshFile);
     this.setCharacterModel(template);
     this.loadout?.setMeshesVisible(false);
     this.remoteDeathStartedAt = performance.now() / 1000;
@@ -501,7 +524,13 @@ export class Player {
 
   setCharacterModel(template: CharacterTemplate): void {
     if (!this.pitchPivot || !this.lookRig || !this.loadout || this.camera) return;
-    if (this.displayedCharacterModelFile === template.modelFile && this.characterInstance) return;
+    if (
+      this.displayedCharacterModelFile === template.modelFile
+      && this.displayedCharacterMeshFile === template.meshFile
+      && this.characterInstance
+    ) {
+      return;
+    }
 
     if (this.lookRigFollowsHead && this.lookRig.parent) {
       this.lookRig.parent.remove(this.lookRig);
@@ -513,6 +542,7 @@ export class Player {
     this.characterInstance = createCharacterInstance(template);
     this.pitchPivot.add(this.characterInstance.root);
     this.displayedCharacterModelFile = template.modelFile;
+    this.displayedCharacterMeshFile = template.meshFile;
     this.bodyPartBones = resolveBodyPartBones(this.characterInstance.root);
     this.bindRemoteCharacterRig(template);
     this.refreshRemoteUiTopOffset();
@@ -1097,10 +1127,18 @@ export class Player {
     if (!this.camera) return { yaw: 0, pitch: 0 };
     // Use pointer-lock aim state — decomposing the world camera quaternion near
     // vertical pitch (gimbal lock) can yield unstable yaw/pitch spikes.
+    // Include live recoil/kick offsets so remotes' spine pitch tracks the same
+    // climb the local camera sees (lookPitch alone stays flat until bake-on-stop).
     if (this.aimControls) {
+      const feel = this.getActiveFeel();
+      const offset = feel?.getCameraAimOffset() ?? { pitch: 0, yaw: 0 };
       return {
-        yaw: this.aimControls.lookYaw,
-        pitch: this.aimControls.lookPitch,
+        yaw: this.aimControls.lookYaw + offset.yaw,
+        pitch: THREE.MathUtils.clamp(
+          this.aimControls.lookPitch + offset.pitch,
+          -AIM_PITCH_LIMIT,
+          AIM_PITCH_LIMIT,
+        ),
       };
     }
     this.object.updateMatrixWorld(true);
@@ -1188,6 +1226,10 @@ export class Player {
     const wasAlive = this.alive;
     this.alive = snapshot.alive;
     this.username = snapshot.username;
+    if (!this.camera) {
+      this.remoteSelectedCharacterId =
+        snapshot.selectedCharacterId || DEFAULT_CHARACTER_ITEM_ID;
+    }
 
     if (this.camera && wasAlive && !snapshot.alive) {
       this.loadout?.cancelAllReloads();
@@ -1787,6 +1829,7 @@ export class Player {
     this.characterInstance?.dispose();
     this.characterInstance = null;
     this.displayedCharacterModelFile = null;
+    this.displayedCharacterMeshFile = null;
     this.remoteWeaponMount = null;
     this.remoteKatanaAxisDebug?.dispose();
     this.remoteKatanaAxisDebug = null;

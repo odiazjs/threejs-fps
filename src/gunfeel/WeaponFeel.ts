@@ -70,6 +70,19 @@ export class WeaponFeel {
     this.kickback.applyCameraAdditive(yawRig, pitchRig);
   }
 
+  /**
+   * Total live camera kick (pattern recoil + crack springs). Used by
+   * getNetworkAim so remotes' spine tracks the same climb the shooter sees.
+   */
+  getCameraAimOffset(): { pitch: number; yaw: number } {
+    const recoil = this.recoil.getOffset();
+    const kick = this.kickback.getCameraOffset();
+    return {
+      pitch: recoil.pitch + kick.pitch,
+      yaw: recoil.yaw + kick.yaw,
+    };
+  }
+
   /** Viewmodel: additive spring kick after the pose is set for the frame. */
   applyWeaponVisual(weapon: THREE.Object3D): void {
     this.kickback.applyWeaponVisual(weapon);

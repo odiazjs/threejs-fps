@@ -342,6 +342,8 @@ function prepareModel(model: THREE.Group): { scene: THREE.Group; fitScale: numbe
 
 export interface CharacterTemplate {
   modelFile: string;
+  /** Store character mesh FBX (skin), paired with pose `modelFile`. */
+  meshFile: string;
   scene: THREE.Group;
   clip: THREE.AnimationClip | null;
   /** Clip length in seconds (0 when no clip). */
@@ -454,6 +456,7 @@ async function loadCharacterTemplateByFile(
 
     const template: CharacterTemplate = {
       modelFile,
+      meshFile,
       scene: cloneSkeleton(meshTemplate.scene) as THREE.Group,
       clip,
       clipDurationSec: clip?.duration ?? 0,
@@ -592,8 +595,10 @@ export function loadLobbyShootCharacterTemplate(weaponId: WeaponId): Promise<Cha
   return loadCharacterTemplateByFile(modelFile);
 }
 
-export function loadDeathCharacterTemplate(): Promise<CharacterTemplate> {
-  return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death);
+export function loadDeathCharacterTemplate(
+  meshFile: string = getActiveCharacterMeshFile(),
+): Promise<CharacterTemplate> {
+  return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death, meshFile);
 }
 
 export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {

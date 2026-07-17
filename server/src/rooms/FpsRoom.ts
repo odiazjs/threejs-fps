@@ -162,6 +162,8 @@ import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupResp
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, GrenadePickupState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
+import { DEFAULT_CHARACTER_ITEM_ID } from '../../../shared/content/storeItemTypes.js';
+import { readPartyMemberCosmetics } from '../lobby/partyCharacters.js';
 import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
 import { loadMapPhysicsForServer } from '../level/loadMapPhysics.js';
 
@@ -1703,10 +1705,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     player.username = username;
     const userId = this.normalizeUserId(options.userId);
+    player.selectedCharacterId = DEFAULT_CHARACTER_ITEM_ID;
     if (userId) {
       this.userIdBySession.set(client.sessionId, userId);
       registerGameUser(userId);
       await this.cacheDefaultLoadoutForSession(client.sessionId, userId);
+      const cosmetics = await readPartyMemberCosmetics([userId]);
+      player.selectedCharacterId =
+        cosmetics.get(userId)?.selectedCharacterId ?? DEFAULT_CHARACTER_ITEM_ID;
     }
     const requestedTeam = Number(options.teamId);
     if (this.isTdm()) {

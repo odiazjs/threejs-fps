@@ -24,6 +24,7 @@ export interface PlayerSnapshot {
   yaw: number;
   pitch: number;
   username: string;
+  selectedCharacterId: string;
   teamId: number;
   hp: number;
   shieldLevel: number;

@@ -66,6 +66,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     yaw: player.yaw,
     pitch: player.pitch,
     username: player.username,
+    selectedCharacterId: player.selectedCharacterId || 'basic',
     teamId: player.teamId,
     hp: player.hp,
     shieldLevel: player.shieldLevel,
