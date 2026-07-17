@@ -184,6 +184,12 @@
     linear-gradient(160deg, rgba(90, 36, 72, 0.75), rgba(18, 10, 22, 0.98));
 }
 
+.store-item-card-visual--bumblebee {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 210, 40, 0.32), transparent 60%),
+    linear-gradient(160deg, rgba(72, 52, 8, 0.85), rgba(12, 10, 8, 0.98));
+}
+
 .store-item-card-glyph {
   font-size: 1.7rem;
   color: var(--hud-cyan-soft);

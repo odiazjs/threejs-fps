@@ -30,6 +30,8 @@ function storeCardVisualClass(itemId: string): string {
       return ' store-item-card-visual--magma-fire';
     case 'pink_butterfly':
       return ' store-item-card-visual--pink-butterfly';
+    case 'bumblebee':
+      return ' store-item-card-visual--bumblebee';
     default:
       return '';
   }
@@ -45,6 +47,8 @@ function storeCardGlyph(itemId: string): string {
       return '▲';
     case 'pink_butterfly':
       return '✧';
+    case 'bumblebee':
+      return '◈';
     default:
       return '○';
   }

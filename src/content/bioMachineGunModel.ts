@@ -8,8 +8,8 @@ import {
 } from './fbxWeaponMesh';
 
 const BIO_MACHINE_GUN_MODEL_FILE = 'bio_lmg.fbx';
-/** Slightly longer barrel fit than the bio-liquid rifle for LMG silhouette. */
-const BIO_MACHINE_GUN_MESH_LENGTH = 3.8 * 1.2;
+/** Slightly longer barrel fit than the bio-liquid rifle for LMG silhouette (+20%). */
+const BIO_MACHINE_GUN_MESH_LENGTH = 3.8 * 1.2 * 1.2;
 const BIO_MACHINE_GUN_MODEL_YAW = -Math.PI / 2;
 
 const BIO_MACHINE_GUN_MESH_CONFIG = {

@@ -69,4 +69,15 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     sortOrder: 50,
     assetFile: 'character_pink_butterfly_idle.fbx',
   },
+  {
+    id: 'bumblebee',
+    type: 'new_character',
+    name: 'Bumblebee',
+    description: 'Striped strike chassis. Bold yellow-black field kit for high-visibility operators.',
+    cost: 10000,
+    defaultUnlocked: false,
+    enabled: true,
+    sortOrder: 60,
+    assetFile: 'character_bumblebee.fbx',
+  },
 ];
