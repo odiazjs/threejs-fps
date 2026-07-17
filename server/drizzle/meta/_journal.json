@@ -106,6 +106,13 @@
       "when": 1783780000000,
       "tag": "0014_bio_machine_gun",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783790000000,
+      "tag": "0015_store_characters",
+      "breakpoints": true
     }
   ]
 }

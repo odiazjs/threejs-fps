@@ -20,6 +20,36 @@ function typeLabel(type: string): string {
   return type.replaceAll('_', ' ').toUpperCase();
 }
 
+function storeCardVisualClass(itemId: string): string {
+  switch (itemId) {
+    case 'silver':
+      return ' store-item-card-visual--silver';
+    case 'tech_nature':
+      return ' store-item-card-visual--tech-nature';
+    case 'magma_fire':
+      return ' store-item-card-visual--magma-fire';
+    case 'pink_butterfly':
+      return ' store-item-card-visual--pink-butterfly';
+    default:
+      return '';
+  }
+}
+
+function storeCardGlyph(itemId: string): string {
+  switch (itemId) {
+    case 'silver':
+      return '◇';
+    case 'tech_nature':
+      return '❋';
+    case 'magma_fire':
+      return '▲';
+    case 'pink_butterfly':
+      return '✧';
+    default:
+      return '○';
+  }
+}
+
 export class StoreView {
   private items: StoreItemState[] = [];
   private selectedId: string | null = null;
@@ -245,7 +275,8 @@ export class StoreView {
           item.cost > 0
             ? `PLASMA: ${formatPlasmaMinerals(item.cost)}`
             : 'FREE';
-        const visualClass = item.id === 'silver' ? ' store-item-card-visual--silver' : '';
+        const visualClass = storeCardVisualClass(item.id);
+        const glyph = storeCardGlyph(item.id);
         return `
           <button
             type="button"
@@ -258,7 +289,7 @@ export class StoreView {
             <span class="store-item-card-name">${item.name}</span>
             <span class="store-item-card-type">${typeLabel(item.type)}</span>
             <div class="store-item-card-visual${visualClass}" aria-hidden="true">
-              <span class="store-item-card-glyph">${item.id === 'silver' ? '◇' : '○'}</span>
+              <span class="store-item-card-glyph">${glyph}</span>
             </div>
             <div class="store-item-card-footer">
               <span class="store-item-card-price">${price}</span>
@@ -302,7 +333,9 @@ export class StoreView {
     }
 
     this.syncActionButtons(item);
-    await this.scene?.showAsset(item.assetFile);
+    await this.scene?.showAsset(item.assetFile, {
+      playShowcaseIdle: isEquipableCharacterType(item.type),
+    });
   }
 
   private syncActionButtons(item: StoreItemState): void {

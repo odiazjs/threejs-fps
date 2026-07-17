@@ -7,6 +7,9 @@ const DEFAULT_MESH_FILE = 'character_basic_tpose.fbx';
 const DEFAULT_MESH_BY_ID: Readonly<Record<string, string>> = {
   basic: 'character_basic_tpose.fbx',
   silver: 'character_silver_tpose.fbx',
+  tech_nature: 'character_tech_nature.fbx',
+  magma_fire: 'character_magma_fire.fbx',
+  pink_butterfly: 'character_pink_butterfly.fbx',
 };
 
 let activeCharacterId = DEFAULT_CHARACTER_ITEM_ID;

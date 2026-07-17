@@ -5,9 +5,48 @@ import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from '../weapons/disposeMesh';
 
 const ASSET_BASE = '/3d/';
+const SHOWCASE_IDLE_FILE = 'character_showcase_idle.fbx';
 const SHOWCASE_TARGET_HEIGHT = 2.35;
+const DEFAULT_CAMERA_X = 0.85;
 const DEFAULT_CAMERA_Z = 4.6;
 const DEFAULT_CAMERA_Y = 1.05;
+/** Character pedestal yaw — three-quarter view toward the camera. */
+const CHARACTER_YAW_RAD = (45 * Math.PI) / 180;
+/** Pull the character camera back vs default framing. */
+const CHARACTER_CAMERA_ZOOM_OUT = 1.25;
+
+export type StorePreviewOptions = {
+  /** Play the shared showcase idle clip (character unlockables). */
+  playShowcaseIdle?: boolean;
+};
+
+function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
+  if (animations.length === 0) return null;
+  return (
+    animations.find((clip) => /idle|showcase|stand/i.test(clip.name)) ??
+    animations[0] ??
+    null
+  );
+}
+
+/** Drop hips/root translation so the pedestal character stays planted. */
+function stripRootMotionFromClip(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const tracks = clip.tracks.filter((track) => {
+    const dot = track.name.indexOf('.');
+    if (dot === -1) return true;
+    const boneName = track.name.slice(0, dot).replace(/^mixamorig:?/i, '');
+    const property = track.name.slice(dot + 1);
+    if (property !== 'position') return true;
+    return !/^(Hips|Root)$/i.test(boneName);
+  });
+  return new THREE.AnimationClip(clip.name, clip.duration, tracks);
+}
+
+function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
+  return new Promise((resolve, reject) => {
+    loader.load(url, (object) => resolve(object as THREE.Group), undefined, reject);
+  });
+}
 
 export class StorePreviewScene {
   private readonly scene = new THREE.Scene();
@@ -15,9 +54,14 @@ export class StorePreviewScene {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly controls: OrbitControls;
   private readonly modelPivot = new THREE.Group();
+  private readonly clock = new THREE.Clock();
   private readonly resizeObserver: ResizeObserver;
   private currentModel: THREE.Object3D | null = null;
   private currentAssetKey: string | null = null;
+  private currentPlayIdle = false;
+  private mixer: THREE.AnimationMixer | null = null;
+  private showcaseIdleClip: THREE.AnimationClip | null = null;
+  private showcaseIdlePromise: Promise<THREE.AnimationClip | null> | null = null;
   private loadToken = 0;
   private animationId = 0;
   private disposed = false;
@@ -34,7 +78,7 @@ export class StorePreviewScene {
     });
 
     this.camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.05, 100);
-    this.camera.position.set(0.85, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
+    this.camera.position.set(DEFAULT_CAMERA_X, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -83,6 +127,8 @@ export class StorePreviewScene {
     window.addEventListener('resize', this.onResize);
     this.syncViewport();
     this.scheduleReadyAfterRender();
+    // Warm the showcase clip so the first character preview is snappy.
+    void this.loadShowcaseIdleClip();
     this.loop();
   }
 
@@ -98,44 +144,58 @@ export class StorePreviewScene {
     });
   }
 
-  async showAsset(assetFile: string | null): Promise<void> {
+  async showAsset(assetFile: string | null, options: StorePreviewOptions = {}): Promise<void> {
     const key = assetFile?.trim() || '';
+    const playIdle = Boolean(options.playShowcaseIdle);
     if (!key) {
       this.clearModel();
       this.currentAssetKey = null;
+      this.currentPlayIdle = false;
       return;
     }
-    if (key === this.currentAssetKey && this.currentModel) return;
+    if (key === this.currentAssetKey && this.currentModel && playIdle === this.currentPlayIdle) {
+      return;
+    }
 
     const token = ++this.loadToken;
     const loader = new FBXLoader();
     loader.setResourcePath(ASSET_BASE);
 
     try {
-      const fbx = await new Promise<THREE.Group>((resolve, reject) => {
-        loader.load(
-          `${ASSET_BASE}${encodeURIComponent(key)}`,
-          (object) => resolve(object as THREE.Group),
-          undefined,
-          reject,
-        );
-      });
+      const [fbx, idleClip] = await Promise.all([
+        loadFbx(loader, `${ASSET_BASE}${encodeURIComponent(key)}`),
+        playIdle ? this.loadShowcaseIdleClip() : Promise.resolve(null),
+      ]);
       if (this.disposed || token !== this.loadToken) {
         disposeObject3D(fbx);
         return;
       }
 
       this.clearModel();
-      const fitted = this.fitModel(fbx);
+
+      let mixer: THREE.AnimationMixer | null = null;
+      if (playIdle && idleClip) {
+        mixer = new THREE.AnimationMixer(fbx);
+        const action = mixer.clipAction(idleClip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.play();
+        // Pose before fitting so framing matches the idle stance, not T-pose.
+        mixer.update(0);
+      }
+
+      const fitted = this.fitModel(fbx, playIdle ? CHARACTER_YAW_RAD : 0);
       this.modelPivot.add(fitted);
       this.currentModel = fitted;
       this.currentAssetKey = key;
-      this.resetOrbit();
+      this.currentPlayIdle = playIdle;
+      this.mixer = mixer;
+      this.resetOrbit(playIdle ? CHARACTER_CAMERA_ZOOM_OUT : 1);
     } catch (error) {
       console.warn('[StorePreviewScene] Failed to load asset', key, error);
       if (token === this.loadToken) {
         this.clearModel();
         this.currentAssetKey = null;
+        this.currentPlayIdle = false;
       }
     }
   }
@@ -171,7 +231,36 @@ export class StorePreviewScene {
     this.renderer.domElement.remove();
   }
 
-  private fitModel(model: THREE.Group): THREE.Group {
+  private async loadShowcaseIdleClip(): Promise<THREE.AnimationClip | null> {
+    if (this.showcaseIdleClip) return this.showcaseIdleClip;
+    if (this.showcaseIdlePromise) return this.showcaseIdlePromise;
+
+    this.showcaseIdlePromise = (async () => {
+      const loader = new FBXLoader();
+      loader.setResourcePath(ASSET_BASE);
+      const fbx = await loadFbx(
+        loader,
+        `${ASSET_BASE}${encodeURIComponent(SHOWCASE_IDLE_FILE)}`,
+      );
+      const raw = pickAnimationClip(fbx.animations);
+      const clip = raw ? stripRootMotionFromClip(raw) : null;
+      // Animation-only FBX — dispose mesh data; keep the clip.
+      disposeObject3D(fbx);
+      this.showcaseIdleClip = clip;
+      return clip;
+    })()
+      .catch((error) => {
+        console.warn('[StorePreviewScene] Failed to load showcase idle', error);
+        return null;
+      })
+      .finally(() => {
+        this.showcaseIdlePromise = null;
+      });
+
+    return this.showcaseIdlePromise;
+  }
+
+  private fitModel(model: THREE.Group, yawRad = 0): THREE.Group {
     model.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.castShadow = true;
@@ -179,8 +268,7 @@ export class StorePreviewScene {
       }
     });
 
-    // Face the camera (Mixamo / FBX usually faces +Z toward the lens after fit).
-    model.rotation.y = 0;
+    model.rotation.y = yawRad;
     model.updateMatrixWorld(true);
 
     const bounds = new THREE.Box3().setFromObject(model);
@@ -199,14 +287,20 @@ export class StorePreviewScene {
   }
 
   private clearModel(): void {
+    this.mixer?.stopAllAction();
+    this.mixer = null;
     if (!this.currentModel) return;
     disposeObject3D(this.currentModel);
     this.currentModel = null;
   }
 
-  private resetOrbit(): void {
+  private resetOrbit(zoomOut = 1): void {
     this.controls.target.set(0, 0.95, 0);
-    this.camera.position.set(0.85, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
+    this.camera.position.set(
+      DEFAULT_CAMERA_X * zoomOut,
+      DEFAULT_CAMERA_Y,
+      DEFAULT_CAMERA_Z * zoomOut,
+    );
     this.controls.update();
   }
 
@@ -229,6 +323,8 @@ export class StorePreviewScene {
   private loop = (): void => {
     if (this.disposed) return;
     this.animationId = requestAnimationFrame(this.loop);
+    const delta = this.clock.getDelta();
+    this.mixer?.update(delta);
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   };

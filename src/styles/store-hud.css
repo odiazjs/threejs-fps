@@ -166,6 +166,24 @@
     linear-gradient(160deg, rgba(90, 100, 120, 0.55), rgba(24, 28, 36, 0.98));
 }
 
+.store-item-card-visual--tech-nature {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(80, 220, 140, 0.28), transparent 60%),
+    linear-gradient(160deg, rgba(28, 72, 52, 0.75), rgba(10, 18, 22, 0.98));
+}
+
+.store-item-card-visual--magma-fire {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 120, 40, 0.32), transparent 60%),
+    linear-gradient(160deg, rgba(90, 32, 18, 0.8), rgba(18, 10, 10, 0.98));
+}
+
+.store-item-card-visual--pink-butterfly {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255, 140, 210, 0.3), transparent 60%),
+    linear-gradient(160deg, rgba(90, 36, 72, 0.75), rgba(18, 10, 22, 0.98));
+}
+
 .store-item-card-glyph {
   font-size: 1.7rem;
   color: var(--hud-cyan-soft);
