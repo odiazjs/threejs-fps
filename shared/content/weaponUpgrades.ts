@@ -205,6 +205,15 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     adsTime: 0.22,
     fireRate: 7,
   },
+  bio_machine_gun: {
+    damage: 11,
+    recoil: 72,
+    range: 72,
+    magazineSize: 80,
+    reloadTime: 3.6,
+    adsTime: 0.34,
+    fireRate: 13,
+  },
   plasma_shotgun: {
     damage: 10,
     recoil: 88,

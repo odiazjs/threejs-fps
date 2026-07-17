@@ -45,6 +45,7 @@ function weaponTypeLabel(weaponId: string): string {
     plasma_rifle: 'RIFLE',
     root_bio_carbine: 'CARBINE',
     bio_liquid_rifle: 'RIFLE',
+    bio_machine_gun: 'LMG',
     plasma_shotgun: 'SHOTGUN',
     sniper_rifle: 'SNIPER',
     katana: 'MELEE',

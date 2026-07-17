@@ -10,6 +10,7 @@ const SHOWCASE_WEAPON_IDS: WeaponId[] = [
   'plasma_rifle',
   'root_bio_carbine',
   'bio_liquid_rifle',
+  'bio_machine_gun',
   'plasma_shotgun',
   'sniper_rifle',
   'katana',
@@ -95,6 +96,23 @@ export class WeaponsScene {
         if (!weaponId) return;
         if (button.classList.contains('active') && weaponId === this.currentWeaponId) return;
         void this.selectWeapon(weaponId as WeaponId, button);
+      });
+    }
+
+    const categoryTabs = [
+      ...pickerRoot.querySelectorAll<HTMLButtonElement>('.armory-category-tab'),
+    ];
+    for (const tab of categoryTabs) {
+      tab.addEventListener('click', () => {
+        const category = tab.dataset.category ?? 'all';
+        for (const entry of categoryTabs) {
+          entry.classList.toggle('is-active', entry === tab);
+        }
+        for (const button of this.pickerButtons) {
+          const match =
+            category === 'all' || (button.dataset.category ?? '') === category;
+          button.hidden = !match;
+        }
       });
     }
 

@@ -132,6 +132,7 @@ export interface WeaponFeelProfile {
 export type WeaponArchetype =
   | 'pistol'
   | 'ar'
+  | 'lmg'
   | 'burst'
   | 'sniper'
   | 'shotgun'
@@ -235,6 +236,53 @@ const AR_FEEL: WeaponFeelProfile = {
     breath: null,
   },
   juice: { screenFlash: 0, smokeShotsToPrime: 6, smokeDurationSec: 1.1 },
+};
+
+/** Light machine gun: heavy barrel, sustained vibration, slow to settle. */
+const LMG_FEEL: WeaponFeelProfile = {
+  recoil: {
+    bloom: 0.11,
+    recoveryDelaySec: 0.12,
+    recoveryDurationSec: 0.4,
+    recoveryCurve: 'easeOutQuart',
+    aimSmoothSpeed: 14,
+    smoothingThreshold: 1.7,
+    smoothingStrength: 0.4,
+  },
+  kickback: {
+    // Slower springs so mag dumps feel like a vibrating platform.
+    weaponSpring: { stiffness: 620, dampingRatio: 0.92 },
+    cameraSpring: { stiffness: 700, dampingRatio: 0.95 },
+    kickBack: 4.2,
+    kickUp: 0.7,
+    kickPitch: 11,
+    kickYawJitter: 2.8,
+    kickRoll: 3.2,
+    maxBack: 0.14,
+    maxPitch: 0.38,
+    cameraPitch: 1.15,
+    cameraYawJitter: 0.42,
+    adsScale: 0.55,
+  },
+  sway: {
+    idleAmp: 0.0034,
+    idleRotAmp: 0.0036,
+    idleFreq: 0.38,
+    noiseAmp: 0.5,
+    walkAmpMultiplier: 2.5,
+    walkFreqMultiplier: 2.3,
+    adsScale: 0.28,
+    moveSwayAmp: 0.028,
+    moveSwaySmoothing: 6.5,
+    lookLag: {
+      spring: { stiffness: 220, dampingRatio: 0.88 },
+      weight: 0.72,
+      maxRad: 0.12,
+      posPerRad: 0.2,
+    },
+    breath: null,
+  },
+  juice: { screenFlash: 0.04, smokeShotsToPrime: 8, smokeDurationSec: 1.6 },
 };
 
 /** Burst weapon: violent 3-hit micro-kick stack, hard pause, fast reset. */
@@ -433,6 +481,7 @@ const MELEE_FEEL: WeaponFeelProfile = {
 export const ARCHETYPE_FEEL: Record<WeaponArchetype, WeaponFeelProfile> = {
   pistol: PISTOL_FEEL,
   ar: AR_FEEL,
+  lmg: LMG_FEEL,
   burst: BURST_FEEL,
   sniper: SNIPER_FEEL,
   shotgun: SHOTGUN_FEEL,
@@ -447,6 +496,7 @@ export const WEAPON_ARCHETYPES: Record<WeaponId, WeaponArchetype> = {
   pistol: 'pistol',
   plasma_rifle: 'ar',
   bio_liquid_rifle: 'ar',
+  bio_machine_gun: 'lmg',
   root_bio_carbine: 'burst',
   sniper_rifle: 'sniper',
   plasma_shotgun: 'shotgun',

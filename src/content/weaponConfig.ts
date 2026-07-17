@@ -463,6 +463,95 @@ export const BIO_LIQUID_RIFLE_CONFIG: WeaponConfig = {
   },
 };
 
+function buildBioMachineGunRecoilPattern(): RecoilKick[] {
+  // Long sustained climb — LMG mag dump keeps climbing harder late mag.
+  const pattern: RecoilKick[] = [];
+  for (let i = 0; i < 48; i++) {
+    const t = i / 47;
+    const pitch = 0.028 + t * 0.038;
+    let yaw: number;
+    if (i < 10) {
+      yaw = 0.009;
+    } else if (i < 22) {
+      yaw = -0.011;
+    } else if (i < 34) {
+      yaw = 0.012;
+    } else {
+      yaw = -0.01 + (i % 3 === 0 ? 0.004 : -0.003);
+    }
+    pattern.push({ pitch, yaw });
+  }
+  return pattern;
+}
+
+/** Bio LMG — high RoF, high damage, heavy sustained recoil, slow ADS/reload. */
+export const BIO_MACHINE_GUN_CONFIG: WeaponConfig = {
+  id: 'bio_machine_gun',
+  name: 'Bio Machine Gun',
+  clipSize: SHIPPED_WEAPON_BASE_STATS.bio_machine_gun.magazineSize,
+  reloadSec: WEAPON_RELOAD_SEC.bio_machine_gun,
+  reserveClips: 2,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.bio_machine_gun.fireRate,
+  fireMode: 'auto',
+  damage: WEAPON_DAMAGE.bio_machine_gun,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.bio_machine_gun.adsTime,
+  projectileSpeed: 310,
+  projectileStyle: 'bioLiquid',
+  projectileGravity: 18,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.bio_machine_gun,
+  moveSpeedMultiplier: 0.9,
+  view: {
+    hip: { x: 0.17, y: -0.27, z: -0.4 },
+    ads: { x: 0, y: -0.175, z: -0.24 },
+    adsFov: 58,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
+  },
+  recoil: {
+    pattern: buildBioMachineGunRecoilPattern(),
+    recoverySpeed: 6.2,
+    recoveryDelaySec: 0.12,
+    aimSmoothSpeed: 15,
+    adsMultiplier: 0.62,
+    yawScale: 1.2,
+    visualKick: 0.95,
+    visualRecoverySpeed: 9,
+    adsVisualMultiplier: 0.55,
+    visualStyle: {
+      rotX: 0.5,
+      rotYFromYaw: -0.18,
+      rotZ: -0.16,
+      posXFromYaw: -0.045,
+      posY: -0.045,
+      posZ: 0,
+      kickBack: 0.28,
+      kickUp: -0.035,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.2,
+    duration: 0.09,
+    particleCount: 18,
+    particleSpeed: 12,
+    particleSpread: 1.1,
+    colors: [0xc8ff4a, 0x6dff7a, 0x28b84a],
+    lightIntensity: 2.8,
+    lightDistance: 3.8,
+    glowScale: 0.6,
+    glowLayers: 2,
+    particleSizeScale: 0.14,
+    particleFall: 18,
+  },
+  sway: { intensity: 1.25 },
+  sounds: {
+    singleShot: { src: '/sounds/bio_lmg_auto_2.wav', reverbLevel: 0 },
+    autoShot: { src: '/sounds/bio_lmg_auto_2.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/lmg_reload.wav', reverbLevel: 0 },
+    volume: 0.7,
+  },
+};
+
 function buildPlasmaShotgunRecoilPattern(): RecoilKick[] {
   // Heavy pump kick — one hard punch with a little yaw sway across the mag.
   return Array.from({ length: 4 }, (_, i) => ({
@@ -559,6 +648,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   sniper_rifle: SNIPER_RIFLE_CONFIG,
   root_bio_carbine: ROOT_BIO_CARBINE_CONFIG,
   bio_liquid_rifle: BIO_LIQUID_RIFLE_CONFIG,
+  bio_machine_gun: BIO_MACHINE_GUN_CONFIG,
   plasma_shotgun: PLASMA_SHOTGUN_CONFIG,
   katana: KATANA_CONFIG,
 };
@@ -570,6 +660,7 @@ export const PICKABLE_WEAPON_CONFIGS = [
   SNIPER_RIFLE_CONFIG,
   ROOT_BIO_CARBINE_CONFIG,
   BIO_LIQUID_RIFLE_CONFIG,
+  BIO_MACHINE_GUN_CONFIG,
   PLASMA_SHOTGUN_CONFIG,
 ] as const;
 

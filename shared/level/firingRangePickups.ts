@@ -30,7 +30,7 @@ const FIRING_RANGE_WEAPON_LOADOUT: readonly WeaponId[] = [
   'pistol',
   'plasma_shotgun',
   'sniper_rifle',
-  'sniper_rifle',
+  'bio_machine_gun',
   'plasma_rifle',
   'bio_liquid_rifle',
 ];

@@ -7,6 +7,8 @@ export const WEAPON_DAMAGE: Record<WeaponId, number> = {
   sniper_rifle: 90,
   root_bio_carbine: 8,
   bio_liquid_rifle: 16,
+  /** Sustained LMG punch — higher than AR, below bio-liquid single hits. */
+  bio_machine_gun: 11,
   /** Per-pellet damage — a full 6-pellet body hit is 6× this. */
   plasma_shotgun: 10,
   katana: 44,
@@ -18,6 +20,7 @@ export const WEAPON_RELOAD_SEC: Record<WeaponId, number> = {
   sniper_rifle: 2.75,
   root_bio_carbine: 1.9,
   bio_liquid_rifle: 1.9,
+  bio_machine_gun: 3.6,
   plasma_shotgun: 3.5,
   katana: 0,
 };
@@ -28,6 +31,7 @@ export const WEAPON_MAX_HIT_DISTANCE: Record<WeaponId, number> = {
   sniper_rifle: 220,
   root_bio_carbine: 80,
   bio_liquid_rifle: 70,
+  bio_machine_gun: 72,
   plasma_shotgun: 38,
   katana: 2.8,
 };
@@ -38,6 +42,7 @@ export const WEAPON_FIRE_MODE: Record<WeaponId, WeaponFireMode> = {
   sniper_rifle: 'semi',
   root_bio_carbine: 'burst',
   bio_liquid_rifle: 'auto',
+  bio_machine_gun: 'auto',
   plasma_shotgun: 'semi',
   katana: 'melee',
 };
