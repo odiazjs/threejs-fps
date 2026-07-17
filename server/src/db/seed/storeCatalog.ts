@@ -67,6 +67,6 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: false,
     enabled: true,
     sortOrder: 50,
-    assetFile: 'character_pink_butterfly.fbx',
+    assetFile: 'character_pink_butterfly_idle.fbx',
   },
 ];

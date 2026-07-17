@@ -15,10 +15,26 @@ const CHARACTER_YAW_RAD = (45 * Math.PI) / 180;
 /** Pull the character camera back vs default framing. */
 const CHARACTER_CAMERA_ZOOM_OUT = 1.25;
 
+/**
+ * Characters with a mismatched bind pose vs the shared showcase idle need a
+ * per-mesh Mixamo export. Convention: `character_foo.fbx` → `character_foo_idle.fbx`.
+ */
+const PER_MESH_IDLE_FILES: Readonly<Record<string, string>> = {
+  'character_magma_fire.fbx': 'character_magma_fire_idle.fbx',
+  'character_tech_nature.fbx': 'character_tech_nature_idle.fbx',
+};
+
 export type StorePreviewOptions = {
-  /** Play the shared showcase idle clip (character unlockables). */
+  /** Play a store idle clip (character unlockables). */
   playShowcaseIdle?: boolean;
 };
+
+/** Prefer a per-mesh idle when authored; otherwise the shared showcase clip. */
+function idleFileForMesh(meshFile: string): string {
+  // Mesh exported with idle baked in (`*_idle.fbx`) — clip lives on the same file.
+  if (/_idle\.fbx$/i.test(meshFile)) return meshFile;
+  return PER_MESH_IDLE_FILES[meshFile] ?? SHOWCASE_IDLE_FILE;
+}
 
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
@@ -58,10 +74,11 @@ export class StorePreviewScene {
   private readonly resizeObserver: ResizeObserver;
   private currentModel: THREE.Object3D | null = null;
   private currentAssetKey: string | null = null;
+  private currentIdleFile: string | null = null;
   private currentPlayIdle = false;
   private mixer: THREE.AnimationMixer | null = null;
-  private showcaseIdleClip: THREE.AnimationClip | null = null;
-  private showcaseIdlePromise: Promise<THREE.AnimationClip | null> | null = null;
+  private readonly idleClipCache = new Map<string, THREE.AnimationClip>();
+  private readonly idleClipPromises = new Map<string, Promise<THREE.AnimationClip | null>>();
   private loadToken = 0;
   private animationId = 0;
   private disposed = false;
@@ -127,8 +144,8 @@ export class StorePreviewScene {
     window.addEventListener('resize', this.onResize);
     this.syncViewport();
     this.scheduleReadyAfterRender();
-    // Warm the showcase clip so the first character preview is snappy.
-    void this.loadShowcaseIdleClip();
+    // Warm the default showcase clip so the first character preview is snappy.
+    void this.loadIdleClip(SHOWCASE_IDLE_FILE);
     this.loop();
   }
 
@@ -147,13 +164,20 @@ export class StorePreviewScene {
   async showAsset(assetFile: string | null, options: StorePreviewOptions = {}): Promise<void> {
     const key = assetFile?.trim() || '';
     const playIdle = Boolean(options.playShowcaseIdle);
+    const idleFile = playIdle ? idleFileForMesh(key) : null;
     if (!key) {
       this.clearModel();
       this.currentAssetKey = null;
+      this.currentIdleFile = null;
       this.currentPlayIdle = false;
       return;
     }
-    if (key === this.currentAssetKey && this.currentModel && playIdle === this.currentPlayIdle) {
+    if (
+      key === this.currentAssetKey &&
+      this.currentModel &&
+      playIdle === this.currentPlayIdle &&
+      idleFile === this.currentIdleFile
+    ) {
       return;
     }
 
@@ -162,14 +186,21 @@ export class StorePreviewScene {
     loader.setResourcePath(ASSET_BASE);
 
     try {
-      const [fbx, idleClip] = await Promise.all([
+      const useEmbeddedIdle = Boolean(idleFile && idleFile === key);
+      const [fbx, separateIdleClip] = await Promise.all([
         loadFbx(loader, `${ASSET_BASE}${encodeURIComponent(key)}`),
-        playIdle ? this.loadShowcaseIdleClip() : Promise.resolve(null),
+        idleFile && !useEmbeddedIdle
+          ? this.loadIdleClip(idleFile)
+          : Promise.resolve(null),
       ]);
       if (this.disposed || token !== this.loadToken) {
         disposeObject3D(fbx);
         return;
       }
+
+      const embedded = useEmbeddedIdle ? pickAnimationClip(fbx.animations) : null;
+      const idleClip =
+        (embedded ? stripRootMotionFromClip(embedded) : null) ?? separateIdleClip;
 
       this.clearModel();
 
@@ -187,6 +218,7 @@ export class StorePreviewScene {
       this.modelPivot.add(fitted);
       this.currentModel = fitted;
       this.currentAssetKey = key;
+      this.currentIdleFile = idleFile;
       this.currentPlayIdle = playIdle;
       this.mixer = mixer;
       this.resetOrbit(playIdle ? CHARACTER_CAMERA_ZOOM_OUT : 1);
@@ -195,6 +227,7 @@ export class StorePreviewScene {
       if (token === this.loadToken) {
         this.clearModel();
         this.currentAssetKey = null;
+        this.currentIdleFile = null;
         this.currentPlayIdle = false;
       }
     }
@@ -231,33 +264,38 @@ export class StorePreviewScene {
     this.renderer.domElement.remove();
   }
 
-  private async loadShowcaseIdleClip(): Promise<THREE.AnimationClip | null> {
-    if (this.showcaseIdleClip) return this.showcaseIdleClip;
-    if (this.showcaseIdlePromise) return this.showcaseIdlePromise;
+  private async loadIdleClip(idleFile: string): Promise<THREE.AnimationClip | null> {
+    const cached = this.idleClipCache.get(idleFile);
+    if (cached) return cached;
 
-    this.showcaseIdlePromise = (async () => {
+    const pending = this.idleClipPromises.get(idleFile);
+    if (pending) return pending;
+
+    const promise = (async () => {
       const loader = new FBXLoader();
       loader.setResourcePath(ASSET_BASE);
-      const fbx = await loadFbx(
-        loader,
-        `${ASSET_BASE}${encodeURIComponent(SHOWCASE_IDLE_FILE)}`,
-      );
+      const fbx = await loadFbx(loader, `${ASSET_BASE}${encodeURIComponent(idleFile)}`);
       const raw = pickAnimationClip(fbx.animations);
       const clip = raw ? stripRootMotionFromClip(raw) : null;
-      // Animation-only FBX — dispose mesh data; keep the clip.
+      // Animation FBX — dispose mesh data; keep the clip.
       disposeObject3D(fbx);
-      this.showcaseIdleClip = clip;
+      if (clip) this.idleClipCache.set(idleFile, clip);
       return clip;
     })()
       .catch((error) => {
-        console.warn('[StorePreviewScene] Failed to load showcase idle', error);
+        console.warn('[StorePreviewScene] Failed to load idle clip', idleFile, error);
+        // Per-mesh idle missing → fall back to shared showcase clip.
+        if (idleFile !== SHOWCASE_IDLE_FILE) {
+          return this.loadIdleClip(SHOWCASE_IDLE_FILE);
+        }
         return null;
       })
       .finally(() => {
-        this.showcaseIdlePromise = null;
+        this.idleClipPromises.delete(idleFile);
       });
 
-    return this.showcaseIdlePromise;
+    this.idleClipPromises.set(idleFile, promise);
+    return promise;
   }
 
   private fitModel(model: THREE.Group, yawRad = 0): THREE.Group {

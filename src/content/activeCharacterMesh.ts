@@ -9,7 +9,7 @@ const DEFAULT_MESH_BY_ID: Readonly<Record<string, string>> = {
   silver: 'character_silver_tpose.fbx',
   tech_nature: 'character_tech_nature.fbx',
   magma_fire: 'character_magma_fire.fbx',
-  pink_butterfly: 'character_pink_butterfly.fbx',
+  pink_butterfly: 'character_pink_butterfly_idle.fbx',
 };
 
 let activeCharacterId = DEFAULT_CHARACTER_ITEM_ID;
