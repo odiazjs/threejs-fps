@@ -7,8 +7,6 @@ const MAX_FLOAT_PX = 7;
 const FLOAT_PX_PER_SEC = 18;
 const MAX_HORIZONTAL_OFFSET_PX = 52;
 const BASE_VERTICAL_OFFSET_PX = 4;
-/** World-space anchor height — 75% lower than the original pivot. */
-export const DAMAGE_NUMBER_HEIGHT_SCALE = 0.25;
 const REF_DISTANCE = 12;
 const MIN_SCALE = 0.85;
 const MAX_SCALE = 1.5;
@@ -43,7 +41,7 @@ export class DamageNumberStack {
   private bump = 0;
   private layoutScale = 1;
   private offsetX = 0;
-  private headTopOffset = 0.22 * DAMAGE_NUMBER_HEIGHT_SCALE;
+  private headTopOffset = 0.22;
 
   constructor() {
     this.root = document.createElement('div');

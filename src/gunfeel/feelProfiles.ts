@@ -120,6 +120,12 @@ export interface JuiceFeel {
   readonly smokeShotsToPrime: number;
   /** How long the barrel keeps smoking after fire stops. */
   readonly smokeDurationSec: number;
+  /** Barrel-smoke opacity multiplier (default 1). */
+  readonly smokeOpacityScale?: number;
+  /** Barrel-smoke particle size multiplier (default 1). */
+  readonly smokeSizeScale?: number;
+  /** Emit denser smoke while trail is active (default 1). */
+  readonly smokeDensityScale?: number;
 }
 
 export interface WeaponFeelProfile {
@@ -528,6 +534,17 @@ const WEAPON_FEEL_OVERRIDES: Partial<Record<WeaponId, FeelOverride>> = {
       },
     },
     juice: { screenFlash: 0.05, smokeShotsToPrime: 5, smokeDurationSec: 1.3 },
+  },
+  // Heavy bio LMG — thick lingering barrel smoke after sustained fire.
+  bio_machine_gun: {
+    juice: {
+      screenFlash: 0.07,
+      smokeShotsToPrime: 4,
+      smokeDurationSec: 2.8,
+      smokeOpacityScale: 2.4,
+      smokeSizeScale: 2.0,
+      smokeDensityScale: 2.0,
+    },
   },
 };
 

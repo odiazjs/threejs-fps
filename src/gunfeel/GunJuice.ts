@@ -136,19 +136,21 @@ export class GunJuice {
     }
 
     /* ---- emit ---- */
+    const densityScale = Math.max(0.25, this.feel.smokeDensityScale ?? 1);
+    const emitInterval = SMOKE_EMIT_INTERVAL_SEC / densityScale;
     if (this.smokeEmitTimeLeft > 0 && muzzleWorldPos) {
       this.smokeEmitTimeLeft -= delta;
       this.smokeEmitCooldown -= delta;
       while (this.smokeEmitCooldown <= 0 && this.particles.length < SMOKE_MAX_PARTICLES) {
-        this.smokeEmitCooldown += SMOKE_EMIT_INTERVAL_SEC;
+        this.smokeEmitCooldown += emitInterval;
         this.particles.push({
           age: 0,
-          x: muzzleWorldPos.x + (Math.random() - 0.5) * 0.015,
-          y: muzzleWorldPos.y + (Math.random() - 0.5) * 0.015,
-          z: muzzleWorldPos.z + (Math.random() - 0.5) * 0.015,
-          vx: (Math.random() - 0.5) * 0.12,
-          vy: SMOKE_RISE_SPEED * (0.7 + Math.random() * 0.6),
-          vz: (Math.random() - 0.5) * 0.12,
+          x: muzzleWorldPos.x + (Math.random() - 0.5) * 0.02,
+          y: muzzleWorldPos.y + (Math.random() - 0.5) * 0.02,
+          z: muzzleWorldPos.z + (Math.random() - 0.5) * 0.02,
+          vx: (Math.random() - 0.5) * 0.16 * densityScale,
+          vy: SMOKE_RISE_SPEED * (0.75 + Math.random() * 0.7),
+          vz: (Math.random() - 0.5) * 0.16 * densityScale,
         });
       }
     } else {
@@ -188,8 +190,10 @@ export class GunJuice {
       const meanAge =
         this.particles.reduce((sum, particle) => sum + particle.age, 0) / this.particles.length;
       const life = 1 - meanAge / SMOKE_LIFE_SEC;
-      this.material.opacity = 0.16 * Math.max(0.15, life);
-      this.material.size = SMOKE_BASE_SIZE * (1 + meanAge * 1.6);
+      const opacityScale = this.feel.smokeOpacityScale ?? 1;
+      const sizeScale = this.feel.smokeSizeScale ?? 1;
+      this.material.opacity = 0.16 * opacityScale * Math.max(0.15, life);
+      this.material.size = SMOKE_BASE_SIZE * sizeScale * (1 + meanAge * 1.6);
     }
     this.points.visible = alive > 0;
   }

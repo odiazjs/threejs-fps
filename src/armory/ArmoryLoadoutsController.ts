@@ -68,11 +68,19 @@ export class ArmoryLoadoutsController {
   private editingSlot: LoadoutSlot = 'primary';
   private draft: DraftLoadout | null = null;
   private busy = false;
+  private dragPointerId: number | null = null;
+  private dragStartX = 0;
+  private dragStartScrollLeft = 0;
+  private dragMoved = false;
   private readonly slotsEl: HTMLElement | null;
   private readonly onPickerClick: (event: Event) => void;
   private readonly onGridClick: (event: Event) => void;
   private readonly onSlotsClick: (event: Event) => void;
   private readonly onGridInput: (event: Event) => void;
+  private readonly onGridWheel: (event: WheelEvent) => void;
+  private readonly onGridPointerDown: (event: PointerEvent) => void;
+  private readonly onGridPointerMove: (event: PointerEvent) => void;
+  private readonly onGridPointerUp: (event: PointerEvent) => void;
   private readonly onCreateClick: () => void;
   private readonly onSaveClick: () => void;
 
@@ -89,6 +97,10 @@ export class ArmoryLoadoutsController {
     this.onGridClick = (event) => this.handleGridClick(event);
     this.onSlotsClick = (event) => this.handleSlotsClick(event);
     this.onGridInput = (event) => this.handleGridInput(event);
+    this.onGridWheel = (event) => this.handleGridWheel(event);
+    this.onGridPointerDown = (event) => this.handleGridPointerDown(event);
+    this.onGridPointerMove = (event) => this.handleGridPointerMove(event);
+    this.onGridPointerUp = (event) => this.handleGridPointerUp(event);
     this.onCreateClick = () => {
       void this.createLoadout();
     };
@@ -101,6 +113,11 @@ export class ArmoryLoadoutsController {
     this.picker.addEventListener('click', this.onPickerClick);
     this.grid.addEventListener('click', this.onGridClick);
     this.grid.addEventListener('input', this.onGridInput);
+    this.grid.addEventListener('wheel', this.onGridWheel, { passive: false });
+    this.grid.addEventListener('pointerdown', this.onGridPointerDown);
+    this.grid.addEventListener('pointermove', this.onGridPointerMove);
+    this.grid.addEventListener('pointerup', this.onGridPointerUp);
+    this.grid.addEventListener('pointercancel', this.onGridPointerUp);
     this.slotsEl?.addEventListener('click', this.onSlotsClick);
     this.createBtn.addEventListener('click', this.onCreateClick);
     this.saveBtn.addEventListener('click', this.onSaveClick);
@@ -111,9 +128,81 @@ export class ArmoryLoadoutsController {
     this.picker.removeEventListener('click', this.onPickerClick);
     this.grid.removeEventListener('click', this.onGridClick);
     this.grid.removeEventListener('input', this.onGridInput);
+    this.grid.removeEventListener('wheel', this.onGridWheel);
+    this.grid.removeEventListener('pointerdown', this.onGridPointerDown);
+    this.grid.removeEventListener('pointermove', this.onGridPointerMove);
+    this.grid.removeEventListener('pointerup', this.onGridPointerUp);
+    this.grid.removeEventListener('pointercancel', this.onGridPointerUp);
     this.slotsEl?.removeEventListener('click', this.onSlotsClick);
     this.createBtn.removeEventListener('click', this.onCreateClick);
     this.saveBtn.removeEventListener('click', this.onSaveClick);
+  }
+
+  /** Mouse wheel is usually vertical; map it to horizontal carousel scroll. */
+  private handleGridWheel(event: WheelEvent): void {
+    const maxScroll = this.grid.scrollWidth - this.grid.clientWidth;
+    if (maxScroll <= 0) return;
+
+    const delta =
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (delta === 0) return;
+
+    const next = Math.min(maxScroll, Math.max(0, this.grid.scrollLeft + delta));
+    if (next === this.grid.scrollLeft) return;
+
+    event.preventDefault();
+    this.grid.scrollLeft = next;
+  }
+
+  private handleGridPointerDown(event: PointerEvent): void {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    if (event.target instanceof HTMLElement) {
+      if (
+        event.target.closest(
+          'input, button, a, textarea, select, .armory-loadout-name, .armory-loadout-set-default',
+        )
+      ) {
+        return;
+      }
+    }
+    const maxScroll = this.grid.scrollWidth - this.grid.clientWidth;
+    if (maxScroll <= 0) return;
+
+    this.dragPointerId = event.pointerId;
+    this.dragStartX = event.clientX;
+    this.dragStartScrollLeft = this.grid.scrollLeft;
+    this.dragMoved = false;
+    this.grid.classList.add('is-dragging');
+    this.grid.setPointerCapture(event.pointerId);
+  }
+
+  private handleGridPointerMove(event: PointerEvent): void {
+    if (this.dragPointerId !== event.pointerId) return;
+    const dx = event.clientX - this.dragStartX;
+    if (Math.abs(dx) > 3) this.dragMoved = true;
+    this.grid.scrollLeft = this.dragStartScrollLeft - dx;
+  }
+
+  private handleGridPointerUp(event: PointerEvent): void {
+    if (this.dragPointerId !== event.pointerId) return;
+    this.dragPointerId = null;
+    this.grid.classList.remove('is-dragging');
+    try {
+      this.grid.releasePointerCapture(event.pointerId);
+    } catch {
+      /* already released */
+    }
+    // Suppress the click that follows a drag so cards don't get selected mid-pan.
+    if (this.dragMoved) {
+      const suppress = (clickEvent: Event) => {
+        clickEvent.stopPropagation();
+        clickEvent.preventDefault();
+        this.grid.removeEventListener('click', suppress, true);
+      };
+      this.grid.addEventListener('click', suppress, true);
+      window.setTimeout(() => this.grid.removeEventListener('click', suppress, true), 0);
+    }
+    this.dragMoved = false;
   }
 
   private async reload(): Promise<void> {

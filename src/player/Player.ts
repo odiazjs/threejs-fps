@@ -65,7 +65,7 @@ import {
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
 import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
-import { DamageNumberStack, DAMAGE_NUMBER_HEIGHT_SCALE } from '../ui/DamageNumberStack';
+import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { MeleeHitFx } from '../effects/MeleeHitFx';
 import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
@@ -1318,9 +1318,8 @@ export class Player {
     if (!this.remoteHealthBar) return;
 
     this.remoteHealthBar.setHeadTopOffset(this.remoteHeadTopOffset);
-    this.damageNumberStack?.setHeadTopOffset(
-      (this.remoteHeadTopOffset + 0.16) * DAMAGE_NUMBER_HEIGHT_SCALE,
-    );
+    // Sit just above the mesh crown so floats read at head height.
+    this.damageNumberStack?.setHeadTopOffset(this.remoteHeadTopOffset + 0.16);
   }
 
   private refreshRemoteUiTopOffset(): void {

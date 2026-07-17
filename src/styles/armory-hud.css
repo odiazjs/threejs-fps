@@ -639,6 +639,11 @@
 }
 
 /* Loadout manager — top carousel + bottom primary/secondary slots */
+.armory-panel--right {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .armory-loadout-carousel,
 .armory-loadout-grid {
   flex: 0 0 auto;
@@ -647,21 +652,52 @@
   flex-wrap: nowrap;
   align-items: stretch;
   gap: 0.55rem;
+  /* Shrink below intrinsic card row width so overflow-x actually scrolls. */
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.15rem 0.1rem 0.45rem;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.15rem 0.1rem 0.55rem;
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 242, 255, 0.45) transparent;
+  scrollbar-color: rgba(0, 242, 255, 0.55) rgba(0, 0, 0, 0.25);
+  cursor: grab;
+  user-select: none;
+}
+
+.armory-loadout-carousel.is-dragging,
+.armory-loadout-grid.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
+}
+
+.armory-loadout-carousel input,
+.armory-loadout-grid input {
+  cursor: text;
+  user-select: text;
+}
+
+.armory-loadout-carousel button,
+.armory-loadout-grid button {
+  cursor: pointer;
 }
 
 .armory-loadout-carousel::-webkit-scrollbar,
 .armory-loadout-grid::-webkit-scrollbar {
-  height: 4px;
+  height: 6px;
+}
+
+.armory-loadout-carousel::-webkit-scrollbar-track,
+.armory-loadout-grid::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 999px;
 }
 
 .armory-loadout-carousel::-webkit-scrollbar-thumb,
 .armory-loadout-grid::-webkit-scrollbar-thumb {
-  background: rgba(0, 242, 255, 0.45);
+  background: rgba(0, 242, 255, 0.5);
   border-radius: 999px;
 }
 
