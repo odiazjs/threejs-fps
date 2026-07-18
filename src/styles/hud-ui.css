@@ -36,6 +36,7 @@ textarea,
 .leaderboard-page,
 .settings-page,
 .store-page,
+.characters-page,
 .game-page,
 .auth-page {
   font-family: var(--hud-font);
@@ -47,12 +48,24 @@ textarea,
 .weapons-page,
 .leaderboard-page,
 .settings-page,
-.store-page {
+.store-page,
+.characters-page {
   min-height: 100vh;
   background:
     radial-gradient(ellipse 80% 50% at 50% 100%, rgba(0, 120, 140, 0.12), transparent 55%),
     radial-gradient(circle at 15% 20%, rgba(0, 242, 255, 0.06), transparent 40%),
     var(--hud-bg-page);
+}
+
+/* Menu pages: lock to viewport so the top back bar never causes page scroll. */
+.weapons-page,
+.leaderboard-page,
+.settings-page,
+.store-page,
+.characters-page {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
 }
 
 .auth-page {

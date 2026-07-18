@@ -25,6 +25,7 @@ export interface PlayerSnapshot {
   pitch: number;
   username: string;
   selectedCharacterId: string;
+  selectedOperatorId: string;
   teamId: number;
   hp: number;
   shieldLevel: number;

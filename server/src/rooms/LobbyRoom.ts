@@ -1192,6 +1192,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
         selectedCharacterId: look?.selectedCharacterId ?? 'basic',
 
+        selectedOperatorId: look?.selectedOperatorId ?? 'garla',
+
         primaryWeaponId: look?.primaryWeaponId ?? 'plasma_rifle',
 
       };

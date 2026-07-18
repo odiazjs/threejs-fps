@@ -162,6 +162,10 @@ import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupResp
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, GrenadePickupState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
+import {
+  applyCharacterWeaponDamage,
+  DEFAULT_OPERATOR_CHARACTER_ID,
+} from '../../../shared/content/characters.js';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../../shared/content/storeItemTypes.js';
 import { readPartyMemberCosmetics } from '../lobby/partyCharacters.js';
 import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
@@ -1711,6 +1715,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.username = username;
     const userId = this.normalizeUserId(options.userId);
     player.selectedCharacterId = DEFAULT_CHARACTER_ITEM_ID;
+    player.selectedOperatorId = DEFAULT_OPERATOR_CHARACTER_ID;
     if (userId) {
       this.userIdBySession.set(client.sessionId, userId);
       registerGameUser(userId);
@@ -1718,6 +1723,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const cosmetics = await readPartyMemberCosmetics([userId]);
       player.selectedCharacterId =
         cosmetics.get(userId)?.selectedCharacterId ?? DEFAULT_CHARACTER_ITEM_ID;
+      player.selectedOperatorId =
+        cosmetics.get(userId)?.selectedOperatorId ?? DEFAULT_OPERATOR_CHARACTER_ID;
     }
     const requestedTeam = Number(options.teamId);
     if (this.isTdm()) {
@@ -2072,8 +2079,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   private getSessionWeaponDamage(sessionId: string, weaponId: string): number {
     const stats = this.getSessionWeaponStats(sessionId, weaponId);
-    if (stats) return stats.damage;
-    return isWeaponId(weaponId) ? getWeaponDamage(weaponId) : 0;
+    const base = stats
+      ? stats.damage
+      : isWeaponId(weaponId)
+        ? getWeaponDamage(weaponId)
+        : 0;
+    const player = this.state.players.get(sessionId);
+    if (!player) return base;
+    return applyCharacterWeaponDamage(base, player.selectedOperatorId);
   }
 
   private getSessionWeaponMaxHitDistance(sessionId: string, weaponId: string): number {

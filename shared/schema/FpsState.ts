@@ -6,8 +6,10 @@ import { SHIELD_DEFAULT_LEVEL, getDefaultShieldPoints } from '../combat/shield.j
 
 export class PlayerState extends Schema {
   @type('string') username = 'Player';
-  /** Store character item id (e.g. basic, silver, tech_nature). */
+  /** Equipped store body skin id (e.g. basic, silver, tech_nature). */
   @type('string') selectedCharacterId = 'basic';
+  /** Selected operator character id (face + perk), e.g. garla. */
+  @type('string') selectedOperatorId = 'garla';
   @type('number') teamId = 0;
   @type('number') hp = PLAYER_MAX_HP;
   @type('number') shieldLevel = SHIELD_DEFAULT_LEVEL;

@@ -8,10 +8,18 @@ import { LeaderboardView } from '../lobby/views/LeaderboardView';
 import { refreshLobbyProfileStats } from '../lobby/lobbyProfileStats';
 import { SettingsView } from '../lobby/views/SettingsView';
 import { consumeCharacterMeshReload } from '../content/activeCharacterMesh';
+import { consumeOperatorReload } from '../content/activeOperatorCharacter';
+import { CharactersView } from '../lobby/views/CharactersView';
 import { StoreView } from '../lobby/views/StoreView';
 import { WeaponsView } from '../lobby/views/WeaponsView';
 
-export type ShellView = 'lobby' | 'weapons' | 'leaderboard' | 'settings' | 'store';
+export type ShellView =
+  | 'lobby'
+  | 'weapons'
+  | 'leaderboard'
+  | 'settings'
+  | 'store'
+  | 'characters';
 
 const PAGE_CLASS_BY_VIEW: Record<ShellView, string> = {
   lobby: 'lobby-page',
@@ -19,6 +27,7 @@ const PAGE_CLASS_BY_VIEW: Record<ShellView, string> = {
   leaderboard: 'leaderboard-page',
   settings: 'settings-page',
   store: 'store-page',
+  characters: 'characters-page',
 };
 
 const TITLE_BY_VIEW: Record<ShellView, string> = {
@@ -27,12 +36,14 @@ const TITLE_BY_VIEW: Record<ShellView, string> = {
   leaderboard: 'Three.js FPS — Leaderboard',
   settings: 'Three.js FPS — Settings',
   store: 'Three.js FPS — Store',
+  characters: 'Three.js FPS — Characters',
 };
 
 const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
   weapons: 'Loading weapons...',
   leaderboard: 'Loading leaderboard...',
   store: 'Loading store...',
+  characters: 'Loading characters...',
 };
 
 export function parseShellViewFromUrl(): ShellView {
@@ -42,6 +53,7 @@ export function parseShellViewFromUrl(): ShellView {
     || view === 'leaderboard'
     || view === 'settings'
     || view === 'store'
+    || view === 'characters'
   ) {
     return view;
   }
@@ -54,6 +66,7 @@ export class AppShell {
   private readonly leaderboardView = new LeaderboardView();
   private readonly settingsView = new SettingsView();
   private readonly storeView = new StoreView();
+  private readonly charactersView = new CharactersView();
   private readonly loading = LoadingOverlay.shared();
   private navigating = false;
 
@@ -69,6 +82,9 @@ export class AppShell {
     document.getElementById('lobby-weapons-btn')!.addEventListener('click', () => {
       void this.showView('weapons');
     });
+    document.getElementById('lobby-characters-btn')!.addEventListener('click', () => {
+      void this.showView('characters');
+    });
     document.getElementById('lobby-store-btn')!.addEventListener('click', () => {
       void this.showView('store');
     });
@@ -79,6 +95,9 @@ export class AppShell {
       void this.showView('settings');
     });
     document.getElementById('weapons-back-btn')!.addEventListener('click', () => {
+      void this.showView('lobby');
+    });
+    document.getElementById('characters-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
     });
     document.getElementById('store-back-btn')!.addEventListener('click', () => {
@@ -138,6 +157,7 @@ export class AppShell {
     this.leaderboardView.unmount();
     this.settingsView.unmount();
     this.storeView.unmount();
+    this.charactersView.unmount();
     this.lobbyScene.dispose();
     void this.lobbyClient.disconnect();
   }
@@ -171,6 +191,7 @@ export class AppShell {
       'leaderboard-page',
       'settings-page',
       'store-page',
+      'characters-page',
     );
     document.body.classList.add(PAGE_CLASS_BY_VIEW[view]);
   }
@@ -186,6 +207,8 @@ export class AppShell {
       this.leaderboardView.unmount();
     } else if (view === 'store') {
       this.storeView.unmount();
+    } else if (view === 'characters') {
+      this.charactersView.unmount();
     } else {
       this.settingsView.unmount();
     }
@@ -198,9 +221,9 @@ export class AppShell {
     if (view === 'lobby') {
       this.lobbyScene.setActive(true);
       void refreshLobbyProfileStats();
-      // Refresh party + local look after store / armory changes.
+      // Refresh party + local look after store / armory / characters changes.
       this.lobbyClient.requestPartySnapshot();
-      if (consumeCharacterMeshReload()) {
+      if (consumeCharacterMeshReload() || consumeOperatorReload()) {
         void this.lobbyScene.remountCharacter();
       } else {
         void this.lobbyScene.refreshFromDefaultLoadout();
@@ -221,6 +244,8 @@ export class AppShell {
         await this.weaponsView.mount();
       } else if (view === 'store') {
         await this.storeView.mount();
+      } else if (view === 'characters') {
+        await this.charactersView.mount();
       } else {
         await this.leaderboardView.mount();
       }
@@ -232,6 +257,9 @@ export class AppShell {
       } else if (view === 'store') {
         await waitForPaint();
         this.storeView.refreshViewport();
+      } else if (view === 'characters') {
+        await waitForPaint();
+        this.charactersView.refreshViewport();
       }
     }
   }

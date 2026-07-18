@@ -3,7 +3,7 @@ import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 const STORAGE_KEY = 'fps_selected_character_id';
 const DEFAULT_MESH_FILE = 'character_basic_tpose.fbx';
 
-/** Fallback meshes before / between store catalog fetches. */
+/** Fallback meshes before / between store catalog fetches (body skins). */
 const DEFAULT_MESH_BY_ID: Readonly<Record<string, string>> = {
   basic: 'character_basic_tpose.fbx',
   silver: 'character_silver_tpose.fbx',
@@ -29,6 +29,15 @@ function readStoredId(): string {
 }
 
 activeCharacterId = readStoredId();
+// Migrate localStorage off operator character ids (not store skins).
+if (!(activeCharacterId in DEFAULT_MESH_BY_ID)) {
+  activeCharacterId = DEFAULT_CHARACTER_ITEM_ID;
+  try {
+    localStorage.setItem(STORAGE_KEY, activeCharacterId);
+  } catch {
+    // ignore
+  }
+}
 
 export function rememberStoreItemAssets(
   items: ReadonlyArray<{ id: string; assetFile: string | null }>,

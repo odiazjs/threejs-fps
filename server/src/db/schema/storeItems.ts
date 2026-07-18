@@ -17,7 +17,7 @@ export const storeItems = pgTable('store_items', {
   defaultUnlocked: boolean('default_unlocked').notNull().default(false),
   enabled: boolean('enabled').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
-  /** Optional asset path under /3d/ (e.g. character mesh FBX). */
+  /** Optional body chassis path under /3d/ (e.g. character mesh FBX). */
   assetFile: text('asset_file'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

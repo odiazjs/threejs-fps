@@ -33,7 +33,7 @@ export async function buildCharacterShaderPrewarm(
       switchingWeapon: false,
       meleeAttacking: false,
     });
-    instance = createCharacterInstance(template);
+    instance = createCharacterInstance(template, { applyFace: false });
     instance.root.position.copy(PREWARM_POSITION);
     scene.add(instance.root);
     instance.root.updateMatrixWorld(true);

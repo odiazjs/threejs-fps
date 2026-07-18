@@ -13,8 +13,10 @@ export interface PartyMember {
   isHost: boolean;
   /** Preferred team side (0 = Blue, 1 = Orange). */
   teamId: number;
-  /** Equipped store character item id (e.g. basic, silver). */
+  /** Equipped store body skin id (e.g. basic, silver). */
   selectedCharacterId: string;
+  /** Selected operator character id (face + perk), e.g. garla. */
+  selectedOperatorId: string;
   /** Primary weapon from the player's default loadout. */
   primaryWeaponId: string;
 }

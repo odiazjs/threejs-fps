@@ -6,4 +6,5 @@ export * from './friendRequests.js';
 export * from './weapons.js';
 export * from './weaponLoadouts.js';
 export * from './storeItems.js';
+export * from './characters.js';
 export * from './relations.js';

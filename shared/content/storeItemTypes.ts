@@ -14,7 +14,7 @@ export const STORE_ITEM_TYPES: readonly StoreItemType[] = [
   'attachment',
 ] as const;
 
-/** Default equipped character store item id. */
+/** Default equipped character skin (store) id. */
 export const DEFAULT_CHARACTER_ITEM_ID = 'basic';
 
 /** Types that can be equipped as the active character mesh. */

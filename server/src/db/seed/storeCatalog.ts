@@ -12,11 +12,11 @@ export interface StoreCatalogEntry {
   assetFile: string | null;
 }
 
-/** Shipped store catalog — upserted on migrate. */
+/** Store catalog = equipable body skins only (operators live in `characters`). */
 export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
   {
     id: 'basic',
-    type: 'new_character',
+    type: 'character_skin',
     name: 'Basic Operator',
     description: 'Standard issue field suit. Unlocked by default.',
     cost: 0,
@@ -27,7 +27,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
   },
   {
     id: 'silver',
-    type: 'new_character',
+    type: 'character_skin',
     name: 'Silver Operator',
     description: 'Chrome-finished combat chassis. Prestige cosmetics unlock.',
     cost: 1000,
@@ -38,7 +38,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
   },
   {
     id: 'tech_nature',
-    type: 'new_character',
+    type: 'character_skin',
     name: 'Tech Nature',
     description: 'Bio-circuit overgrowth chassis. Living tech meets field ops.',
     cost: 2500,
@@ -49,7 +49,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
   },
   {
     id: 'magma_fire',
-    type: 'new_character',
+    type: 'character_skin',
     name: 'Magma Fire',
     description: 'Volcanic-core combat suit. Heat-scarred plates for elite operators.',
     cost: 3500,
@@ -60,7 +60,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
   },
   {
     id: 'pink_butterfly',
-    type: 'new_character',
+    type: 'character_skin',
     name: 'Pink Butterfly',
     description: 'Iridescent parade armor. Soft palette, hard edges.',
     cost: 4000,
@@ -71,7 +71,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
   },
   {
     id: 'bumblebee',
-    type: 'new_character',
+    type: 'character_skin',
     name: 'Bumblebee',
     description: 'Striped strike chassis. Bold yellow-black field kit for high-visibility operators.',
     cost: 10000,

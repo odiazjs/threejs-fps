@@ -11,6 +11,7 @@ export interface StoreItemState {
   sellable: boolean;
   /** Plasma refund if sold back (0 when not sellable). */
   sellRefund: number;
+  /** Body chassis FBX under /3d/. */
   assetFile: string | null;
 }
 

@@ -7,14 +7,26 @@ const targetDir = join(process.cwd(), 'public', '3d');
 mkdirSync(targetDir, { recursive: true });
 
 let copied = 0;
-for (const file of readdirSync(sourceDir)) {
-  if (file.startsWith('.')) continue;
 
-  const sourcePath = join(sourceDir, file);
-  if (!statSync(sourcePath).isFile()) continue;
+function copyRecursive(srcDir, destDir) {
+  mkdirSync(destDir, { recursive: true });
 
-  cpSync(sourcePath, join(targetDir, file));
-  copied += 1;
+  for (const entry of readdirSync(srcDir)) {
+    if (entry.startsWith('.')) continue;
+
+    const sourcePath = join(srcDir, entry);
+    const targetPath = join(destDir, entry);
+    const stats = statSync(sourcePath);
+
+    if (stats.isDirectory()) {
+      copyRecursive(sourcePath, targetPath);
+      continue;
+    }
+
+    cpSync(sourcePath, targetPath);
+    copied += 1;
+  }
 }
 
+copyRecursive(sourceDir, targetDir);
 console.log(`[sync-3d] Copied ${copied} file(s) to public/3d/`);

@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { resolveFaceIdForCharacter } from '../content/characterFaces';
+import {
+  SHOWCASE_IDLE_FILE,
+  showcaseIdleFileForMesh,
+} from '../content/characterShowcaseIdle';
+import { applyCharacterFace } from '../player/characterFace';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from '../weapons/disposeMesh';
 
 const ASSET_BASE = '/3d/';
-const SHOWCASE_IDLE_FILE = 'character_showcase_idle.fbx';
 const SHOWCASE_TARGET_HEIGHT = 2.35;
 const DEFAULT_CAMERA_X = 0.85;
 const DEFAULT_CAMERA_Z = 4.6;
@@ -15,26 +20,12 @@ const CHARACTER_YAW_RAD = (45 * Math.PI) / 180;
 /** Pull the character camera back vs default framing. */
 const CHARACTER_CAMERA_ZOOM_OUT = 1.25;
 
-/**
- * Characters with a mismatched bind pose vs the shared showcase idle need a
- * per-mesh Mixamo export. Convention: `character_foo.fbx` → `character_foo_idle.fbx`.
- */
-const PER_MESH_IDLE_FILES: Readonly<Record<string, string>> = {
-  'character_magma_fire.fbx': 'character_magma_fire_idle.fbx',
-  'character_tech_nature.fbx': 'character_tech_nature_idle.fbx',
-};
-
 export type StorePreviewOptions = {
   /** Play a store idle clip (character unlockables). */
   playShowcaseIdle?: boolean;
+  /** Store character id — selects which face head to attach. */
+  characterId?: string;
 };
-
-/** Prefer a per-mesh idle when authored; otherwise the shared showcase clip. */
-function idleFileForMesh(meshFile: string): string {
-  // Mesh exported with idle baked in (`*_idle.fbx`) — clip lives on the same file.
-  if (/_idle\.fbx$/i.test(meshFile)) return meshFile;
-  return PER_MESH_IDLE_FILES[meshFile] ?? SHOWCASE_IDLE_FILE;
-}
 
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
@@ -74,6 +65,7 @@ export class StorePreviewScene {
   private readonly resizeObserver: ResizeObserver;
   private currentModel: THREE.Object3D | null = null;
   private currentAssetKey: string | null = null;
+  private currentOperatorId: string | null = null;
   private currentIdleFile: string | null = null;
   private currentPlayIdle = false;
   private mixer: THREE.AnimationMixer | null = null;
@@ -164,10 +156,12 @@ export class StorePreviewScene {
   async showAsset(assetFile: string | null, options: StorePreviewOptions = {}): Promise<void> {
     const key = assetFile?.trim() || '';
     const playIdle = Boolean(options.playShowcaseIdle);
-    const idleFile = playIdle ? idleFileForMesh(key) : null;
+    const idleFile = playIdle ? showcaseIdleFileForMesh(key) : null;
+    const operatorId = options.characterId?.trim() || '';
     if (!key) {
       this.clearModel();
       this.currentAssetKey = null;
+      this.currentOperatorId = null;
       this.currentIdleFile = null;
       this.currentPlayIdle = false;
       return;
@@ -176,7 +170,8 @@ export class StorePreviewScene {
       key === this.currentAssetKey &&
       this.currentModel &&
       playIdle === this.currentPlayIdle &&
-      idleFile === this.currentIdleFile
+      idleFile === this.currentIdleFile &&
+      operatorId === (this.currentOperatorId ?? '')
     ) {
       return;
     }
@@ -215,9 +210,20 @@ export class StorePreviewScene {
       }
 
       const fitted = this.fitModel(fbx, playIdle ? CHARACTER_YAW_RAD : 0);
+      if (playIdle) {
+        await applyCharacterFace(
+          fitted,
+          resolveFaceIdForCharacter(options.characterId ?? ''),
+        );
+        if (this.disposed || token !== this.loadToken) {
+          disposeObject3D(fitted);
+          return;
+        }
+      }
       this.modelPivot.add(fitted);
       this.currentModel = fitted;
       this.currentAssetKey = key;
+      this.currentOperatorId = operatorId;
       this.currentIdleFile = idleFile;
       this.currentPlayIdle = playIdle;
       this.mixer = mixer;
@@ -227,6 +233,7 @@ export class StorePreviewScene {
       if (token === this.loadToken) {
         this.clearModel();
         this.currentAssetKey = null;
+        this.currentOperatorId = null;
         this.currentIdleFile = null;
         this.currentPlayIdle = false;
       }

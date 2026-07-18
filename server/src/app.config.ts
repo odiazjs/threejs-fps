@@ -3,6 +3,7 @@ import express from 'express';
 import { defineServer, defineRoom } from 'colyseus';
 import { applyApiCors } from './api/cors.js';
 import { registerAuthRoutes } from './auth/routes.js';
+import { registerCharacterRoutes } from './characters/routes.js';
 import { registerFriendsRoutes } from './friends/routes.js';
 import { registerLeaderboardRoutes } from './leaderboard/routes.js';
 import { registerLoadoutRoutes } from './loadouts/routes.js';
@@ -25,6 +26,7 @@ export const server = defineServer({
     registerWeaponRoutes(app);
     registerLoadoutRoutes(app);
     registerStoreRoutes(app);
+    registerCharacterRoutes(app);
     registerFriendsRoutes(app);
     registerLeaderboardRoutes(app);
   },

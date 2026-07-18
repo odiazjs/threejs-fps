@@ -10,6 +10,7 @@ import {
   getActiveCharacterId,
   setActiveCharacterId,
 } from '../../content/activeCharacterMesh';
+import { getActiveOperatorId } from '../../content/activeOperatorCharacter';
 import { clearCharacterMeshCache } from '../../player/characterModel';
 import { StorePreviewScene } from '../../store/StorePreviewScene';
 import { formatPlasmaMinerals } from '../../ui/plasmaMineralsHud';
@@ -339,6 +340,7 @@ export class StoreView {
     this.syncActionButtons(item);
     await this.scene?.showAsset(item.assetFile, {
       playShowcaseIdle: isEquipableCharacterType(item.type),
+      characterId: getActiveOperatorId(),
     });
   }
 

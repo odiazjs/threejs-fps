@@ -5,6 +5,10 @@ import type { BodyPartBoneRefs } from '../../shared/combat/bodyPartPose';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import { MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
 import { getActiveCharacterMeshFile } from '../content/activeCharacterMesh';
+import { getActiveOperatorId } from '../content/activeOperatorCharacter';
+import { resolveFaceIdForCharacter } from '../content/characterFaces';
+import { showcaseIdleFileForMesh } from '../content/characterShowcaseIdle';
+import { applyCharacterFace } from './characterFace';
 
 const ASSET_BASE = '/3d/';
 const TARGET_HEIGHT = 1.65;
@@ -12,7 +16,7 @@ const TARGET_HEIGHT = 1.65;
 const MODEL_YAW = Math.PI;
 
 export const CHARACTER_MODEL_FILES = {
-  lobby: 'Rifle Idle Texture.fbx',
+  lobby: 'character_showcase_idle.fbx',
   rifleAimingIdle: 'Rifle Aiming Idle.fbx',
   pistolIdle: 'Pistol Idle.fbx',
   rifleShooting: 'Rifle Shooting.fbx',
@@ -605,26 +609,33 @@ const IDLE_REMOTE_POSE: RemoteCharacterPose = {
   meleeAttacking: false,
 };
 
-/** @deprecated Use loadGameCharacterTemplate. */
+/** Lobby pedestal idle — same showcase clip as the store character preview. */
+export function loadLobbyIdleCharacterTemplate(
+  _weaponId: WeaponId,
+  meshFile: string = getActiveCharacterMeshFile(),
+): Promise<CharacterTemplate> {
+  return loadCharacterTemplateByFile(showcaseIdleFileForMesh(meshFile), meshFile);
+}
+
+/** Lobby pedestal idle skinned with an arbitrary store character mesh. */
+export function loadLobbyIdleCharacterTemplateForMesh(
+  meshFile: string,
+  weaponId: WeaponId,
+): Promise<CharacterTemplate> {
+  return loadLobbyIdleCharacterTemplate(weaponId, meshFile);
+}
+
+/** @deprecated Use loadGameCharacterTemplate / loadLobbyIdleCharacterTemplate. */
 export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<CharacterTemplate> {
   return loadGameCharacterTemplate(weaponId, IDLE_REMOTE_POSE);
 }
 
-/** Idle pose template skinned with an arbitrary store character mesh. */
+/** @deprecated Use loadLobbyIdleCharacterTemplateForMesh for lobby avatars. */
 export function loadGameIdleCharacterTemplateForMesh(
   meshFile: string,
   weaponId: WeaponId,
 ): Promise<CharacterTemplate> {
   return loadGameCharacterTemplate(weaponId, IDLE_REMOTE_POSE, meshFile);
-}
-
-/** Standing fire loop for lobby drone interaction. */
-export function loadLobbyShootCharacterTemplate(weaponId: WeaponId): Promise<CharacterTemplate> {
-  const modelFile =
-    weaponId === 'pistol'
-      ? CHARACTER_MODEL_FILES.pistolShooting
-      : CHARACTER_MODEL_FILES.rifleShooting;
-  return loadCharacterTemplateByFile(modelFile);
 }
 
 export function loadDeathCharacterTemplate(
@@ -665,7 +676,21 @@ export function loadCharacterTemplate(): Promise<CharacterTemplate> {
   return loadLobbyCharacterTemplate();
 }
 
-export function createCharacterInstance(template: CharacterTemplate): CharacterInstance {
+export interface CreateCharacterInstanceOptions {
+  /** Store body skin id (mesh already chosen via template). */
+  characterId?: string;
+  /** Operator character id — selects face head (+ future client perk UI). */
+  operatorId?: string;
+  /** Explicit face id; wins over operatorId resolution. */
+  faceId?: string;
+  /** Default true. Set false for shader prewarm / headless clones. */
+  applyFace?: boolean;
+}
+
+export function createCharacterInstance(
+  template: CharacterTemplate,
+  options: CreateCharacterInstanceOptions = {},
+): CharacterInstance {
   const root = cloneSkeleton(template.scene) as THREE.Group;
 
   let mixer: THREE.AnimationMixer | null = null;
@@ -689,6 +714,13 @@ export function createCharacterInstance(template: CharacterTemplate): CharacterI
 
     action.play();
     mixer.update(0);
+  }
+
+  if (options.applyFace !== false) {
+    const faceId =
+      options.faceId ??
+      resolveFaceIdForCharacter(options.operatorId ?? getActiveOperatorId());
+    void applyCharacterFace(root, faceId);
   }
 
   return {

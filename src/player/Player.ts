@@ -41,6 +41,7 @@ import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_ADS, POINTER_SHOOT, type PointerInput } from '../input/PointerInput';
 import type { PlayerSnapshot } from '../network/types';
+import { DEFAULT_OPERATOR_CHARACTER_ID } from '../../shared/content/characters';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 import { getCharacterMeshFile } from '../content/activeCharacterMesh';
 import { EMPTY_WEAPON_SLOT } from '../../shared/loadout/loadoutSlots';
@@ -69,6 +70,7 @@ import {
   type CharacterTemplate,
   type RemoteCharacterPose,
 } from './characterModel';
+import { resolveFaceLookParent } from './characterFace';
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
 import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
@@ -195,8 +197,11 @@ export class Player {
   private characterInstance: CharacterInstance | null = null;
   private displayedCharacterModelFile: string | null = null;
   private displayedCharacterMeshFile: string | null = null;
-  /** Per-player store character id from the server (remotes only). */
+  private displayedOperatorId: string | null = null;
+  /** Per-player store body skin id from the server (remotes only). */
   private remoteSelectedCharacterId = DEFAULT_CHARACTER_ITEM_ID;
+  /** Per-player operator character id (face + perk) from the server (remotes only). */
+  private remoteSelectedOperatorId = DEFAULT_OPERATOR_CHARACTER_ID;
   private meleeAttackAnimConsumed = false;
   private meleeHitResolved = false;
   private weaponSwitchAnimConsumed = false;
@@ -424,10 +429,12 @@ export class Player {
     const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
     const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
-    const displayKey = `${meshFile}::${modelFile}`;
+    const operatorId = this.remoteSelectedOperatorId;
+    const displayKey = `${meshFile}::${modelFile}::${operatorId}`;
     if (
       this.displayedCharacterModelFile === modelFile
       && this.displayedCharacterMeshFile === meshFile
+      && this.displayedOperatorId === operatorId
       && this.characterInstance
     ) {
       return;
@@ -542,6 +549,7 @@ export class Player {
     if (
       this.displayedCharacterModelFile === template.modelFile
       && this.displayedCharacterMeshFile === template.meshFile
+      && this.displayedOperatorId === this.remoteSelectedOperatorId
       && this.characterInstance
     ) {
       return;
@@ -554,10 +562,14 @@ export class Player {
     }
 
     this.characterInstance?.dispose();
-    this.characterInstance = createCharacterInstance(template);
+    this.characterInstance = createCharacterInstance(template, {
+      characterId: this.remoteSelectedCharacterId,
+      operatorId: this.remoteSelectedOperatorId,
+    });
     this.pitchPivot.add(this.characterInstance.root);
     this.displayedCharacterModelFile = template.modelFile;
     this.displayedCharacterMeshFile = template.meshFile;
+    this.displayedOperatorId = this.remoteSelectedOperatorId;
     this.bodyPartBones = resolveBodyPartBones(this.characterInstance.root);
     this.bindRemoteCharacterRig(template);
     this.refreshRemoteUiTopOffset();
@@ -591,10 +603,12 @@ export class Player {
       mount.weaponPosition,
     );
 
+    // lookRig must not parent to Head — Head/Neck are collapsed for the 3D face head.
+    const lookParent = resolveFaceLookParent(this.characterInstance.root) ?? rig.head;
     this.object.remove(this.lookRig);
     this.lookRig.position.set(0, 0, 0);
     this.lookRig.rotation.set(0, 0, 0);
-    rig.head.add(this.lookRig);
+    lookParent.add(this.lookRig);
     this.lookRigFollowsHead = true;
 
     this.syncRemoteKatanaAxisDebug();
@@ -1253,6 +1267,8 @@ export class Player {
     if (!this.camera) {
       this.remoteSelectedCharacterId =
         snapshot.selectedCharacterId || DEFAULT_CHARACTER_ITEM_ID;
+      this.remoteSelectedOperatorId =
+        snapshot.selectedOperatorId || DEFAULT_OPERATOR_CHARACTER_ID;
     }
 
     if (this.camera && wasAlive && !snapshot.alive) {
@@ -1941,6 +1957,7 @@ export class Player {
     this.characterInstance = null;
     this.displayedCharacterModelFile = null;
     this.displayedCharacterMeshFile = null;
+    this.displayedOperatorId = null;
     this.remoteWeaponMount = null;
     this.remoteKatanaAxisDebug?.dispose();
     this.remoteKatanaAxisDebug = null;

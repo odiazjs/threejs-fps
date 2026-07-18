@@ -38,6 +38,9 @@ export async function ensureUser(auth: AuthContext): Promise<void> {
     .insert(playerStats)
     .values({ userId: auth.sub })
     .onConflictDoNothing();
+
+  const { ensureUserCharacter } = await import('../characters/userCharacter.js');
+  await ensureUserCharacter(auth.sub);
 }
 
 export async function findUserByEmail(email: string) {

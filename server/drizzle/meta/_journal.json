@@ -148,6 +148,34 @@
       "when": 1783840000000,
       "tag": "0020_bio_smg_1_base_recoil",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1783850000000,
+      "tag": "0021_selectable_characters",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1783860000000,
+      "tag": "0022_store_character_skins",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1783870000000,
+      "tag": "0023_characters_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1783880000000,
+      "tag": "0024_character_biography",
+      "breakpoints": true
     }
   ]
 }

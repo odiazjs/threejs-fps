@@ -49,6 +49,7 @@
     <link rel="stylesheet" href="/src/styles/lobby-hud.css" />
     <link rel="stylesheet" href="/src/styles/armory-hud.css" />
     <link rel="stylesheet" href="/src/styles/store-hud.css" />
+    <link rel="stylesheet" href="/src/styles/characters-hud.css" />
     <link rel="stylesheet" href="/src/styles/snackbar.css" />
   </head>
   <body class="lobby-page app-shell">
@@ -65,6 +66,7 @@
             LEADERBOARD
           </button>
           <button id="lobby-weapons-btn" class="lobby-nav-item" type="button">ARMORY</button>
+          <button id="lobby-characters-btn" class="lobby-nav-item" type="button">CHARACTERS</button>
           <button id="lobby-store-btn" class="lobby-nav-item" type="button">STORE</button>
           <button id="lobby-settings-btn" class="lobby-nav-item" type="button">SETTINGS</button>
         </nav>
@@ -284,6 +286,10 @@
 
     <section id="app-view-weapons" class="app-view" data-view="weapons" hidden>
       <div class="weapons-ui armory-ui">
+        <button id="weapons-back-btn" class="lobby-top-back-btn" type="button">
+          BACK TO LOBBY
+        </button>
+
         <aside class="armory-panel armory-panel--left hud-panel" aria-label="Primary weapon selection">
           <header class="armory-panel-header">
             <h2 class="armory-panel-title">PRIMARY WEAPON SELECTION</h2>
@@ -501,27 +507,87 @@
             </button>
           </div>
         </aside>
-
-        <button id="weapons-back-btn" class="secondary-btn weapons-back-btn armory-back-bar" type="button">
-          BACK TO LOBBY
-        </button>
       </div>
     </section>
 
     <section id="app-view-leaderboard" class="app-view" data-view="leaderboard" hidden>
+      <button id="leaderboard-back-btn" class="lobby-top-back-btn leaderboard-swipe" type="button">
+        BACK TO LOBBY
+      </button>
       <main class="leaderboard-shell hud-panel hud-panel--lg" aria-label="Global player rankings">
         <p class="leaderboard-subtitle hud-subtitle hud-subtitle--center leaderboard-swipe">GLOBAL STATS / LEADERBOARD</p>
         <h1 class="leaderboard-title hud-title hud-title--hero leaderboard-swipe">LEADERBOARD</h1>
         <p id="leaderboard-status" class="leaderboard-status leaderboard-swipe">Loading...</p>
         <div id="leaderboard-list" class="leaderboard-list"></div>
       </main>
-      <button id="leaderboard-back-btn" class="leaderboard-back-btn hud-btn hud-btn--secondary leaderboard-swipe" type="button">
-        BACK TO LOBBY
-      </button>
+    </section>
+
+    <section id="app-view-characters" class="app-view" data-view="characters" hidden>
+      <div class="characters-ui">
+        <button id="characters-back-btn" class="lobby-top-back-btn" type="button">
+          BACK TO LOBBY
+        </button>
+
+        <aside class="characters-catalog-panel hud-panel" aria-label="Character catalog">
+          <header class="characters-catalog-header">
+            <p class="characters-catalog-eyebrow">OPERATOR ROSTER</p>
+            <h2 class="characters-catalog-title">GLOBAL CHARACTER CATALOG</h2>
+          </header>
+          <label class="characters-search" for="characters-search-input">
+            <span class="characters-search-icon" aria-hidden="true">⌕</span>
+            <input
+              id="characters-search-input"
+              class="characters-search-input"
+              type="search"
+              placeholder="Search characters..."
+              autocomplete="off"
+            />
+          </label>
+          <div
+            id="characters-item-grid"
+            class="characters-item-grid"
+            role="listbox"
+            aria-label="Characters"
+          ></div>
+        </aside>
+
+        <div class="characters-preview-column" aria-label="Character preview">
+          <h1 id="characters-name-label" class="characters-page-title">—</h1>
+          <div class="characters-preview-stage">
+            <div class="characters-preview-atmosphere" aria-hidden="true"></div>
+            <div class="characters-preview-platform" aria-hidden="true"></div>
+            <div id="characters-canvas"></div>
+          </div>
+          <section class="characters-bio-panel" aria-label="Character biography">
+            <h2 id="characters-bio-title" class="characters-bio-title">BIOGRAPHY</h2>
+            <p id="characters-bio-text" class="characters-bio-text">
+              Select an operator from the catalog.
+            </p>
+            <div class="characters-bio-actions">
+              <button id="characters-select-btn" class="characters-select-btn" type="button" disabled>
+                SELECT OPERATOR
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <aside class="characters-ability-panel hud-panel" aria-label="Character ability">
+          <p class="characters-ability-eyebrow">CHARACTER ABILITY</p>
+          <div class="characters-ability-icon" aria-hidden="true">
+            <span class="characters-ability-glyph"></span>
+          </div>
+          <h2 id="characters-perk-name" class="characters-perk-name">—</h2>
+          <p id="characters-perk-desc" class="characters-perk-desc"></p>
+        </aside>
+      </div>
     </section>
 
     <section id="app-view-store" class="app-view" data-view="store" hidden>
       <div class="store-ui">
+        <button id="store-back-btn" class="lobby-top-back-btn" type="button">
+          BACK TO LOBBY
+        </button>
+
         <aside class="store-catalog-panel hud-panel" aria-label="Store catalog">
           <header class="store-catalog-header">
             <div class="store-catalog-heading">
@@ -579,14 +645,13 @@
             </div>
           </footer>
         </div>
-
-        <button id="store-back-btn" class="secondary-btn weapons-back-btn store-back-bar" type="button">
-          BACK TO LOBBY
-        </button>
       </div>
     </section>
 
     <section id="app-view-settings" class="app-view" data-view="settings" hidden>
+      <button id="settings-back-btn" class="lobby-top-back-btn" type="button">
+        BACK TO LOBBY
+      </button>
       <main class="settings-shell hud-panel hud-panel--md">
         <h1 class="settings-title hud-title">SETTINGS</h1>
         <div class="settings-option">
@@ -626,9 +691,6 @@
           <div id="settings-controls-list" class="settings-controls-list"></div>
         </div>
       </main>
-      <button id="settings-back-btn" class="secondary-btn settings-back-btn" type="button">
-        BACK TO LOBBY
-      </button>
     </section>
 
     <div

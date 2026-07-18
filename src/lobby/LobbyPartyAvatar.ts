@@ -15,21 +15,22 @@ export class LobbyPartyAvatar {
   readonly root = new THREE.Group();
   private characterInstance: CharacterInstance | null = null;
   private readonly nameLabel: CSS2DObject;
-  private readonly spinPhase: number;
 
   constructor(
     username: string,
     template: CharacterTemplate,
     weaponId: WeaponId,
-    spinPhase = 0,
+    characterId = 'basic',
+    operatorId = 'garla',
   ) {
-    this.spinPhase = spinPhase;
-
     const bodyRoot = new THREE.Group();
     bodyRoot.rotation.y = Math.PI;
     this.root.add(bodyRoot);
 
-    this.characterInstance = createCharacterInstance(template);
+    this.characterInstance = createCharacterInstance(template, {
+      characterId,
+      operatorId,
+    });
     bodyRoot.add(this.characterInstance.root);
     this.attachWeapon(template, weaponId);
 
@@ -45,8 +46,7 @@ export class LobbyPartyAvatar {
     this.root.position.x = x;
   }
 
-  update(delta: number, elapsed: number): void {
-    this.root.rotation.y = Math.sin(elapsed * 0.55 + this.spinPhase) * 0.35;
+  update(delta: number): void {
     this.characterInstance?.update(delta);
   }
 
