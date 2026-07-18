@@ -502,7 +502,7 @@ export const BIO_MACHINE_GUN_CONFIG: WeaponConfig = {
   moveSpeedMultiplier: 0.9,
   view: {
     hip: { x: 0.17, y: -0.27, z: -0.4 },
-    ads: { x: 0, y: -0.20, z: -0.24 },
+    ads: { x: 0, y: -0.21, z: -0.24 },
     adsFov: 58,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -550,6 +550,93 @@ export const BIO_MACHINE_GUN_CONFIG: WeaponConfig = {
     autoShot: { src: '/sounds/bio_lmg_auto_2.wav', reverbLevel: 0 },
     reload: { src: '/sounds/lmg_reload.wav', reverbLevel: 0 },
     volume: 0.7,
+  },
+};
+
+function buildBioSmg1RecoilPattern(): RecoilKick[] {
+  // Tight close-range spray — light kicks that accumulate sideways late mag.
+  const pattern: RecoilKick[] = [];
+  for (let i = 0; i < 40; i++) {
+    const t = i / 39;
+    const pitch = 0.014 + t * 0.018;
+    let yaw: number;
+    if (i < 8) {
+      yaw = 0.007;
+    } else if (i < 18) {
+      yaw = -0.009;
+    } else if (i < 28) {
+      yaw = 0.01;
+    } else {
+      yaw = -0.008 + (i % 2 === 0 ? 0.003 : -0.003);
+    }
+    pattern.push({ pitch, yaw });
+  }
+  return pattern;
+}
+
+/** Bio SMG — extreme RoF, low damage, snappy ADS/reload, close-range auto. */
+export const BIO_SMG_1_CONFIG: WeaponConfig = {
+  id: 'bio_smg_1',
+  name: 'Bio SMG',
+  clipSize: SHIPPED_WEAPON_BASE_STATS.bio_smg_1.magazineSize,
+  reloadSec: WEAPON_RELOAD_SEC.bio_smg_1,
+  reserveClips: 3,
+  fireRate: SHIPPED_WEAPON_BASE_STATS.bio_smg_1.fireRate,
+  fireMode: 'auto',
+  damage: WEAPON_DAMAGE.bio_smg_1,
+  adsTime: SHIPPED_WEAPON_BASE_STATS.bio_smg_1.adsTime,
+  projectileSpeed: 300,
+  projectileStyle: 'bioLiquid',
+  projectileGravity: 20,
+  maxHitDistance: WEAPON_MAX_HIT_DISTANCE.bio_smg_1,
+  moveSpeedMultiplier: 1.05,
+  view: {
+    hip: { x: 0.15, y: -0.22, z: -0.34 },
+    ads: { x: 0, y: -0.145, z: -0.22 },
+    adsFov: 66,
+    localMeshEuler: { x: 0, y: Math.PI, z: 0 },
+    remoteHand: { x: 0, y: 0, z: 0 },
+    remoteMeshEuler: { x: 0, y: 0, z: 0 },
+  },
+  recoil: {
+    pattern: buildBioSmg1RecoilPattern(),
+    recoverySpeed: 8.5,
+    recoveryDelaySec: 0.08,
+    aimSmoothSpeed: 18,
+    adsMultiplier: 0.55,
+    yawScale: 1.15,
+    visualKick: 0.7,
+    visualRecoverySpeed: 12,
+    adsVisualMultiplier: 0.45,
+    visualStyle: {
+      rotX: 0.14,
+      rotYFromYaw: -0.1,
+      rotZ: -0.08,
+      posXFromYaw: -0.028,
+      posY: -0.02,
+      posZ: 0,
+      kickBack: 0.28,
+      kickUp: -0.02,
+    },
+  },
+  muzzleFlash: {
+    coreScale: 0.18,
+    duration: 0.06,
+    particleCount: 10,
+    particleSpeed: 14,
+    particleSpread: 0.7,
+    colors: [0xffffff, 0xf2f6ff, 0xd8e2f4],
+    lightIntensity: 2.6,
+    lightDistance: 3.4,
+    glowLayers: 0,
+    particleSizeScale: 1.0,
+  },
+  sway: { intensity: 0.95 },
+  sounds: {
+    singleShot: { src: '/sounds/smg_1_auto.wav', reverbLevel: 0 },
+    autoShot: { src: '/sounds/smg_1_auto.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/smg_1_reload.wav', reverbLevel: 0 },
+    volume: 0.6,
   },
 };
 
@@ -642,6 +729,7 @@ export const WEAPON_CONFIGS: Record<WeaponId, WeaponConfig> = {
   root_bio_carbine: ROOT_BIO_CARBINE_CONFIG,
   bio_liquid_rifle: BIO_LIQUID_RIFLE_CONFIG,
   bio_machine_gun: BIO_MACHINE_GUN_CONFIG,
+  bio_smg_1: BIO_SMG_1_CONFIG,
   plasma_shotgun: PLASMA_SHOTGUN_CONFIG,
   katana: KATANA_CONFIG,
 };
@@ -654,6 +742,7 @@ export const PICKABLE_WEAPON_CONFIGS = [
   ROOT_BIO_CARBINE_CONFIG,
   BIO_LIQUID_RIFLE_CONFIG,
   BIO_MACHINE_GUN_CONFIG,
+  BIO_SMG_1_CONFIG,
   PLASMA_SHOTGUN_CONFIG,
 ] as const;
 

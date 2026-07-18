@@ -45,6 +45,11 @@ import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 import { getCharacterMeshFile } from '../content/activeCharacterMesh';
 import { EMPTY_WEAPON_SLOT } from '../../shared/loadout/loadoutSlots';
 import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
+import {
+  LAND_SLIDE_GRACE_SEC,
+  SlideController,
+  SPRINT_CHARGE_FULL_SEC,
+} from './SlideController';
 import { GrenadeThrowKick } from './GrenadeThrowKick';
 import { ExplosionCameraShake } from './ExplosionCameraShake';
 import { HeadBob } from './HeadBob';
@@ -165,6 +170,14 @@ export class Player {
   private physics: PlayerPhysicsState = { verticalVelocity: 0, grounded: true };
   private mapCollisionDef: MapCollisionDef = getMapDef(DEFAULT_MAP_ID);
   private sprint = new SprintStamina();
+  private readonly slide = new SlideController();
+  private locomotionSliding = false;
+  /** After landing, briefly allow C-slide without sprint. */
+  private landSlideGraceSec = 0;
+  /** Continuous grounded sprint time — feeds slide power (capped). */
+  private sprintChargeSec = 0;
+  /** Sprint charge frozen at jump takeoff for land-slides. */
+  private airborneSlideChargeSec = 0;
   private headBob = new HeadBob();
   private readonly grenadeThrowKick = new GrenadeThrowKick();
   private readonly explosionCameraShake = new ExplosionCameraShake();
@@ -235,6 +248,7 @@ export class Player {
   private targetWalkingBackward = false;
   private targetJumping = false;
   private targetCrouching = false;
+  private targetSliding = false;
   private targetShieldRecharging = false;
   private targetShieldRechargeEndAt = 0;
   private locomotionWalking = false;
@@ -513,6 +527,7 @@ export class Player {
       walkingBackward: this.targetWalkingBackward,
       jumping: this.targetJumping,
       crouching: this.targetCrouching,
+      sliding: this.targetSliding,
       reloading,
       switchingWeapon: weaponSwitch.active && !this.weaponSwitchAnimConsumed,
       meleeAttacking:
@@ -631,6 +646,7 @@ export class Player {
     isWalkingBackward: boolean;
     isJumping: boolean;
     isCrouching: boolean;
+    isSliding: boolean;
   } {
     if (this.camera) {
       return {
@@ -639,6 +655,7 @@ export class Player {
         isWalkingBackward: this.locomotionWalkingBackward,
         isJumping: !this.physics.grounded,
         isCrouching: this.locomotionCrouching,
+        isSliding: this.locomotionSliding,
       };
     }
 
@@ -648,6 +665,7 @@ export class Player {
       isWalkingBackward: this.targetWalkingBackward,
       isJumping: this.targetJumping,
       isCrouching: this.targetCrouching,
+      isSliding: this.targetSliding,
     };
   }
 
@@ -913,6 +931,11 @@ export class Player {
     this.unequipThrowable({ discardCook: true });
     this.applyLoadoutFromSnapshot(snapshot);
     this.loadout.resetForRespawn();
+    this.slide.cancel();
+    this.locomotionSliding = false;
+    this.landSlideGraceSec = 0;
+    this.sprintChargeSec = 0;
+    this.airborneSlideChargeSec = 0;
     this.targetReloadEndAt = 0;
     this.targetWeaponSwitchEndAt = 0;
     this.targetMeleeAttackEndAt = 0;
@@ -1219,7 +1242,8 @@ export class Player {
     this.targetWalking = snapshot.walking;
     this.targetWalkingBackward = snapshot.walkingBackward;
     this.targetJumping = snapshot.jumping;
-    this.targetCrouching = snapshot.crouching;
+    this.targetCrouching = snapshot.crouching || snapshot.sliding;
+    this.targetSliding = snapshot.sliding === true;
     this.targetShieldRecharging = snapshot.shieldRecharging;
     this.targetShieldRechargeEndAt = snapshot.shieldRechargeEndAt;
     this.teamId = snapshot.teamId;
@@ -1294,6 +1318,10 @@ export class Player {
 
     this.tickRemoteDeath();
     this.applyRemoteDeathDrop();
+    // Clear any leftover slide mesh drop from earlier tuning.
+    if (this.pitchPivot && !this.remoteDeathActive) {
+      this.pitchPivot.position.y = 0;
+    }
 
     const t = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * delta);
     this.object.position.lerp(this.targetPosition, t);
@@ -1496,6 +1524,8 @@ export class Player {
     const lookSpeed = delta > 0 ? Math.hypot(lookDeltaYaw, lookDeltaPitch) / delta : 0;
 
     if (!canAct) {
+      this.slide.cancel();
+      this.locomotionSliding = false;
       this.stopWeaponAutoFire();
       this.gunJuice?.update(delta, null, false);
       this.headBob.update(delta, false, false);
@@ -1531,22 +1561,75 @@ export class Player {
     this.tryToggleMeleeEquip(input);
     this.updateThrowableInput(input, pointer);
 
-    const wantsCrouch = input.isPressed('KeyC');
+    // Slide: sprint + C, or C on/soon after landing — capture look-forward first.
+    this.camera.getWorldDirection(this.forward);
+    this.forward.y = 0;
+    this.forward.normalize();
+
+    if (this.physics.grounded) {
+      if (this.landSlideGraceSec > 0) {
+        this.landSlideGraceSec = Math.max(0, this.landSlideGraceSec - delta);
+        if (this.landSlideGraceSec <= 0) {
+          this.airborneSlideChargeSec = 0;
+        }
+      }
+    } else {
+      // Keep grace from starting mid-air; landing sets it below after physics.
+      this.landSlideGraceSec = 0;
+    }
+
+    const canStartSlideWithoutSprint = this.landSlideGraceSec > 0;
+    const canStartSlide =
+      this.physics.grounded &&
+      (this.sprint.getState().isSprinting || canStartSlideWithoutSprint);
+    if (input.isJustPressed('KeyC') && canStartSlide) {
+      // Land grace uses charge frozen at jump; grounded sprint uses live charge.
+      const chargeSec = canStartSlideWithoutSprint
+        ? this.airborneSlideChargeSec
+        : this.sprintChargeSec;
+      const charge01 = Math.min(1, chargeSec / SPRINT_CHARGE_FULL_SEC);
+      this.slide.tryStart(this.forward.x, this.forward.z, charge01);
+    }
+
+    // Jump cancels slide and launches — allows immediate resprint after.
+    const jumpRequested = input.isJustPressed('Space');
+    const jumpFromSlide =
+      this.slide.isActive() && jumpRequested && this.physics.grounded;
+    if (jumpFromSlide) {
+      this.slide.cancel();
+    }
+
+    const isSliding = this.slide.isActive();
+    this.locomotionSliding = isSliding;
+
+    // Slide forces crouch pose / eye height; jump-from-slide ignores held C this frame.
+    const wantsCrouch =
+      (input.isPressed('KeyC') || isSliding) && !jumpFromSlide;
     const isCrouching = wantsCrouch && this.physics.grounded;
 
     const wantsSprint =
       !wantsCrouch &&
+      !isSliding &&
       input.isPressed('ShiftLeft') &&
       input.isPressed('KeyW') &&
       this.physics.grounded;
     const isSprinting = this.sprint.update(delta, wantsSprint);
+    if (isSprinting) {
+      this.sprintChargeSec = Math.min(
+        SPRINT_CHARGE_FULL_SEC,
+        this.sprintChargeSec + delta,
+      );
+    } else if (this.physics.grounded && !isSliding) {
+      this.sprintChargeSec = 0;
+    }
     const isMoving =
       this.physics.grounded &&
-      (input.isPressed('KeyW') ||
+      (isSliding ||
+        input.isPressed('KeyW') ||
         input.isPressed('KeyS') ||
         input.isPressed('KeyA') ||
         input.isPressed('KeyD'));
-    const isWalking = isMoving && !isSprinting;
+    const isWalking = isMoving && !isSprinting && !isSliding;
     const isWalkingBackward =
       isWalking && input.isPressed('KeyS') && !input.isPressed('KeyW');
     this.locomotionWalking = isWalking;
@@ -1709,14 +1792,10 @@ export class Player {
     const moveMultiplier =
       active && meleeEquipped && isSprinting
         ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
-        : isCrouching
+        : isCrouching && !isSliding
           ? CROUCH_SPEED_MULTIPLIER
           : 1;
     const speed = MOVE_SPEED * moveMultiplier * delta;
-
-    this.camera.getWorldDirection(this.forward);
-    this.forward.y = 0;
-    this.forward.normalize();
 
     this.right.crossVectors(this.forward, this.camera.up).normalize();
 
@@ -1725,24 +1804,31 @@ export class Player {
     let deltaX = 0;
     let deltaZ = 0;
 
-    if (input.isPressed('KeyW')) {
-      deltaX += this.forward.x * forwardSpeed;
-      deltaZ += this.forward.z * forwardSpeed;
-    }
-    if (input.isPressed('KeyS')) {
-      deltaX -= this.forward.x * speed;
-      deltaZ -= this.forward.z * speed;
-    }
-    if (input.isPressed('KeyD')) {
-      deltaX += this.right.x * speed;
-      deltaZ += this.right.z * speed;
-    }
-    if (input.isPressed('KeyA')) {
-      deltaX -= this.right.x * speed;
-      deltaZ -= this.right.z * speed;
+    if (isSliding) {
+      // Steer with look; turning bleeds extra speed (see SlideController).
+      const slideMove = this.slide.tick(delta, this.forward.x, this.forward.z);
+      deltaX = slideMove.x;
+      deltaZ = slideMove.z;
+    } else {
+      if (input.isPressed('KeyW')) {
+        deltaX += this.forward.x * forwardSpeed;
+        deltaZ += this.forward.z * forwardSpeed;
+      }
+      if (input.isPressed('KeyS')) {
+        deltaX -= this.forward.x * speed;
+        deltaZ -= this.forward.z * speed;
+      }
+      if (input.isPressed('KeyD')) {
+        deltaX += this.right.x * speed;
+        deltaZ += this.right.z * speed;
+      }
+      if (input.isPressed('KeyA')) {
+        deltaX -= this.right.x * speed;
+        deltaZ -= this.right.z * speed;
+      }
     }
 
-    const jump = !wantsCrouch && input.isJustPressed('Space');
+    const jump = jumpFromSlide || (!wantsCrouch && !isSliding && jumpRequested);
     const wasGrounded = this.physics.grounded;
     const result = stepPlayerPhysicsClient(
       this.object.position.x,
@@ -1762,8 +1848,33 @@ export class Player {
     if (jump && wasGrounded) {
       this.locomotionJumping = true;
     }
+    // Freeze sprint build-up whenever leaving the ground (jump or fall).
+    // Jump-only / no sprint → 0 → minimum land-slide.
+    if (wasGrounded && !this.physics.grounded) {
+      this.airborneSlideChargeSec = this.sprintChargeSec;
+    }
     if (this.physics.grounded) {
       this.locomotionJumping = false;
+    }
+
+    // Just landed — open a short window to slide without sprinting.
+    // Holding C through the landing also starts a slide immediately.
+    if (!wasGrounded && this.physics.grounded) {
+      this.landSlideGraceSec = LAND_SLIDE_GRACE_SEC;
+      if (input.isPressed('KeyC') && !this.slide.isActive()) {
+        const charge01 = Math.min(
+          1,
+          this.airborneSlideChargeSec / SPRINT_CHARGE_FULL_SEC,
+        );
+        this.slide.tryStart(this.forward.x, this.forward.z, charge01);
+        this.locomotionSliding = this.slide.isActive();
+      }
+    }
+
+    // Don't keep sliding once airborne (jump cancel / fall).
+    if (!this.physics.grounded && this.slide.isActive()) {
+      this.slide.cancel();
+      this.locomotionSliding = false;
     }
 
     this.locomotionCrouching = wantsCrouch && this.physics.grounded;
@@ -1802,10 +1913,10 @@ export class Player {
       ads,
     });
 
-    const groundedMoving = isMoving && this.physics.grounded;
+    const groundedMoving = isMoving && this.physics.grounded && !isSliding;
     this.footstepSounds?.update(delta, groundedMoving, isSprinting);
 
-    this.headBob.update(delta, isMoving, isSprinting);
+    this.headBob.update(delta, groundedMoving, isSprinting);
     if (this.headRig) this.headBob.apply(this.headRig, isSprinting);
   }
 
@@ -2496,6 +2607,14 @@ export class Player {
     // One-shot clips clamp on the last frame; the mixer may stop driving the spine
     // bone while this pose is still displayed — skip pitch to avoid quaternion drift.
     if (this.characterInstance?.isOneShotFinished) return;
+    // Slide clip already authorizes full-body orientation — look-pitch on Spine1
+    // compounds with that pose and spins the torso every frame.
+    if (
+      this.targetSliding
+      || this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.sliding
+    ) {
+      return;
+    }
 
     _spinePitchQuat.setFromAxisAngle(_spinePitchAxis, -this.currentPitch);
     this.spineBone.quaternion.multiply(_spinePitchQuat);

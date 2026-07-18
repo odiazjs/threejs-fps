@@ -14,7 +14,7 @@ export interface RemoteWeaponMount {
 const RIFLE_AIMING_RIFLE_MOUNT: RemoteWeaponMount = {
   handPosition: new THREE.Vector3(0, 0, 0),
   handRotation: new THREE.Euler(0, 0, 0),
-  weaponPosition: new THREE.Vector3(5, 25, 7),
+  weaponPosition: new THREE.Vector3(-5, 25, 12),
   weaponRotation: new THREE.Euler(0, 180, 89.5),
 };
 
@@ -73,6 +73,7 @@ export function getRemoteWeaponMount(modelFile: string, weaponId: WeaponId): Rem
 
   if (modelFile === CHARACTER_MODEL_FILES.crouchIdle) return RIFLE_AIMING_RIFLE_MOUNT;
   if (modelFile === CHARACTER_MODEL_FILES.crouchWalk) return RIFLE_WALK_MOUNT;
+  if (modelFile === CHARACTER_MODEL_FILES.sliding) return RIFLE_RUN_MOUNT;
 
   if (weaponId === 'pistol') {
     if (modelFile === CHARACTER_MODEL_FILES.pistolRun) return PISTOL_RUN_MOUNT;

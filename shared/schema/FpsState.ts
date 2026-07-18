@@ -39,6 +39,8 @@ export class PlayerState extends Schema {
   @type('boolean') walkingBackward = false;
   @type('boolean') jumping = false;
   @type('boolean') crouching = false;
+  /** Sprint+C momentum slide (also implies crouch pose / eye height). */
+  @type('boolean') sliding = false;
   /** Kills scored in the current TDM match (reset when countdown starts). */
   @type('number') matchKills = 0;
   /** Server world time when the shield dome charge completes (0 when idle). */

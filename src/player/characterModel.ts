@@ -35,6 +35,7 @@ export const CHARACTER_MODEL_FILES = {
   weaponEquip: 'weapon_swtich_2.fbx',
   crouchIdle: 'Idle Crouching Aiming.fbx',
   crouchWalk: 'Crouched Walking.fbx',
+  sliding: 'character_sliding.fbx',
   death: 'Player Death.fbx',
 } as const;
 
@@ -61,12 +62,18 @@ const ROOT_MOTION_STRIP_MODEL_FILES = new Set<string>([
   CHARACTER_MODEL_FILES.crouchWalk,
 ]);
 
+/** Keep hips Y (body drop) but kill XZ drift so network feet stay authoritative. */
+const ROOT_MOTION_STRIP_XZ_MODEL_FILES = new Set<string>([
+  CHARACTER_MODEL_FILES.sliding,
+]);
+
 export interface RemoteCharacterPose {
   sprinting: boolean;
   walking: boolean;
   walkingBackward: boolean;
   jumping: boolean;
   crouching: boolean;
+  sliding: boolean;
   reloading: boolean;
   switchingWeapon: boolean;
   meleeAttacking: boolean;
@@ -85,7 +92,7 @@ function assetUrl(file: string): string {
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
   if (animations.length === 0) return null;
   return (
-    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload|melee|attack|equip|shoulder|death/i.test(clip.name)) ??
+    animations.find((clip) => /jump|idle|run|shoot|aim|walk|reload|melee|attack|equip|shoulder|death|slide/i.test(clip.name)) ??
     animations[0] ??
     null
   );
@@ -94,6 +101,23 @@ function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationCl
 /** Remove hips/root translation so jump height comes from physics only. */
 function stripRootMotionFromClip(clip: THREE.AnimationClip): THREE.AnimationClip {
   const tracks = clip.tracks.filter((track) => !isRootMotionPositionTrack(track));
+  return new THREE.AnimationClip(clip.name, clip.duration, tracks);
+}
+
+/**
+ * Zero hips/root XZ translation but keep Y — slide clips plant the body on the
+ * ground via hip height without skating away from networked feet.
+ */
+function stripRootMotionHorizontalFromClip(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const tracks = clip.tracks.map((track) => {
+    if (!isRootMotionPositionTrack(track)) return track;
+    const next = track.clone();
+    for (let i = 0; i < next.values.length; i += 3) {
+      next.values[i] = 0;
+      next.values[i + 2] = 0;
+    }
+    return next;
+  });
   return new THREE.AnimationClip(clip.name, clip.duration, tracks);
 }
 
@@ -450,7 +474,9 @@ async function loadCharacterTemplateByFile(
 
     const oneShot = ONE_SHOT_MODEL_FILES.has(modelFile);
     let clip = pickAnimationClip(animFbx.animations);
-    if (ROOT_MOTION_STRIP_MODEL_FILES.has(modelFile) && clip) {
+    if (clip && ROOT_MOTION_STRIP_XZ_MODEL_FILES.has(modelFile)) {
+      clip = stripRootMotionHorizontalFromClip(clip);
+    } else if (clip && ROOT_MOTION_STRIP_MODEL_FILES.has(modelFile)) {
       clip = stripRootMotionFromClip(clip);
     }
 
@@ -493,6 +519,10 @@ export function gameModelFileForWeapon(
 
   if (pose.switchingWeapon) {
     return CHARACTER_MODEL_FILES.weaponEquip;
+  }
+
+  if (pose.sliding) {
+    return CHARACTER_MODEL_FILES.sliding;
   }
 
   if (pose.reloading) {
@@ -544,6 +574,7 @@ export function gameIdleModelFileForWeapon(weaponId: WeaponId): string {
     walkingBackward: false,
     jumping: false,
     crouching: false,
+    sliding: false,
     reloading: false,
     switchingWeapon: false,
     meleeAttacking: false,
@@ -568,6 +599,7 @@ const IDLE_REMOTE_POSE: RemoteCharacterPose = {
   walkingBackward: false,
   jumping: false,
   crouching: false,
+  sliding: false,
   reloading: false,
   switchingWeapon: false,
   meleeAttacking: false,
@@ -623,6 +655,7 @@ export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.weaponEquip),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.crouchIdle),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.crouchWalk),
+    loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.sliding),
     loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death),
   ]);
 }

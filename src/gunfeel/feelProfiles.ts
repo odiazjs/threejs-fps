@@ -505,6 +505,7 @@ export const WEAPON_ARCHETYPES: Record<WeaponId, WeaponArchetype> = {
   plasma_rifle: 'ar',
   bio_liquid_rifle: 'ar',
   bio_machine_gun: 'lmg',
+  bio_smg_1: 'ar',
   root_bio_carbine: 'burst',
   sniper_rifle: 'sniper',
   plasma_shotgun: 'shotgun',
@@ -548,6 +549,23 @@ const WEAPON_FEEL_OVERRIDES: Partial<Record<WeaponId, FeelOverride>> = {
       smokeOpacityScale: 2.4,
       smokeSizeScale: 2.0,
       smokeDensityScale: 2.0,
+    },
+  },
+  // Compact SMG — quick crack, light smoke from mag dumps.
+  bio_smg_1: {
+    kickback: {
+      kickBack: 3.4,
+      kickPitch: 2.6,
+      kickRoll: 1.4,
+      maxBack: 0.1,
+      maxPitch: 0.08,
+    },
+    juice: {
+      screenFlash: 0.035,
+      smokeShotsToPrime: 8,
+      smokeDurationSec: 1.0,
+      smokeOpacityScale: 1.1,
+      smokeSizeScale: 0.9,
     },
   },
 };

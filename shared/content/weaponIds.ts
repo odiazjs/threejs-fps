@@ -5,6 +5,7 @@ export type WeaponId =
   | 'root_bio_carbine'
   | 'bio_liquid_rifle'
   | 'bio_machine_gun'
+  | 'bio_smg_1'
   | 'plasma_shotgun'
   | 'katana';
 
@@ -28,6 +29,7 @@ export function isWeaponId(value: string): value is WeaponId {
     value === 'root_bio_carbine' ||
     value === 'bio_liquid_rifle' ||
     value === 'bio_machine_gun' ||
+    value === 'bio_smg_1' ||
     value === 'plasma_shotgun' ||
     value === 'katana'
   );

@@ -89,6 +89,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     walkingBackward: player.walkingBackward,
     jumping: player.jumping,
     crouching: player.crouching,
+    sliding: player.sliding === true,
     matchKills: player.matchKills ?? 0,
     shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
     shieldDomeEndAt: player.shieldDomeEndAt,
@@ -444,6 +445,7 @@ export class RoomClient {
     walkingBackward: boolean,
     jumping: boolean,
     crouching: boolean,
+    sliding: boolean,
   ): void {
     this.room?.send('move', {
       x,
@@ -456,6 +458,7 @@ export class RoomClient {
       walkingBackward,
       jumping,
       crouching,
+      sliding,
     });
   }
 

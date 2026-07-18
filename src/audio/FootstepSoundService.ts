@@ -10,6 +10,7 @@ export interface RemoteFootstepLocomotion {
   isWalking: boolean;
   isSprinting: boolean;
   isJumping: boolean;
+  isSliding?: boolean;
 }
 
 export class FootstepSoundService {
@@ -101,7 +102,9 @@ export class FootstepSoundService {
     if (!this.config) return;
 
     const moving =
-      !locomotion.isJumping && (locomotion.isWalking || locomotion.isSprinting);
+      !locomotion.isJumping &&
+      !locomotion.isSliding &&
+      (locomotion.isWalking || locomotion.isSprinting);
     if (!moving) {
       this.remoteStepTimers.delete(sessionId);
       return;

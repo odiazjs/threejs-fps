@@ -8,6 +8,8 @@ export const GAME_CONTROLS_HELP: readonly ControlHelpEntry[] = [
   { keys: 'Shift + W', description: 'Sprint' },
   { keys: 'Space', description: 'Jump' },
   { keys: 'C', description: 'Crouch' },
+  { keys: 'Sprint / Land + C', description: 'Slide' },
+  { keys: 'Space (slide)', description: 'Jump-cancel slide' },
   { keys: 'Mouse', description: 'Look around' },
   { keys: 'LMB', description: 'Shoot / melee attack' },
   { keys: 'RMB', description: 'Aim down sights' },

@@ -11,6 +11,7 @@ export const WEAPON_ICON_SRC: Record<WeaponId, string> = {
   root_bio_carbine: '/images/root_bio_carbine_icon.png',
   bio_liquid_rifle: '/images/bio_liquid_rifle_icon.png',
   bio_machine_gun: '/images/bio_machine_gun.png',
+  bio_smg_1: '/images/smg_1_icon.png',
   plasma_shotgun: '/images/plasma_shotgun_icon.png',
   katana: '/images/katana_melee_icon_1.png',
 };

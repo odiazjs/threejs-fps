@@ -178,6 +178,7 @@ interface MoveMessage {
   walkingBackward?: boolean;
   jumping?: boolean;
   crouching?: boolean;
+  sliding?: boolean;
 }
 
 interface JoinOptions {
@@ -1038,7 +1039,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       if (this.isTdm() && this.state.matchPhase !== 'playing') return;
 
       const airborne = data.jumping === true;
-      const crouching = data.crouching === true && !airborne;
+      const sliding = data.sliding === true && !airborne;
+      const crouching = (data.crouching === true || sliding) && !airborne;
       const eyeHeight = crouching ? CROUCH_EYE_HEIGHT : EYE_HEIGHT;
       const clientFeetY = data.y - eyeHeight;
       const feetYForMove = resolveMoveFeetYForMap(data.x, data.z, clientFeetY, this.mapDef);
@@ -1073,9 +1075,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.yaw = data.yaw;
       player.pitch = data.pitch;
       player.crouching = crouching;
+      player.sliding = sliding;
       player.jumping = airborne;
-      player.sprinting = data.sprinting === true && !player.jumping && !crouching;
-      player.walking = data.walking === true && !player.sprinting && !player.jumping;
+      player.sprinting =
+        data.sprinting === true && !player.jumping && !crouching && !sliding;
+      player.walking =
+        data.walking === true && !player.sprinting && !player.jumping && !sliding;
       player.walkingBackward =
         player.walking && data.walkingBackward === true;
 
@@ -1960,6 +1965,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.walking = false;
     player.jumping = false;
     player.crouching = false;
+    player.sliding = false;
     this.holsteredWeaponIdBySession.delete(sessionId);
     this.initPlayerLoadout(player, sessionId);
     this.resetPlayerWeaponTiming(player);

@@ -11,6 +11,7 @@ const SHOWCASE_WEAPON_IDS: WeaponId[] = [
   'root_bio_carbine',
   'bio_liquid_rifle',
   'bio_machine_gun',
+  'bio_smg_1',
   'plasma_shotgun',
   'sniper_rifle',
   'katana',
@@ -99,8 +100,10 @@ export class WeaponsScene {
       });
     }
 
+    // Tabs live beside the picker grid (sibling), not inside #weapons-picker.
+    const categoryRoot = pickerRoot.parentElement ?? pickerRoot;
     const categoryTabs = [
-      ...pickerRoot.querySelectorAll<HTMLButtonElement>('.armory-category-tab'),
+      ...categoryRoot.querySelectorAll<HTMLButtonElement>('.armory-category-tab'),
     ];
     for (const tab of categoryTabs) {
       tab.addEventListener('click', () => {

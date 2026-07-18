@@ -134,6 +134,20 @@
       "when": 1783820000000,
       "tag": "0018_character_bumblebee",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1783830000000,
+      "tag": "0019_bio_smg_1",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1783840000000,
+      "tag": "0020_bio_smg_1_base_recoil",
+      "breakpoints": true
     }
   ]
 }

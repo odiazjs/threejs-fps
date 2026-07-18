@@ -46,6 +46,7 @@ function weaponTypeLabel(weaponId: string): string {
     root_bio_carbine: 'CARBINE',
     bio_liquid_rifle: 'RIFLE',
     bio_machine_gun: 'LMG',
+    bio_smg_1: 'SMG',
     plasma_shotgun: 'SHOTGUN',
     sniper_rifle: 'SNIPER',
     katana: 'MELEE',
@@ -159,7 +160,7 @@ export class ArmoryLoadoutsController {
     if (event.target instanceof HTMLElement) {
       if (
         event.target.closest(
-          'input, button, a, textarea, select, .armory-loadout-name, .armory-loadout-set-default',
+          'input, button, a, textarea, select, .armory-loadout-name, .armory-loadout-default-btn',
         )
       ) {
         return;
@@ -168,32 +169,43 @@ export class ArmoryLoadoutsController {
     const maxScroll = this.grid.scrollWidth - this.grid.clientWidth;
     if (maxScroll <= 0) return;
 
+    // Record intent only — don't capture / scroll until movement crosses threshold,
+    // otherwise tiny click jitter suppresses card selection.
     this.dragPointerId = event.pointerId;
     this.dragStartX = event.clientX;
     this.dragStartScrollLeft = this.grid.scrollLeft;
     this.dragMoved = false;
-    this.grid.classList.add('is-dragging');
-    this.grid.setPointerCapture(event.pointerId);
   }
 
   private handleGridPointerMove(event: PointerEvent): void {
     if (this.dragPointerId !== event.pointerId) return;
     const dx = event.clientX - this.dragStartX;
-    if (Math.abs(dx) > 3) this.dragMoved = true;
+    if (!this.dragMoved) {
+      if (Math.abs(dx) < 8) return;
+      this.dragMoved = true;
+      this.grid.classList.add('is-dragging');
+      try {
+        this.grid.setPointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
     this.grid.scrollLeft = this.dragStartScrollLeft - dx;
   }
 
   private handleGridPointerUp(event: PointerEvent): void {
     if (this.dragPointerId !== event.pointerId) return;
+    const wasDragging = this.dragMoved;
     this.dragPointerId = null;
+    this.dragMoved = false;
     this.grid.classList.remove('is-dragging');
-    try {
-      this.grid.releasePointerCapture(event.pointerId);
-    } catch {
-      /* already released */
-    }
-    // Suppress the click that follows a drag so cards don't get selected mid-pan.
-    if (this.dragMoved) {
+    if (wasDragging) {
+      try {
+        this.grid.releasePointerCapture(event.pointerId);
+      } catch {
+        /* already released */
+      }
+      // Suppress the click that follows a real pan so cards don't select mid-drag.
       const suppress = (clickEvent: Event) => {
         clickEvent.stopPropagation();
         clickEvent.preventDefault();
@@ -202,7 +214,6 @@ export class ArmoryLoadoutsController {
       this.grid.addEventListener('click', suppress, true);
       window.setTimeout(() => this.grid.removeEventListener('click', suppress, true), 0);
     }
-    this.dragMoved = false;
   }
 
   private async reload(): Promise<void> {

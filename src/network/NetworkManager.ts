@@ -752,9 +752,10 @@ export class NetworkManager {
     const { yaw, pitch } = player.getNetworkAim();
 
     const locomotion = player.getLocomotionState();
-    const eyeY = locomotion.isCrouching
-      ? feet.y + CROUCH_EYE_HEIGHT
-      : feet.y + EYE_HEIGHT;
+    const eyeY =
+      locomotion.isCrouching || locomotion.isSliding
+        ? feet.y + CROUCH_EYE_HEIGHT
+        : feet.y + EYE_HEIGHT;
 
     this.roomClient.sendMove(
       feet.x,
@@ -766,7 +767,8 @@ export class NetworkManager {
       locomotion.isWalking,
       locomotion.isWalkingBackward,
       locomotion.isJumping,
-      locomotion.isCrouching,
+      locomotion.isCrouching || locomotion.isSliding,
+      locomotion.isSliding,
     );
   }
 
