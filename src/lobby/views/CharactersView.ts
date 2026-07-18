@@ -181,16 +181,20 @@ export class CharactersView {
       .map((entry) => {
         const selected = entry.id === this.selectedId;
         const equipped = entry.selected;
+        const iconSrc = characterIconSrc(entry.iconFile);
+        const visual = iconSrc
+          ? `<img class="characters-card-icon" src="${escapeHtml(iconSrc)}" alt="" loading="lazy" />`
+          : `<span class="characters-card-glyph">${escapeHtml(entry.name.slice(0, 1))}</span>`;
         return `
           <button
             type="button"
-            class="characters-card${selected ? ' is-selected' : ''}${equipped ? ' is-equipped' : ''}"
+            class="characters-card${selected ? ' is-selected' : ''}${equipped ? ' is-equipped' : ''}${iconSrc ? ' has-icon' : ''}"
             data-character-id="${entry.id}"
             role="option"
             aria-selected="${selected ? 'true' : 'false'}"
           >
             <div class="characters-card-visual" aria-hidden="true">
-              <span class="characters-card-glyph">${entry.name.slice(0, 1)}</span>
+              ${visual}
             </div>
             <div class="characters-card-meta">
               <span class="characters-card-name">${escapeHtml(entry.name)}</span>
@@ -271,6 +275,14 @@ export class CharactersView {
       await this.renderDetail();
     }
   }
+}
+
+function characterIconSrc(iconFile: string | null | undefined): string | null {
+  const file = iconFile?.trim();
+  if (!file) return null;
+  if (file.startsWith('/')) return file;
+  if (file.startsWith('images/')) return `/${file}`;
+  return `/images/${file}`;
 }
 
 function escapeHtml(value: string): string {

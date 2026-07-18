@@ -13,6 +13,8 @@ export const characters = pgTable('characters', {
   biography: text('biography').notNull().default(''),
   /** Face head FBX under /3d/ (e.g. characters/character_garla.fbx). */
   faceModelFile: text('face_model_file').notNull(),
+  /** Catalog portrait under /images/ (e.g. characters/garla_icon.png). */
+  iconFile: text('icon_file'),
   /** Optional default body chassis under /3d/ (preview / fallback). */
   bodyAssetFile: text('body_asset_file'),
   perkKey: text('perk_key').notNull(),

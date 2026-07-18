@@ -183,6 +183,13 @@
       "when": 1783890000000,
       "tag": "0025_character_biography_copy",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0026_character_icons",
+      "breakpoints": true
     }
   ]
 }

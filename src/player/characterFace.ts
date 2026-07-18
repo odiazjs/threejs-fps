@@ -11,12 +11,12 @@ const ASSET_BASE = '/3d/';
  * Mixamo FBX bone space is centimeters (same as remoteWeaponMount offsets).
  * Root fitScale then brings the whole character to TARGET_HEIGHT.
  */
-const TARGET_HEAD_HEIGHT = 30;
+const TARGET_HEAD_HEIGHT = 36;
 /**
  * Extra offset from the Neck bone's rest position (face mounts on Neck's parent
  * so collapsing Neck/Head does not shrink the face). Negative Y seats it lower.
  */
-const FACE_MOUNT_OFFSET_Y = -4;
+const FACE_MOUNT_OFFSET_Y = -6;
 const FACE_MOUNT_OFFSET_Z = -2;
 
 const SKIN_WEIGHT_WARNING = 'more than 4 skinning weights';

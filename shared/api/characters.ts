@@ -11,6 +11,8 @@ export interface CharacterState {
   description: string;
   biography: string;
   faceModelFile: string;
+  /** Portrait under /images/ (e.g. characters/garla_icon.png). */
+  iconFile: string | null;
   bodyAssetFile: string | null;
   perk: CharacterPerkState;
   cost: number;

@@ -23,6 +23,7 @@ function toState(
     description: string;
     biography: string;
     faceModelFile: string;
+    iconFile: string | null;
     bodyAssetFile: string | null;
     perkKey: string;
     perkValue: number;
@@ -39,6 +40,7 @@ function toState(
     description: row.description,
     biography: row.biography,
     faceModelFile: row.faceModelFile,
+    iconFile: row.iconFile,
     bodyAssetFile: row.bodyAssetFile,
     perk: {
       key: row.perkKey,
@@ -67,6 +69,7 @@ export async function listCharacters(auth: AuthContext): Promise<CharactersRespo
         description: characters.description,
         biography: characters.biography,
         faceModelFile: characters.faceModelFile,
+        iconFile: characters.iconFile,
         bodyAssetFile: characters.bodyAssetFile,
         perkKey: characters.perkKey,
         perkValue: characters.perkValue,
