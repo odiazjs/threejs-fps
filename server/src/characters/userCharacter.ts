@@ -1,13 +1,16 @@
 import { eq, inArray } from 'drizzle-orm';
-import {
-  DEFAULT_OPERATOR_CHARACTER_ID,
-  isCharacterId,
-} from '../../../shared/content/characters.js';
+import { DEFAULT_OPERATOR_CHARACTER_ID } from '../../../shared/content/characters.js';
 import { getDb } from '../db/index.js';
 import { userCharacter } from '../db/schema/characters.js';
+import {
+  characterExistsInDb,
+  ensureCharacterCatalogLoaded,
+  isKnownCharacterId,
+} from './catalogCache.js';
 
-function normalizeOperatorId(raw: string | null | undefined): string {
-  if (raw && isCharacterId(raw)) return raw;
+async function normalizeOperatorId(raw: string | null | undefined): Promise<string> {
+  await ensureCharacterCatalogLoaded();
+  if (raw && isKnownCharacterId(raw)) return raw;
   return DEFAULT_OPERATOR_CHARACTER_ID;
 }
 
@@ -45,6 +48,8 @@ export async function readSelectedOperatorIds(
   }
   if (userIds.length === 0) return result;
 
+  await ensureCharacterCatalogLoaded();
+
   const db = getDb();
   const rows = await db
     .select({
@@ -55,7 +60,12 @@ export async function readSelectedOperatorIds(
     .where(inArray(userCharacter.userId, [...userIds]));
 
   for (const row of rows) {
-    result.set(row.userId, normalizeOperatorId(row.characterId));
+    result.set(
+      row.userId,
+      row.characterId && isKnownCharacterId(row.characterId)
+        ? row.characterId
+        : DEFAULT_OPERATOR_CHARACTER_ID,
+    );
   }
 
   return result;
@@ -66,7 +76,7 @@ export async function setSelectedOperatorId(
   userId: string,
   characterId: string,
 ): Promise<string> {
-  if (!isCharacterId(characterId)) {
+  if (!(await characterExistsInDb(characterId))) {
     throw new Error('Unknown character');
   }
 

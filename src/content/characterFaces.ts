@@ -1,9 +1,4 @@
-import {
-  CHARACTERS,
-  DEFAULT_FACE_MODEL_FILE,
-  getCharacterDef,
-  isCharacterId,
-} from '../../shared/content/characters';
+import { DEFAULT_FACE_MODEL_FILE } from '../../shared/content/characters';
 
 const STORAGE_KEY = 'fps_selected_face_id';
 
@@ -28,43 +23,15 @@ export interface CharacterFaceDef {
 /** Shared mount tweak until per-face authored offsets exist. */
 const DEFAULT_FACE_ROTATION_DEG: CharacterFaceRotationDeg = { x: -24, y: 0, z: 0 };
 
-/** Client face catalog — model paths may be overridden by store API. */
-export const CHARACTER_FACES: Readonly<Record<string, CharacterFaceDef>> = {
-  garla: {
-    id: 'garla',
-    name: 'Garla',
-    modelFile: CHARACTERS.garla!.faceModelFile,
-    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
-  },
-  olrick: {
-    id: 'olrick',
-    name: 'Olrick',
-    modelFile: CHARACTERS.olrick!.faceModelFile,
-    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
-  },
-  morgana: {
-    id: 'morgana',
-    name: 'Morgana',
-    modelFile: CHARACTERS.morgana!.faceModelFile,
-    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
-  },
-  p_anne: {
-    id: 'p_anne',
-    name: 'P. Anne',
-    modelFile: CHARACTERS.p_anne!.faceModelFile,
-    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
-  },
-};
-
-/** Runtime overrides from store catalog (`faceModelFile`). */
-const faceModelByCharacterId = new Map<string, string>();
+/** Runtime face catalog populated from `/api/me/characters`. */
+const faceByCharacterId = new Map<string, CharacterFaceDef>();
 
 let activeFaceId = DEFAULT_FACE_ID;
 
 function readStoredFaceId(): string {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw && raw in CHARACTER_FACES) return raw;
+    if (raw && raw.length > 0) return raw;
   } catch {
     // ignore
   }
@@ -74,12 +41,21 @@ function readStoredFaceId(): string {
 activeFaceId = readStoredFaceId();
 
 export function rememberCharacterFaceModels(
-  items: ReadonlyArray<{ id: string; faceModelFile?: string | null }>,
+  items: ReadonlyArray<{
+    id: string;
+    name?: string;
+    faceModelFile?: string | null;
+  }>,
 ): void {
   for (const item of items) {
-    if (item.faceModelFile) {
-      faceModelByCharacterId.set(item.id, item.faceModelFile);
-    }
+    const modelFile = item.faceModelFile?.trim() || DEFAULT_FACE_MODEL_FILE;
+    const prev = faceByCharacterId.get(item.id);
+    faceByCharacterId.set(item.id, {
+      id: item.id,
+      name: item.name?.trim() || prev?.name || item.id,
+      modelFile,
+      rotationDeg: prev?.rotationDeg ?? DEFAULT_FACE_ROTATION_DEG,
+    });
   }
 }
 
@@ -88,7 +64,8 @@ export function getActiveFaceId(): string {
 }
 
 export function setActiveFaceId(faceId: string): void {
-  if (!faceId || !(faceId in CHARACTER_FACES) || activeFaceId === faceId) return;
+  if (!faceId || activeFaceId === faceId) return;
+  if (!faceByCharacterId.has(faceId) && faceId !== DEFAULT_FACE_ID) return;
   activeFaceId = faceId;
   try {
     localStorage.setItem(STORAGE_KEY, faceId);
@@ -98,29 +75,26 @@ export function setActiveFaceId(faceId: string): void {
 }
 
 export function getFaceDef(faceId: string): CharacterFaceDef {
-  const base =
-    CHARACTER_FACES[faceId] ??
-    (isCharacterId(faceId)
-      ? {
-          id: faceId,
-          name: getCharacterDef(faceId).name,
-          modelFile: getCharacterDef(faceId).faceModelFile,
-          rotationDeg: DEFAULT_FACE_ROTATION_DEG,
-        }
-      : CHARACTER_FACES[DEFAULT_FACE_ID]!);
+  const cached = faceByCharacterId.get(faceId);
+  if (cached) return cached;
 
-  const override = faceModelByCharacterId.get(faceId);
-  if (override) {
-    return { ...base, modelFile: override };
-  }
-  return base.modelFile ? base : { ...base, modelFile: DEFAULT_FACE_MODEL_FILE };
+  const fallback = faceByCharacterId.get(DEFAULT_FACE_ID);
+  if (fallback) return fallback;
+
+  return {
+    id: DEFAULT_FACE_ID,
+    name: 'Operator',
+    modelFile: DEFAULT_FACE_MODEL_FILE,
+    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
+  };
 }
 
 /**
  * Resolve which face head to mount.
- * Pass an operator character id (garla, …). Store skin ids fall back to the default face.
+ * Pass an operator character id from the characters API / network state.
+ * Store skin ids fall back to the default face.
  */
 export function resolveFaceIdForCharacter(characterId: string): string {
-  if (isCharacterId(characterId)) return characterId;
+  if (characterId && faceByCharacterId.has(characterId)) return characterId;
   return DEFAULT_FACE_ID;
 }

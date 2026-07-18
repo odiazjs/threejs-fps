@@ -4,12 +4,12 @@ import type {
   CharacterState,
   SelectCharacterResponse,
 } from '../../../shared/api/characters.js';
-import { isCharacterId } from '../../../shared/content/characters.js';
 import type { AuthContext } from '../auth/middleware.js';
 import { getDb } from '../db/index.js';
 import { characters } from '../db/schema/characters.js';
 import { users } from '../db/schema/users.js';
 import { refreshPartyForUser } from '../lobby/partyNotify.js';
+import { characterExistsInDb, ensureCharacterCatalogLoaded } from './catalogCache.js';
 import {
   ensureUserCharacter,
   readSelectedOperatorId,
@@ -55,6 +55,7 @@ function toState(
 
 export async function listCharacters(auth: AuthContext): Promise<CharactersResponse> {
   const db = getDb();
+  await ensureCharacterCatalogLoaded();
   await ensureUserCharacter(auth.sub);
 
   const [selectedCharacterId, catalog, userRow] = await Promise.all([
@@ -97,7 +98,7 @@ export async function selectCharacter(
   auth: AuthContext,
   characterId: string,
 ): Promise<SelectCharacterResponse> {
-  if (!isCharacterId(characterId)) {
+  if (!(await characterExistsInDb(characterId))) {
     throw new Error('Unknown character');
   }
 

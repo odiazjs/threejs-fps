@@ -23,10 +23,6 @@ async function main(): Promise<void> {
   await upsertCurrentStoreCatalog();
   console.log('[db] store catalog upserted');
 
-  const { upsertCurrentCharacterCatalog } = await import('./seed/upsertCharacters.js');
-  await upsertCurrentCharacterCatalog();
-  console.log('[db] character catalog upserted');
-
   await closeDb();
 }
 

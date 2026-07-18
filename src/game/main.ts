@@ -1,7 +1,9 @@
 import { Game } from '../app/Game';
 import { resolveGameJoinIntent } from '../auth/gameJoin';
+import { apiListCharacters } from '../auth/charactersApi';
 import { apiGetMe } from '../auth/meApi';
 import { ensureSession } from '../auth/playerSession';
+import { setActiveOperatorId } from '../content/activeOperatorCharacter';
 import { getServerUrl } from '../config/serverUrl';
 import { bootstrapDebugFlags } from '../debug/debugQuery';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
@@ -13,7 +15,8 @@ async function startGame(): Promise<void> {
 
   try {
     const session = await ensureSession();
-    await apiGetMe();
+    const [, characters] = await Promise.all([apiGetMe(), apiListCharacters()]);
+    setActiveOperatorId(characters.selectedCharacterId);
 
     console.info('[Game] Colyseus server:', getServerUrl());
 

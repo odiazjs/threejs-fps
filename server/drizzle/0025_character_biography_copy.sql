@@ -1,0 +1,11 @@
+-- Seed official operator biographies for the Characters page.
+UPDATE "characters" SET
+	"biography" = CASE "id"
+		WHEN 'garla' THEN 'Talk about having a rough childhood. Imagine the nicest thing your parents ever did for you was name you Garla. That tells you everything you need to know. Anyway, Garla filled the bottomless pit left by her childhood the same way any well-adjusted adult would: with wildly unhealthy coping mechanisms. Chief among them? An overwhelming need to control absolutely everything. On Domicile Number 9, she''s determined to make the planet, and everyone on it, fall in line.'
+		WHEN 'olrick' THEN 'Oh, Olrick. Sweet, sweet Olrick. There was a time he was downright terrifying. Ran with a dangerous crowd. Slicked-back hair. White Ferrari. Lived for New Year''s Eve. Even ordered sloppy steaks. Real bad-boy stuff. Unfortunately, that was before the repeated falls. And the repeated head injuries. Nowadays, Olrick spends most of his time worrying about things that haven''t happened yet. He doesn''t like surprises, change, or loud noises. Domicile Number 9 is about to be a very long day.'
+		WHEN 'morgana' THEN 'Now here''s a breath of fresh air among the slop of humanity that''s still alive. Morgana is cheerful, kind, and impossibly generous. She grew up dreaming of becoming a truck driver but somehow ended up a rancher instead. Luckily, she believes cows are just the trucks of the fields, so it all worked out. It''s an incredibly strange thing to believe, but everyone lets it slide because she''s just so darn nice. On Domicile Number 9, we''re all hoping she stops trying to explain the similarities between cows and trucks.'
+		WHEN 'p_anne' THEN 'Is P. Anne much too cool for this mission? What does the "P." stand for? Those are questions you should really stop asking. P. Anne is condescending, obstinate, and just plain mean. She''s not going to answer them. Ever. Just stop asking. On Domicile Number 9, P. Anne has exactly one objective: leave. She doesn''t like you, she doesn''t like me, and she''s made it abundantly clear she''s above all of this.'
+		ELSE "biography"
+	END,
+	"updated_at" = NOW()
+WHERE "id" IN ('garla', 'olrick', 'morgana', 'p_anne');

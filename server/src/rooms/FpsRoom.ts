@@ -167,6 +167,10 @@ import {
   DEFAULT_OPERATOR_CHARACTER_ID,
 } from '../../../shared/content/characters.js';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../../shared/content/storeItemTypes.js';
+import {
+  ensureCharacterCatalogLoaded,
+  getOperatorWeaponDamageBonus,
+} from '../characters/catalogCache.js';
 import { readPartyMemberCosmetics } from '../lobby/partyCharacters.js';
 import { registerGameUser, restoreLobbyPresenceAfterGame } from '../lobby/presence.js';
 import { loadMapPhysicsForServer } from '../level/loadMapPhysics.js';
@@ -245,6 +249,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private grenadeIdCounter = 0;
 
   async onCreate(options: JoinOptions = {}): Promise<void> {
+    await ensureCharacterCatalogLoaded();
     this.inviteMatch = options.inviteMatch === true;
     this.autoDispose = !this.inviteMatch;
     const partySize = Math.min(
@@ -2086,7 +2091,10 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         : 0;
     const player = this.state.players.get(sessionId);
     if (!player) return base;
-    return applyCharacterWeaponDamage(base, player.selectedOperatorId);
+    return applyCharacterWeaponDamage(
+      base,
+      getOperatorWeaponDamageBonus(player.selectedOperatorId),
+    );
   }
 
   private getSessionWeaponMaxHitDistance(sessionId: string, weaponId: string): number {

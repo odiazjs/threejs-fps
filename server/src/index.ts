@@ -44,6 +44,10 @@ async function main(): Promise<void> {
 
   await maybeRunMigrations();
 
+  const { ensureCharacterCatalogLoaded } = await import('./characters/catalogCache.js');
+  await ensureCharacterCatalogLoaded();
+  console.log('[db] character catalog cached');
+
   server.listen(port);
   console.log(`[Colyseus] listening on http://localhost:${port}`);
 }

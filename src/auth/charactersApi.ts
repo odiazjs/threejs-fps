@@ -31,6 +31,7 @@ function applyFaceModels(data: CharactersResponse | SelectCharacterResponse): vo
   rememberCharacterFaceModels(
     data.characters.map((entry) => ({
       id: entry.id,
+      name: entry.name,
       faceModelFile: entry.faceModelFile,
     })),
   );
