@@ -4,6 +4,7 @@ import { users } from './users.js';
 /**
  * Operator character catalog (face head + perk).
  * Not store items — store sells body skins separately.
+ * Face mount scale/offsets are client-tuned in `characterFaces.ts`.
  */
 export const characters = pgTable('characters', {
   id: text('id').primaryKey(),
@@ -11,7 +12,7 @@ export const characters = pgTable('characters', {
   description: text('description').notNull().default(''),
   /** Longer bio for the Characters page. */
   biography: text('biography').notNull().default(''),
-  /** Face head FBX under /3d/ (e.g. characters/character_garla.fbx). */
+  /** Face head mesh under /3d/ (e.g. characters/garla_face.glb). */
   faceModelFile: text('face_model_file').notNull(),
   /** Catalog portrait under /images/ (e.g. characters/garla_icon.png). */
   iconFile: text('icon_file'),

@@ -11,19 +11,76 @@ export interface CharacterFaceRotationDeg {
   readonly z?: number;
 }
 
-export interface CharacterFaceDef {
-  readonly id: string;
-  readonly name: string;
-  /** FBX under /3d/ — head mesh attached at the neck. */
-  readonly modelFile: string;
+/** Per-character face mount tuning (edit here — not stored in DB). */
+export interface CharacterFaceMountConfig {
+  /** Uniform scale after shared head-height normalize (1 = default). */
+  readonly scale?: number;
+  /** Extra mount offset Y in Mixamo cm space (negative seats lower). */
+  readonly offsetY?: number;
+  /** Extra mount offset Z in Mixamo cm space. */
+  readonly offsetZ?: number;
   /** Optional mount rotation in degrees. */
   readonly rotationDeg?: CharacterFaceRotationDeg;
 }
 
-/** Shared mount tweak until per-face authored offsets exist. */
+export interface CharacterFaceDef {
+  readonly id: string;
+  readonly name: string;
+  /** Mesh under /3d/ — head attached at the neck (from API / fallback). */
+  readonly modelFile: string;
+  readonly scale: number;
+  readonly offsetY: number;
+  readonly offsetZ: number;
+  readonly rotationDeg?: CharacterFaceRotationDeg;
+}
+
+const DEFAULT_FACE_SCALE = 1;
+const DEFAULT_FACE_OFFSET_Y = -6;
+const DEFAULT_FACE_OFFSET_Z = -2;
 const DEFAULT_FACE_ROTATION_DEG: CharacterFaceRotationDeg = { x: -24, y: 0, z: 0 };
 
-/** Runtime face catalog populated from `/api/me/characters`. */
+/**
+ * Tunable face mount overrides per operator id.
+ * `modelFile` still comes from `/api/me/characters` (DB).
+ * offsetY: less is lower
+ * offsetZ: less is closer to the camera
+ */
+export const FACE_MOUNT_BY_CHARACTER_ID: Readonly<
+  Record<string, CharacterFaceMountConfig>
+> = {
+  garla: {
+    scale: 1,
+    offsetY: -6,
+    offsetZ: -2,
+    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
+  },
+  olrick: {
+    scale: 1.10,
+    offsetY: -9,
+    offsetZ: -2,
+    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
+  },
+  morgana: {
+    scale: 1,
+    offsetY: -6,
+    offsetZ: -2,
+    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
+  },
+  p_anne: {
+    scale: 1,
+    offsetY: -6,
+    offsetZ: -2,
+    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
+  },
+  steve: {
+    scale: 0.80,
+    offsetY: -0.5,
+    offsetZ: -2,
+    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
+  },
+};
+
+/** Runtime face catalog: API model paths + local mount tuning. */
 const faceByCharacterId = new Map<string, CharacterFaceDef>();
 
 let activeFaceId = DEFAULT_FACE_ID;
@@ -40,6 +97,35 @@ function readStoredFaceId(): string {
 
 activeFaceId = readStoredFaceId();
 
+function mountConfigFor(characterId: string): Required<
+  Pick<CharacterFaceMountConfig, 'scale' | 'offsetY' | 'offsetZ'>
+> & { rotationDeg: CharacterFaceRotationDeg } {
+  const mount = FACE_MOUNT_BY_CHARACTER_ID[characterId];
+  return {
+    scale: Math.max(0.01, mount?.scale ?? DEFAULT_FACE_SCALE),
+    offsetY: mount?.offsetY ?? DEFAULT_FACE_OFFSET_Y,
+    offsetZ: mount?.offsetZ ?? DEFAULT_FACE_OFFSET_Z,
+    rotationDeg: mount?.rotationDeg ?? DEFAULT_FACE_ROTATION_DEG,
+  };
+}
+
+function buildFaceDef(
+  id: string,
+  name: string,
+  modelFile: string,
+): CharacterFaceDef {
+  const mount = mountConfigFor(id);
+  return {
+    id,
+    name,
+    modelFile,
+    scale: mount.scale,
+    offsetY: mount.offsetY,
+    offsetZ: mount.offsetZ,
+    rotationDeg: mount.rotationDeg,
+  };
+}
+
 export function rememberCharacterFaceModels(
   items: ReadonlyArray<{
     id: string;
@@ -50,12 +136,14 @@ export function rememberCharacterFaceModels(
   for (const item of items) {
     const modelFile = item.faceModelFile?.trim() || DEFAULT_FACE_MODEL_FILE;
     const prev = faceByCharacterId.get(item.id);
-    faceByCharacterId.set(item.id, {
-      id: item.id,
-      name: item.name?.trim() || prev?.name || item.id,
-      modelFile,
-      rotationDeg: prev?.rotationDeg ?? DEFAULT_FACE_ROTATION_DEG,
-    });
+    faceByCharacterId.set(
+      item.id,
+      buildFaceDef(
+        item.id,
+        item.name?.trim() || prev?.name || item.id,
+        modelFile,
+      ),
+    );
   }
 }
 
@@ -76,17 +164,17 @@ export function setActiveFaceId(faceId: string): void {
 
 export function getFaceDef(faceId: string): CharacterFaceDef {
   const cached = faceByCharacterId.get(faceId);
-  if (cached) return cached;
+  if (cached) {
+    // Re-apply mount config so local edits hot-reload without waiting for API.
+    return buildFaceDef(cached.id, cached.name, cached.modelFile);
+  }
 
   const fallback = faceByCharacterId.get(DEFAULT_FACE_ID);
-  if (fallback) return fallback;
+  if (fallback) {
+    return buildFaceDef(faceId, faceId, fallback.modelFile);
+  }
 
-  return {
-    id: DEFAULT_FACE_ID,
-    name: 'Operator',
-    modelFile: DEFAULT_FACE_MODEL_FILE,
-    rotationDeg: DEFAULT_FACE_ROTATION_DEG,
-  };
+  return buildFaceDef(DEFAULT_FACE_ID, 'Operator', DEFAULT_FACE_MODEL_FILE);
 }
 
 /**
@@ -96,5 +184,6 @@ export function getFaceDef(faceId: string): CharacterFaceDef {
  */
 export function resolveFaceIdForCharacter(characterId: string): string {
   if (characterId && faceByCharacterId.has(characterId)) return characterId;
+  if (characterId && characterId in FACE_MOUNT_BY_CHARACTER_ID) return characterId;
   return DEFAULT_FACE_ID;
 }

@@ -247,6 +247,7 @@ export class CharactersView {
     await this.scene?.showAsset(mesh, {
       playShowcaseIdle: true,
       characterId: entry.id,
+      focusFace: true,
     });
   }
 

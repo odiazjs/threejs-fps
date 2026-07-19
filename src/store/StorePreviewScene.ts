@@ -19,12 +19,18 @@ const DEFAULT_CAMERA_Y = 1.05;
 const CHARACTER_YAW_RAD = (45 * Math.PI) / 180;
 /** Pull the character camera back vs default framing. */
 const CHARACTER_CAMERA_ZOOM_OUT = 1.25;
+/** Characters-page close-up: camera offset from the face focus point. */
+const FACE_FOCUS_CAMERA_OFFSET = new THREE.Vector3(0.322, 0.069, 1.08);
+const FACE_FOCUS_MIN_DISTANCE = 0.55;
+const FACE_FOCUS_MAX_DISTANCE = 2.4;
 
 export type StorePreviewOptions = {
   /** Play a store idle clip (character unlockables). */
   playShowcaseIdle?: boolean;
   /** Store character id — selects which face head to attach. */
   characterId?: string;
+  /** Frame camera on the attached face (Characters page). */
+  focusFace?: boolean;
 };
 
 function pickAnimationClip(animations: THREE.AnimationClip[]): THREE.AnimationClip | null {
@@ -55,6 +61,32 @@ function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
   });
 }
 
+/** Prefer the attached face mesh; fall back to the upper ~head band of the body. */
+function resolveFaceFocusPoint(root: THREE.Object3D): THREE.Vector3 {
+  let faceAttach: THREE.Object3D | null = null;
+  root.traverse((child) => {
+    if (!faceAttach && child.name === 'characterFaceAttach') {
+      faceAttach = child;
+    }
+  });
+
+  if (faceAttach) {
+    const box = new THREE.Box3().setFromObject(faceAttach);
+    if (!box.isEmpty()) {
+      return box.getCenter(new THREE.Vector3());
+    }
+    return faceAttach.getWorldPosition(new THREE.Vector3());
+  }
+
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  return new THREE.Vector3(
+    (box.min.x + box.max.x) * 0.5,
+    box.min.y + size.y * 0.92,
+    (box.min.z + box.max.z) * 0.5,
+  );
+}
+
 export class StorePreviewScene {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
@@ -68,6 +100,7 @@ export class StorePreviewScene {
   private currentOperatorId: string | null = null;
   private currentIdleFile: string | null = null;
   private currentPlayIdle = false;
+  private currentFocusFace = false;
   private mixer: THREE.AnimationMixer | null = null;
   private readonly idleClipCache = new Map<string, THREE.AnimationClip>();
   private readonly idleClipPromises = new Map<string, Promise<THREE.AnimationClip | null>>();
@@ -158,12 +191,16 @@ export class StorePreviewScene {
     const playIdle = Boolean(options.playShowcaseIdle);
     const idleFile = playIdle ? showcaseIdleFileForMesh(key) : null;
     const operatorId = options.characterId?.trim() || '';
+    const focusFace = Boolean(options.focusFace);
     if (!key) {
       this.clearModel();
       this.currentAssetKey = null;
       this.currentOperatorId = null;
       this.currentIdleFile = null;
       this.currentPlayIdle = false;
+      this.currentFocusFace = false;
+      this.applyOrbitLimits(false);
+      this.resetOrbit(1);
       return;
     }
     if (
@@ -171,7 +208,8 @@ export class StorePreviewScene {
       this.currentModel &&
       playIdle === this.currentPlayIdle &&
       idleFile === this.currentIdleFile &&
-      operatorId === (this.currentOperatorId ?? '')
+      operatorId === (this.currentOperatorId ?? '') &&
+      focusFace === this.currentFocusFace
     ) {
       return;
     }
@@ -226,8 +264,14 @@ export class StorePreviewScene {
       this.currentOperatorId = operatorId;
       this.currentIdleFile = idleFile;
       this.currentPlayIdle = playIdle;
+      this.currentFocusFace = focusFace;
       this.mixer = mixer;
-      this.resetOrbit(playIdle ? CHARACTER_CAMERA_ZOOM_OUT : 1);
+      this.applyOrbitLimits(focusFace);
+      if (focusFace) {
+        this.resetOrbitToFace(fitted);
+      } else {
+        this.resetOrbit(playIdle ? CHARACTER_CAMERA_ZOOM_OUT : 1);
+      }
     } catch (error) {
       console.warn('[StorePreviewScene] Failed to load asset', key, error);
       if (token === this.loadToken) {
@@ -236,6 +280,7 @@ export class StorePreviewScene {
         this.currentOperatorId = null;
         this.currentIdleFile = null;
         this.currentPlayIdle = false;
+        this.currentFocusFace = false;
       }
     }
   }
@@ -339,12 +384,37 @@ export class StorePreviewScene {
     this.currentModel = null;
   }
 
+  private applyOrbitLimits(focusFace: boolean): void {
+    if (focusFace) {
+      this.controls.minDistance = FACE_FOCUS_MIN_DISTANCE;
+      this.controls.maxDistance = FACE_FOCUS_MAX_DISTANCE;
+      this.controls.minPolarAngle = 0.55;
+      this.controls.maxPolarAngle = Math.PI / 2 + 0.15;
+      return;
+    }
+    this.controls.minDistance = 2.2;
+    this.controls.maxDistance = 8;
+    this.controls.minPolarAngle = 0.35;
+    this.controls.maxPolarAngle = Math.PI / 2 - 0.08;
+  }
+
   private resetOrbit(zoomOut = 1): void {
     this.controls.target.set(0, 0.95, 0);
     this.camera.position.set(
       DEFAULT_CAMERA_X * zoomOut,
       DEFAULT_CAMERA_Y,
       DEFAULT_CAMERA_Z * zoomOut,
+    );
+    this.controls.update();
+  }
+
+  private resetOrbitToFace(model: THREE.Object3D): void {
+    const focus = resolveFaceFocusPoint(model);
+    this.controls.target.copy(focus);
+    this.camera.position.set(
+      focus.x + FACE_FOCUS_CAMERA_OFFSET.x,
+      focus.y + FACE_FOCUS_CAMERA_OFFSET.y,
+      focus.z + FACE_FOCUS_CAMERA_OFFSET.z,
     );
     this.controls.update();
   }

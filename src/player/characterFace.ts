@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { DEFAULT_FACE_ID, getFaceDef } from '../content/characterFaces';
 
@@ -9,15 +10,9 @@ const ASSET_BASE = '/3d/';
 
 /**
  * Mixamo FBX bone space is centimeters (same as remoteWeaponMount offsets).
- * Root fitScale then brings the whole character to TARGET_HEIGHT.
+ * Faces are normalized to this height, then multiplied by per-character `faceScale`.
  */
-const TARGET_HEAD_HEIGHT = 36;
-/**
- * Extra offset from the Neck bone's rest position (face mounts on Neck's parent
- * so collapsing Neck/Head does not shrink the face). Negative Y seats it lower.
- */
-const FACE_MOUNT_OFFSET_Y = -6;
-const FACE_MOUNT_OFFSET_Z = -2;
+const TARGET_HEAD_HEIGHT = 38;
 
 const SKIN_WEIGHT_WARNING = 'more than 4 skinning weights';
 
@@ -39,6 +34,10 @@ export interface CharacterFaceAttachResult {
 
 function assetUrl(file: string): string {
   return `${ASSET_BASE}${file.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function isGlbModel(file: string): boolean {
+  return /\.glb$/i.test(file) || /\.gltf$/i.test(file);
 }
 
 function findBoneBySuffix(root: THREE.Object3D, suffix: string): THREE.Object3D | null {
@@ -83,8 +82,32 @@ function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
   });
 }
 
-function prepareFaceModel(fbx: THREE.Group): THREE.Group {
-  fbx.traverse((child) => {
+function loadGltf(loader: GLTFLoader, url: string): Promise<THREE.Group> {
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => resolve(gltf.scene),
+      undefined,
+      reject,
+    );
+  });
+}
+
+async function loadFaceSource(modelFile: string): Promise<THREE.Group> {
+  const url = assetUrl(modelFile);
+  if (isGlbModel(modelFile)) {
+    return loadGltf(new GLTFLoader(), url);
+  }
+
+  const loader = new FBXLoader();
+  const slash = modelFile.lastIndexOf('/');
+  const modelDir = slash >= 0 ? modelFile.slice(0, slash + 1) : '';
+  loader.setResourcePath(assetUrl(modelDir));
+  return loadFbx(loader, url);
+}
+
+function prepareFaceModel(source: THREE.Group): THREE.Group {
+  source.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;
       child.receiveShadow = true;
@@ -92,17 +115,17 @@ function prepareFaceModel(fbx: THREE.Group): THREE.Group {
     }
   });
 
-  fbx.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(fbx);
+  source.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(source);
   const center = box.getCenter(new THREE.Vector3());
 
   // Pivot at the chin / neck attach: centered XZ, bottom at y=0.
-  fbx.position.x -= center.x;
-  fbx.position.z -= center.z;
-  fbx.position.y -= box.min.y;
+  source.position.x -= center.x;
+  source.position.z -= center.z;
+  source.position.y -= box.min.y;
 
   const wrapper = new THREE.Group();
-  wrapper.add(fbx);
+  wrapper.add(source);
   wrapper.updateMatrixWorld(true);
 
   const fitted = new THREE.Box3().setFromObject(wrapper);
@@ -115,7 +138,7 @@ function prepareFaceModel(fbx: THREE.Group): THREE.Group {
 
 async function loadFaceModelTemplate(faceId: string): Promise<FaceModelTemplate> {
   const def = getFaceDef(faceId);
-  // Cache by model path so characters sharing a placeholder head FBX share one prepare.
+  // Cache by model path so characters sharing a head asset share one prepare.
   const cacheKey = def.modelFile;
   const cached = templateCache.get(cacheKey);
   if (cached) return { ...cached, faceId: def.id };
@@ -124,12 +147,8 @@ async function loadFaceModelTemplate(faceId: string): Promise<FaceModelTemplate>
   if (pending) return pending.then((template) => ({ ...template, faceId: def.id }));
 
   const promise = (async () => {
-    const loader = new FBXLoader();
-    const slash = def.modelFile.lastIndexOf('/');
-    const modelDir = slash >= 0 ? def.modelFile.slice(0, slash + 1) : '';
-    loader.setResourcePath(assetUrl(modelDir));
-    const fbx = await loadFbx(loader, assetUrl(def.modelFile));
-    const scene = prepareFaceModel(fbx);
+    const source = await loadFaceSource(def.modelFile);
+    const scene = prepareFaceModel(source);
     const template: FaceModelTemplate = { faceId: def.id, scene };
     templateCache.set(cacheKey, template);
     return template;
@@ -202,21 +221,22 @@ export async function applyCharacterFace(
   clearExistingFace(characterRoot);
   collapseHeadAndNeck(headAfter, neckAfter);
 
-  // Mount on the spine (Neck's parent) using the Neck bone's local rest slot, then lower.
+  // Mount on the spine (Neck's parent) using the Neck bone's local rest slot + per-character transform.
   const def = getFaceDef(faceId);
   const rot = def.rotationDeg;
   const faceAnchor = new THREE.Group();
   faceAnchor.name = FACE_ATTACH_NAME;
   faceAnchor.position.set(
     neckAfter.position.x,
-    neckAfter.position.y + FACE_MOUNT_OFFSET_Y,
-    neckAfter.position.z + FACE_MOUNT_OFFSET_Z,
+    neckAfter.position.y + def.offsetY,
+    neckAfter.position.z + def.offsetZ,
   );
   faceAnchor.rotation.set(
     THREE.MathUtils.degToRad(rot?.x ?? 0),
     THREE.MathUtils.degToRad(rot?.y ?? 0),
     THREE.MathUtils.degToRad(rot?.z ?? 0),
   );
+  faceAnchor.scale.setScalar(def.scale);
   faceAnchor.frustumCulled = false;
   faceAnchor.add(cloneFaceScene(template));
   mountParent.add(faceAnchor);

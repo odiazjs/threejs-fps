@@ -190,6 +190,55 @@
       "when": 1783900000000,
       "tag": "0026_character_icons",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1783910000000,
+      "tag": "0027_garla_face_glb",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1783920000000,
+      "tag": "0028_olrick_face_icon",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1783930000000,
+      "tag": "0029_character_face_transform",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1783940000000,
+      "tag": "0030_drop_character_face_transform",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1783950000000,
+      "tag": "0031_character_steve",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1783960000000,
+      "tag": "0032_steve_icon",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1783970000000,
+      "tag": "0033_steve_face",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,52 @@
+-- Add operator Steve to the characters catalog.
+INSERT INTO "characters" (
+	"id",
+	"name",
+	"description",
+	"biography",
+	"face_model_file",
+	"body_asset_file",
+	"icon_file",
+	"perk_key",
+	"perk_value",
+	"perk_label",
+	"perk_description",
+	"cost",
+	"default_unlocked",
+	"enabled",
+	"sort_order",
+	"updated_at"
+)
+VALUES (
+	'steve',
+	'Steve',
+	'Underdeveloped optimist with investment dreams.',
+	'Steve is what a nice person might call underdeveloped. You know that moment when a child sees an adult, like a firefighter or something equally stupid, do something heroic, and suddenly they make the huge life decision that they''re going to be a firefighter someday? I''m pretty sure that''s what happened when Steve saw Bill & Ted. Besides being incredibly dull, Steve is a decent guy. He''s convinced Domicile Number 9 is full of untapped investment opportunities. Sure, Steve. Sure.',
+	'characters/garla_face.glb',
+	'character_basic_tpose.fbx',
+	NULL,
+	'weapon_damage_flat',
+	0,
+	'Perk coming soon',
+	'Perk module incoming — keep networking until then.',
+	4500,
+	false,
+	true,
+	50,
+	NOW()
+)
+ON CONFLICT ("id") DO UPDATE SET
+	"name" = EXCLUDED."name",
+	"description" = EXCLUDED."description",
+	"biography" = EXCLUDED."biography",
+	"face_model_file" = EXCLUDED."face_model_file",
+	"body_asset_file" = EXCLUDED."body_asset_file",
+	"perk_key" = EXCLUDED."perk_key",
+	"perk_value" = EXCLUDED."perk_value",
+	"perk_label" = EXCLUDED."perk_label",
+	"perk_description" = EXCLUDED."perk_description",
+	"cost" = EXCLUDED."cost",
+	"default_unlocked" = EXCLUDED."default_unlocked",
+	"enabled" = EXCLUDED."enabled",
+	"sort_order" = EXCLUDED."sort_order",
+	"updated_at" = NOW();
