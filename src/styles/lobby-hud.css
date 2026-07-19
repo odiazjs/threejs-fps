@@ -501,6 +501,39 @@
   text-shadow: 0 0 8px rgba(255, 184, 77, 0.35);
 }
 
+/* Desktop: dock is a no-op wrapper; panels keep their fixed corners */
+.lobby-bottom-dock {
+  display: contents;
+}
+
+/* Collapsible panel chrome (mobile); always visible content on desktop */
+.lobby-panel-toggle {
+  display: none;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 242, 255, 0.14);
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.lobby-panel-toggle-chevron {
+  color: var(--hud-cyan);
+  font-size: 1rem;
+  line-height: 1;
+}
+
 /* Friends / social — bottom left */
 .friends-panel {
   position: fixed;
@@ -520,6 +553,11 @@
 .friends-panel > * {
   position: relative;
   z-index: 1;
+}
+
+.friends-panel-body {
+  display: flex;
+  flex-direction: column;
 }
 
 .friends-panel-tabs {
@@ -964,6 +1002,12 @@
   pointer-events: auto;
 }
 
+.lobby-match-panel .lobby-panel-toggle {
+  margin: -1.55rem -1.1rem 0.85rem;
+  width: calc(100% + 2.2rem);
+  border-bottom-color: rgba(0, 242, 255, 0.18);
+}
+
 .lobby-match-setup {
   position: static;
   width: 100%;
@@ -1378,30 +1422,6 @@
 }
 
 @media (max-width: 900px) {
-  .lobby-nav {
-    top: 40%;
-    left: 1.25rem;
-    transform: translateY(-50%);
-    flex-direction: column;
-    align-items: stretch;
-    width: calc(100vw - 2.5rem);
-  }
-
-  .lobby-nav-item {
-    font-size: 0.95rem;
-  }
-
-  .lobby-profile {
-    width: min(18rem, calc(100vw - 2.5rem));
-    grid-template-columns: auto 1fr;
-  }
-
-  .lobby-profile-stats {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    gap: 2rem;
-  }
-
   .lobby-perf {
     display: none;
   }
@@ -1410,19 +1430,206 @@
     display: flex;
   }
 
-  .friends-panel,
-  .lobby-match-panel {
-    width: calc(100vw - 2.5rem);
+  .lobby-nav {
+    top: max(0.65rem, env(safe-area-inset-top, 0px));
+    left: max(0.65rem, env(safe-area-inset-left, 0px));
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: auto;
+    transform: none;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.15rem;
+    width: auto;
+    max-width: none;
+    padding: 0.35rem 0.45rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .lobby-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lobby-nav-item {
+    flex: 0 0 auto;
+    font-size: 0.82rem;
+    letter-spacing: 0.1em;
+    padding: 0.65rem 0.7rem;
+    white-space: nowrap;
+  }
+
+  .lobby-profile {
+    top: calc(5.25rem + env(safe-area-inset-top, 0px));
+    left: max(0.65rem, env(safe-area-inset-left, 0px));
+    right: auto;
+    /* Leave a dedicated column for the plasma chip on the right */
+    width: calc(
+      100vw - 9.75rem - max(0.65rem, env(safe-area-inset-left, 0px)) -
+        max(0.65rem, env(safe-area-inset-right, 0px))
+    );
+    max-width: 22rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 0.7rem 0.8rem 0.65rem;
+  }
+
+  .lobby-profile-stats {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    gap: 1.5rem;
+    padding-right: 0;
+  }
+
+  .lobby-stat-value {
+    font-size: 1.25rem;
+  }
+
+  .lobby-top-right {
+    top: calc(5.25rem + env(safe-area-inset-top, 0px));
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    left: auto;
+    width: 8.5rem;
+    max-width: 8.5rem;
+    flex-shrink: 0;
+  }
+
+  .lobby-top-right .plasma-minerals-chip {
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .lobby-panel-toggle {
+    display: flex;
+    min-height: var(--touch-min, 44px);
+  }
+
+  /* Stack friends + match above the bottom edge so both toggles stay visible */
+  .lobby-bottom-dock {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    position: fixed;
+    left: max(0.65rem, env(safe-area-inset-left, 0px));
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+    z-index: 5;
+    pointer-events: none;
+    max-height: calc(100dvh - 8rem - env(safe-area-inset-top, 0px));
+  }
+
+  .lobby-ui .friends-panel.hud-panel,
+  .lobby-ui .lobby-match-panel.hud-panel {
+    position: relative;
+    left: auto;
+    right: auto;
+    top: auto;
+    bottom: auto;
+    width: 100%;
+    max-width: none;
+    pointer-events: auto;
   }
 
   .friends-panel {
-    bottom: auto;
-    top: 5.5rem;
-    max-height: 38vh;
+    order: 1;
+    max-height: none;
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .friends-panel:not(.is-collapsed) {
+    max-height: min(36vh, 16rem);
     overflow-y: auto;
   }
 
+  .friends-panel.is-collapsed .friends-panel-body {
+    display: none;
+  }
+
   .lobby-match-panel {
-    bottom: 1.25rem;
+    order: 2;
+    padding: 0.85rem 0.9rem 0.9rem;
+    max-height: none;
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .lobby-match-panel .lobby-panel-toggle {
+    margin: -0.85rem -0.9rem 0.7rem;
+    width: calc(100% + 1.8rem);
+  }
+
+  .lobby-match-panel.is-collapsed .lobby-match-setup {
+    display: none;
+  }
+
+  .lobby-match-panel:not(.is-collapsed) {
+    max-height: min(48vh, 22rem);
+    overflow-y: auto;
+  }
+
+  #lobby-join-btn {
+    min-height: var(--touch-min, 44px);
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .lobby-email {
+    display: none;
+  }
+
+  .lobby-profile {
+    width: calc(
+      100vw - 9.25rem - max(0.65rem, env(safe-area-inset-left, 0px)) -
+        max(0.65rem, env(safe-area-inset-right, 0px))
+    );
+  }
+
+  .lobby-top-right {
+    width: 8rem;
+    max-width: 8rem;
+  }
+
+  .lobby-select-viewport {
+    max-height: 5.5rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .lobby-nav-item {
+    font-size: 0.74rem;
+    padding: 0.6rem 0.55rem;
+  }
+
+  .lobby-profile {
+    width: calc(
+      100vw - 8.5rem - max(0.65rem, env(safe-area-inset-left, 0px)) -
+        max(0.65rem, env(safe-area-inset-right, 0px))
+    );
+  }
+
+  .lobby-top-right {
+    width: 7.25rem;
+    max-width: 7.25rem;
+  }
+
+  .plasma-minerals-label {
+    font-size: 0.5rem;
+  }
+
+  .plasma-minerals-value {
+    font-size: 0.85rem;
+  }
+
+  .lobby-profile-stats {
+    gap: 1rem;
+  }
+
+  .lobby-stat-label {
+    font-size: 0.5rem;
   }
 }

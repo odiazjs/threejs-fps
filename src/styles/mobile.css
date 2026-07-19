@@ -1,0 +1,113 @@
+/* Shared mobile / touch polish for lobby shell pages */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --touch-min: 44px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.lobby-page,
+.weapons-page,
+.store-page,
+.characters-page,
+.leaderboard-page,
+.settings-page,
+.auth-page {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lobby-page button,
+.weapons-page button,
+.store-page button,
+.characters-page button,
+.leaderboard-page button,
+.settings-page button,
+.auth-page button {
+  touch-action: manipulation;
+}
+
+/* Safe-area padding for full-bleed menu shells */
+@media (max-width: 900px) {
+  .armory-ui,
+  .store-ui,
+  .characters-ui {
+    padding-top: max(0.65rem, var(--safe-top));
+    padding-right: max(0.75rem, var(--safe-right));
+    padding-bottom: max(25px, var(--safe-bottom));
+    padding-left: max(0.75rem, var(--safe-left));
+  }
+
+  #app-view-leaderboard,
+  #app-view-settings {
+    padding-top: max(0.65rem, var(--safe-top));
+    padding-right: max(0.75rem, var(--safe-right));
+    padding-bottom: max(25px, var(--safe-bottom));
+    padding-left: max(0.75rem, var(--safe-left));
+  }
+
+  .lobby-top-back-btn {
+    min-height: var(--touch-min);
+  }
+
+  .settings-controls-list {
+    grid-template-columns: 1fr;
+    max-height: min(42vh, 22rem);
+  }
+
+  .settings-controls-row {
+    grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-panel {
+    width: min(360px, calc(100vw - 1.5rem));
+    padding: 1.35rem 1.15rem;
+  }
+
+  .leaderboard-player-row {
+    grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    padding: 0.5rem 0.35rem;
+  }
+
+  .leaderboard-player-name {
+    font-size: 0.95rem;
+  }
+
+  .leaderboard-email {
+    display: none;
+  }
+}
+
+/* Coarse pointers: larger hit targets on menu chrome */
+@media (pointer: coarse) {
+  .lobby-nav-item,
+  .characters-select-btn,
+  .store-purchase-btn,
+  .store-equip-btn,
+  .armory-btn,
+  .friends-tab,
+  .lobby-top-back-btn {
+    min-height: var(--touch-min);
+  }
+
+  .characters-card,
+  .store-item-card {
+    min-height: 0;
+  }
+
+  .characters-search-input,
+  .armory-search-input,
+  .friends-add-row .text-input {
+    min-height: 2.5rem;
+    font-size: 1rem;
+  }
+}

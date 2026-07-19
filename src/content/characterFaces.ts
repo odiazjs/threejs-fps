@@ -62,7 +62,7 @@ export const FACE_MOUNT_BY_CHARACTER_ID: Readonly<
   },
   morgana: {
     scale: 1,
-    offsetY: -6,
+    offsetY: -8,
     offsetZ: -2,
     rotationDeg: DEFAULT_FACE_ROTATION_DEG,
   },

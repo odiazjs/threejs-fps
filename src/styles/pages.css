@@ -521,6 +521,22 @@
   scrollbar-color: rgba(0, 242, 255, 0.35) transparent;
 }
 
+@media (max-width: 640px) {
+  .settings-shell {
+    width: min(640px, calc(100vw - 1.25rem));
+    padding: 1.1rem 1.05rem 1.15rem;
+  }
+
+  .settings-title {
+    font-size: 1.2rem;
+  }
+
+  .settings-label,
+  .settings-value {
+    font-size: 1rem;
+  }
+}
+
 .settings-controls-section-label {
   grid-column: 1 / -1;
   margin-top: 0.7rem;

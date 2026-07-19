@@ -25,6 +25,7 @@ import { PlasmaMineralsStoreModal } from '../ui/PlasmaMineralsStoreModal';
 import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
 import { initLobbyMapSelector } from './mapSelection';
 import { initLobbyGameModeSelector } from './gameModeSelection';
+import { initLobbyPanelCollapse } from './lobbyPanelCollapse';
 import { onGameOverlayClosed, setGameOverlayBackgroundHooks } from './launchGameOverlay';
 import type { AppPresenceView } from '../../shared/network/appView';
 
@@ -87,6 +88,7 @@ async function startLobby(): Promise<void> {
     ]);
 
     appShell.bindNavigation();
+    initLobbyPanelCollapse();
     initLobbyGameModeSelector();
     initLobbyMapSelector();
     const plasmaStore = new PlasmaMineralsStoreModal(

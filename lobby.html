@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>Three.js FPS — Lobby</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,6 +53,7 @@
     <link rel="stylesheet" href="/src/styles/armory-hud.css" />
     <link rel="stylesheet" href="/src/styles/store-hud.css" />
     <link rel="stylesheet" href="/src/styles/characters-hud.css" />
+    <link rel="stylesheet" href="/src/styles/mobile.css" />
     <link rel="stylesheet" href="/src/styles/snackbar.css" />
   </head>
   <body class="lobby-page app-shell">
@@ -155,66 +159,89 @@
           </aside>
         </div>
 
-        <aside id="friends-panel" class="friends-panel hud-panel">
-          <div class="friends-panel-tabs">
-            <button id="friends-tab-btn" class="friends-tab is-active" type="button">
-              FRIENDS
-            </button>
-            <button id="party-tab-btn" class="friends-tab" type="button" disabled>
-              PARTY
-            </button>
-          </div>
-
-          <div id="friends-section" class="friends-section">
-            <ul id="friends-list" class="friends-list"></ul>
-          </div>
-
-          <div id="party-members-section" class="friends-section" hidden>
-            <ul id="party-members-list" class="friends-list"></ul>
-          </div>
-
-          <div class="party-section">
-            <div class="party-section-header">
-              <span class="party-section-label">PARTY</span>
-              <span id="party-slot-count" class="party-slot-count">1/4</span>
+        <div class="lobby-bottom-dock">
+        <aside id="friends-panel" class="friends-panel hud-panel is-collapsed">
+          <button
+            id="friends-panel-toggle"
+            class="lobby-panel-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="friends-panel-body"
+          >
+            <span class="lobby-panel-toggle-label">FRIENDS / PARTY</span>
+            <span class="lobby-panel-toggle-chevron" aria-hidden="true">▸</span>
+          </button>
+          <div id="friends-panel-body" class="friends-panel-body">
+            <div class="friends-panel-tabs">
+              <button id="friends-tab-btn" class="friends-tab is-active" type="button">
+                FRIENDS
+              </button>
+              <button id="party-tab-btn" class="friends-tab" type="button" disabled>
+                PARTY
+              </button>
             </div>
-            <div class="friends-add-row">
-              <input
-                id="friend-email-input"
-                class="text-input"
-                type="email"
-                placeholder="Friend email"
-                autocomplete="email"
-              />
-              <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+
+            <div id="friends-section" class="friends-section">
+              <ul id="friends-list" class="friends-list"></ul>
             </div>
-            <div id="friends-status" class="friends-status"></div>
-            <div id="party-team-picker" class="party-team-picker" hidden>
-              <span class="party-team-picker-label">YOUR TEAM SIDE</span>
-              <div class="party-team-picker-options">
-                <button id="party-team-blue-btn" class="party-team-btn party-team-btn--blue" type="button">
-                  BLUE
-                </button>
-                <button id="party-team-orange-btn" class="party-team-btn party-team-btn--orange" type="button">
-                  ORANGE
-                </button>
+
+            <div id="party-members-section" class="friends-section" hidden>
+              <ul id="party-members-list" class="friends-list"></ul>
+            </div>
+
+            <div class="party-section">
+              <div class="party-section-header">
+                <span class="party-section-label">PARTY</span>
+                <span id="party-slot-count" class="party-slot-count">1/4</span>
               </div>
+              <div class="friends-add-row">
+                <input
+                  id="friend-email-input"
+                  class="text-input"
+                  type="email"
+                  placeholder="Friend email"
+                  autocomplete="email"
+                />
+                <button id="friend-add-btn" class="primary-btn" type="button">ADD</button>
+              </div>
+              <div id="friends-status" class="friends-status"></div>
+              <div id="party-team-picker" class="party-team-picker" hidden>
+                <span class="party-team-picker-label">YOUR TEAM SIDE</span>
+                <div class="party-team-picker-options">
+                  <button id="party-team-blue-btn" class="party-team-btn party-team-btn--blue" type="button">
+                    BLUE
+                  </button>
+                  <button id="party-team-orange-btn" class="party-team-btn party-team-btn--orange" type="button">
+                    ORANGE
+                  </button>
+                </div>
+              </div>
+              <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
+                <input id="friendly-fire-checkbox" type="checkbox" />
+                <span>Friendly fire</span>
+              </label>
+              <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
+                START GAME
+              </button>
+              <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
+                LEAVE PARTY
+              </button>
             </div>
-            <label id="friendly-fire-toggle" class="friendly-fire-toggle" hidden>
-              <input id="friendly-fire-checkbox" type="checkbox" />
-              <span>Friendly fire</span>
-            </label>
-            <button id="game-start-btn" class="primary-btn game-start-btn" type="button" hidden>
-              START GAME
-            </button>
-            <button id="party-leave-btn" class="secondary-btn party-leave-btn" type="button" hidden>
-              LEAVE PARTY
-            </button>
           </div>
         </aside>
 
-        <aside class="lobby-match-panel hud-panel">
-          <div class="lobby-match-setup">
+        <aside class="lobby-match-panel hud-panel is-collapsed">
+          <button
+            id="match-setup-toggle"
+            class="lobby-panel-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="lobby-match-setup"
+          >
+            <span class="lobby-panel-toggle-label">MAP &amp; MODE</span>
+            <span class="lobby-panel-toggle-chevron" aria-hidden="true">▸</span>
+          </button>
+          <div id="lobby-match-setup" class="lobby-match-setup">
             <section class="lobby-select-section" aria-label="Map selection">
               <h2 class="lobby-select-section-label">MAP SELECTION</h2>
               <div class="lobby-select-carousel">
@@ -278,6 +305,7 @@
           <p class="lobby-queue-estimate">QUEUE ESTIMATE: <strong>~ INSTANT</strong></p>
           <button id="lobby-join-btn" class="primary-btn" type="button">LAUNCH QUICK MATCH</button>
         </aside>
+        </div>
       </div>
     </section>
 
