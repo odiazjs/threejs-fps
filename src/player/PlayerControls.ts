@@ -15,6 +15,15 @@ import type { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import type { TeamHud } from '../ui/TeamHud';
 import type { MinimapHud } from '../ui/MinimapHud';
 
+/** Touch-primary devices: skip the desktop click-to-play / pointer-lock gate. */
+function shouldSkipClickToPlayOverlay(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
+}
+
 export class PlayerControls {
   readonly controls: PointerAimControls;
   private staminaHud: StaminaHud | null = null;
@@ -38,6 +47,7 @@ export class PlayerControls {
   private inventoryOpen = false;
   private tacticalMapOpen = false;
   private deadBlocked = false;
+  private readonly skipClickToPlayOverlay: boolean;
 
   private readonly blocker: HTMLElement;
   private readonly instructionsTitle: HTMLElement;
@@ -47,6 +57,7 @@ export class PlayerControls {
     this.blocker = document.getElementById('blocker')!;
     this.instructionsTitle = this.blocker.querySelector('#instructions h1')!;
     this.leaveButton = document.getElementById('leave-game-btn') as HTMLButtonElement;
+    this.skipClickToPlayOverlay = shouldSkipClickToPlayOverlay();
 
     this.controls = new PointerAimControls(yawRig, pitchRig, document.body);
     this.initUI();
@@ -148,6 +159,7 @@ export class PlayerControls {
   resumeFromPause(): void {
     if (!this.isPauseOverlayVisible) return;
     this.isPaused = false;
+    this.blocker.hidden = true;
     this.blocker.style.display = 'none';
     this.leaveButton.hidden = true;
     this.setPlayHudVisible(true);
@@ -161,8 +173,35 @@ export class PlayerControls {
     window.setTimeout(() => {
       if (this.isPaused || this.deadBlocked) return;
       if (this.inventoryOpen || this.tacticalMapOpen) return;
+      if (this.skipClickToPlayOverlay) return;
       if (!this.controls.isLocked) this.controls.lock();
     }, 250);
+  }
+
+  /**
+   * Called when the match is ready. Desktop shows click-to-play;
+   * mobile skips that overlay and enters play-ready without pointer lock.
+   */
+  revealEntryOverlay(): void {
+    if (this.skipClickToPlayOverlay) {
+      this.beginPlayingWithoutPointerLock();
+      return;
+    }
+    this.blocker.hidden = false;
+    this.blocker.style.display = 'flex';
+    this.instructionsTitle.textContent = 'Click to play';
+    this.leaveButton.hidden = true;
+  }
+
+  private beginPlayingWithoutPointerLock(): void {
+    this.hasLockedOnce = true;
+    this.isPaused = false;
+    this.blocker.hidden = true;
+    this.blocker.style.display = 'none';
+    this.leaveButton.hidden = true;
+    this.setPlayHudVisible(true);
+    document.addEventListener('contextmenu', this.preventContextMenu);
+    this.onEngage?.();
   }
 
   private initUI(): void {
@@ -174,6 +213,7 @@ export class PlayerControls {
     });
 
     document.body.addEventListener('click', (event) => {
+      if (this.skipClickToPlayOverlay) return;
       if (this.inventoryOpen || this.tacticalMapOpen || this.deadBlocked) return;
       if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
       if (event.target === this.leaveButton) return;
@@ -192,6 +232,7 @@ export class PlayerControls {
     this.controls.onLock = () => {
       this.hasLockedOnce = true;
       this.isPaused = false;
+      this.blocker.hidden = true;
       this.blocker.style.display = 'none';
       this.leaveButton.hidden = true;
       this.setPlayHudVisible(true);
@@ -206,10 +247,19 @@ export class PlayerControls {
         this.controls.isSoftUnlocked
       ) {
         this.isPaused = false;
+        this.blocker.hidden = true;
         this.blocker.style.display = 'none';
         return;
       }
+
+      // Mobile: never surface click-to-play / pause over the match.
+      if (this.skipClickToPlayOverlay) {
+        this.beginPlayingWithoutPointerLock();
+        return;
+      }
+
       this.isPaused = true;
+      this.blocker.hidden = false;
       this.blocker.style.display = 'flex';
       this.setPlayHudVisible(false);
       document.removeEventListener('contextmenu', this.preventContextMenu);
@@ -226,6 +276,7 @@ export class PlayerControls {
     // Soft unlock (Tab inventory, key 5): match keeps simulating, HUD stays up.
     this.controls.onSoftUnlock = () => {
       this.isPaused = false;
+      this.blocker.hidden = true;
       this.blocker.style.display = 'none';
       this.leaveButton.hidden = true;
       this.setPlayHudVisible(true);

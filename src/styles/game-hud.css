@@ -1940,3 +1940,150 @@ body.game-page * {
   color: var(--hud-amber);
   text-shadow: 0 0 8px rgba(255, 184, 77, 0.35);
 }
+
+/* Mobile / narrow: safe-area insets + compact chrome (not touch controls) */
+@media (max-width: 900px) {
+  #blocker {
+    padding:
+      max(1rem, env(safe-area-inset-top, 0px))
+      max(1rem, env(safe-area-inset-right, 0px))
+      max(1rem, env(safe-area-inset-bottom, 0px))
+      max(1rem, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+  }
+
+  #instructions {
+    max-width: min(34rem, calc(100vw - 2rem));
+    padding: 0 0.5rem;
+  }
+
+  #instructions h1 {
+    font-size: clamp(1.35rem, 6vw, 2rem);
+  }
+
+  #instructions p {
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+
+  #minimap-hud {
+    top: max(0.65rem, env(safe-area-inset-top, 0px));
+    left: max(0.65rem, env(safe-area-inset-left, 0px));
+    width: 148px;
+    padding: 0.45rem 0.5rem 0.5rem;
+  }
+
+  .minimap-canvas {
+    width: 132px;
+    height: 132px;
+  }
+
+  #match-hud {
+    top: max(0.65rem, env(safe-area-inset-top, 0px));
+  }
+
+  #kill-feed {
+    top: max(0.65rem, env(safe-area-inset-top, 0px));
+    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    max-width: min(14rem, calc(100vw - 10rem));
+  }
+
+  #kill-feed .kill-feed-entry {
+    font-size: 0.65rem;
+    white-space: normal;
+    text-align: right;
+  }
+
+  #health-hud {
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    width: min(180px, 42vw);
+  }
+
+  #ammo-hud {
+    right: max(0.75rem, env(safe-area-inset-right, 0px));
+    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  #ammo-hud .ammo-clip {
+    font-size: 1.45rem;
+  }
+
+  #team-hud {
+    left: max(0.75rem, env(safe-area-inset-left, 0px));
+    bottom: calc(10.5rem + env(safe-area-inset-bottom, 0px));
+    width: min(200px, 48vw);
+  }
+
+  #stamina-hud,
+  #shield-dome-hud {
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0px));
+    width: min(180px, 48vw);
+  }
+
+  #shield-dome-hud {
+    bottom: calc(1.25rem + 1rem + 14px + 0.4rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  .match-results-panel {
+    width: min(34rem, calc(100vw - 1.5rem));
+    max-height: calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    margin:
+      max(0.75rem, env(safe-area-inset-top, 0px))
+      max(0.75rem, env(safe-area-inset-right, 0px))
+      max(0.75rem, env(safe-area-inset-bottom, 0px))
+      max(0.75rem, env(safe-area-inset-left, 0px));
+  }
+
+  .tactical-map-panel {
+    width: min(100%, calc(100vw - 1.25rem));
+    max-height: calc(100dvh - 1.5rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow: auto;
+  }
+
+  #inventory-overlay.is-open {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .inventory-backdrop {
+    position: fixed;
+  }
+
+  .inventory-panel {
+    position: relative;
+    top: auto;
+    bottom: auto;
+    left: auto !important;
+    right: auto !important;
+    width: 100%;
+    height: auto;
+    min-height: min(70dvh, 100%);
+    max-height: none;
+    transform: none !important;
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 242, 255, 0.22);
+    box-shadow: none;
+    padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+    padding-right: max(1rem, env(safe-area-inset-right, 0px));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+    padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  }
+}
+
+@media (max-width: 520px) {
+  #minimap-hud {
+    width: 120px;
+  }
+
+  .minimap-canvas {
+    width: 104px;
+    height: 104px;
+  }
+
+  #team-hud {
+    display: none;
+  }
+}

@@ -11,12 +11,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 100dvh;
+  box-sizing: border-box;
 }
 
 .auth-panel {
   width: min(360px, 90vw);
   padding: 2rem;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .auth-panel.panel {
@@ -534,6 +537,14 @@
   .settings-label,
   .settings-value {
     font-size: 1rem;
+  }
+
+  .leaderboard-shell {
+    width: min(56rem, calc(100vw - 1.25rem));
+  }
+
+  .leaderboard-kd {
+    font-size: 0.85rem;
   }
 }
 

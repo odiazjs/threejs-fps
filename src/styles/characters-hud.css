@@ -437,7 +437,7 @@
   }
 }
 
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .characters-ui {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto minmax(16rem, 42vh) auto;

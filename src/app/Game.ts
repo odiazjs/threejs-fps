@@ -367,7 +367,7 @@ export class Game {
     await this.initNetwork(credentials, joinIntent);
     this.applyActiveMap();
     onConnected?.();
-    document.getElementById('blocker')!.hidden = false;
+    this.playerControls.revealEntryOverlay();
     this.running = true;
     this.loop();
   }

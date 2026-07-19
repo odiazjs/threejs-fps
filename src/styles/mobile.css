@@ -19,7 +19,8 @@ html {
 .characters-page,
 .leaderboard-page,
 .settings-page,
-.auth-page {
+.auth-page,
+.game-page {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -29,7 +30,8 @@ html {
 .characters-page button,
 .leaderboard-page button,
 .settings-page button,
-.auth-page button {
+.auth-page button,
+.game-page button {
   touch-action: manipulation;
 }
 
@@ -50,26 +52,64 @@ html {
     padding-right: max(0.75rem, var(--safe-right));
     padding-bottom: max(25px, var(--safe-bottom));
     padding-left: max(0.75rem, var(--safe-left));
+    overflow-y: auto;
+  }
+
+  .auth-page {
+    align-items: flex-start;
+    justify-content: center;
+    min-height: 100dvh;
+    padding:
+      max(1rem, var(--safe-top))
+      max(0.75rem, var(--safe-right))
+      max(1rem, var(--safe-bottom))
+      max(0.75rem, var(--safe-left));
+    box-sizing: border-box;
+    overflow-y: auto;
   }
 
   .lobby-top-back-btn {
     min-height: var(--touch-min);
   }
 
+  .settings-shell,
+  .leaderboard-shell {
+    width: min(56rem, calc(100vw - 1.5rem));
+  }
+
   .settings-controls-list {
     grid-template-columns: 1fr;
-    max-height: min(42vh, 22rem);
+    max-height: min(48vh, 24rem);
   }
 
   .settings-controls-row {
     grid-template-columns: minmax(5rem, 7rem) minmax(0, 1fr);
+  }
+
+  .leaderboard-title {
+    font-size: clamp(1.35rem, 5vw, 1.85rem);
+  }
+
+  .plasma-store-panel {
+    width: min(28rem, calc(100vw - 1.5rem - var(--safe-left) - var(--safe-right)));
+    max-height: calc(100dvh - 2rem - var(--safe-top) - var(--safe-bottom));
+    overflow-y: auto;
+  }
+
+  .plasma-store-pack {
+    min-height: var(--touch-min);
   }
 }
 
 @media (max-width: 560px) {
   .auth-panel {
     width: min(360px, calc(100vw - 1.5rem));
+    margin: auto 0;
     padding: 1.35rem 1.15rem;
+  }
+
+  .auth-tab {
+    min-height: var(--touch-min);
   }
 
   .leaderboard-player-row {
@@ -85,6 +125,16 @@ html {
   .leaderboard-email {
     display: none;
   }
+
+  .leaderboard-block-header {
+    flex-wrap: wrap;
+    gap: 0.35rem 0.75rem;
+  }
+
+  .settings-shell {
+    width: min(640px, calc(100vw - 1.25rem));
+    padding: 1.1rem 1.05rem 1.15rem;
+  }
 }
 
 /* Coarse pointers: larger hit targets on menu chrome */
@@ -93,9 +143,14 @@ html {
   .characters-select-btn,
   .store-purchase-btn,
   .store-equip-btn,
+  .store-sell-btn,
   .armory-btn,
+  .armory-category-tab,
   .friends-tab,
-  .lobby-top-back-btn {
+  .lobby-top-back-btn,
+  .auth-tab,
+  .primary-btn,
+  .secondary-btn {
     min-height: var(--touch-min);
   }
 
@@ -106,8 +161,19 @@ html {
 
   .characters-search-input,
   .armory-search-input,
-  .friends-add-row .text-input {
+  .friends-add-row .text-input,
+  .auth-form .text-input {
     min-height: 2.5rem;
     font-size: 1rem;
+  }
+
+  .settings-slider::-webkit-slider-thumb {
+    width: 1.45rem;
+    height: 1.45rem;
+  }
+
+  .settings-slider::-moz-range-thumb {
+    width: 1.45rem;
+    height: 1.45rem;
   }
 }
