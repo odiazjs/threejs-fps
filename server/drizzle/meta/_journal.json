@@ -260,6 +260,34 @@
       "when": 1784000000000,
       "tag": "0036_panne_face_icon",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784010000000,
+      "tag": "0037_weapon_unlockables",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1784020000000,
+      "tag": "0038_sights_universal",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1784030000000,
+      "tag": "0039_user_weapon_sights",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784040000000,
+      "tag": "0040_precision_core_sight",
+      "breakpoints": true
     }
   ]
 }

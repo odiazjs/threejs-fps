@@ -67,8 +67,8 @@ export const FACE_MOUNT_BY_CHARACTER_ID: Readonly<
     rotationDeg: DEFAULT_FACE_ROTATION_DEG,
   },
   p_anne: {
-    scale: 1,
-    offsetY: -6,
+    scale: 1.1,
+    offsetY: -8,
     offsetZ: -2,
     rotationDeg: DEFAULT_FACE_ROTATION_DEG,
   },

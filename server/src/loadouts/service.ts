@@ -17,13 +17,26 @@ import { weaponLoadouts } from '../db/schema/weaponLoadouts.js';
 import { ensureUser } from '../db/users.js';
 import { refreshPartyForUser } from '../lobby/partyNotify.js';
 import { resolveLoadoutWeaponPair } from '../weapons/service.js';
+import {
+  equipWeaponSight,
+  readEquippedWeaponSights,
+} from '../weaponUnlockables/service.js';
 
-function toSummary(row: typeof weaponLoadouts.$inferSelect): WeaponLoadoutSummary {
+function toSummary(
+  row: typeof weaponLoadouts.$inferSelect,
+  equippedSights?: Record<string, string>,
+): WeaponLoadoutSummary {
+  const primarySightId =
+    equippedSights?.[row.primaryWeaponId] ?? row.primarySightId ?? null;
+  const secondarySightId =
+    equippedSights?.[row.secondaryWeaponId] ?? row.secondarySightId ?? null;
   return {
     id: row.id,
     name: row.name,
     primaryWeaponId: row.primaryWeaponId,
     secondaryWeaponId: row.secondaryWeaponId,
+    primarySightId,
+    secondarySightId,
     isDefault: row.isDefault,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -98,7 +111,8 @@ function isForeignKeyViolation(error: unknown): boolean {
 export async function listWeaponLoadouts(auth: AuthContext): Promise<WeaponLoadoutsListResponse> {
   await ensureUser(auth);
   const rows = await listOwnedLoadouts(auth.sub);
-  return { loadouts: rows.map(toSummary) };
+  const equippedSights = await readEquippedWeaponSights(auth.sub);
+  return { loadouts: rows.map((row) => toSummary(row, equippedSights)) };
 }
 
 export async function createWeaponLoadout(
@@ -108,6 +122,17 @@ export async function createWeaponLoadout(
   await ensureUser(auth);
   const name = validateWeaponLoadoutName(input.name);
   const pair = await resolveLoadoutWeaponPair(input.primaryWeaponId, input.secondaryWeaponId);
+
+  // Persist sight choices on the weapon (source of truth), then mirror onto the loadout row.
+  if (input.primarySightId !== undefined) {
+    await equipWeaponSight(auth, pair.primaryWeaponId, input.primarySightId);
+  }
+  if (input.secondarySightId !== undefined) {
+    await equipWeaponSight(auth, pair.secondaryWeaponId, input.secondarySightId);
+  }
+  const equippedSights = await readEquippedWeaponSights(auth.sub);
+  const primarySightId = equippedSights[pair.primaryWeaponId] ?? null;
+  const secondarySightId = equippedSights[pair.secondaryWeaponId] ?? null;
 
   const existing = await listOwnedLoadouts(auth.sub);
   if (existing.length >= WEAPON_LOADOUT_MAX_PER_USER) {
@@ -130,6 +155,8 @@ export async function createWeaponLoadout(
         name,
         primaryWeaponId: pair.primaryWeaponId,
         secondaryWeaponId: pair.secondaryWeaponId,
+        primarySightId,
+        secondarySightId,
         isDefault: makeDefault,
       })
       .returning();
@@ -141,7 +168,7 @@ export async function createWeaponLoadout(
     if (makeDefault) {
       refreshPartyForUser(auth.sub);
     }
-    return { loadout: toSummary(row) };
+    return { loadout: toSummary(row, equippedSights) };
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new Error('A loadout with that name already exists');
@@ -173,6 +200,15 @@ export async function updateWeaponLoadout(
       ? input.secondaryWeaponId
       : existing.secondaryWeaponId;
   const pair = await resolveLoadoutWeaponPair(nextPrimary, nextSecondary);
+  if (input.primarySightId !== undefined) {
+    await equipWeaponSight(auth, pair.primaryWeaponId, input.primarySightId);
+  }
+  if (input.secondarySightId !== undefined) {
+    await equipWeaponSight(auth, pair.secondaryWeaponId, input.secondarySightId);
+  }
+  const equippedSights = await readEquippedWeaponSights(auth.sub);
+  const primarySightId = equippedSights[pair.primaryWeaponId] ?? null;
+  const secondarySightId = equippedSights[pair.secondaryWeaponId] ?? null;
   const makeDefault = input.isDefault === true;
   const clearDefault = input.isDefault === false && existing.isDefault;
   const affectsPartyDefault = makeDefault || clearDefault || existing.isDefault;
@@ -189,6 +225,8 @@ export async function updateWeaponLoadout(
         name: nextName,
         primaryWeaponId: pair.primaryWeaponId,
         secondaryWeaponId: pair.secondaryWeaponId,
+        primarySightId,
+        secondarySightId,
         ...(makeDefault ? { isDefault: true } : {}),
         ...(clearDefault ? { isDefault: false } : {}),
         updatedAt: new Date(),
@@ -204,13 +242,13 @@ export async function updateWeaponLoadout(
       await promoteDefaultIfNeeded(auth.sub);
       const refreshed = await findOwnedLoadout(auth.sub, loadoutId);
       refreshPartyForUser(auth.sub);
-      return { loadout: toSummary(refreshed ?? row) };
+      return { loadout: toSummary(refreshed ?? row, equippedSights) };
     }
 
     if (affectsPartyDefault) {
       refreshPartyForUser(auth.sub);
     }
-    return { loadout: toSummary(row) };
+    return { loadout: toSummary(row, equippedSights) };
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new Error('A loadout with that name already exists');

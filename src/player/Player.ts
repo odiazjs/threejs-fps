@@ -36,6 +36,19 @@ import {
 } from '../../shared/combat/meleeHit';
 import { bodyPartVolumesFromBoneRefs, type BodyPartVolume } from '../../shared/combat/bodyPartVolumes';
 import { WeaponLoadout, type LoadoutAmmoState, resolveWeaponMeshRotation, getLocalWeaponBaseRotation, getRemoteWeaponBaseRotation } from '../combat/WeaponLoadout';
+import {
+  alignDigitalSightToCrosshair,
+  applyDigitalSightStyle,
+  updateDigitalSightAdsVisibility,
+} from '../combat/DigitalSight';
+import {
+  getEquippedSightForWeapon,
+  weaponHasDigitalSight,
+} from '../content/equippedWeaponSights';
+import {
+  digitalSightStyleFromEntry,
+  getDigitalSightCatalogEntry,
+} from '../content/digitalWeaponSights';
 import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readWeaponSideVentFlashOffsets, readScreenHoldWorldPosition } from '../combat/aiming';
 import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
@@ -1067,6 +1080,8 @@ export class Player {
   updateCrosshairAim(hud: CrosshairHud, _width: number, _height: number): void {
     // Camera-recoil aim: reticle stays screen-center; weapon sway/visual kick are cosmetic only.
     hud.setAimOffset(0, 0);
+    // HUD crosshair is hip-fire only — ADS uses the on-gun digital sight.
+    hud.setHipFireVisible((this.weaponPose?.adsBlend ?? 0) <= 0.15);
   }
 
   getFeetPosition(): THREE.Vector3 {
@@ -2593,6 +2608,22 @@ export class Player {
     }
 
     this.weaponPose?.apply(active.mesh, wallPullback, baseRotation);
+
+    if (this.camera) {
+      const adsBlend = this.weaponPose?.adsBlend ?? 0;
+      const sightEntry = getDigitalSightCatalogEntry(
+        getEquippedSightForWeapon(active.weaponId),
+      );
+      const sightAllowed = sightEntry != null && weaponHasDigitalSight(active.weaponId);
+      if (sightEntry) {
+        applyDigitalSightStyle(active.mesh, digitalSightStyleFromEntry(sightEntry));
+      }
+      updateDigitalSightAdsVisibility(active.mesh, adsBlend, sightAllowed);
+      // Keep digital optic on the HUD crosshair (camera look-ray center).
+      if (sightAllowed) {
+        alignDigitalSightToCrosshair(active.mesh, this.camera);
+      }
+    }
   }
 
   private getActiveMeshBaseRotation(): THREE.Euler {

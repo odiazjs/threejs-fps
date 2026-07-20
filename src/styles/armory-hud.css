@@ -976,6 +976,163 @@
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.55));
 }
 
+.armory-loadout-weapon-sight {
+  margin-top: 0.15rem;
+  font-family: var(--hud-font);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  color: rgba(0, 242, 255, 0.72);
+}
+
+.armory-loadout-sights {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  overflow: hidden;
+}
+
+.armory-loadout-sights-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.armory-loadout-sights-title {
+  margin: 0;
+  font-family: var(--hud-font);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #fff;
+}
+
+.armory-loadout-sights-hint {
+  margin: 0;
+  font-family: var(--hud-font);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.armory-loadout-sights-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-right: 0.15rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 242, 255, 0.35) transparent;
+}
+
+.armory-loadout-sights-empty {
+  margin: 0;
+  padding: 0.75rem 0.5rem;
+  font-family: var(--hud-font);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+}
+
+.armory-sight-card {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(0, 12, 18, 0.72);
+}
+
+.armory-sight-card.is-equipped {
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 14px rgba(0, 242, 255, 0.2);
+}
+
+.armory-sight-preview {
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 242, 255, 0.22);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.armory-sight-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.armory-sight-preview-empty {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.armory-sight-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.armory-sight-name {
+  font-family: var(--hud-font);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #fff;
+}
+
+.armory-sight-desc {
+  font-family: var(--hud-font);
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.armory-sight-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.armory-sight-btn {
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(0, 242, 255, 0.35);
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.85);
+  font-family: var(--hud-font);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.armory-sight-btn--buy,
+.armory-sight-btn--equip {
+  border-color: var(--hud-cyan);
+  color: #041018;
+  background: linear-gradient(180deg, rgba(0, 242, 255, 0.85), rgba(0, 180, 200, 0.9));
+}
+
+.armory-sight-btn--sell {
+  border-color: rgba(232, 197, 106, 0.55);
+  color: #e8c56a;
+}
+
 /* Legacy slot-tab styles unused in carousel layout */
 .armory-loadout-slot-tabs,
 .armory-loadout-slot-tab,

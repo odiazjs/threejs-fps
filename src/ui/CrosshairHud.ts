@@ -17,6 +17,10 @@ export class CrosshairHud {
   private hitMode: HitMode | null = null;
   private aimOffsetX = 0;
   private aimOffsetY = 0;
+  /** Master toggle from play/pause/death HUD state. */
+  private playVisible = false;
+  /** Hip-fire only — hidden while ADS (digital sight takes over). */
+  private hipFireVisible = true;
 
   constructor() {
     this.root = document.getElementById('crosshair')!;
@@ -25,17 +29,30 @@ export class CrosshairHud {
     this.weaponReticle = this.root.querySelector('.crosshair-reticle')!;
     this.hitReticle = this.hitRoot.querySelector('.crosshair-reticle')!;
     this.applyRootTransform();
+    this.applyVisibility();
   }
 
   setVisible(visible: boolean): void {
-    const display = visible ? 'block' : 'none';
-    this.root.style.display = display;
-    this.referenceRoot.style.display = display;
-    this.hitRoot.style.display = display;
+    this.playVisible = visible;
+    this.applyVisibility();
     if (!visible) {
       this.resetHit();
       this.setAimOffset(0, 0);
     }
+  }
+
+  /** `true` while hip-firing; `false` while ADS. */
+  setHipFireVisible(visible: boolean): void {
+    if (this.hipFireVisible === visible) return;
+    this.hipFireVisible = visible;
+    this.applyVisibility();
+  }
+
+  private applyVisibility(): void {
+    const display = this.playVisible && this.hipFireVisible ? 'block' : 'none';
+    this.root.style.display = display;
+    this.referenceRoot.style.display = display;
+    this.hitRoot.style.display = display;
   }
 
   setAimOffset(x: number, y: number): void {

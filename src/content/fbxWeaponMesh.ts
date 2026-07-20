@@ -118,5 +118,10 @@ export function cloneFbxWeaponMesh(root: THREE.Group): THREE.Group {
     clone.userData.weaponSideVents = [ventLeft, ventRight];
   }
 
+  const digitalSight = clone.getObjectByName('digital_sight');
+  if (digitalSight) {
+    clone.userData.weaponDigitalSight = digitalSight;
+  }
+
   return clone;
 }

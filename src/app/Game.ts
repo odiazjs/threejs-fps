@@ -52,6 +52,8 @@ import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { InventoryHud } from '../ui/InventoryHud';
 import { LoadoutSwitcherHud } from '../ui/LoadoutSwitcherHud';
 import { apiListLoadouts } from '../auth/loadoutsApi';
+import { apiListWeaponUnlockables } from '../auth/weaponUnlockablesApi';
+import { applyLoadoutSightAssignments } from '../content/equippedWeaponSights';
 import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
@@ -344,6 +346,9 @@ export class Game {
       this.minimapHud.setMapActive(false);
       this.tacticalMapOverlay.setMapActive(false);
     }
+    // Game page is a fresh JS context — hydrate equipped sights before FP weapons ADS.
+    onLoadingMessage?.('Loading loadouts...');
+    await this.refreshLoadoutSwitcher();
     this.initPlayer(initialMapId, joinIntent?.gameMode);
     this.applyActiveMap();
     this.initResize();
@@ -617,6 +622,12 @@ export class Game {
         primaryWeaponId: request.primaryWeaponId,
         secondaryWeaponId: request.secondaryWeaponId,
       };
+      applyLoadoutSightAssignments({
+        primaryWeaponId: request.primaryWeaponId,
+        secondaryWeaponId: request.secondaryWeaponId,
+        primarySightId: request.primarySightId,
+        secondarySightId: request.secondarySightId,
+      });
       const equipped = this.player.applyArmoryLoadout(
         request.primaryWeaponId,
         request.secondaryWeaponId,
@@ -1043,12 +1054,35 @@ export class Game {
   private async refreshLoadoutSwitcher(): Promise<void> {
     const seq = ++this.loadoutsFetchSeq;
     try {
-      const { loadouts } = await apiListLoadouts();
+      // Unlockables hydrate is the source of truth for per-weapon equipped sights.
+      // Keep it independent so loadout list failures still restore optic gating.
+      const [loadoutsResult] = await Promise.all([
+        apiListLoadouts().catch((error) => {
+          console.warn('[Game] failed to load Armory loadouts', error);
+          return null;
+        }),
+        apiListWeaponUnlockables().catch((error) => {
+          console.warn('[Game] failed to load equipped weapon sights', error);
+          return null;
+        }),
+      ]);
       if (seq !== this.loadoutsFetchSeq) return;
+
+      const loadouts = loadoutsResult?.loadouts ?? [];
       this.loadoutSwitcherHud.setLoadouts(loadouts);
+      const preferred =
+        loadouts.find((entry) => entry.isDefault) ?? loadouts[0] ?? null;
+      if (preferred) {
+        applyLoadoutSightAssignments({
+          primaryWeaponId: preferred.primaryWeaponId,
+          secondaryWeaponId: preferred.secondaryWeaponId,
+          primarySightId: preferred.primarySightId,
+          secondarySightId: preferred.secondarySightId,
+        });
+      }
       this.refreshInventoryHud();
     } catch (error) {
-      console.warn('[Game] failed to load Armory loadouts', error);
+      console.warn('[Game] failed to refresh loadout switcher', error);
       if (seq !== this.loadoutsFetchSeq) return;
       this.loadoutSwitcherHud.setLoadouts([]);
     }

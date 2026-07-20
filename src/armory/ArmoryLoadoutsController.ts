@@ -1,4 +1,5 @@
 import type { WeaponLoadoutSummary } from '../../shared/api/loadouts';
+import type { WeaponUnlockableState } from '../../shared/api/weaponUnlockables';
 import { isPickableWeaponId, type WeaponId } from '../../shared/content/weaponIds';
 import {
   WEAPON_LOADOUT_MAX_PER_USER,
@@ -11,17 +12,31 @@ import {
   apiSetDefaultLoadout,
   apiUpdateLoadout,
 } from '../auth/loadoutsApi';
+import {
+  apiEquipWeaponSight,
+  apiListWeaponUnlockables,
+  apiPurchaseWeaponUnlockable,
+  apiSellWeaponUnlockable,
+} from '../auth/weaponUnlockablesApi';
+import {
+  applyLoadoutSightAssignments,
+  getEquippedSightForWeapon,
+} from '../content/equippedWeaponSights';
 import { WEAPON_ICON_SRC } from '../content/inventoryConfig';
 import { getWeaponConfig } from '../content/weaponConfig';
+import { formatPlasmaMinerals } from '../ui/plasmaMineralsHud';
 import { showErrorSnackbar, showSuccessSnackbar } from '../ui/snackbar';
 
 type LoadoutSlot = 'primary' | 'secondary';
+type SightConfirmMode = 'purchase' | 'sell';
 
 interface DraftLoadout {
   id: string | null;
   name: string;
   primaryWeaponId: string;
   secondaryWeaponId: string;
+  primarySightId: string | null;
+  secondarySightId: string | null;
 }
 
 const DEFAULT_PRIMARY = 'plasma_rifle';
@@ -65,6 +80,7 @@ function nextLoadoutName(existing: readonly WeaponLoadoutSummary[]): string {
 
 export class ArmoryLoadoutsController {
   private loadouts: WeaponLoadoutSummary[] = [];
+  private unlockables: WeaponUnlockableState[] = [];
   private selectedId: string | null = null;
   private editingSlot: LoadoutSlot = 'primary';
   private draft: DraftLoadout | null = null;
@@ -74,9 +90,12 @@ export class ArmoryLoadoutsController {
   private dragStartScrollLeft = 0;
   private dragMoved = false;
   private readonly slotsEl: HTMLElement | null;
+  private readonly sightsEl: HTMLElement | null;
+  private readonly sightsHintEl: HTMLElement | null;
   private readonly onPickerClick: (event: Event) => void;
   private readonly onGridClick: (event: Event) => void;
   private readonly onSlotsClick: (event: Event) => void;
+  private readonly onSightsClick: (event: Event) => void;
   private readonly onGridInput: (event: Event) => void;
   private readonly onGridWheel: (event: WheelEvent) => void;
   private readonly onGridPointerDown: (event: PointerEvent) => void;
@@ -84,6 +103,14 @@ export class ArmoryLoadoutsController {
   private readonly onGridPointerUp: (event: PointerEvent) => void;
   private readonly onCreateClick: () => void;
   private readonly onSaveClick: () => void;
+  private readonly onConfirmCancel: () => void;
+  private readonly onConfirmOk: () => void;
+  private readonly onCongratsDismiss: () => void;
+  private confirmMode: SightConfirmMode = 'purchase';
+  private pendingSightId: string | null = null;
+  private readonly confirmModal: HTMLElement | null;
+  private readonly congratsModal: HTMLElement | null;
+  private readonly congratsName: HTMLElement | null;
 
   constructor(
     private readonly grid: HTMLElement,
@@ -94,9 +121,15 @@ export class ArmoryLoadoutsController {
     private readonly onPreviewWeapon: (weaponId: string) => void = () => undefined,
   ) {
     this.slotsEl = document.getElementById('armory-loadout-slots');
+    this.sightsEl = document.getElementById('armory-loadout-sights');
+    this.sightsHintEl = document.getElementById('armory-loadout-sights-hint');
+    this.confirmModal = document.getElementById('store-confirm-modal');
+    this.congratsModal = document.getElementById('store-congrats-modal');
+    this.congratsName = document.getElementById('store-congrats-name');
     this.onPickerClick = (event) => this.handlePickerClick(event);
     this.onGridClick = (event) => this.handleGridClick(event);
     this.onSlotsClick = (event) => this.handleSlotsClick(event);
+    this.onSightsClick = (event) => this.handleSightsClick(event);
     this.onGridInput = (event) => this.handleGridInput(event);
     this.onGridWheel = (event) => this.handleGridWheel(event);
     this.onGridPointerDown = (event) => this.handleGridPointerDown(event);
@@ -108,6 +141,16 @@ export class ArmoryLoadoutsController {
     this.onSaveClick = () => {
       void this.saveSelected();
     };
+    this.onConfirmCancel = () => this.hideConfirm();
+    this.onConfirmOk = () => {
+      const mode = this.confirmMode;
+      const sightId = this.pendingSightId;
+      this.hideConfirm();
+      if (!sightId) return;
+      if (mode === 'sell') void this.sellSight(sightId);
+      else void this.purchaseSight(sightId);
+    };
+    this.onCongratsDismiss = () => this.hideCongrats();
   }
 
   async mount(): Promise<void> {
@@ -120,8 +163,24 @@ export class ArmoryLoadoutsController {
     this.grid.addEventListener('pointerup', this.onGridPointerUp);
     this.grid.addEventListener('pointercancel', this.onGridPointerUp);
     this.slotsEl?.addEventListener('click', this.onSlotsClick);
+    this.sightsEl?.addEventListener('click', this.onSightsClick);
     this.createBtn.addEventListener('click', this.onCreateClick);
     this.saveBtn.addEventListener('click', this.onSaveClick);
+    document
+      .getElementById('store-confirm-cancel')
+      ?.addEventListener('click', this.onConfirmCancel);
+    document
+      .getElementById('store-confirm-ok')
+      ?.addEventListener('click', this.onConfirmOk);
+    for (const el of document.querySelectorAll('[data-store-confirm-cancel]')) {
+      el.addEventListener('click', this.onConfirmCancel);
+    }
+    document
+      .getElementById('store-congrats-dismiss')
+      ?.addEventListener('click', this.onCongratsDismiss);
+    this.congratsModal
+      ?.querySelector('.store-dialog-backdrop')
+      ?.addEventListener('click', this.onCongratsDismiss);
     await this.reload();
   }
 
@@ -135,8 +194,27 @@ export class ArmoryLoadoutsController {
     this.grid.removeEventListener('pointerup', this.onGridPointerUp);
     this.grid.removeEventListener('pointercancel', this.onGridPointerUp);
     this.slotsEl?.removeEventListener('click', this.onSlotsClick);
+    this.sightsEl?.removeEventListener('click', this.onSightsClick);
     this.createBtn.removeEventListener('click', this.onCreateClick);
     this.saveBtn.removeEventListener('click', this.onSaveClick);
+    document
+      .getElementById('store-confirm-cancel')
+      ?.removeEventListener('click', this.onConfirmCancel);
+    document
+      .getElementById('store-confirm-ok')
+      ?.removeEventListener('click', this.onConfirmOk);
+    for (const el of document.querySelectorAll('[data-store-confirm-cancel]')) {
+      el.removeEventListener('click', this.onConfirmCancel);
+    }
+    document
+      .getElementById('store-congrats-dismiss')
+      ?.removeEventListener('click', this.onCongratsDismiss);
+    this.congratsModal
+      ?.querySelector('.store-dialog-backdrop')
+      ?.removeEventListener('click', this.onCongratsDismiss);
+    this.hideConfirm();
+    this.hideCongrats();
+    this.pendingSightId = null;
   }
 
   /** Mouse wheel is usually vertical; map it to horizontal carousel scroll. */
@@ -219,22 +297,21 @@ export class ArmoryLoadoutsController {
   private async reload(): Promise<void> {
     this.setStatus('Loading loadouts...');
     try {
-      const { loadouts } = await apiListLoadouts();
+      const [{ loadouts }, unlockablesData] = await Promise.all([
+        apiListLoadouts(),
+        apiListWeaponUnlockables().catch(() => null),
+      ]);
       this.loadouts = loadouts;
+      if (unlockablesData) this.unlockables = unlockablesData.unlockables;
       const preferred =
         loadouts.find((entry) => entry.id === this.selectedId) ??
         loadouts.find((entry) => entry.isDefault) ??
         loadouts[0] ??
         null;
       this.selectedId = preferred?.id ?? null;
-      this.draft = preferred
-        ? {
-            id: preferred.id,
-            name: preferred.name,
-            primaryWeaponId: preferred.primaryWeaponId,
-            secondaryWeaponId: preferred.secondaryWeaponId,
-          }
-        : null;
+      this.draft = preferred ? draftFromSummary(preferred) : null;
+      this.syncDraftSightsFromPersisted();
+      this.syncEquippedSightsFromDraft();
       this.editingSlot = 'primary';
       this.render();
       this.setStatus(
@@ -374,12 +451,9 @@ export class ArmoryLoadoutsController {
     if (!summary) return;
 
     this.selectedId = summary.id;
-    this.draft = {
-      id: summary.id,
-      name: summary.name,
-      primaryWeaponId: summary.primaryWeaponId,
-      secondaryWeaponId: summary.secondaryWeaponId,
-    };
+    this.draft = draftFromSummary(summary);
+    this.syncDraftSightsFromPersisted();
+    this.syncEquippedSightsFromDraft();
     this.editingSlot = 'primary';
     this.render();
     this.setStatus('');
@@ -403,19 +477,23 @@ export class ArmoryLoadoutsController {
     }
 
     if (other === weaponId) {
-      if (this.editingSlot === 'primary') {
-        this.draft.secondaryWeaponId = this.draft.primaryWeaponId;
-        this.draft.primaryWeaponId = weaponId;
-      } else {
-        this.draft.primaryWeaponId = this.draft.secondaryWeaponId;
-        this.draft.secondaryWeaponId = weaponId;
-      }
+      // Swap slots and keep each weapon's equipped sight with it.
+      const prevPrimaryWeapon = this.draft.primaryWeaponId;
+      const prevPrimarySight = this.draft.primarySightId;
+      const prevSecondaryWeapon = this.draft.secondaryWeaponId;
+      const prevSecondarySight = this.draft.secondarySightId;
+      this.draft.primaryWeaponId = prevSecondaryWeapon;
+      this.draft.primarySightId = prevSecondarySight;
+      this.draft.secondaryWeaponId = prevPrimaryWeapon;
+      this.draft.secondarySightId = prevPrimarySight;
     } else if (this.editingSlot === 'primary') {
       this.draft.primaryWeaponId = weaponId;
     } else {
       this.draft.secondaryWeaponId = weaponId;
     }
 
+    this.syncDraftSightsFromPersisted();
+    this.syncEquippedSightsFromDraft();
     this.render();
     this.onPreviewWeapon(weaponId);
     this.setStatus('Unsaved changes — click SAVE LOADOUT.');
@@ -453,12 +531,9 @@ export class ArmoryLoadoutsController {
       });
       this.loadouts = [...this.loadouts, loadout];
       this.selectedId = loadout.id;
-      this.draft = {
-        id: loadout.id,
-        name: loadout.name,
-        primaryWeaponId: loadout.primaryWeaponId,
-        secondaryWeaponId: loadout.secondaryWeaponId,
-      };
+      this.draft = draftFromSummary(loadout);
+      this.syncDraftSightsFromPersisted();
+      this.syncEquippedSightsFromDraft();
       this.editingSlot = 'primary';
       this.render();
       this.setStatus('Loadout created. Edit weapons, then save.');
@@ -531,6 +606,8 @@ export class ArmoryLoadoutsController {
         name,
         primaryWeaponId: this.draft.primaryWeaponId,
         secondaryWeaponId: this.draft.secondaryWeaponId,
+        primarySightId: this.draft.primarySightId,
+        secondarySightId: this.draft.secondarySightId,
       });
 
       this.loadouts = this.loadouts.map((entry) =>
@@ -541,12 +618,8 @@ export class ArmoryLoadoutsController {
       }
 
       this.selectedId = loadout.id;
-      this.draft = {
-        id: loadout.id,
-        name: loadout.name,
-        primaryWeaponId: loadout.primaryWeaponId,
-        secondaryWeaponId: loadout.secondaryWeaponId,
-      };
+      this.draft = draftFromSummary(loadout);
+      this.syncEquippedSightsFromDraft();
       this.render();
       this.setStatus('Loadout saved.');
       showSuccessSnackbar(`Saved "${loadout.name}"`);
@@ -564,6 +637,7 @@ export class ArmoryLoadoutsController {
       this.grid.innerHTML =
         '<p class="armory-loadout-empty-state">No loadouts yet. Click CREATE NEW to start.</p>';
       if (this.slotsEl) this.slotsEl.innerHTML = '';
+      this.renderSights();
       return;
     }
 
@@ -571,6 +645,7 @@ export class ArmoryLoadoutsController {
       .map((loadout, index) => this.renderCard(loadout, index))
       .join('');
     this.renderActiveSlots();
+    this.renderSights();
   }
 
   private renderCard(loadout: WeaponLoadoutSummary, index: number): string {
@@ -636,6 +711,11 @@ export class ArmoryLoadoutsController {
     const label = weaponLabel(weaponId);
     const editing = this.editingSlot === slot;
     const slotLabel = slot === 'primary' ? 'PRIMARY' : 'SECONDARY';
+    const equippedSightId =
+      slot === 'primary' ? this.draft?.primarySightId : this.draft?.secondarySightId;
+    const sightName = equippedSightId
+      ? (this.unlockables.find((entry) => entry.id === equippedSightId)?.name ?? 'SIGHT')
+      : 'NO SIGHT';
     return `
       <button
         type="button"
@@ -649,9 +729,315 @@ export class ArmoryLoadoutsController {
         <span class="armory-loadout-weapon-visual">
           ${icon ? `<img src="${escapeAttr(icon)}" alt="" />` : ''}
         </span>
+        <span class="armory-loadout-weapon-sight">${escapeHtml(sightName)}</span>
       </button>
     `;
   }
+
+  private activeWeaponId(): string | null {
+    if (!this.draft) return null;
+    return this.editingSlot === 'primary'
+      ? this.draft.primaryWeaponId
+      : this.draft.secondaryWeaponId;
+  }
+
+  private equippedSightForEditingSlot(): string | null {
+    if (!this.draft) return null;
+    return this.editingSlot === 'primary'
+      ? this.draft.primarySightId
+      : this.draft.secondarySightId;
+  }
+
+  private syncDraftSightsFromPersisted(): void {
+    if (!this.draft) return;
+    this.draft.primarySightId = getEquippedSightForWeapon(this.draft.primaryWeaponId);
+    this.draft.secondarySightId = getEquippedSightForWeapon(this.draft.secondaryWeaponId);
+  }
+
+  private syncEquippedSightsFromDraft(): void {
+    if (!this.draft) return;
+    applyLoadoutSightAssignments({
+      primaryWeaponId: this.draft.primaryWeaponId,
+      secondaryWeaponId: this.draft.secondaryWeaponId,
+      primarySightId: this.draft.primarySightId,
+      secondarySightId: this.draft.secondarySightId,
+    });
+  }
+
+  private renderSights(): void {
+    if (!this.sightsEl) return;
+    const weaponId = this.activeWeaponId();
+    if (!this.draft || !weaponId) {
+      this.sightsEl.innerHTML =
+        '<p class="armory-loadout-sights-empty">Select a loadout to manage sights.</p>';
+      if (this.sightsHintEl) {
+        this.sightsHintEl.textContent = 'Select a weapon slot, then unlock or equip a sight.';
+      }
+      return;
+    }
+
+    if (this.sightsHintEl) {
+      this.sightsHintEl.textContent = `Sights for ${weaponLabel(weaponId)} (${this.editingSlot.toUpperCase()})`;
+    }
+
+    // All sights can equip on any weapon; each loadout slot keeps its own equipped sight.
+    const sights = this.unlockables.filter((entry) => entry.type === 'sight');
+    if (sights.length === 0) {
+      this.sightsEl.innerHTML =
+        '<p class="armory-loadout-sights-empty">No sights available yet.</p>';
+      return;
+    }
+
+    const equippedId = this.equippedSightForEditingSlot();
+    this.sightsEl.innerHTML = sights.map((entry) => this.renderSightCard(entry, equippedId)).join('');
+  }
+
+  private renderSightCard(entry: WeaponUnlockableState, equippedId: string | null): string {
+    const iconSrc = entry.iconFile ? `/images/${entry.iconFile}` : '';
+    const equipped = equippedId === entry.id;
+    const actions = entry.unlocked
+      ? `
+        <button type="button" class="armory-sight-btn armory-sight-btn--equip" data-sight-action="equip" data-sight-id="${escapeAttr(entry.id)}">
+          ${equipped ? 'EQUIPPED' : 'EQUIP'}
+        </button>
+        ${
+          entry.sellable
+            ? `<button type="button" class="armory-sight-btn armory-sight-btn--sell" data-sight-action="sell" data-sight-id="${escapeAttr(entry.id)}">SELL ${entry.sellRefund.toLocaleString('en-US')}</button>`
+            : ''
+        }
+        ${
+          equipped
+            ? `<button type="button" class="armory-sight-btn" data-sight-action="unequip" data-sight-id="${escapeAttr(entry.id)}">UNEQUIP</button>`
+            : ''
+        }
+      `
+      : `<button type="button" class="armory-sight-btn armory-sight-btn--buy" data-sight-action="buy" data-sight-id="${escapeAttr(entry.id)}">UNLOCK ${entry.cost.toLocaleString('en-US')}</button>`;
+
+    return `
+      <article
+        class="armory-sight-card${entry.unlocked ? ' is-unlocked' : ''}${equipped ? ' is-equipped' : ''}"
+        data-sight-id="${escapeAttr(entry.id)}"
+        role="listitem"
+      >
+        <div class="armory-sight-preview" aria-hidden="true">
+          ${iconSrc ? `<img src="${escapeAttr(iconSrc)}" alt="" />` : '<span class="armory-sight-preview-empty">—</span>'}
+        </div>
+        <div class="armory-sight-meta">
+          <span class="armory-sight-name">${escapeHtml(entry.name)}</span>
+          <span class="armory-sight-desc">${escapeHtml(entry.description)}</span>
+        </div>
+        <div class="armory-sight-actions">${actions}</div>
+      </article>
+    `;
+  }
+
+  private handleSightsClick(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof Element) || !this.sightsEl) return;
+    const button = target.closest<HTMLButtonElement>('[data-sight-action]');
+    if (!button || !this.sightsEl.contains(button)) return;
+
+    const action = button.dataset.sightAction;
+    const sightId = button.dataset.sightId?.trim() ?? '';
+    if (!action || !sightId) return;
+
+    if (action === 'equip') {
+      void this.equipSight(sightId);
+      return;
+    }
+    if (action === 'unequip') {
+      void this.unequipSight();
+      return;
+    }
+    if (action === 'buy') {
+      this.openSightConfirm('purchase', sightId);
+      return;
+    }
+    if (action === 'sell') {
+      this.openSightConfirm('sell', sightId);
+    }
+  }
+
+  private openSightConfirm(mode: SightConfirmMode, sightId: string): void {
+    if (this.busy) return;
+    const entry = this.unlockables.find((item) => item.id === sightId);
+    if (!entry || entry.type !== 'sight') return;
+
+    const confirmEyebrow = document.getElementById('store-confirm-eyebrow');
+    const confirmTitle = document.getElementById('store-confirm-title');
+    const confirmBody = document.getElementById('store-confirm-body');
+
+    if (mode === 'purchase') {
+      if (entry.unlocked) return;
+      this.confirmMode = 'purchase';
+      this.pendingSightId = sightId;
+      if (confirmEyebrow) confirmEyebrow.textContent = 'CONFIRM PURCHASE';
+      if (confirmTitle) confirmTitle.textContent = 'UNLOCK SIGHT?';
+      if (confirmBody) {
+        confirmBody.innerHTML =
+          `Spend <span id="store-confirm-price">${formatPlasmaMinerals(entry.cost)}</span> plasma minerals to unlock ` +
+          `<span id="store-confirm-name">${escapeHtml(entry.name)}</span>?`;
+      }
+    } else {
+      if (!entry.sellable) return;
+      this.confirmMode = 'sell';
+      this.pendingSightId = sightId;
+      if (confirmEyebrow) confirmEyebrow.textContent = 'CONFIRM SELL BACK';
+      if (confirmTitle) confirmTitle.textContent = 'SELL SIGHT?';
+      if (confirmBody) {
+        confirmBody.innerHTML =
+          `Sell <span id="store-confirm-name">${escapeHtml(entry.name)}</span> back for ` +
+          `<span id="store-confirm-price">${formatPlasmaMinerals(entry.sellRefund)}</span> plasma minerals (40% refund)?`;
+      }
+    }
+
+    if (this.confirmModal) {
+      this.confirmModal.dataset.confirmMode = mode;
+      this.confirmModal.hidden = false;
+    }
+  }
+
+  private hideConfirm(): void {
+    if (this.confirmModal) this.confirmModal.hidden = true;
+  }
+
+  private showCongrats(name: string): void {
+    if (this.congratsName) this.congratsName.textContent = name;
+    if (this.congratsModal) this.congratsModal.hidden = false;
+  }
+
+  private hideCongrats(): void {
+    if (this.congratsModal) this.congratsModal.hidden = true;
+  }
+
+  private async equipSight(
+    sightId: string,
+    options: { quiet?: boolean } = {},
+  ): Promise<void> {
+    if (!this.draft || this.busy) return;
+    const entry = this.unlockables.find((item) => item.id === sightId);
+    const weaponId = this.activeWeaponId();
+    if (!entry?.unlocked || entry.type !== 'sight' || !weaponId) {
+      this.setStatus('Unlock this sight before equipping.');
+      return;
+    }
+
+    this.setBusy(true);
+    this.setStatus('Saving equipped sight...');
+    try {
+      await apiEquipWeaponSight(weaponId, sightId);
+      if (this.editingSlot === 'primary') this.draft.primarySightId = sightId;
+      else this.draft.secondarySightId = sightId;
+      this.loadouts = this.loadouts.map((loadout) => ({
+        ...loadout,
+        primarySightId:
+          loadout.primaryWeaponId === weaponId ? sightId : loadout.primarySightId,
+        secondarySightId:
+          loadout.secondaryWeaponId === weaponId ? sightId : loadout.secondarySightId,
+      }));
+      this.syncEquippedSightsFromDraft();
+      this.render();
+      this.setStatus(`Equipped sight on ${weaponLabel(weaponId)}.`);
+      if (!options.quiet) {
+        showSuccessSnackbar(`Equipped on ${weaponLabel(weaponId)}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not equip sight';
+      this.setStatus(message);
+      showErrorSnackbar(message);
+    } finally {
+      this.setBusy(false);
+    }
+  }
+
+  private async unequipSight(): Promise<void> {
+    if (!this.draft || this.busy) return;
+    const weaponId = this.activeWeaponId();
+    if (!weaponId) return;
+
+    this.setBusy(true);
+    this.setStatus('Removing equipped sight...');
+    try {
+      await apiEquipWeaponSight(weaponId, null);
+      if (this.editingSlot === 'primary') this.draft.primarySightId = null;
+      else this.draft.secondarySightId = null;
+      this.loadouts = this.loadouts.map((entry) => ({
+        ...entry,
+        primarySightId:
+          entry.primaryWeaponId === weaponId ? null : entry.primarySightId,
+        secondarySightId:
+          entry.secondaryWeaponId === weaponId ? null : entry.secondarySightId,
+      }));
+      this.syncEquippedSightsFromDraft();
+      this.render();
+      this.setStatus(`Unequipped sight from ${weaponLabel(weaponId)}.`);
+      showSuccessSnackbar(`Unequipped from ${weaponLabel(weaponId)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not unequip sight';
+      this.setStatus(message);
+      showErrorSnackbar(message);
+    } finally {
+      this.setBusy(false);
+    }
+  }
+
+  private async purchaseSight(sightId: string): Promise<void> {
+    if (this.busy) return;
+    const entry = this.unlockables.find((item) => item.id === sightId);
+    if (!entry || entry.unlocked) return;
+
+    this.setBusy(true);
+    this.setStatus('Unlocking sight...');
+    try {
+      const data = await apiPurchaseWeaponUnlockable(sightId);
+      this.unlockables = data.unlockables;
+      this.showCongrats(entry.name);
+      this.setBusy(false);
+      await this.equipSight(sightId, { quiet: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not unlock sight';
+      this.setStatus(message);
+      showErrorSnackbar(message);
+      this.setBusy(false);
+    }
+  }
+
+  private async sellSight(sightId: string): Promise<void> {
+    if (this.busy) return;
+    this.setBusy(true);
+    try {
+      const data = await apiSellWeaponUnlockable(sightId);
+      this.unlockables = data.unlockables;
+      if (this.draft?.primarySightId === sightId) this.draft.primarySightId = null;
+      if (this.draft?.secondarySightId === sightId) this.draft.secondarySightId = null;
+      this.loadouts = this.loadouts.map((entry) => ({
+        ...entry,
+        primarySightId: entry.primarySightId === sightId ? null : entry.primarySightId,
+        secondarySightId: entry.secondarySightId === sightId ? null : entry.secondarySightId,
+      }));
+      this.syncDraftSightsFromPersisted();
+      this.syncEquippedSightsFromDraft();
+      this.render();
+      showSuccessSnackbar(`Sold sight for ${data.refund.toLocaleString('en-US')} plasma`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not sell sight';
+      this.setStatus(message);
+      showErrorSnackbar(message);
+    } finally {
+      this.setBusy(false);
+    }
+  }
+}
+
+function draftFromSummary(summary: WeaponLoadoutSummary): DraftLoadout {
+  return {
+    id: summary.id,
+    name: summary.name,
+    primaryWeaponId: summary.primaryWeaponId,
+    secondaryWeaponId: summary.secondaryWeaponId,
+    primarySightId: summary.primarySightId ?? null,
+    secondarySightId: summary.secondarySightId ?? null,
+  };
 }
 
 function escapeAttr(value: string): string {

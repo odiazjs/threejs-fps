@@ -8,6 +8,7 @@ import type { LoadoutSlotSnapshot } from '../../shared/loadout/loadoutSlots';
 import { WeaponAmmo, type AmmoState } from './WeaponAmmo';
 import { WeaponFeel } from '../gunfeel/WeaponFeel';
 import { createWeaponMesh } from '../content/weaponMeshes';
+import { setDigitalSightVisible } from './DigitalSight';
 
 const SWITCH_READY_SEC = 0.2;
 /** Default scale baked into procedural weapon meshes (first-person viewmodel size). */
@@ -151,9 +152,20 @@ export class WeaponSlot {
 
   dispose(): void {
     this.mesh.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
-        (child.material as THREE.Material).dispose();
+      if (
+        child instanceof THREE.Mesh ||
+        child instanceof THREE.Points ||
+        child instanceof THREE.Sprite
+      ) {
+        if ('geometry' in child && child.geometry) {
+          child.geometry.dispose();
+        }
+        const material = child.material;
+        if (Array.isArray(material)) {
+          for (const entry of material) entry.dispose();
+        } else if (material) {
+          material.dispose();
+        }
       }
     });
     this.mesh.removeFromParent();
@@ -195,6 +207,8 @@ export class WeaponLoadout {
       const offset = getAttachOffset(slot.config.view, context);
       slot.mesh.position.set(offset.x, offset.y, offset.z);
       applyWeaponMeshRotation(slot.mesh, rotation, slot.config.view, context);
+      // Optics are ADS-only on local FP; always hidden on third-person.
+      setDigitalSightVisible(slot.mesh, false);
     }
     this.syncMeshVisibility();
   }
@@ -213,6 +227,7 @@ export class WeaponLoadout {
       const offset = basePosition ?? getAttachOffset(slot.config.view, context);
       slot.mesh.position.copy(offset);
       applyWeaponMeshRotation(slot.mesh, rotation, slot.config.view, context);
+      setDigitalSightVisible(slot.mesh, false);
     }
     this.syncMeshVisibility();
   }

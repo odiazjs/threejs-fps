@@ -138,7 +138,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.pistol,
   view: {
     hip: { x: 0.12, y: -0.16, z: -0.28 },
-    ads: { x: 0.0, y: -0.115, z: -0.25 },
+    ads: { x: 0.0, y: -0.125, z: -0.25 },
     adsFov: 70,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },

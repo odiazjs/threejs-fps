@@ -6,6 +6,10 @@ import {
   FBX_WEAPON_ASSET_BASE,
   prepareFbxWeaponMesh,
 } from './fbxWeaponMesh';
+import {
+  RETHER_PULSE_DIGITAL_SIGHT_MOUNT,
+  RETHER_PULSE_SIGHT_TEXTURE,
+} from './digitalWeaponSights';
 
 const PISTOL_MODEL_FILE = 'base_basic_shaded.fbx';
 /**
@@ -22,6 +26,11 @@ const PISTOL_MESH_CONFIG = {
   contentName: 'pistolContent',
   rootName: 'pistolWeaponRoot',
 } as const;
+
+/** @deprecated Use RETHER_PULSE_* from retherPulseSight — kept for existing imports. */
+export const PISTOL_DIGITAL_SIGHT_TEXTURE = RETHER_PULSE_SIGHT_TEXTURE;
+/** @deprecated Use RETHER_PULSE_DIGITAL_SIGHT_MOUNT from retherPulseSight. */
+export const PISTOL_DIGITAL_SIGHT_MOUNT = RETHER_PULSE_DIGITAL_SIGHT_MOUNT;
 
 let pistolTemplate: THREE.Group | null = null;
 let pistolLoadPromise: Promise<THREE.Group> | null = null;

@@ -14,6 +14,8 @@ export interface LoadoutApplyRequest {
   loadoutId: string;
   primaryWeaponId: string;
   secondaryWeaponId: string;
+  primarySightId: string | null;
+  secondarySightId: string | null;
 }
 
 export class LoadoutSwitcherHud {
@@ -106,6 +108,8 @@ export class LoadoutSwitcherHud {
       loadoutId: loadout.id,
       primaryWeaponId: loadout.primaryWeaponId,
       secondaryWeaponId: loadout.secondaryWeaponId,
+      primarySightId: loadout.primarySightId ?? null,
+      secondarySightId: loadout.secondarySightId ?? null,
     };
     this.onApplyRequest?.(request);
     this.beginPending(loadout.id);
