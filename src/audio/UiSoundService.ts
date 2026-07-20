@@ -8,8 +8,16 @@ interface LoadedUiSound {
 export class UiSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private hover: LoadedUiSound | null = null;
   private click: LoadedUiSound | null = null;
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
+  }
 
   async preloadHover(config: GlobalAudioConfig): Promise<void> {
     this.hover = await this.loadSound(config);
@@ -76,7 +84,7 @@ export class UiSoundService {
 
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = 1;
+    this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.context.destination);
   }
 }

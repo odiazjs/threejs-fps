@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { WeaponId } from '../../shared/content/weaponIds';
+import {
+  applyDigitalSightStyle,
+  setDigitalSightVisible,
+} from '../combat/DigitalSight';
+import {
+  digitalSightStyleFromEntry,
+  getDigitalSightCatalogEntry,
+} from '../content/digitalWeaponSights';
 import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from './disposeMesh';
@@ -30,6 +38,8 @@ export class WeaponsScene {
   private readonly resizeObserver: ResizeObserver;
   private currentWeapon: THREE.Group | null = null;
   private currentWeaponId: WeaponId | null = null;
+  /** Armory showcase optic — may be locked; null hides the reticle. */
+  private previewSightId: string | null = null;
   private animationId = 0;
   private disposed = false;
   private resizeRetryId = 0;
@@ -152,6 +162,7 @@ export class WeaponsScene {
     if (!SHOWCASE_WEAPON_IDS.includes(weaponId as WeaponId)) return;
     if (weaponId === this.currentWeaponId) {
       this.syncPickerActive(weaponId as WeaponId);
+      this.applySightPreview();
       this.onWeaponChange(weaponId as WeaponId);
       return;
     }
@@ -170,6 +181,15 @@ export class WeaponsScene {
         entry.disabled = false;
       }
     }
+  }
+
+  /**
+   * Preview a digital sight on the mounted weapon (works for locked unlockables).
+   * Pass null to hide the optic.
+   */
+  previewSight(sightId: string | null): void {
+    this.previewSightId = sightId?.trim() || null;
+    this.applySightPreview();
   }
 
   private syncPickerActive(weaponId: WeaponId): void {
@@ -221,7 +241,30 @@ export class WeaponsScene {
     this.weaponPivot.add(weapon);
     this.currentWeapon = weapon;
     this.currentWeaponId = weaponId;
+    this.applySightPreview();
     this.resetOrbit();
+  }
+
+  private applySightPreview(): void {
+    if (!this.currentWeapon) return;
+
+    if (this.currentWeaponId === 'katana' || !this.previewSightId) {
+      setDigitalSightVisible(this.currentWeapon, false);
+      return;
+    }
+
+    const entry = getDigitalSightCatalogEntry(this.previewSightId);
+    if (!entry) {
+      setDigitalSightVisible(this.currentWeapon, false);
+      return;
+    }
+
+    // Slightly larger in the armory orbit view so the reticle reads at distance.
+    applyDigitalSightStyle(this.currentWeapon, {
+      ...digitalSightStyleFromEntry(entry),
+      size: entry.size * 1.35,
+    });
+    setDigitalSightVisible(this.currentWeapon, true);
   }
 
   private fitWeaponForShowcase(weapon: THREE.Group): void {

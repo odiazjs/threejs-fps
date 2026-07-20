@@ -108,6 +108,8 @@ export class ArmoryLoadoutsController {
   private readonly onCongratsDismiss: () => void;
   private confirmMode: SightConfirmMode = 'purchase';
   private pendingSightId: string | null = null;
+  /** Sight shown on the 3D weapon preview (may be locked / not equipped). */
+  private showcaseSightId: string | null = null;
   private readonly confirmModal: HTMLElement | null;
   private readonly congratsModal: HTMLElement | null;
   private readonly congratsName: HTMLElement | null;
@@ -119,6 +121,7 @@ export class ArmoryLoadoutsController {
     private readonly saveBtn: HTMLButtonElement,
     private readonly statusEl: HTMLElement | null,
     private readonly onPreviewWeapon: (weaponId: string) => void = () => undefined,
+    private readonly onPreviewSight: (sightId: string | null) => void = () => undefined,
   ) {
     this.slotsEl = document.getElementById('armory-loadout-slots');
     this.sightsEl = document.getElementById('armory-loadout-sights');
@@ -424,6 +427,7 @@ export class ArmoryLoadoutsController {
     if (this.editingSlot === slot) return;
     this.syncDraftNameFromDom();
     this.editingSlot = slot;
+    this.showcaseSightId = this.equippedSightForEditingSlot();
     this.render();
   }
 
@@ -436,6 +440,11 @@ export class ArmoryLoadoutsController {
         : (draft?.secondaryWeaponId ?? summary?.secondaryWeaponId);
     if (weaponId) {
       this.onPreviewWeapon(weaponId);
+      const sightId =
+        slot === 'primary'
+          ? (draft?.primarySightId ?? summary?.primarySightId ?? null)
+          : (draft?.secondarySightId ?? summary?.secondarySightId ?? null);
+      this.setShowcaseSight(sightId);
     }
   }
 
@@ -458,6 +467,7 @@ export class ArmoryLoadoutsController {
     this.render();
     this.setStatus('');
     this.onPreviewWeapon(summary.primaryWeaponId);
+    this.setShowcaseSight(summary.primarySightId);
   }
 
   private assignWeapon(weaponId: string): void {
@@ -496,7 +506,22 @@ export class ArmoryLoadoutsController {
     this.syncEquippedSightsFromDraft();
     this.render();
     this.onPreviewWeapon(weaponId);
+    this.setShowcaseSight(this.equippedSightForEditingSlot());
     this.setStatus('Unsaved changes — click SAVE LOADOUT.');
+  }
+
+  private setShowcaseSight(sightId: string | null | undefined): void {
+    this.showcaseSightId = sightId?.trim() || null;
+    this.onPreviewSight(this.showcaseSightId);
+    this.syncSightCardPreviewState();
+  }
+
+  private syncSightCardPreviewState(): void {
+    if (!this.sightsEl) return;
+    for (const card of this.sightsEl.querySelectorAll<HTMLElement>('.armory-sight-card')) {
+      const id = card.dataset.sightId ?? '';
+      card.classList.toggle('is-previewing', Boolean(this.showcaseSightId) && id === this.showcaseSightId);
+    }
   }
 
   private readNameFromDom(): string {
@@ -773,11 +798,12 @@ export class ArmoryLoadoutsController {
       if (this.sightsHintEl) {
         this.sightsHintEl.textContent = 'Select a weapon slot, then unlock or equip a sight.';
       }
+      this.onPreviewSight(null);
       return;
     }
 
     if (this.sightsHintEl) {
-      this.sightsHintEl.textContent = `Sights for ${weaponLabel(weaponId)} (${this.editingSlot.toUpperCase()})`;
+      this.sightsHintEl.textContent = `Sights for ${weaponLabel(weaponId)} (${this.editingSlot.toUpperCase()}) — click a sight to preview on the weapon`;
     }
 
     // All sights can equip on any weapon; each loadout slot keeps its own equipped sight.
@@ -789,12 +815,24 @@ export class ArmoryLoadoutsController {
     }
 
     const equippedId = this.equippedSightForEditingSlot();
-    this.sightsEl.innerHTML = sights.map((entry) => this.renderSightCard(entry, equippedId)).join('');
+    // Keep 3D preview in sync with the editing slot's equipped optic (or last preview).
+    if (!this.showcaseSightId) {
+      this.showcaseSightId = equippedId;
+    }
+    this.onPreviewSight(this.showcaseSightId);
+    this.sightsEl.innerHTML = sights
+      .map((entry) => this.renderSightCard(entry, equippedId, this.showcaseSightId))
+      .join('');
   }
 
-  private renderSightCard(entry: WeaponUnlockableState, equippedId: string | null): string {
+  private renderSightCard(
+    entry: WeaponUnlockableState,
+    equippedId: string | null,
+    previewId: string | null,
+  ): string {
     const iconSrc = entry.iconFile ? `/images/${entry.iconFile}` : '';
     const equipped = equippedId === entry.id;
+    const previewing = previewId === entry.id;
     const actions = entry.unlocked
       ? `
         <button type="button" class="armory-sight-btn armory-sight-btn--equip" data-sight-action="equip" data-sight-id="${escapeAttr(entry.id)}">
@@ -815,9 +853,10 @@ export class ArmoryLoadoutsController {
 
     return `
       <article
-        class="armory-sight-card${entry.unlocked ? ' is-unlocked' : ''}${equipped ? ' is-equipped' : ''}"
+        class="armory-sight-card${entry.unlocked ? ' is-unlocked' : ''}${equipped ? ' is-equipped' : ''}${previewing ? ' is-previewing' : ''}"
         data-sight-id="${escapeAttr(entry.id)}"
         role="listitem"
+        title="Preview on weapon"
       >
         <div class="armory-sight-preview" aria-hidden="true">
           ${iconSrc ? `<img src="${escapeAttr(iconSrc)}" alt="" />` : '<span class="armory-sight-preview-empty">—</span>'}
@@ -834,28 +873,40 @@ export class ArmoryLoadoutsController {
   private handleSightsClick(event: Event): void {
     const target = event.target;
     if (!(target instanceof Element) || !this.sightsEl) return;
+
     const button = target.closest<HTMLButtonElement>('[data-sight-action]');
-    if (!button || !this.sightsEl.contains(button)) return;
+    if (button && this.sightsEl.contains(button)) {
+      const action = button.dataset.sightAction;
+      const sightId = button.dataset.sightId?.trim() ?? '';
+      if (!action || !sightId) return;
 
-    const action = button.dataset.sightAction;
-    const sightId = button.dataset.sightId?.trim() ?? '';
-    if (!action || !sightId) return;
+      // Always show the optic on the gun when interacting with a sight card.
+      this.setShowcaseSight(sightId);
 
-    if (action === 'equip') {
-      void this.equipSight(sightId);
+      if (action === 'equip') {
+        void this.equipSight(sightId);
+        return;
+      }
+      if (action === 'unequip') {
+        void this.unequipSight();
+        return;
+      }
+      if (action === 'buy') {
+        this.openSightConfirm('purchase', sightId);
+        return;
+      }
+      if (action === 'sell') {
+        this.openSightConfirm('sell', sightId);
+      }
       return;
     }
-    if (action === 'unequip') {
-      void this.unequipSight();
-      return;
-    }
-    if (action === 'buy') {
-      this.openSightConfirm('purchase', sightId);
-      return;
-    }
-    if (action === 'sell') {
-      this.openSightConfirm('sell', sightId);
-    }
+
+    // Clicking the card (including locked) previews the sight on the 3D weapon.
+    const card = target.closest<HTMLElement>('.armory-sight-card[data-sight-id]');
+    if (!card || !this.sightsEl.contains(card)) return;
+    const sightId = card.dataset.sightId?.trim() ?? '';
+    if (!sightId) return;
+    this.setShowcaseSight(sightId);
   }
 
   private openSightConfirm(mode: SightConfirmMode, sightId: string): void {
@@ -936,6 +987,7 @@ export class ArmoryLoadoutsController {
           loadout.secondaryWeaponId === weaponId ? sightId : loadout.secondarySightId,
       }));
       this.syncEquippedSightsFromDraft();
+      this.showcaseSightId = sightId;
       this.render();
       this.setStatus(`Equipped sight on ${weaponLabel(weaponId)}.`);
       if (!options.quiet) {
@@ -969,6 +1021,7 @@ export class ArmoryLoadoutsController {
           entry.secondaryWeaponId === weaponId ? null : entry.secondarySightId,
       }));
       this.syncEquippedSightsFromDraft();
+      this.showcaseSightId = null;
       this.render();
       this.setStatus(`Unequipped sight from ${weaponLabel(weaponId)}.`);
       showSuccessSnackbar(`Unequipped from ${weaponLabel(weaponId)}`);

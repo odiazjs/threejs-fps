@@ -1,4 +1,5 @@
 import type { GlobalAudioConfig } from '../content/audioConfig';
+import { getMasterVolume } from './masterVolumeBus';
 
 type CueId = 'tick' | 'gameStart';
 
@@ -55,7 +56,7 @@ export class CountdownTickPlayer {
     if (!cue) return;
 
     const audio = new Audio(cue.url);
-    audio.volume = cue.volume;
+    audio.volume = Math.max(0, Math.min(1, cue.volume * getMasterVolume()));
     void audio.play().catch(() => {
       // Autoplay blocked when not primed from a user gesture.
     });

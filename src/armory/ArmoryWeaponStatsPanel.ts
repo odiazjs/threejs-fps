@@ -55,6 +55,7 @@ function formatStatValue(stat: WeaponUpgradeStatId, value: number): string {
     case 'adsTime':
       return `${value.toFixed(2)}s`;
     case 'fireRate':
+      if (value <= 0) return 'MAX';
       return `${value.toFixed(1)}/s`;
     case 'recoil':
       return value.toFixed(0);

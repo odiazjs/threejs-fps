@@ -190,6 +190,11 @@ export class WeaponPose {
     this.switchTimeLeft = duration;
   }
 
+  /** Drop an in-progress holster/draw so a quick melee slash can start immediately. */
+  cancelSwitch(): void {
+    this.switchTimeLeft = 0;
+  }
+
   setViewConfig(view: WeaponViewConfig, adsTimeSec?: number): void {
     this.view = view;
     this.adsFov = view.adsFov ?? DEFAULT_ADS_FOV;

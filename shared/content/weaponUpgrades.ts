@@ -162,7 +162,11 @@ export function resolveEffectiveWeaponStats(
     magazineSize: Math.max(1, Math.round(base.magazineSize + levels.magazineSize * step.magazineSize)),
     reloadTime: roundStat(Math.max(0, base.reloadTime - levels.reloadTime * step.reloadTime)),
     adsTime: roundStat(Math.max(0, base.adsTime - levels.adsTime * step.adsTime), 3),
-    fireRate: roundStat(Math.max(0, base.fireRate + levels.fireRate * step.fireRate), 2),
+    // Base 0 = uncapped (click-limited semi). Upgrades must not re-cap it.
+    fireRate:
+      base.fireRate <= 0
+        ? 0
+        : roundStat(Math.max(0, base.fireRate + levels.fireRate * step.fireRate), 2),
     levels,
   };
 }
@@ -176,7 +180,7 @@ export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
     magazineSize: 12,
     reloadTime: 1.5,
     adsTime: 0.18,
-    fireRate: 5,
+    fireRate: 0,
   },
   plasma_rifle: {
     damage: 7,

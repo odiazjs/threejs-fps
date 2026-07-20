@@ -20,6 +20,7 @@ import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { addEdgeLines, updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
+import { preloadDroneModel } from '../content/droneModel';
 import { createDroneVisual } from '../world/DroneField';
 import { LobbyPerfHud } from '../ui/LobbyPerfHud';
 import { LobbyPartyAvatar, partyMemberOffsets } from './LobbyPartyAvatar';
@@ -49,8 +50,8 @@ export class LobbyScene {
   private weaponMesh: THREE.Group | null = null;
   private equippedWeaponId: WeaponId | null = null;
   private readonly grassField: GrassField;
-  private readonly droneRoot: THREE.Group;
-  private readonly dronePropellers: THREE.Group[];
+  private readonly droneRoot = new THREE.Group();
+  private readonly dronePropellers: THREE.Group[] = [];
   private readonly clock = new THREE.Clock();
   private readonly performanceHud = new LobbyPerfHud();
   private readonly localUserId: string;
@@ -127,11 +128,8 @@ export class LobbyScene {
     });
     this.scene.add(this.grassField.mesh);
 
-    const drone = createDroneVisual();
-    drone.root.scale.setScalar(LOBBY_DRONE_SCALE);
-    this.droneRoot = drone.root;
-    this.dronePropellers = drone.propellers;
     this.scene.add(this.droneRoot);
+    void this.mountLobbyDrone();
 
     this.bodyRoot.rotation.y = Math.PI * 1.12;
     this.avatar.add(this.bodyRoot);
@@ -170,6 +168,21 @@ export class LobbyScene {
   async remountCharacter(): Promise<void> {
     const weaponId = await fetchDefaultPrimaryWeaponId();
     await this.applyLobbyLoadout(weaponId);
+  }
+
+  private async mountLobbyDrone(): Promise<void> {
+    try {
+      await preloadDroneModel();
+      if (!this.active) return;
+      const { root, propellers } = createDroneVisual();
+      root.scale.setScalar(LOBBY_DRONE_SCALE);
+      this.droneRoot.clear();
+      this.droneRoot.add(root);
+      this.dronePropellers.length = 0;
+      this.dronePropellers.push(...propellers);
+    } catch (error) {
+      console.warn('[LobbyScene] Failed to load lobby drone', error);
+    }
   }
 
   private async bootstrapAvatar(): Promise<void> {
@@ -363,9 +376,9 @@ export class LobbyScene {
   }
 
   private updateDrone(t: number): void {
-    const orbitAngle = t * 0.72;
-    const bobPhase = t * 1.25;
-    const spin = t * 28;
+    // Slower orbit; keep a fixed facing (no yaw/bank spin on the mesh itself).
+    const orbitAngle = t * 0.32;
+    const bobPhase = t * 0.85;
 
     this.droneRoot.position.set(
       this.avatar.position.x + Math.cos(orbitAngle) * LOBBY_DRONE_ORBIT_RADIUS_X,
@@ -374,12 +387,7 @@ export class LobbyScene {
         LOBBY_DRONE_ORBIT_CENTER_Z +
         Math.sin(orbitAngle) * LOBBY_DRONE_ORBIT_RADIUS_Z,
     );
-    this.droneRoot.rotation.y = orbitAngle + Math.PI * 0.55;
-    this.droneRoot.rotation.z = Math.sin(orbitAngle * 1.4) * 0.14;
-
-    for (let i = 0; i < this.dronePropellers.length; i++) {
-      this.dronePropellers[i]!.rotation.y = spin * (i % 2 === 0 ? 1 : -1);
-    }
+    this.droneRoot.rotation.set(0, 0, 0);
   }
 
   private loop = (): void => {

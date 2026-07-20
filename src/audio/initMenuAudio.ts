@@ -1,5 +1,7 @@
 import { bindUiSounds } from './bindUiSounds';
 import { LoopingSoundService } from './LoopingSoundService';
+import { subscribeMasterVolume } from './masterVolumeBus';
+import { setStatsIncomingMasterVolume } from './StatsIncomingSound';
 import { UiSoundService } from './UiSoundService';
 import {
   LOBBY_MUSIC_AUDIO,
@@ -14,6 +16,12 @@ import {
 
 const uiSounds = new UiSoundService();
 const lobbyMusic = new LoopingSoundService();
+
+subscribeMasterVolume((volume) => {
+  uiSounds.setMasterVolume(volume);
+  lobbyMusic.setMasterVolume(volume);
+  setStatsIncomingMasterVolume(volume);
+});
 
 let uiReady: Promise<void> | null = null;
 let lobbyMusicReady: Promise<void> | null = null;

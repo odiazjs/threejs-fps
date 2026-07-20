@@ -160,20 +160,19 @@ const PISTOL_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.45,
   },
   kickback: {
-    // ω = 42 → settles in ~0.14s: massive punch, instant recovery.
-    // Hipfire bias: strong shoulder shove, modest muzzle tip.
-    weaponSpring: { stiffness: 1750, dampingRatio: 1 },
-    cameraSpring: { stiffness: 1400, dampingRatio: 1 },
-    kickBack: 11,
-    kickUp: 1.4,
-    kickPitch: 12,
-    kickYawJitter: 2.4,
-    kickRoll: 3.5,
-    maxBack: 0.22,
-    maxPitch: 0.2,
-    cameraPitch: 2.4,
-    cameraYawJitter: 0.55,
-    adsScale: 0.6,
+    // Hard snappy punch — big shoulder shove + muzzle flip, quick settle.
+    weaponSpring: { stiffness: 1400, dampingRatio: 0.95 },
+    cameraSpring: { stiffness: 1100, dampingRatio: 0.95 },
+    kickBack: 22,
+    kickUp: 3.2,
+    kickPitch: 26,
+    kickYawJitter: 5.5,
+    kickRoll: 7.5,
+    maxBack: 0.42,
+    maxPitch: 0.38,
+    cameraPitch: 5.8,
+    cameraYawJitter: 1.4,
+    adsScale: 0.7,
   },
   sway: {
     idleAmp: 0.0022,
@@ -340,7 +339,7 @@ const BURST_FEEL: WeaponFeelProfile = {
   juice: { screenFlash: 0, smokeShotsToPrime: 5, smokeDurationSec: 0.9 },
 };
 
-/** Sniper: violent displacement, slow recovery, heavy ADS sway + breath hold. */
+/** Sniper: violent displacement, slow recovery, light ADS sway + breath hold. */
 const SNIPER_FEEL: WeaponFeelProfile = {
   recoil: {
     bloom: 0.05,
@@ -373,8 +372,8 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     noiseAmp: 0.55,
     walkAmpMultiplier: 2.4,
     walkFreqMultiplier: 2.4,
-    // Scope wander is the mechanic — breath multiplies on top of this.
-    adsScale: 0.55,
+    // ADS is mostly steady — light residual wander, breath holds it nearly still.
+    adsScale: 0.1,
     moveSwayAmp: 0.026,
     moveSwaySmoothing: 6,
     // Long heavy rifle drags behind fast flicks.
@@ -385,8 +384,8 @@ const SNIPER_FEEL: WeaponFeelProfile = {
       posPerRad: 0.22,
     },
     breath: {
-      adsAmpMultiplier: 2.6,
-      holdSteadyScale: 0.12,
+      adsAmpMultiplier: 1.2,
+      holdSteadyScale: 0.08,
       holdDurationSec: 3.5,
       recoverPerSec: 0.45,
     },

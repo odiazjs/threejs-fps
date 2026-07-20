@@ -16,10 +16,18 @@ export interface RemoteFootstepLocomotion {
 export class FootstepSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private buffer: AudioBuffer | null = null;
   private config: FootstepAudioConfig | null = null;
   private localStepTimer = 0;
   private readonly remoteStepTimers = new Map<string, number>();
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
+  }
 
   async preload(config: FootstepAudioConfig): Promise<void> {
     this.config = config;
@@ -209,7 +217,7 @@ export class FootstepSoundService {
 
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = 1;
+    this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.context.destination);
   }
 }

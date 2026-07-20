@@ -89,6 +89,7 @@ import { runShaderPrewarm } from '../combat/prewarmCombatFx';
 import { buildCharacterShaderPrewarm } from '../combat/prewarmCharacterFx';
 import { initFxLightPool } from '../effects/FxLightPool';
 import { preloadGrenadeModel } from '../content/grenadeModel';
+import { preloadDroneModel } from '../content/droneModel';
 import { preloadWeaponMeshes } from '../content/weaponMeshes';
 import { collectWeaponSoundUrls, WeaponSoundService } from '../audio/WeaponSoundService';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
@@ -97,6 +98,7 @@ import { GrenadeSoundService } from '../audio/GrenadeSoundService';
 import { EnvironmentSoundService } from '../audio/EnvironmentSoundService';
 import { LoopingSoundService } from '../audio/LoopingSoundService';
 import { MatchSoundService } from '../audio/MatchSoundService';
+import { subscribeMasterVolume } from '../audio/masterVolumeBus';
 import {
   FPS_COUNTDOWN_TICK_MESSAGE,
   FPS_GAME_START_MESSAGE,
@@ -207,6 +209,7 @@ export class Game {
   private readonly impactSounds = new ImpactSoundService();
   private readonly grenadeSounds = new GrenadeSoundService();
   private readonly matchSounds = new MatchSoundService();
+  private masterVolumeUnsub: (() => void) | null = null;
   private audioUnlocked = false;
   private inventoryOpen = false;
   /** While set, ignore stale server loadout snapshots that would undo a Tab switch. */
@@ -256,6 +259,10 @@ export class Game {
     this.prevMatchPhase = null;
     this.matchEnd30Played = false;
     this.matchEnd10Played = false;
+    this.bindMasterVolume();
+    // DroneField clones the FBX at world build — must be ready first.
+    onLoadingMessage?.('Loading drone model...');
+    await preloadDroneModel();
     this.initWorld(initialMapId);
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
     this.droneProximitySounds.setVolume(GAME_DRONE_PROXIMITY_AUDIO.volume);
@@ -377,6 +384,20 @@ export class Game {
     this.loop();
   }
 
+  private bindMasterVolume(): void {
+    if (this.masterVolumeUnsub) return;
+    this.masterVolumeUnsub = subscribeMasterVolume((volume) => {
+      this.weaponSounds.setMasterVolume(volume);
+      this.environmentSounds.setMasterVolume(volume);
+      this.droneProximitySounds.setMasterVolume(volume);
+      this.shieldChargeSounds.setMasterVolume(volume);
+      this.footstepSounds.setMasterVolume(volume);
+      this.impactSounds.setMasterVolume(volume);
+      this.grenadeSounds.setMasterVolume(volume);
+      this.matchSounds.setMasterVolume(volume);
+    });
+  }
+
   private async leaveGame(): Promise<void> {
     if (this.leaving) return;
     this.leaving = true;
@@ -385,6 +406,8 @@ export class Game {
     if (!embeddedInLobby) {
       LoadingOverlay.shared().show('Leaving game...');
     }
+    this.masterVolumeUnsub?.();
+    this.masterVolumeUnsub = null;
     this.environmentSounds.stop();
     this.droneProximitySounds.stop();
     this.shieldChargeSounds.stop();

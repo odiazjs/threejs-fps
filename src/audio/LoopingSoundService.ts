@@ -4,7 +4,10 @@ export class LoopingSoundService {
   private source: AudioBufferSourceNode | null = null;
   private buffer: AudioBuffer | null = null;
   private playing = false;
+  /** Per-loop authored / settings volume (e.g. lobby music slider). */
   private volume = 1;
+  /** Global master multiplier from settings. */
+  private masterVolume = 1;
 
   async preload(src: string): Promise<void> {
     this.ensureContext();
@@ -21,8 +24,17 @@ export class LoopingSoundService {
 
   setVolume(volume: number): void {
     this.volume = volume;
+    this.applyGain();
+  }
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    this.applyGain();
+  }
+
+  private applyGain(): void {
     if (this.gain) {
-      this.gain.gain.value = volume;
+      this.gain.gain.value = this.volume * this.masterVolume;
     }
   }
 
@@ -77,7 +89,7 @@ export class LoopingSoundService {
 
     this.context = new AudioContext();
     this.gain = this.context.createGain();
-    this.gain.gain.value = this.volume;
+    this.applyGain();
     this.gain.connect(this.context.destination);
   }
 }

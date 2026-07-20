@@ -79,9 +79,9 @@ export interface VisualRecoilStyle {
 
 export type WeaponFireMode = 'auto' | 'semi' | 'burst' | 'melee';
 
-/** Brief muzzle burst — three additive plasma tones plus particle spray. */
+/** Brief muzzle burst — particle spray (+ optional streaks). No sphere by default. */
 export interface MuzzleFlashConfig {
-  /** Radius of the brightest core sphere. */
+  /** Base size for particles / light (and legacy sphere glow if enabled). */
   readonly coreScale: number;
   readonly duration: number;
   readonly particleCount: number;
@@ -92,9 +92,9 @@ export interface MuzzleFlashConfig {
   readonly colors: readonly [number, number, number];
   readonly lightIntensity: number;
   readonly lightDistance: number;
-  /** Sphere glow size multiplier on `coreScale` (default ~0.42). */
+  /** Sphere glow size multiplier on `coreScale` (default ~0.42). Unused when glowLayers is 0. */
   readonly glowScale?: number;
-  /** Additive sphere layers — 0 disables ball glow (particles only). */
+  /** Additive sphere layers — 0/omitted = particles only (default). */
   readonly glowLayers?: 0 | 1 | 2 | 3;
   /** Point sprite size multiplier on `coreScale` (default 1.8). */
   readonly particleSizeScale?: number;
@@ -154,7 +154,10 @@ export interface WeaponSoundsConfig {
   readonly singleShot?: string | WeaponSoundClip;
   /** Sustained auto fire after the first shot while holding trigger. */
   readonly autoShot?: string | WeaponSoundClip;
-  /** One-shot played when a magazine reload starts. */
+  /**
+   * One-shot played when a magazine reload starts.
+   * Prefer `{ src, volume }` so reload loudness is independent of fire SFX.
+   */
   readonly reload?: string | WeaponSoundClip;
   /** Per-shell insert SFX for `reloadStyle: 'shell'` weapons. */
   readonly reloadPartial?: string | WeaponSoundClip;

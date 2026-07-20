@@ -9,6 +9,7 @@ import {
   EnemyOutlineFx,
 } from '../effects/EnemyOutlineFx';
 import { updateLineResolution } from '../visuals/edgeLines';
+import { VignettePass } from './VignettePass';
 
 export class RenderContext {
   readonly renderer: THREE.WebGLRenderer;
@@ -76,6 +77,7 @@ export class RenderContext {
     this.outlinePass.hiddenEdgeColor.setHex(0x000000);
     this.composer.addPass(this.outlinePass);
 
+    this.composer.addPass(new VignettePass());
     this.composer.addPass(new OutputPass());
     this.syncComposerSize();
   }
@@ -90,14 +92,9 @@ export class RenderContext {
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera): void {
-    const enemies = EnemyOutlineFx.getSelectedRoots();
-    if (enemies.length === 0) {
-      this.renderer.render(scene, camera);
-    } else {
-      this.ensureComposer(scene, camera);
-      this.outlinePass!.selectedObjects = enemies;
-      this.composer!.render();
-    }
+    this.ensureComposer(scene, camera);
+    this.outlinePass!.selectedObjects = EnemyOutlineFx.getSelectedRoots();
+    this.composer!.render();
     this.labelRenderer.render(scene, camera);
   }
 

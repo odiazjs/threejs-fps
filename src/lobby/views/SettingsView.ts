@@ -1,9 +1,14 @@
 import { setLobbyMusicVolume } from '../../audio/initMenuAudio';
+import { applyMasterVolume } from '../../audio/masterVolumeBus';
 import {
   getStoredLobbyMusicVolume,
   lobbyMusicVolumePercent,
   storeLobbyMusicVolume,
 } from '../../settings/lobbyMusicVolume';
+import {
+  getStoredMasterVolume,
+  masterVolumePercent,
+} from '../../settings/masterVolume';
 import {
   getStoredMouseSensitivity,
   mouseSensitivityPercent,
@@ -16,6 +21,9 @@ import {
 } from '../../content/controlsHelp';
 
 export class SettingsView {
+  private masterSlider: HTMLInputElement | null = null;
+  private masterValueLabel: HTMLElement | null = null;
+  private onMasterInput: ((event: Event) => void) | null = null;
   private slider: HTMLInputElement | null = null;
   private valueLabel: HTMLElement | null = null;
   private onSliderInput: ((event: Event) => void) | null = null;
@@ -24,12 +32,20 @@ export class SettingsView {
   private onSensitivityInput: ((event: Event) => void) | null = null;
 
   mount(): void {
+    this.mountMasterVolume();
     this.mountMusicVolume();
     this.mountMouseSensitivity();
     this.renderControlsList();
   }
 
   unmount(): void {
+    if (this.masterSlider && this.onMasterInput) {
+      this.masterSlider.removeEventListener('input', this.onMasterInput);
+    }
+    this.masterSlider = null;
+    this.masterValueLabel = null;
+    this.onMasterInput = null;
+
     if (this.slider && this.onSliderInput) {
       this.slider.removeEventListener('input', this.onSliderInput);
     }
@@ -43,6 +59,24 @@ export class SettingsView {
     this.sensitivitySlider = null;
     this.sensitivityValueLabel = null;
     this.onSensitivityInput = null;
+  }
+
+  private mountMasterVolume(): void {
+    this.masterSlider = document.getElementById('master-volume') as HTMLInputElement | null;
+    this.masterValueLabel = document.getElementById('master-volume-value');
+    if (!this.masterSlider || !this.masterValueLabel) return;
+
+    const volume = getStoredMasterVolume();
+    this.masterSlider.value = String(masterVolumePercent(volume));
+    this.updateMasterValueLabel(volume);
+
+    this.onMasterInput = () => {
+      const percent = Number(this.masterSlider!.value);
+      const nextVolume = applyMasterVolume(percent / 100);
+      this.updateMasterValueLabel(nextVolume);
+    };
+
+    this.masterSlider.addEventListener('input', this.onMasterInput);
   }
 
   private mountMusicVolume(): void {
@@ -116,6 +150,11 @@ export class SettingsView {
 
     row.append(keys, description);
     return row;
+  }
+
+  private updateMasterValueLabel(volume: number): void {
+    if (!this.masterValueLabel) return;
+    this.masterValueLabel.textContent = `${masterVolumePercent(volume)}%`;
   }
 
   private updateValueLabel(volume: number): void {

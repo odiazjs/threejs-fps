@@ -205,8 +205,8 @@ export class WeaponSwaySystem {
     }
 
     /* ---- amplitude for this frame ---- */
-    // ADS: normal weapons steady up (adsScale < 1). Sniper scopes instead
-    // magnify wander (breath.adsAmpMultiplier) unless breath is held.
+    // ADS: weapons steady up (adsScale < 1). Sniper applies a small
+    // breath.adsAmpMultiplier unless Shift hold-breath is active.
     const adsAmp = breath
       ? feel.adsScale * breath.adsAmpMultiplier * breathScale
       : feel.adsScale;

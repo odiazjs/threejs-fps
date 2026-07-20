@@ -14,7 +14,7 @@ const materials = new Set<LineMaterial>();
 const edgeLines = new Set<LineSegments2>();
 
 /** Width multiplier for edge lines (applied to the distance-based pixel width). */
-export const DEFAULT_EDGE_LINE_WIDTH = 1.0;
+export const DEFAULT_EDGE_LINE_WIDTH = 1.55;
 
 const CLOSE_RAMP_START = 0.25;
 const CLOSE_RAMP_END = 2.8;
@@ -24,15 +24,15 @@ const TMP_POS = new THREE.Vector3();
 /** Screen-space width in pixels — thin up close, readable mid-range, softer far away. */
 function edgePixelWidth(dist: number): number {
   const nearRamp = THREE.MathUtils.smoothstep(CLOSE_RAMP_START, CLOSE_RAMP_END, dist);
-  const nearThin = THREE.MathUtils.lerp(0.8, 1.25, nearRamp);
-  const farFade = THREE.MathUtils.clamp(1.0 - Math.max(0, dist - 14) * 0.0048, 0.5, 1.0);
+  const nearThin = THREE.MathUtils.lerp(1.25, 1.85, nearRamp);
+  const farFade = THREE.MathUtils.clamp(1.0 - Math.max(0, dist - 14) * 0.004, 0.65, 1.0);
   return nearThin * farFade;
 }
 
 function edgeOpacity(dist: number): number {
   const nearRamp = THREE.MathUtils.smoothstep(CLOSE_RAMP_START, CLOSE_RAMP_END, dist);
-  const nearOpacity = THREE.MathUtils.lerp(0.72, 0.92, nearRamp);
-  const farFade = THREE.MathUtils.clamp(0.92 - Math.max(0, dist - 18) * 0.0038, 0.48, 0.92);
+  const nearOpacity = THREE.MathUtils.lerp(0.92, 1.0, nearRamp);
+  const farFade = THREE.MathUtils.clamp(1.0 - Math.max(0, dist - 18) * 0.0028, 0.7, 1.0);
   return Math.min(nearOpacity, farFade);
 }
 
@@ -50,7 +50,7 @@ function createLineMaterial(lineWidth: number, color: number): LineMaterial {
     worldUnits: false,
     alphaToCoverage: true,
     transparent: true,
-    opacity: 0.9,
+    opacity: 1.0,
     depthTest: true,
     depthWrite: false,
   });
@@ -138,9 +138,9 @@ export function updateEdgeLinesForCamera(camera: THREE.Camera): void {
 export function addEdgeLines(
   mesh: THREE.Mesh,
   {
-    thresholdAngle = 18,
+    thresholdAngle = 15,
     lineWidth = DEFAULT_EDGE_LINE_WIDTH,
-    color = 0x111111,
+    color = 0x000000,
   }: EdgeLineOptions = {},
 ): LineSegments2 | null {
   const sourceGeometry = mesh.geometry;

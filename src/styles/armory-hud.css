@@ -1051,11 +1051,21 @@
   border: 1px solid rgba(0, 242, 255, 0.28);
   border-radius: 4px;
   background: rgba(0, 12, 18, 0.72);
+  cursor: pointer;
 }
 
 .armory-sight-card.is-equipped {
   border-color: var(--hud-cyan);
   box-shadow: 0 0 14px rgba(0, 242, 255, 0.2);
+}
+
+.armory-sight-card.is-previewing {
+  border-color: rgba(255, 210, 80, 0.85);
+  box-shadow: 0 0 16px rgba(255, 190, 60, 0.22);
+}
+
+.armory-sight-card:hover {
+  border-color: rgba(0, 242, 255, 0.55);
 }
 
 .armory-sight-preview {

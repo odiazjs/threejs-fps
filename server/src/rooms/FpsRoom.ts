@@ -1178,7 +1178,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
       if (!this.isMatchCombatAllowed()) return;
-      if (player.activeWeaponId !== MELEE_WEAPON_ID) return;
+
+      // V can slash while a gun is out — auto-draw melee for the attack.
+      if (player.activeWeaponId !== MELEE_WEAPON_ID) {
+        if (isWeaponId(player.activeWeaponId)) {
+          this.holsteredWeaponIdBySession.set(client.sessionId, player.activeWeaponId);
+        }
+        player.activeWeaponId = MELEE_WEAPON_ID;
+        this.cancelShieldRecharge(player);
+      }
 
       player.meleeAttackEndAt = this.state.worldTime + MELEE_ATTACK_ANIM_SEC;
 

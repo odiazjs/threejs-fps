@@ -19,7 +19,7 @@ export class CrosshairHud {
   private aimOffsetY = 0;
   /** Master toggle from play/pause/death HUD state. */
   private playVisible = false;
-  /** Hip-fire only — hidden while ADS (digital sight takes over). */
+  /** Hidden while ADS with a digital sight; stays on for hip-fire / iron-sight ADS. */
   private hipFireVisible = true;
 
   constructor() {
@@ -41,7 +41,7 @@ export class CrosshairHud {
     }
   }
 
-  /** `true` while hip-firing; `false` while ADS. */
+  /** `true` when the HUD reticle should show; `false` when a digital optic owns ADS. */
   setHipFireVisible(visible: boolean): void {
     if (this.hipFireVisible === visible) return;
     this.hipFireVisible = visible;
@@ -49,10 +49,13 @@ export class CrosshairHud {
   }
 
   private applyVisibility(): void {
-    const display = this.playVisible && this.hipFireVisible ? 'block' : 'none';
-    this.root.style.display = display;
-    this.referenceRoot.style.display = display;
-    this.hitRoot.style.display = display;
+    const crosshairDisplay = this.playVisible && this.hipFireVisible ? 'block' : 'none';
+    this.root.style.display = crosshairDisplay;
+    this.referenceRoot.style.display = crosshairDisplay;
+    // Hit pulse can show during ADS even when the hip/iron-sight reticle is hidden.
+    const hitDisplay =
+      this.playVisible && (this.hipFireVisible || this.hitMode != null) ? 'block' : 'none';
+    this.hitRoot.style.display = hitDisplay;
   }
 
   setAimOffset(x: number, y: number): void {
@@ -64,9 +67,11 @@ export class CrosshairHud {
   onHit(weaponId: WeaponId): void {
     this.hitElapsed = 0;
 
-    if (weaponId === 'sniper_rifle') {
+    // ADS with a digital sight hides the hip reticle — use the dedicated red hit pulse.
+    if (!this.hipFireVisible || weaponId === 'sniper_rifle') {
       this.hitMode = 'sniper';
       this.hitReticle.style.opacity = '1';
+      this.applyVisibility();
       return;
     }
 
@@ -119,5 +124,6 @@ export class CrosshairHud {
     this.weaponReticle.style.transform = '';
     this.hitReticle.style.transform = '';
     this.hitReticle.style.opacity = '0';
+    this.applyVisibility();
   }
 }

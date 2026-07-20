@@ -63,13 +63,7 @@ function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
 
 /** Prefer the attached face mesh; fall back to the upper ~head band of the body. */
 function resolveFaceFocusPoint(root: THREE.Object3D): THREE.Vector3 {
-  let faceAttach: THREE.Object3D | null = null;
-  root.traverse((child) => {
-    if (!faceAttach && child.name === 'characterFaceAttach') {
-      faceAttach = child;
-    }
-  });
-
+  const faceAttach = root.getObjectByName('characterFaceAttach');
   if (faceAttach) {
     const box = new THREE.Box3().setFromObject(faceAttach);
     if (!box.isEmpty()) {

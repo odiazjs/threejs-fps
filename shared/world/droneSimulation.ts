@@ -5,8 +5,8 @@ const MAP_MARGIN = 14;
 const COLUMN_CLEARANCE = 12;
 const DRONE_SEED = 0x0d20e;
 
-/** Global patrol speed multiplier (1.4 = 40% faster). */
-export const DRONE_MOVEMENT_SCALE = 1.4;
+/** Global patrol speed multiplier — keep orbits calm with the FBX drone. */
+export const DRONE_MOVEMENT_SCALE = 0.7;
 
 export interface DroneLookResponseConfig {
   /** Look detection range — matches drone proximity audio (meters). */

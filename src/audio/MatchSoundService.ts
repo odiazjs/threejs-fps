@@ -1,4 +1,5 @@
 import type { GlobalAudioConfig } from '../content/audioConfig';
+import { getMasterVolume } from './masterVolumeBus';
 
 interface LoadedSound {
   config: GlobalAudioConfig;
@@ -12,6 +13,7 @@ interface LoadedSound {
 export class MatchSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private tickUrl: string | null = null;
   private tickVolume = 1;
   private gameStartUrl: string | null = null;
@@ -23,6 +25,13 @@ export class MatchSoundService {
   private tickPrimed = false;
   private resultsMusic: LoadedSound | null = null;
   private resultsSource: AudioBufferSourceNode | null = null;
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
+  }
 
   async preloadTick(config: GlobalAudioConfig): Promise<void> {
     this.tickUrl = config.src;
@@ -81,7 +90,7 @@ export class MatchSoundService {
     if (!url) return;
 
     const audio = new Audio(url);
-    audio.volume = volume;
+    audio.volume = Math.max(0, Math.min(1, volume * getMasterVolume()));
     void audio.play().catch(() => {
       // Autoplay blocked until unlock() runs from a user gesture.
     });
@@ -190,7 +199,7 @@ export class MatchSoundService {
 
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = 1;
+    this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.context.destination);
   }
 }

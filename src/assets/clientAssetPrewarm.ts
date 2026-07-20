@@ -114,6 +114,10 @@ export async function runClientAssetPrewarm(
   await preloadWeaponMeshes();
   await preloadGrenadeModel();
 
+  onProgress('Loading drone model...');
+  const { preloadDroneModel } = await import('../content/droneModel');
+  await preloadDroneModel();
+
   onProgress('Loading character models...');
   await Promise.all([
     preloadGameCharacterModels(),

@@ -176,6 +176,7 @@ interface RemoteAutoFireNodes {
 export class WeaponSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private reverbConvolver: ConvolverNode | null = null;
   private readonly buffers = new Map<string, LoadedSoundBuffer>();
   private autoSource: AudioBufferSourceNode | null = null;
@@ -189,6 +190,13 @@ export class WeaponSoundService {
 
   configureSpatial(config: WeaponSpatialAudioConfig): void {
     this.spatialConfig = config;
+  }
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
   }
 
   async preload(urls: readonly string[]): Promise<void> {
@@ -680,7 +688,7 @@ export class WeaponSoundService {
 
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = 1;
+    this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.context.destination);
 
     this.reverbConvolver = this.context.createConvolver();

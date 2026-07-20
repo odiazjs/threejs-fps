@@ -15,6 +15,7 @@ const _quat = new THREE.Quaternion();
 export class GrenadeSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private spatialConfig: WeaponSpatialAudioConfig | null = null;
   private equip: LoadedGlobalSound | null = null;
   private throwSound: LoadedGlobalSound | null = null;
@@ -23,6 +24,13 @@ export class GrenadeSoundService {
 
   configureSpatial(config: WeaponSpatialAudioConfig): void {
     this.spatialConfig = config;
+  }
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
   }
 
   async preloadEquip(config: GlobalAudioConfig): Promise<void> {
@@ -187,7 +195,7 @@ export class GrenadeSoundService {
 
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = 1;
+    this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.context.destination);
   }
 }

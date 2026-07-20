@@ -138,7 +138,8 @@ export class MuzzleFlash {
     const [colorA, colorB, colorC] = config.colors;
     const glowMul = config.glowScale ?? DEFAULT_GLOW_SPHERE_SCALE;
     const glowScale = config.coreScale * glowMul;
-    const layerCount = config.glowLayers ?? 3;
+    // Default: particle spray only. Sphere glow is opt-in via glowLayers > 0.
+    const layerCount = config.glowLayers ?? 0;
     const allLayerSpecs: Array<{ color: number; scale: number; expand: number }> = [
       { color: colorA, scale: glowScale, expand: 0.9 },
       { color: colorB, scale: glowScale * 1.3, expand: 1.2 },

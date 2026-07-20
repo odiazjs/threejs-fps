@@ -42,8 +42,8 @@ function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
 /** Semi-auto sidearm: heavy single-shot kick. */
 function buildPistolRecoilPattern(): RecoilKick[] {
   return Array.from({ length: 12 }, (_, i) => ({
-    pitch: 0.085,
-    yaw: (i % 2 === 0 ? 1 : -1) * 0.014,
+    pitch: 0.16,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.032,
   }));
 }
 
@@ -97,6 +97,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     },
   },
   muzzleFlash: {
+    // Particle spray only (burst-carbine shape) — no additive sphere glow.
     coreScale: 0.17,
     duration: 0.085,
     particleCount: 12,
@@ -105,7 +106,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     colors: [MAP_PALETTE.neonCyan, 0x55eeff, 0x00b8ff],
     lightIntensity: 2.0,
     lightDistance: 3.5,
-    glowLayers: 2,
+    glowLayers: 0,
     particleSizeScale: 1.15,
     sideVents: {
       particleCount: 2,
@@ -119,7 +120,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   sway: { intensity: 0.95 },
   sounds: {
     autoShot: { src: '/sounds/rifle_auto_3.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/rifle_reload_1.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/rifle_reload_1.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.2,
   },
 };
@@ -147,34 +148,37 @@ export const PISTOL_CONFIG: WeaponConfig = {
   recoil: {
     pattern: buildPistolRecoilPattern(),
     // Was 60 — with semi-auto `shooting` only true for 1 frame, that wiped kick instantly.
-    recoverySpeed: 9,
-    recoveryDelaySec: 0.16,
-    aimSmoothSpeed: 16,
-    adsMultiplier: 0.75,
-    yawScale: 1.1,
-    visualKick: 0.85,
-    visualRecoverySpeed: 12,
-    adsVisualMultiplier: 0.65,
+    recoverySpeed: 7,
+    recoveryDelaySec: 0.18,
+    aimSmoothSpeed: 14,
+    adsMultiplier: 0.7,
+    yawScale: 1.25,
+    visualKick: 2.4,
+    visualRecoverySpeed: 9,
+    adsVisualMultiplier: 0.75,
     visualStyle: {
-      rotX: 0.22,
-      rotYFromYaw: -0.12,
-      rotZ: -0.09,
-      posXFromYaw: -0.035,
-      posY: -0.03,
+      rotX: 0.55,
+      rotYFromYaw: -0.28,
+      rotZ: -0.22,
+      posXFromYaw: -0.07,
+      posY: -0.06,
       posZ: 0,
-      kickBack: 0.32,
-      kickUp: -0.03,
+      kickBack: 0.85,
+      kickUp: -0.09,
     },
   },
   muzzleFlash: {
-    coreScale: 0.15,
+    // Particle spray only (burst-carbine shape) — no additive sphere glow.
+    coreScale: 0.2,
     duration: 0.09,
-    particleCount: 18,
-    particleSpeed: 20,
-    particleSpread: 1.1,
+    particleCount: 12,
+    particleSpeed: 16,
+    particleSpread: 0.9,
     colors: [0xc77dff, MAP_PALETTE.neonCyan, 0x9b4dff],
-    lightIntensity: 3.2,
+    lightIntensity: 2.8,
     lightDistance: 3.5,
+    glowLayers: 0,
+    particleSizeScale: 1.15,
     sideVents: {
       particleCount: 1,
       particleSpeed: 3,
@@ -187,7 +191,7 @@ export const PISTOL_CONFIG: WeaponConfig = {
   sway: { intensity: 1.08 },
   sounds: {
     singleShot: { src: '/sounds/pistol_8.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/pistol_reload_1.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/pistol_reload_1.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.2,
   },
 };
@@ -283,16 +287,16 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     },
   },
   muzzleFlash: {
-    coreScale: 0.26,
+    // Particle spray only (burst-carbine shape) — no additive sphere glow.
+    coreScale: 0.28,
     duration: 0.11,
-    particleCount: 8,
-    particleSpeed: 34,
-    particleSpread: 0.32,
+    particleCount: 16,
+    particleSpeed: 22,
+    particleSpread: 0.7,
     colors: [0xfff4e8, 0xffb347, 0xff6a1a],
     lightIntensity: 4.8,
     lightDistance: 6.5,
-    glowScale: 0.55,
-    glowLayers: 2,
+    glowLayers: 0,
     particleSizeScale: 1.35,
     sideVents: {
       particleCount: 2,
@@ -306,7 +310,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   sway: { intensity: 0.15 },
   sounds: {
     singleShot: { src: '/sounds/sniper_3.wav', reverbLevel: 0.5 },
-    reload: { src: '/sounds/sniper_reload_1.wav', reverbLevel: 0.08 },
+    reload: { src: '/sounds/sniper_reload_1.wav', volume: 0.15, reverbLevel: 0.08 },
     volume: 0.45,
   },
 };
@@ -378,7 +382,7 @@ export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
   sway: { intensity: 0.92 },
   sounds: {
     singleShot: { src: '/sounds/root_bio_carbine.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/root_bio_carbine_reload.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/root_bio_carbine_reload.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.2,
   },
 };
@@ -433,18 +437,17 @@ export const BIO_LIQUID_RIFLE_CONFIG: WeaponConfig = {
     },
   },
   muzzleFlash: {
-    coreScale: 0.14,
+    // Particle spray only (burst-carbine shape) — no additive sphere glow.
+    coreScale: 0.25,
     duration: 0.1,
     particleCount: 14,
-    particleSpeed: 8,
-    particleSpread: 0.85,
+    particleSpeed: 14,
+    particleSpread: 0.8,
     colors: [0xb8ff3a, 0x5cff7a, 0x1faa4a],
-    lightIntensity: 2.2,
-    lightDistance: 3.2,
-    glowScale: 0.55,
-    glowLayers: 2,
-    particleSizeScale: 0.1,
-    particleFall: 22,
+    lightIntensity: 2.5,
+    lightDistance: 3.6,
+    glowLayers: 0,
+    particleSizeScale: 1.2,
     sideVents: {
       particleCount: 2,
       particleSpeed: 4,
@@ -458,7 +461,7 @@ export const BIO_LIQUID_RIFLE_CONFIG: WeaponConfig = {
   sway: { intensity: 1.05 },
   sounds: {
     singleShot: { src: '/sounds/bio_liquid_shot_1.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/bio_liquid_rifle_reload.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/bio_liquid_rifle_reload.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.65,
   },
 };
@@ -548,7 +551,7 @@ export const BIO_MACHINE_GUN_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: { src: '/sounds/bio_lmg_auto_2.wav', reverbLevel: 0 },
     autoShot: { src: '/sounds/bio_lmg_auto_2.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/lmg_reload.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/lmg_reload.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.7,
   },
 };
@@ -635,7 +638,7 @@ export const BIO_SMG_1_CONFIG: WeaponConfig = {
   sounds: {
     singleShot: { src: '/sounds/smg_1_auto.wav', reverbLevel: 0 },
     autoShot: { src: '/sounds/smg_1_auto.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/smg_1_reload.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/smg_1_reload.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.6,
   },
 };
@@ -715,9 +718,9 @@ export const PLASMA_SHOTGUN_CONFIG: WeaponConfig = {
   sway: { intensity: 1.2 },
   sounds: {
     singleShot: { src: '/sounds/shotgun_shot_1.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/plasma_shotgun_partial_reload.wav', reverbLevel: 0 },
-    reloadPartial: { src: '/sounds/plasma_shotgun_partial_reload.wav', reverbLevel: 0 },
-    reloadComplete: { src: '/sounds/plasma_shotgun_complete_reload.wav', reverbLevel: 0 },
+    reload: { src: '/sounds/plasma_shotgun_partial_reload.wav', volume: 0.15, reverbLevel: 0 },
+    reloadPartial: { src: '/sounds/plasma_shotgun_partial_reload.wav', volume: 0.15, reverbLevel: 0 },
+    reloadComplete: { src: '/sounds/plasma_shotgun_complete_reload.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.65,
   },
 };

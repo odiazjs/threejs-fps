@@ -1,4 +1,5 @@
 import { STATS_INCOMING_AUDIO, type GlobalAudioConfig } from '../content/audioConfig';
+import { getMasterVolume } from './masterVolumeBus';
 
 const FADE_OUT_SEC = 1.35;
 
@@ -8,11 +9,20 @@ const FADE_OUT_SEC = 1.35;
  */
 class StatsIncomingSound {
   private context: AudioContext | null = null;
+  private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private buffer: AudioBuffer | null = null;
   private loadPromise: Promise<void> | null = null;
   private activeSource: AudioBufferSourceNode | null = null;
   private activeGain: GainNode | null = null;
   private readonly config: GlobalAudioConfig = STATS_INCOMING_AUDIO;
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
+  }
 
   play(): void {
     void this.ensureLoaded().then(() => this.start());
@@ -42,11 +52,13 @@ class StatsIncomingSound {
   private start(): void {
     this.stop();
     this.ensureContext();
-    if (!this.context || !this.buffer) return;
+    if (!this.context || !this.buffer || !this.masterGain) return;
 
     if (this.context.state === 'suspended') {
       void this.context.resume();
     }
+
+    this.masterGain.gain.value = this.masterVolume;
 
     const source = this.context.createBufferSource();
     source.buffer = this.buffer;
@@ -59,7 +71,7 @@ class StatsIncomingSound {
     gain.gain.linearRampToValueAtTime(0, now + FADE_OUT_SEC);
 
     source.connect(gain);
-    gain.connect(this.context.destination);
+    gain.connect(this.masterGain);
     source.onended = () => {
       if (this.activeSource === source) {
         this.activeSource = null;
@@ -91,6 +103,10 @@ class StatsIncomingSound {
   private ensureContext(): void {
     if (this.context) return;
     this.context = new AudioContext();
+    this.masterGain = this.context.createGain();
+    this.masterVolume = getMasterVolume();
+    this.masterGain.gain.value = this.masterVolume;
+    this.masterGain.connect(this.context.destination);
   }
 }
 
@@ -101,4 +117,12 @@ export function playStatsIncomingSound(): void {
     shared = new StatsIncomingSound();
   }
   shared.play();
+}
+
+/** Live master-volume updates for the shared stats cue instance. */
+export function setStatsIncomingMasterVolume(volume: number): void {
+  if (!shared) {
+    shared = new StatsIncomingSound();
+  }
+  shared.setMasterVolume(volume);
 }

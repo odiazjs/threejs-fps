@@ -1080,8 +1080,11 @@ export class Player {
   updateCrosshairAim(hud: CrosshairHud, _width: number, _height: number): void {
     // Camera-recoil aim: reticle stays screen-center; weapon sway/visual kick are cosmetic only.
     hud.setAimOffset(0, 0);
-    // HUD crosshair is hip-fire only — ADS uses the on-gun digital sight.
-    hud.setHipFireVisible((this.weaponPose?.adsBlend ?? 0) <= 0.15);
+    // Hide HUD crosshair only when ADS with a digital sight — iron-sight ADS keeps it.
+    const ads = (this.weaponPose?.adsBlend ?? 0) > 0.15;
+    const activeId = this.loadout?.getActiveWeaponId();
+    const hasSight = activeId != null && weaponHasDigitalSight(activeId);
+    hud.setHipFireVisible(!ads || !hasSight);
   }
 
   getFeetPosition(): THREE.Vector3 {
@@ -2264,22 +2267,64 @@ export class Player {
     return pointer.isPressed(POINTER_SHOOT);
   }
 
+  /** Draw the katana instantly for a V-key attack while a gun/throwable is out. */
+  private quickDrawMeleeForAttack(): boolean {
+    if (!this.loadout || !this.camera) return false;
+
+    this.unequipThrowable();
+    this.stopWeaponAutoFire();
+    this.stopReloadAudio();
+    this.onReloadStopNetwork?.();
+
+    if (
+      !this.loadout.tryEquipMelee(true, {
+        bypassCooldown: true,
+        skipSwitchDelay: true,
+      })
+    ) {
+      return false;
+    }
+
+    const active = this.loadout.getActive();
+    if (!active) return false;
+
+    this.weaponPose?.cancelSwitch();
+    this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
+    this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    this.onMeleeEquipNetwork?.(true);
+    return true;
+  }
+
   private updateMeleeAttack(
     delta: number,
     input: KeyboardInput,
     pointer: PointerInput,
     projectiles: ProjectileManager | null,
   ): void {
-    if (!this.loadout?.isMeleeEquipped() || !this.camera) return;
+    if (!this.loadout || !this.camera) return;
+
+    const pressedV = input.isJustPressed('KeyV');
+    // V always melee-attacks — auto-draw if a gun is currently equipped.
+    if (pressedV && !this.loadout.isMeleeEquipped()) {
+      if (!this.quickDrawMeleeForAttack()) return;
+    }
+
+    if (!this.loadout.isMeleeEquipped()) return;
 
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
 
-    const wantsAttack =
-      pointer.isJustPressed(POINTER_SHOOT) || input.isJustPressed('KeyV');
+    const wantsAttack = pointer.isJustPressed(POINTER_SHOOT) || pressedV;
     if (!wantsAttack) return;
 
-    if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
-    if (this.fireCooldown > 0 || this.weaponPose?.isSlashing()) return;
+    if (!pressedV) {
+      if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
+      if (this.fireCooldown > 0) return;
+    } else {
+      // V interrupts holster/draw and ignores leftover gun fire cooldown.
+      this.weaponPose?.cancelSwitch();
+      this.fireCooldown = 0;
+    }
+    if (this.weaponPose?.isSlashing()) return;
 
     const active = this.loadout.getActive();
     if (!active || !active.ammo.tryShoot()) return;

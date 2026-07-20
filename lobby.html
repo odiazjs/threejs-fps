@@ -698,6 +698,21 @@
         <h1 class="settings-title hud-title">SETTINGS</h1>
         <div class="settings-option">
           <div class="settings-option-header">
+            <label for="master-volume" class="settings-label">Master volume</label>
+            <span id="master-volume-value" class="settings-value">100%</span>
+          </div>
+          <input
+            id="master-volume"
+            class="settings-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="100"
+          />
+        </div>
+        <div class="settings-option">
+          <div class="settings-option-header">
             <label for="lobby-music-volume" class="settings-label">Lobby music volume</label>
             <span id="lobby-music-volume-value" class="settings-value">14%</span>
           </div>

@@ -8,6 +8,7 @@ interface LoadedGlobalSound {
 export class ImpactSoundService {
   private context: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterVolume = 1;
   private enemyHit: LoadedGlobalSound | null = null;
   private killConfirm: LoadedGlobalSound | null = null;
   private shieldBreak: LoadedGlobalSound | null = null;
@@ -32,6 +33,13 @@ export class ImpactSoundService {
 
   async preloadShieldChargeEnd(config: GlobalAudioConfig): Promise<void> {
     this.shieldChargeEnd = await this.loadSound(config);
+  }
+
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.masterVolume;
+    }
   }
 
   unlock(): void {
@@ -113,7 +121,7 @@ export class ImpactSoundService {
 
     this.context = new AudioContext();
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = 1;
+    this.masterGain.gain.value = this.masterVolume;
     this.masterGain.connect(this.context.destination);
   }
 }

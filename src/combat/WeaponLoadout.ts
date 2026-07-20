@@ -367,7 +367,10 @@ export class WeaponLoadout {
     }
   }
 
-  tryEquipMelee(equip: boolean, options?: { bypassCooldown?: boolean }): boolean {
+  tryEquipMelee(
+    equip: boolean,
+    options?: { bypassCooldown?: boolean; skipSwitchDelay?: boolean },
+  ): boolean {
     if (!this.meleeSlot) return false;
     if (equip === this.meleeEquipped) return false;
     if (!options?.bypassCooldown && this.switchCooldown > 0) return false;
@@ -388,7 +391,7 @@ export class WeaponLoadout {
     }
 
     this.syncMeshVisibility();
-    this.switchCooldown = SWITCH_READY_SEC;
+    this.switchCooldown = options?.skipSwitchDelay ? 0 : SWITCH_READY_SEC;
     return true;
   }
 

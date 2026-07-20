@@ -42,6 +42,9 @@ export class WeaponsView {
       (weaponId) => {
         void this.scene?.showWeapon(weaponId);
       },
+      (sightId) => {
+        this.scene?.previewSight(sightId);
+      },
     );
 
     await Promise.all([this.scene.whenReady(), this.loadouts.mount()]);
