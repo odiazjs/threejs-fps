@@ -290,6 +290,10 @@ export class Player {
    */
   private grenadeThrowHoldStartedAtMs = 0;
   private localAutoFiring = false;
+  /** True once at least one round fired during the current LMB hold. */
+  private fireTriggerHadShot = false;
+  /** Play shot-end echo after a burst finishes if the trigger was already released. */
+  private pendingShotEndEcho = false;
   /** Remaining shots in an active burst (0 = idle / between bursts). */
   private burstShotsRemaining = 0;
   private weaponSounds: WeaponSoundService | null = null;
@@ -2381,15 +2385,36 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active || active.config.fireMode === 'melee') return;
 
+    if (pointer.isJustPressed(POINTER_SHOOT)) {
+      this.fireTriggerHadShot = false;
+      this.pendingShotEndEcho = false;
+    }
+
     // Auto stops on release; burst continues until the burst is spent.
     if (!pointer.isPressed(POINTER_SHOOT) && active.config.fireMode === 'auto') {
       this.stopWeaponAutoFire();
     }
 
+    if (pointer.isJustReleased(POINTER_SHOOT) && this.fireTriggerHadShot) {
+      // Burst may still be finishing — defer the tail until the burst is spent.
+      if (active.config.fireMode === 'burst' && this.burstShotsRemaining > 0) {
+        this.pendingShotEndEcho = true;
+      } else {
+        this.weaponSounds?.playShotEndEcho();
+      }
+      this.fireTriggerHadShot = false;
+    }
+
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
 
     const wantsFire = this.isFiring(pointer, active.config.fireMode);
-    if (!wantsFire) return;
+    if (!wantsFire) {
+      if (this.pendingShotEndEcho && this.burstShotsRemaining <= 0) {
+        this.weaponSounds?.playShotEndEcho();
+        this.pendingShotEndEcho = false;
+      }
+      return;
+    }
 
     if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return;
     if (this.fireCooldown > 0) return;
@@ -2409,15 +2434,24 @@ export class Player {
         this.fireCooldown += active.fireInterval;
       }
       this.burstShotsRemaining = 0;
+      if (this.pendingShotEndEcho) {
+        this.weaponSounds?.playShotEndEcho();
+        this.pendingShotEndEcho = false;
+      }
       return;
     }
 
+    this.fireTriggerHadShot = true;
     this.fireCooldown += active.fireInterval;
 
     if (active.config.fireMode === 'burst') {
       this.burstShotsRemaining = Math.max(0, this.burstShotsRemaining - 1);
       if (this.burstShotsRemaining === 0) {
         this.fireCooldown += Math.max(0, active.config.burstRecoverySec ?? 0);
+        if (this.pendingShotEndEcho) {
+          this.weaponSounds?.playShotEndEcho();
+          this.pendingShotEndEcho = false;
+        }
       }
     }
   }
@@ -2429,6 +2463,10 @@ export class Player {
     this.weaponSounds?.stopAutoFire();
     if (wasAutoFiring) {
       this.onAutoFireStopNetwork?.();
+    }
+    if (this.pendingShotEndEcho) {
+      this.weaponSounds?.playShotEndEcho();
+      this.pendingShotEndEcho = false;
     }
   }
 

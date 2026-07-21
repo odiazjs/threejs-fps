@@ -109,6 +109,11 @@ export interface SwayFeel {
   /** Smoothing speed for the movement-sway offset. */
   readonly moveSwaySmoothing: number;
   readonly lookLag: LookLagFeel;
+  /**
+   * Look-lag (weapon trailing mouse flicks) multiplier at full ADS.
+   * 1 = unchanged; 0 = no mouse-drag lag while scoped.
+   */
+  readonly lookLagAdsScale: number;
   /** Sniper-style breath mechanic; null for weapons without it. */
   readonly breath: BreathFeel | null;
 }
@@ -191,6 +196,7 @@ const PISTOL_FEEL: WeaponFeelProfile = {
       maxRad: 0.05,
       posPerRad: 0.1,
     },
+    lookLagAdsScale: 1,
     breath: null,
   },
   juice: { screenFlash: 0, smokeShotsToPrime: 4, smokeDurationSec: 0.7 },
@@ -239,6 +245,7 @@ const AR_FEEL: WeaponFeelProfile = {
       maxRad: 0.085,
       posPerRad: 0.16,
     },
+    lookLagAdsScale: 1,
     breath: null,
   },
   juice: { screenFlash: 0, smokeShotsToPrime: 6, smokeDurationSec: 1.1 },
@@ -287,6 +294,7 @@ const LMG_FEEL: WeaponFeelProfile = {
       maxRad: 0.12,
       posPerRad: 0.2,
     },
+    lookLagAdsScale: 1,
     breath: null,
   },
   juice: { screenFlash: 0.04, smokeShotsToPrime: 8, smokeDurationSec: 1.6 },
@@ -334,6 +342,7 @@ const BURST_FEEL: WeaponFeelProfile = {
       maxRad: 0.08,
       posPerRad: 0.15,
     },
+    lookLagAdsScale: 1,
     breath: null,
   },
   juice: { screenFlash: 0, smokeShotsToPrime: 5, smokeDurationSec: 0.9 },
@@ -372,20 +381,23 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     noiseAmp: 0.55,
     walkAmpMultiplier: 2.4,
     walkFreqMultiplier: 2.4,
-    // ADS is mostly steady — light residual wander, breath holds it nearly still.
-    adsScale: 0.1,
-    moveSwayAmp: 0.026,
+    // Scope FOV (~18°) magnifies camera sway — keep ADS almost still.
+    adsScale: 0.018,
+    moveSwayAmp: 0.01,
     moveSwaySmoothing: 6,
-    // Long heavy rifle drags behind fast flicks.
+    // Hipfire: long heavy rifle drags behind fast flicks. ADS: none — scope
+    // FOV makes look-lag feel like the whole world sliding.
     lookLag: {
       spring: { stiffness: 165, dampingRatio: 0.95 },
       weight: 0.85,
       maxRad: 0.13,
       posPerRad: 0.22,
     },
+    lookLagAdsScale: 0.15,
     breath: {
-      adsAmpMultiplier: 1.2,
-      holdSteadyScale: 0.08,
+      // Effective ADS sway ≈ adsScale * adsAmpMultiplier (~0.006 of hipfire).
+      adsAmpMultiplier: 0.35,
+      holdSteadyScale: 0.04,
       holdDurationSec: 3.5,
       recoverPerSec: 0.45,
     },
@@ -434,6 +446,7 @@ const SHOTGUN_FEEL: WeaponFeelProfile = {
       maxRad: 0.1,
       posPerRad: 0.18,
     },
+    lookLagAdsScale: 1,
     breath: null,
   },
   juice: { screenFlash: 0.09, smokeShotsToPrime: 1, smokeDurationSec: 1.3 },
@@ -480,6 +493,7 @@ const MELEE_FEEL: WeaponFeelProfile = {
       maxRad: 0.06,
       posPerRad: 0.12,
     },
+    lookLagAdsScale: 1,
     breath: null,
   },
   juice: { screenFlash: 0, smokeShotsToPrime: 99, smokeDurationSec: 0 },

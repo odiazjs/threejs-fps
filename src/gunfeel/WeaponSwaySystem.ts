@@ -76,6 +76,8 @@ export class WeaponSwaySystem {
 
   /** 0..1 sway scale computed per frame (ADS / reload / breath). */
   private swayScale = 1;
+  /** Look-lag scale this frame (ADS can zero it for sniper). */
+  private lookLagScale = 1;
   private reloading = false;
 
   /** Smoothed movement-sway offset (m). */
@@ -118,6 +120,7 @@ export class WeaponSwaySystem {
     this.adsBlocksCarry = false;
     this.wasShooting = false;
     this.swayScale = 1;
+    this.lookLagScale = 1;
     this.reloading = false;
     this.moveOffsetX = 0;
     this.moveOffsetZ = 0;
@@ -213,6 +216,7 @@ export class WeaponSwaySystem {
     const adsFactor = THREE.MathUtils.lerp(1, adsAmp, input.adsBlend);
     const reloadDamp = input.reloading ? 0.12 : 1;
     this.swayScale = adsFactor * reloadDamp * (1 - this.carryBlend);
+    this.lookLagScale = THREE.MathUtils.lerp(1, feel.lookLagAdsScale, input.adsBlend);
 
     /* ---- phase advance ---- */
     const freq = feel.idleFreq * THREE.MathUtils.lerp(1, feel.walkFreqMultiplier, this.walkBlend);
@@ -233,21 +237,30 @@ export class WeaponSwaySystem {
 
     /* ---- look-lag ---- */
     const lag = feel.lookLag;
-    if (delta > 0) {
+    if (this.lookLagScale <= 0.001) {
+      // Fully suppressed (e.g. sniper ADS) — clear residual hipfire lag.
+      this.lagYaw.reset();
+      this.lagPitch.reset();
+    } else if (delta > 0) {
       // Camera moved by delta — the weapon "stays behind" by weight fraction.
+      const lagIn = lag.weight * this.lookLagScale;
+      const maxRad = lag.maxRad * this.lookLagScale;
       this.lagYaw.value = THREE.MathUtils.clamp(
-        this.lagYaw.value - input.lookDeltaYaw * lag.weight,
-        -lag.maxRad,
-        lag.maxRad,
+        this.lagYaw.value - input.lookDeltaYaw * lagIn,
+        -maxRad,
+        maxRad,
       );
       this.lagPitch.value = THREE.MathUtils.clamp(
-        this.lagPitch.value - input.lookDeltaPitch * lag.weight,
-        -lag.maxRad,
-        lag.maxRad,
+        this.lagPitch.value - input.lookDeltaPitch * lagIn,
+        -maxRad,
+        maxRad,
       );
+      this.lagYaw.update(delta);
+      this.lagPitch.update(delta);
+    } else {
+      this.lagYaw.update(delta);
+      this.lagPitch.update(delta);
     }
-    this.lagYaw.update(delta);
-    this.lagPitch.update(delta);
   }
 
   private walkAmpFactor(): number {
@@ -311,8 +324,8 @@ export class WeaponSwaySystem {
       weapon.rotation.z += this.moveOffsetX * 2.2 * dynScale;
 
       const lag = this.feel.lookLag;
-      const lagYaw = this.lagYaw.value * dynScale;
-      const lagPitch = this.lagPitch.value * dynScale;
+      const lagYaw = this.lagYaw.value * dynScale * this.lookLagScale;
+      const lagPitch = this.lagPitch.value * dynScale * this.lookLagScale;
       weapon.rotation.y += lagYaw;
       weapon.rotation.x += lagPitch;
       weapon.position.x += lagYaw * lag.posPerRad;

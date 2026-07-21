@@ -186,6 +186,7 @@ export class WeaponSoundService {
   private reloadSource: AudioBufferSourceNode | null = null;
   private readonly remoteAutoFire = new Map<string, RemoteAutoFireNodes>();
   private outOfAmmoConfig: { src: string; volume: number } | null = null;
+  private shotEndEchoConfig: { src: string; volume: number } | null = null;
   private spatialConfig: WeaponSpatialAudioConfig | null = null;
 
   configureSpatial(config: WeaponSpatialAudioConfig): void {
@@ -222,6 +223,11 @@ export class WeaponSoundService {
 
   async preloadOutOfAmmo(config: { src: string; volume: number }): Promise<void> {
     this.outOfAmmoConfig = config;
+    await this.preload([config.src]);
+  }
+
+  async preloadShotEndEcho(config: { src: string; volume: number }): Promise<void> {
+    this.shotEndEchoConfig = config;
     await this.preload([config.src]);
   }
 
@@ -306,6 +312,12 @@ export class WeaponSoundService {
   playOutOfAmmo(): void {
     if (!this.outOfAmmoConfig) return;
     this.playOneShot(this.outOfAmmoConfig.src, this.outOfAmmoConfig.volume);
+  }
+
+  /** Room-tail echo when the local player releases fire after shooting. */
+  playShotEndEcho(): void {
+    if (!this.shotEndEchoConfig) return;
+    this.playOneShot(this.shotEndEchoConfig.src, this.shotEndEchoConfig.volume);
   }
 
   playReload(sounds: WeaponSoundsConfig | undefined, reloadSec?: number): void {

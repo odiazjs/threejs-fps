@@ -8,6 +8,7 @@ export const POINTER_ADS = 2;
 export class PointerInput {
   private buttons: Record<number, boolean> = {};
   private justPressed = new Set<number>();
+  private justReleased = new Set<number>();
 
   constructor() {
     document.addEventListener('mousedown', this.onMouseDown);
@@ -22,8 +23,13 @@ export class PointerInput {
     return this.justPressed.has(button);
   }
 
+  isJustReleased(button: number): boolean {
+    return this.justReleased.has(button);
+  }
+
   endFrame(): void {
     this.justPressed.clear();
+    this.justReleased.clear();
   }
 
   private onMouseDown = (e: MouseEvent): void => {
@@ -36,6 +42,9 @@ export class PointerInput {
   };
 
   private onMouseUp = (e: MouseEvent): void => {
+    if (this.buttons[e.button]) {
+      this.justReleased.add(e.button);
+    }
     this.buttons[e.button] = false;
   };
 }

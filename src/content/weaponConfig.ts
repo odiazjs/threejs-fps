@@ -718,9 +718,9 @@ export const PLASMA_SHOTGUN_CONFIG: WeaponConfig = {
   sway: { intensity: 1.2 },
   sounds: {
     singleShot: { src: '/sounds/shotgun_shot_1.wav', reverbLevel: 0 },
-    reload: { src: '/sounds/plasma_shotgun_partial_reload.wav', volume: 0.15, reverbLevel: 0 },
-    reloadPartial: { src: '/sounds/plasma_shotgun_partial_reload.wav', volume: 0.15, reverbLevel: 0 },
-    reloadComplete: { src: '/sounds/plasma_shotgun_complete_reload.wav', volume: 0.15, reverbLevel: 0 },
+    reload: { src: '/sounds/shotgun_reload_1.wav', volume: 0.15, reverbLevel: 0 },
+    reloadPartial: { src: '/sounds/shotgun_reload_1.wav', volume: 0.55, reverbLevel: 0 },
+    reloadComplete: { src: 'sounds/plasma_shotgun_complete_reload.wav', volume: 0.15, reverbLevel: 0 },
     volume: 0.65,
   },
 };

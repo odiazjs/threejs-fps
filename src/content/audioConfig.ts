@@ -96,6 +96,12 @@ export const GAME_OUT_OF_AMMO_AUDIO: GlobalAudioConfig = {
   volume: 0.22,
 };
 
+/** Tail / room echo when the player releases fire after shooting. */
+export const GAME_SHOT_END_ECHO_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/shot_end_echo_fadeout.wav',
+  volume: 0.55,
+};
+
 export const GAME_KILL_CONFIRM_AUDIO: GlobalAudioConfig = {
   src: '/sounds/kill_confirm_2.wav',
   volume: 0.25,
