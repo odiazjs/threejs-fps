@@ -505,7 +505,7 @@ export const BIO_MACHINE_GUN_CONFIG: WeaponConfig = {
   moveSpeedMultiplier: 0.9,
   view: {
     hip: { x: 0.17, y: -0.27, z: -0.4 },
-    ads: { x: 0, y: -0.21, z: -0.24 },
+    ads: { x: 0, y: -0.19, z: -0.24 },
     adsFov: 58,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
