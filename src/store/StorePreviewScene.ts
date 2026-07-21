@@ -17,6 +17,8 @@ import { disposeObject3D } from '../weapons/disposeMesh';
 
 const ASSET_BASE = '/3d/';
 const SHOWCASE_TARGET_HEIGHT = 2.35;
+/** Match in-game sole clearance — Meshy bind AABB sits slightly high vs feet. */
+const FOOT_GROUND_CLEARANCE = 0.055;
 const DEFAULT_CAMERA_X = 0.85;
 const DEFAULT_CAMERA_Z = 4.6;
 const DEFAULT_CAMERA_Y = 1.05;
@@ -387,7 +389,7 @@ export class StorePreviewScene {
 
     const fitted = new THREE.Box3().setFromObject(wrapper);
     const center = fitted.getCenter(new THREE.Vector3());
-    wrapper.position.set(-center.x, -fitted.min.y, -center.z);
+    wrapper.position.set(-center.x, -fitted.min.y + FOOT_GROUND_CLEARANCE, -center.z);
     return wrapper;
   }
 

@@ -21,6 +21,11 @@ import { applyCharacterFace } from './characterFace';
 
 const ASSET_BASE = '/3d/';
 const TARGET_HEIGHT = 1.65;
+/**
+ * Bind-pose AABB sits a bit high vs skinned soles (esp. Meshy idle), so feet
+ * clip the floor after animation. Lift after grounding.
+ */
+const FOOT_GROUND_CLEARANCE = 0.04;
 /** Mixamo / FBX models usually face +Z; game forward is -Z. */
 const MODEL_YAW = Math.PI;
 
@@ -361,8 +366,6 @@ function prepareModel(model: THREE.Group): { scene: THREE.Group; fitScale: numbe
   const size = box.getSize(new THREE.Vector3());
   const fitScale = TARGET_HEIGHT / Math.max(size.y, 0.001);
 
-  console.log('fitScale >>>>>>', fitScale);
-
   const wrapper = new THREE.Group();
   wrapper.add(model);
   wrapper.scale.setScalar(fitScale);
@@ -372,7 +375,7 @@ function prepareModel(model: THREE.Group): { scene: THREE.Group; fitScale: numbe
   const center = fittedBox.getCenter(new THREE.Vector3());
   wrapper.position.x -= center.x;
   wrapper.position.z -= center.z;
-  wrapper.position.y -= fittedBox.min.y;
+  wrapper.position.y -= fittedBox.min.y - FOOT_GROUND_CLEARANCE;
 
   return { scene: wrapper, fitScale };
 }
