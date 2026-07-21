@@ -295,6 +295,20 @@
       "when": 1784050000000,
       "tag": "0041_pistol_uncapped_fire_rate",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1784060000000,
+      "tag": "0042_shared_character_mesh",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784070000000,
+      "tag": "0043_shared_character_mesh_quads",
+      "breakpoints": true
     }
   ]
 }

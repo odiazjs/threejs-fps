@@ -4,10 +4,19 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import type { BodyPartBoneRefs } from '../../shared/combat/bodyPartPose';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import { MELEE_WEAPON_ID } from '../../shared/content/weaponIds';
-import { getActiveCharacterMeshFile } from '../content/activeCharacterMesh';
+import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
+import { SHARED_CHARACTER_MESH_FILE } from '../../shared/content/characterMesh';
+import {
+  getActiveCharacterId,
+  getActiveCharacterMeshFile,
+} from '../content/activeCharacterMesh';
 import { getActiveOperatorId } from '../content/activeOperatorCharacter';
 import { resolveFaceIdForCharacter } from '../content/characterFaces';
 import { showcaseIdleFileForMesh } from '../content/characterShowcaseIdle';
+import {
+  applyMeshyCharacterMaterial,
+  isSharedCharacterMesh,
+} from '../content/meshyCharacterMaterial';
 import { applyCharacterFace } from './characterFace';
 
 const ASSET_BASE = '/3d/';
@@ -16,7 +25,7 @@ const TARGET_HEIGHT = 1.65;
 const MODEL_YAW = Math.PI;
 
 export const CHARACTER_MODEL_FILES = {
-  lobby: 'character_showcase_idle.fbx',
+  lobby: SHARED_CHARACTER_MESH_FILE,
   rifleAimingIdle: 'Rifle Aiming Idle.fbx',
   pistolIdle: 'Pistol Idle.fbx',
   rifleShooting: 'Rifle Shooting.fbx',
@@ -372,6 +381,8 @@ export interface CharacterTemplate {
   modelFile: string;
   /** Store character mesh FBX (skin), paired with pose `modelFile`. */
   meshFile: string;
+  /** Store skin item id — selects emissive texture on the shared mesh. */
+  skinId: string;
   scene: THREE.Group;
   clip: THREE.AnimationClip | null;
   /** Clip length in seconds (0 when no clip). */
@@ -442,6 +453,7 @@ function loadCharacterMeshTemplateByFile(meshFile: string): Promise<CharacterMes
     const loader = new FBXLoader();
     loader.setResourcePath(ASSET_BASE);
     const fbx = await loadFbx(loader, assetUrl(meshFile));
+    // Skin textures are applied per template/instance — mesh cache stays geometry-only.
     const { scene, fitScale } = prepareModel(fbx);
     const bones = detectBoneNames(fbx) ?? DEFAULT_BONES;
     return { scene, fitScale, bones };
@@ -451,15 +463,17 @@ function loadCharacterMeshTemplateByFile(meshFile: string): Promise<CharacterMes
   return promise;
 }
 
-function templateCacheKey(poseFile: string, meshFile: string): string {
-  return `${meshFile}::${poseFile}`;
+function templateCacheKey(poseFile: string, meshFile: string, skinId: string): string {
+  return `${skinId}::${meshFile}::${poseFile}`;
 }
 
 async function loadCharacterTemplateByFile(
   modelFile: string,
   meshFile: string = getActiveCharacterMeshFile(),
+  skinId: string = getActiveCharacterId(),
 ): Promise<CharacterTemplate> {
-  const cacheKey = templateCacheKey(modelFile, meshFile);
+  const resolvedSkinId = skinId || DEFAULT_CHARACTER_ITEM_ID;
+  const cacheKey = templateCacheKey(modelFile, meshFile, resolvedSkinId);
   const cached = templateCache.get(cacheKey);
   if (cached) return cached;
 
@@ -484,10 +498,16 @@ async function loadCharacterTemplateByFile(
       clip = stripRootMotionFromClip(clip);
     }
 
+    const scene = cloneSkeleton(meshTemplate.scene) as THREE.Group;
+    if (isSharedCharacterMesh(meshFile)) {
+      await applyMeshyCharacterMaterial(scene, resolvedSkinId);
+    }
+
     const template: CharacterTemplate = {
       modelFile,
       meshFile,
-      scene: cloneSkeleton(meshTemplate.scene) as THREE.Group,
+      skinId: resolvedSkinId,
+      scene,
       clip,
       clipDurationSec: clip?.duration ?? 0,
       bones: meshTemplate.bones,
@@ -589,12 +609,21 @@ export function loadGameCharacterTemplate(
   weaponId: WeaponId,
   pose: RemoteCharacterPose,
   meshFile: string = getActiveCharacterMeshFile(),
+  skinId: string = getActiveCharacterId(),
 ): Promise<CharacterTemplate> {
-  return loadCharacterTemplateByFile(gameModelFileForWeapon(weaponId, pose), meshFile);
+  return loadCharacterTemplateByFile(
+    gameModelFileForWeapon(weaponId, pose),
+    meshFile,
+    skinId,
+  );
 }
 
 export function loadLobbyCharacterTemplate(): Promise<CharacterTemplate> {
-  return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.lobby);
+  return loadCharacterTemplateByFile(
+    CHARACTER_MODEL_FILES.lobby,
+    getActiveCharacterMeshFile(),
+    getActiveCharacterId(),
+  );
 }
 
 const IDLE_REMOTE_POSE: RemoteCharacterPose = {
@@ -613,16 +642,18 @@ const IDLE_REMOTE_POSE: RemoteCharacterPose = {
 export function loadLobbyIdleCharacterTemplate(
   _weaponId: WeaponId,
   meshFile: string = getActiveCharacterMeshFile(),
+  skinId: string = getActiveCharacterId(),
 ): Promise<CharacterTemplate> {
-  return loadCharacterTemplateByFile(showcaseIdleFileForMesh(meshFile), meshFile);
+  return loadCharacterTemplateByFile(showcaseIdleFileForMesh(meshFile), meshFile, skinId);
 }
 
 /** Lobby pedestal idle skinned with an arbitrary store character mesh. */
 export function loadLobbyIdleCharacterTemplateForMesh(
   meshFile: string,
   weaponId: WeaponId,
+  skinId: string = getActiveCharacterId(),
 ): Promise<CharacterTemplate> {
-  return loadLobbyIdleCharacterTemplate(weaponId, meshFile);
+  return loadLobbyIdleCharacterTemplate(weaponId, meshFile, skinId);
 }
 
 /** @deprecated Use loadGameCharacterTemplate / loadLobbyIdleCharacterTemplate. */
@@ -634,14 +665,16 @@ export function loadGameIdleCharacterTemplate(weaponId: WeaponId): Promise<Chara
 export function loadGameIdleCharacterTemplateForMesh(
   meshFile: string,
   weaponId: WeaponId,
+  skinId: string = getActiveCharacterId(),
 ): Promise<CharacterTemplate> {
-  return loadGameCharacterTemplate(weaponId, IDLE_REMOTE_POSE, meshFile);
+  return loadGameCharacterTemplate(weaponId, IDLE_REMOTE_POSE, meshFile, skinId);
 }
 
 export function loadDeathCharacterTemplate(
   meshFile: string = getActiveCharacterMeshFile(),
+  skinId: string = getActiveCharacterId(),
 ): Promise<CharacterTemplate> {
-  return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death, meshFile);
+  return loadCharacterTemplateByFile(CHARACTER_MODEL_FILES.death, meshFile, skinId);
 }
 
 export function preloadGameCharacterModels(): Promise<CharacterTemplate[]> {

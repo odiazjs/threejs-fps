@@ -2,6 +2,7 @@ import type { CharacterState } from '../../../shared/api/characters';
 import { apiListCharacters, apiSelectCharacter } from '../../auth/charactersApi';
 import { apiListStoreItems } from '../../auth/storeApi';
 import {
+  getActiveCharacterId,
   getActiveCharacterMeshFile,
   getCharacterMeshFile,
   rememberStoreItemAssets,
@@ -20,6 +21,7 @@ export class CharactersView {
   private busy = false;
   private scene: StorePreviewScene | null = null;
   private equippedSkinMesh: string | null = null;
+  private equippedSkinId: string | null = null;
 
   private grid: HTMLElement | null = null;
   private searchInput: HTMLInputElement | null = null;
@@ -119,6 +121,7 @@ export class CharactersView {
     this.searchQuery = '';
     this.busy = false;
     this.equippedSkinMesh = null;
+    this.equippedSkinId = null;
   }
 
   private async reload(): Promise<void> {
@@ -131,8 +134,10 @@ export class CharactersView {
       if (store) {
         rememberStoreItemAssets(store.items);
         setActiveCharacterId(store.selectedCharacterId);
+        this.equippedSkinId = store.selectedCharacterId;
         this.equippedSkinMesh = getCharacterMeshFile(store.selectedCharacterId);
       } else {
+        this.equippedSkinId = getActiveCharacterId();
         this.equippedSkinMesh = getActiveCharacterMeshFile();
       }
 
@@ -244,9 +249,11 @@ export class CharactersView {
     }
 
     const mesh = this.equippedSkinMesh ?? getActiveCharacterMeshFile();
+    const skinId = this.equippedSkinId ?? getActiveCharacterId();
     await this.scene?.showAsset(mesh, {
       playShowcaseIdle: true,
       characterId: entry.id,
+      skinId,
       focusFace: true,
     });
   }

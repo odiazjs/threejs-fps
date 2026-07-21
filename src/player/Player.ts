@@ -210,6 +210,7 @@ export class Player {
   private characterInstance: CharacterInstance | null = null;
   private displayedCharacterModelFile: string | null = null;
   private displayedCharacterMeshFile: string | null = null;
+  private displayedCharacterSkinId: string | null = null;
   private displayedOperatorId: string | null = null;
   /** Per-player store body skin id from the server (remotes only). */
   private remoteSelectedCharacterId = DEFAULT_CHARACTER_ITEM_ID;
@@ -418,12 +419,14 @@ export class Player {
     this.tickRemoteDeath();
     if (!this.alive) {
       if (this.remoteDeathActive && this.object.visible) {
-        const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
-        const deathKey = `${meshFile}::${CHARACTER_MODEL_FILES.death}`;
+        const skinId = this.remoteSelectedCharacterId;
+        const meshFile = getCharacterMeshFile(skinId);
+        const deathKey = `${skinId}::${meshFile}::${CHARACTER_MODEL_FILES.death}`;
         if (
           !(
             this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.death
             && this.displayedCharacterMeshFile === meshFile
+            && this.displayedCharacterSkinId === skinId
           )
           && this.remoteModelLoadingFile !== deathKey
         ) {
@@ -441,12 +444,14 @@ export class Player {
     const weaponId = this.targetActiveWeaponId;
     const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
-    const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
+    const skinId = this.remoteSelectedCharacterId;
+    const meshFile = getCharacterMeshFile(skinId);
     const operatorId = this.remoteSelectedOperatorId;
-    const displayKey = `${meshFile}::${modelFile}::${operatorId}`;
+    const displayKey = `${skinId}::${meshFile}::${modelFile}::${operatorId}`;
     if (
       this.displayedCharacterModelFile === modelFile
       && this.displayedCharacterMeshFile === meshFile
+      && this.displayedCharacterSkinId === skinId
       && this.displayedOperatorId === operatorId
       && this.characterInstance
     ) {
@@ -455,7 +460,7 @@ export class Player {
     if (this.remoteModelLoadingFile === displayKey) return;
 
     this.remoteModelLoadingFile = displayKey;
-    void loadGameCharacterTemplate(weaponId, pose, meshFile)
+    void loadGameCharacterTemplate(weaponId, pose, meshFile, skinId)
       .then((template) => {
         this.setCharacterModel(template);
         this.applyRemoteAim();
@@ -497,16 +502,18 @@ export class Player {
 
   private async ensureRemoteDeathModel(): Promise<void> {
     if (this.camera || this.alive) return;
-    const meshFile = getCharacterMeshFile(this.remoteSelectedCharacterId);
+    const skinId = this.remoteSelectedCharacterId;
+    const meshFile = getCharacterMeshFile(skinId);
     if (
       this.displayedCharacterModelFile === CHARACTER_MODEL_FILES.death
       && this.displayedCharacterMeshFile === meshFile
+      && this.displayedCharacterSkinId === skinId
       && this.characterInstance
     ) {
       return;
     }
 
-    const template = await loadDeathCharacterTemplate(meshFile);
+    const template = await loadDeathCharacterTemplate(meshFile, skinId);
     this.setCharacterModel(template);
     this.loadout?.setMeshesVisible(false);
     this.remoteDeathStartedAt = performance.now() / 1000;
@@ -562,6 +569,7 @@ export class Player {
     if (
       this.displayedCharacterModelFile === template.modelFile
       && this.displayedCharacterMeshFile === template.meshFile
+      && this.displayedCharacterSkinId === template.skinId
       && this.displayedOperatorId === this.remoteSelectedOperatorId
       && this.characterInstance
     ) {
@@ -582,6 +590,7 @@ export class Player {
     this.pitchPivot.add(this.characterInstance.root);
     this.displayedCharacterModelFile = template.modelFile;
     this.displayedCharacterMeshFile = template.meshFile;
+    this.displayedCharacterSkinId = template.skinId;
     this.displayedOperatorId = this.remoteSelectedOperatorId;
     this.bodyPartBones = resolveBodyPartBones(this.characterInstance.root);
     this.bindRemoteCharacterRig(template);
@@ -616,7 +625,7 @@ export class Player {
       mount.weaponPosition,
     );
 
-    // lookRig must not parent to Head — Head/Neck are collapsed for the 3D face head.
+    // lookRig must not parent to Head — Head is collapsed for the 3D face.
     const lookParent = resolveFaceLookParent(this.characterInstance.root) ?? rig.head;
     this.object.remove(this.lookRig);
     this.lookRig.position.set(0, 0, 0);
@@ -1975,6 +1984,7 @@ export class Player {
     this.characterInstance = null;
     this.displayedCharacterModelFile = null;
     this.displayedCharacterMeshFile = null;
+    this.displayedCharacterSkinId = null;
     this.displayedOperatorId = null;
     this.remoteWeaponMount = null;
     this.remoteKatanaAxisDebug?.dispose();

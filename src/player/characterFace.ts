@@ -26,9 +26,9 @@ const loadPromises = new Map<string, Promise<FaceModelTemplate>>();
 
 export interface CharacterFaceAttachResult {
   readonly faceId: string;
-  /** Spine/chest bone the face is parented to (Neck/Head are collapsed). */
+  /** Spine/chest bone the face is parented to. */
   readonly mountParent: THREE.Object3D;
-  /** Parent look-rigs / aim helpers here — not on collapsed Neck/Head. */
+  /** Parent look-rigs / aim helpers here — not on collapsed Head. */
   readonly faceAnchor: THREE.Group;
 }
 
@@ -52,10 +52,18 @@ function findBoneBySuffix(root: THREE.Object3D, suffix: string): THREE.Object3D 
   return found;
 }
 
-function collapseHeadAndNeck(head: THREE.Object3D, neck: THREE.Object3D): void {
+/**
+ * Hide the helmet by collapsing Head (+ tip bones under it). Leave Neck alone —
+ * Neck scale pinches collar verts into a singularity, and deleting head-weighted
+ * triangles punches holes through the neck/shoulder blend.
+ */
+function collapseHeadBones(head: THREE.Object3D): void {
+  head.traverse((child) => {
+    if (child.type === 'Bone') {
+      child.scale.setScalar(BONE_COLLAPSE_SCALE);
+    }
+  });
   head.scale.setScalar(BONE_COLLAPSE_SCALE);
-  // Hide neck collar verts so the 3D face can sit lower into the shoulders.
-  neck.scale.setScalar(BONE_COLLAPSE_SCALE);
 }
 
 function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
@@ -179,7 +187,7 @@ function cloneFaceScene(template: FaceModelTemplate): THREE.Group {
 }
 
 /**
- * Collapse the skinned body head + neck and attach a 3D face head at the upper spine.
+ * Hide the skinned helmet and attach a 3D face at the upper spine.
  * Safe to call after every character instance create / pose remount.
  */
 export async function applyCharacterFace(
@@ -197,7 +205,7 @@ export async function applyCharacterFace(
   }
 
   clearExistingFace(characterRoot);
-  collapseHeadAndNeck(head, neck);
+  collapseHeadBones(head);
 
   let template: FaceModelTemplate;
   try {
@@ -219,7 +227,7 @@ export async function applyCharacterFace(
   }
 
   clearExistingFace(characterRoot);
-  collapseHeadAndNeck(headAfter, neckAfter);
+  collapseHeadBones(headAfter);
 
   // Mount on the spine (Neck's parent) using the Neck bone's local rest slot + per-character transform.
   const def = getFaceDef(faceId);
@@ -244,7 +252,7 @@ export async function applyCharacterFace(
   return { faceId: template.faceId, mountParent, faceAnchor };
 }
 
-/** Spine/chest (or Neck fallback) for look-rig parenting while Neck/Head are collapsed. */
+/** Spine/chest (or Neck fallback) for look-rig parenting. */
 export function resolveFaceLookParent(characterRoot: THREE.Object3D): THREE.Object3D | null {
   const head = findBoneBySuffix(characterRoot, 'Head');
   const neck = findBoneBySuffix(characterRoot, 'Neck') ?? head?.parent ?? null;

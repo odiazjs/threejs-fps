@@ -1,16 +1,20 @@
+import { SHARED_CHARACTER_MESH_FILE } from '../../shared/content/characterMesh';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 
 const STORAGE_KEY = 'fps_selected_character_id';
-const DEFAULT_MESH_FILE = 'character_basic_tpose.fbx';
+const DEFAULT_MESH_FILE = SHARED_CHARACTER_MESH_FILE;
 
-/** Fallback meshes before / between store catalog fetches (body skins). */
+/**
+ * Offline fallbacks before / between store catalog fetches.
+ * All skins share one mesh — textures differentiate them (see characterMesh.ts).
+ */
 const DEFAULT_MESH_BY_ID: Readonly<Record<string, string>> = {
-  basic: 'character_basic_tpose.fbx',
-  silver: 'character_silver_tpose.fbx',
-  tech_nature: 'character_tech_nature.fbx',
-  magma_fire: 'character_magma_fire.fbx',
-  pink_butterfly: 'character_pink_butterfly_idle.fbx',
-  bumblebee: 'character_bumblebee.fbx',
+  basic: SHARED_CHARACTER_MESH_FILE,
+  silver: SHARED_CHARACTER_MESH_FILE,
+  tech_nature: SHARED_CHARACTER_MESH_FILE,
+  magma_fire: SHARED_CHARACTER_MESH_FILE,
+  pink_butterfly: SHARED_CHARACTER_MESH_FILE,
+  bumblebee: SHARED_CHARACTER_MESH_FILE,
 };
 
 let activeCharacterId = DEFAULT_CHARACTER_ITEM_ID;

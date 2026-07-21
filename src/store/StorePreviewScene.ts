@@ -6,6 +6,11 @@ import {
   SHOWCASE_IDLE_FILE,
   showcaseIdleFileForMesh,
 } from '../content/characterShowcaseIdle';
+import {
+  applyMeshyCharacterMaterial,
+  isSharedCharacterMesh,
+} from '../content/meshyCharacterMaterial';
+import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 import { applyCharacterFace } from '../player/characterFace';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from '../weapons/disposeMesh';
@@ -27,8 +32,10 @@ const FACE_FOCUS_MAX_DISTANCE = 2.4;
 export type StorePreviewOptions = {
   /** Play a store idle clip (character unlockables). */
   playShowcaseIdle?: boolean;
-  /** Store character id — selects which face head to attach. */
+  /** Operator character id — selects which face head to attach. */
   characterId?: string;
+  /** Store skin item id — selects body emissive texture on the shared mesh. */
+  skinId?: string;
   /** Frame camera on the attached face (Characters page). */
   focusFace?: boolean;
 };
@@ -92,6 +99,7 @@ export class StorePreviewScene {
   private currentModel: THREE.Object3D | null = null;
   private currentAssetKey: string | null = null;
   private currentOperatorId: string | null = null;
+  private currentSkinId: string | null = null;
   private currentIdleFile: string | null = null;
   private currentPlayIdle = false;
   private currentFocusFace = false;
@@ -185,11 +193,13 @@ export class StorePreviewScene {
     const playIdle = Boolean(options.playShowcaseIdle);
     const idleFile = playIdle ? showcaseIdleFileForMesh(key) : null;
     const operatorId = options.characterId?.trim() || '';
+    const skinId = options.skinId?.trim() || '';
     const focusFace = Boolean(options.focusFace);
     if (!key) {
       this.clearModel();
       this.currentAssetKey = null;
       this.currentOperatorId = null;
+      this.currentSkinId = null;
       this.currentIdleFile = null;
       this.currentPlayIdle = false;
       this.currentFocusFace = false;
@@ -203,6 +213,7 @@ export class StorePreviewScene {
       playIdle === this.currentPlayIdle &&
       idleFile === this.currentIdleFile &&
       operatorId === (this.currentOperatorId ?? '') &&
+      skinId === (this.currentSkinId ?? '') &&
       focusFace === this.currentFocusFace
     ) {
       return;
@@ -223,6 +234,14 @@ export class StorePreviewScene {
       if (this.disposed || token !== this.loadToken) {
         disposeObject3D(fbx);
         return;
+      }
+
+      if (isSharedCharacterMesh(key)) {
+        await applyMeshyCharacterMaterial(fbx, skinId || DEFAULT_CHARACTER_ITEM_ID);
+        if (this.disposed || token !== this.loadToken) {
+          disposeObject3D(fbx);
+          return;
+        }
       }
 
       const embedded = useEmbeddedIdle ? pickAnimationClip(fbx.animations) : null;
@@ -256,6 +275,7 @@ export class StorePreviewScene {
       this.currentModel = fitted;
       this.currentAssetKey = key;
       this.currentOperatorId = operatorId;
+      this.currentSkinId = skinId;
       this.currentIdleFile = idleFile;
       this.currentPlayIdle = playIdle;
       this.currentFocusFace = focusFace;
@@ -272,6 +292,7 @@ export class StorePreviewScene {
         this.clearModel();
         this.currentAssetKey = null;
         this.currentOperatorId = null;
+        this.currentSkinId = null;
         this.currentIdleFile = null;
         this.currentPlayIdle = false;
         this.currentFocusFace = false;

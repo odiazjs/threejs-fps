@@ -1,3 +1,4 @@
+import { SHARED_CHARACTER_MESH_FILE } from '../../../../shared/content/characterMesh.js';
 import type { StoreItemType } from '../../../../shared/content/storeItemTypes.js';
 
 export interface StoreCatalogEntry {
@@ -23,7 +24,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: true,
     enabled: true,
     sortOrder: 10,
-    assetFile: 'character_basic_tpose.fbx',
+    assetFile: SHARED_CHARACTER_MESH_FILE,
   },
   {
     id: 'silver',
@@ -34,7 +35,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: false,
     enabled: true,
     sortOrder: 20,
-    assetFile: 'character_silver_tpose.fbx',
+    assetFile: SHARED_CHARACTER_MESH_FILE,
   },
   {
     id: 'tech_nature',
@@ -45,7 +46,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: false,
     enabled: true,
     sortOrder: 30,
-    assetFile: 'character_tech_nature.fbx',
+    assetFile: SHARED_CHARACTER_MESH_FILE,
   },
   {
     id: 'magma_fire',
@@ -56,7 +57,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: false,
     enabled: true,
     sortOrder: 40,
-    assetFile: 'character_magma_fire.fbx',
+    assetFile: SHARED_CHARACTER_MESH_FILE,
   },
   {
     id: 'pink_butterfly',
@@ -67,7 +68,7 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: false,
     enabled: true,
     sortOrder: 50,
-    assetFile: 'character_pink_butterfly_idle.fbx',
+    assetFile: SHARED_CHARACTER_MESH_FILE,
   },
   {
     id: 'bumblebee',
@@ -78,6 +79,6 @@ export const CURRENT_STORE_CATALOG: readonly StoreCatalogEntry[] = [
     defaultUnlocked: false,
     enabled: true,
     sortOrder: 60,
-    assetFile: 'character_bumblebee.fbx',
+    assetFile: SHARED_CHARACTER_MESH_FILE,
   },
 ];

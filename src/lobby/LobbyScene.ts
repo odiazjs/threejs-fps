@@ -204,11 +204,15 @@ export class LobbyScene {
 
   private async applyLobbyLoadout(weaponId: WeaponId): Promise<void> {
     const token = ++this.avatarLoadToken;
-    const template = await loadLobbyIdleCharacterTemplate(weaponId);
+    const characterId = getActiveCharacterId();
+    const template = await loadLobbyIdleCharacterTemplate(
+      weaponId,
+      getCharacterMeshFile(characterId),
+      characterId,
+    );
     if (token !== this.avatarLoadToken) return;
 
     this.clearLocalCharacter();
-    const characterId = getActiveCharacterId();
     const operatorId = getActiveOperatorId();
     this.characterInstance = createCharacterInstance(template, {
       characterId,
@@ -347,7 +351,11 @@ export class LobbyScene {
 
     try {
       const meshFile = getCharacterMeshFile(characterId);
-      const template = await loadLobbyIdleCharacterTemplateForMesh(meshFile, weaponId);
+      const template = await loadLobbyIdleCharacterTemplateForMesh(
+        meshFile,
+        weaponId,
+        characterId,
+      );
       if (loadToken !== this.remoteAvatarLoadToken) return;
       if (!this.partyMembers.some((entry) => entry.userId === member.userId)) return;
 

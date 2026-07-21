@@ -341,6 +341,7 @@ export class StoreView {
     await this.scene?.showAsset(item.assetFile, {
       playShowcaseIdle: isEquipableCharacterType(item.type),
       characterId: getActiveOperatorId(),
+      skinId: isEquipableCharacterType(item.type) ? item.id : undefined,
     });
   }
 
