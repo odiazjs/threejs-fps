@@ -17,6 +17,10 @@ export const SHARED_CHARACTER_EMISSIVE_TEXTURE_URL =
 export const SHARED_CHARACTER_SKIN_TEXTURE_URLS: Readonly<Record<string, string>> = {
   basic: '/images/store/meshy_character_default_texture.png',
   silver: '/images/store/meshy_character_silver_texture.png',
+  tech_nature: '/images/store/meshy_character_tech_nature_texture.png',
+  magma_fire: '/images/store/meshy_character_magma_fire_texture.png',
+  pink_butterfly: '/images/store/meshy_character_pink_butterfly_texture.png',
+  bumblebee: '/images/store/meshy_character_bumblebee_texture.png',
 };
 
 export function getCharacterSkinTextureUrl(skinId: string): string {
