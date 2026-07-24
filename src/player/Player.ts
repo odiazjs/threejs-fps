@@ -831,6 +831,7 @@ export class Player {
     this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    this.syncFpArmsVisibility();
     this.onMeleeEquipNetwork?.(true);
     return true;
   }
@@ -1744,13 +1745,17 @@ export class Player {
       const reloadDurationSec = shellReload
         ? Math.max(0.05, active.config.reloadSec / Math.max(1, active.config.clipSize))
         : Math.max(0.05, Number(active.config.reloadSec) || 1);
+      // FPS arms are guns-only — hide + no sprint/reload clips while melee is out.
+      const armsReload = !meleeEquipped && ammoState.reloading;
+      const armsSprint = !meleeEquipped && isSprinting && !ammoState.reloading;
       this.fpArmsViewModel?.setReloading(
-        ammoState.reloading,
+        armsReload,
         reloadDurationSec,
         shellReload,
       );
-      this.fpArmsViewModel?.setSprinting(isSprinting && !ammoState.reloading);
+      this.fpArmsViewModel?.setSprinting(armsSprint);
       this.fpArmsViewModel?.setStance(active.config.id === 'pistol' ? 'pistol' : 'rifle');
+
       shooting =
         this.throwableEquipped
           ? false
@@ -1759,7 +1764,7 @@ export class Player {
             : this.isFiring(pointer, active.config.fireMode);
 
       this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
-      const bindWeaponToHand = ammoState.reloading || isSprinting;
+      const bindWeaponToHand = armsReload || armsSprint;
       this.weaponPose?.update(
         delta,
         ads,
@@ -1846,6 +1851,8 @@ export class Player {
         this.weaponPose?.applyCamera(this.camera);
       }
       this.syncFpArmsToActiveWeapon();
+      // After hand-bind so melee hide can't unbind/rebind in the same frame.
+      this.syncFpArmsVisibility();
 
       // Barrel smoke + screen-flash decay track the live muzzle position.
       if (this.gunJuice) {
@@ -2158,7 +2165,9 @@ export class Player {
   }
 
   private syncFpArmsVisibility(): void {
-    const show = !this.throwableEquipped && !!this.loadout?.getActive();
+    const meleeEquipped = this.loadout?.isMeleeEquipped() ?? false;
+    const show =
+      !this.throwableEquipped && !meleeEquipped && !!this.loadout?.getActive();
     this.fpArmsViewModel?.setVisible(show);
     if (!show) {
       this.fpArmsViewModel?.setReloading(false);
@@ -2173,7 +2182,7 @@ export class Player {
   /** Parent FPS arms under the active weapon so pose/sway move both together. */
   private syncFpArmsToActiveWeapon(): void {
     if (!this.fpArmsViewModel) return;
-    if (this.throwableEquipped) {
+    if (this.throwableEquipped || this.loadout?.isMeleeEquipped()) {
       this.fpArmsViewModel.syncToWeapon(null);
       return;
     }
@@ -2277,6 +2286,7 @@ export class Player {
     this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    this.syncFpArmsVisibility();
     this.onMeleeEquipNetwork?.(equip);
   }
 
@@ -2311,6 +2321,7 @@ export class Player {
         this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
         this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
       }
+      this.syncFpArmsVisibility();
       return true;
     }
 
@@ -2326,6 +2337,7 @@ export class Player {
     this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.weaponPose?.startSwitch(this.loadout.getSwitchReadySec());
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    this.syncFpArmsVisibility();
     if (sendNetwork) {
       const switchedWeaponId = this.loadout.getActiveWeaponId();
       if (switchedWeaponId) this.onWeaponSwitchNetwork?.(slotIndex, switchedWeaponId);
@@ -2391,6 +2403,7 @@ export class Player {
     this.weaponPose?.cancelSwitch();
     this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
     this.loadout.applyActiveRotation(getLocalWeaponBaseRotation(active.config), 'local');
+    this.syncFpArmsVisibility();
     this.onMeleeEquipNetwork?.(true);
     return true;
   }

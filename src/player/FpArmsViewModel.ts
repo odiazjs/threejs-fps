@@ -8,7 +8,7 @@ import { getActiveCharacterId } from '../content/activeCharacterMesh';
 import { applyMeshyCharacterMaterial } from '../content/meshyCharacterMaterial';
 
 const ASSET_BASE = '/3d/';
-/** Default rifle idle (any non-pistol gun / melee). */
+/** Default rifle idle (any non-pistol gun). */
 export const FP_ARMS_RIFLE_IDLE_FILE = 'fps_arms/meshy_fps_arms_rifle_idle.fbx';
 /** Pistol idle while pistol is equipped. */
 export const FP_ARMS_PISTOL_IDLE_FILE = 'fps_arms/character_fps_arms_pistol_idle.fbx';
@@ -154,10 +154,10 @@ export class FpArmsViewModel {
   private wantReloadDurationSec = 1;
   private wantReloadLoop = false;
   private readonly onMixerFinished = (event: { action: THREE.AnimationAction }): void => {
-    if (event.action !== this.pistolShotAction) return;
-    if (this.animMode !== 'pistolShot') return;
-    this.animMode = 'idle';
-    this.applyAnimState(true);
+    if (event.action === this.pistolShotAction && this.animMode === 'pistolShot') {
+      this.animMode = 'idle';
+      this.applyAnimState(true);
+    }
   };
   private readonly loadPromise: Promise<void>;
 
