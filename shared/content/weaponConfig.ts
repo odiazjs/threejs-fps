@@ -6,6 +6,16 @@ export interface WeaponViewOffset {
   readonly z: number;
 }
 
+/**
+ * Default FP arms grip offset in weapon-local space.
+ * +X = back toward camera/stock; -X = forward along barrel.
+ */
+export const DEFAULT_FP_ARMS_GRIP: WeaponViewOffset = {
+  x: 0.55 * -1.25,
+  y: 0,
+  z: 0,
+};
+
 /** Per-weapon hip / ADS weapon position and ADS zoom (tune in weapon configs). */
 export interface WeaponViewConfig {
   readonly hip: WeaponViewOffset;
@@ -20,6 +30,11 @@ export interface WeaponViewConfig {
   readonly remoteMeshEuler?: WeaponViewOffset;
   /** Local offset from the right-hand bone for third-person weapon attach. */
   readonly remoteHand?: WeaponViewOffset;
+  /**
+   * FP arms attach offset in weapon-local space (defaults to {@link DEFAULT_FP_ARMS_GRIP}).
+   * +X = back toward camera/stock; -X = forward along barrel.
+   */
+  readonly fpArmsGrip?: WeaponViewOffset;
 }
 
 export interface RecoilKick {

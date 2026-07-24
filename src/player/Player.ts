@@ -16,6 +16,7 @@ import {
   GRENADE_THROW_SCREEN_OFFSET_Y,
 } from '../../shared/throwables/grenadeConfig';
 import { GrenadeViewModel } from './GrenadeViewModel';
+import { FpArmsViewModel } from './FpArmsViewModel';
 import { getWeaponConfig, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
 import {
@@ -246,6 +247,7 @@ export class Player {
   private prevLookYaw = 0;
   private prevLookPitch = 0;
   private grenadeViewModel: GrenadeViewModel | null = null;
+  private fpArmsViewModel: FpArmsViewModel | null = null;
   private katanaSlashFx: KatanaSlashTrailFx | null = null;
   private onShoot: ShootCallback | null = null;
   private onAutoFireStopNetwork: AutoFireStopCallback | null = null;
@@ -329,7 +331,7 @@ export class Player {
       this.camera = new THREE.PerspectiveCamera(
         75,
         window.innerWidth / window.innerHeight,
-        0.1,
+        0.01,
         1000,
       );
 
@@ -354,9 +356,11 @@ export class Player {
       this.weaponSway = new WeaponSwaySystem();
       this.gunJuice = new GunJuice();
       this.grenadeViewModel = new GrenadeViewModel(this.camera);
+      this.fpArmsViewModel = new FpArmsViewModel();
       this.katanaSlashFx = new KatanaSlashTrailFx();
       this.katanaSlashFx.attachToCamera(this.camera);
       this.loadout.attach(this.camera, LOCAL_WEAPON_ROTATION, 'local');
+      this.syncFpArmsVisibility();
     } else {
       this.camera = null;
       this.aimRig = null;
@@ -1601,6 +1605,8 @@ export class Player {
       }
       this.loadout?.update(delta);
       this.weaponPose?.applyCamera(this.camera);
+      this.syncFpArmsToActiveWeapon();
+      this.fpArmsViewModel?.update(delta);
       return;
     }
 
@@ -1734,6 +1740,16 @@ export class Player {
       if (ammoState.reloading) {
         this.stopWeaponAutoFire();
       }
+      const shellReload = active.ammo.isShellReloadStyle();
+      const reloadDurationSec = shellReload
+        ? Math.max(0.05, active.config.reloadSec / Math.max(1, active.config.clipSize))
+        : Math.max(0.05, Number(active.config.reloadSec) || 1);
+      this.fpArmsViewModel?.setReloading(
+        ammoState.reloading,
+        reloadDurationSec,
+        shellReload,
+      );
+      this.fpArmsViewModel?.setSprinting(isSprinting && !ammoState.reloading);
       shooting =
         this.throwableEquipped
           ? false
@@ -1742,12 +1758,13 @@ export class Player {
             : this.isFiring(pointer, active.config.fireMode);
 
       this.weaponPose?.setViewConfig(active.config.view, active.config.adsTime);
+      const bindWeaponToHand = ammoState.reloading || isSprinting;
       this.weaponPose?.update(
         delta,
         ads,
         ammoState.reloading,
         ammoState.reloadProgress,
-        { ignoreAds: meleeEquipped },
+        { ignoreAds: meleeEquipped, forceHip: bindWeaponToHand },
       );
       if (this.aimControls) {
         const adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;
@@ -1794,17 +1811,40 @@ export class Player {
         }
       }
       const baseRotation = this.getActiveMeshBaseRotation();
-      this.applyActiveWeaponPose(ammoState.reloading ? baseRotation : undefined);
-      this.weaponPose?.applyCamera(this.camera);
-      const weaponRotation = this.weaponPose?.getWeaponRotation(baseRotation) ?? baseRotation;
-      if (!ammoState.reloading) {
-        // Layer order: pose position (already applied) → pose rotation →
-        // spring kickback (additive) → sway/look-lag (additive).
-        active.mesh.rotation.copy(weaponRotation);
-        active.feel.applyWeaponVisual(active.mesh);
-        this.weaponSway?.apply(active.mesh, weaponRotation);
+      const wasWeaponOnHand = this.fpArmsViewModel?.isWeaponBoundToHand() ?? false;
+
+      // Entering hand-bind (reload/sprint): snap to hip before parenting gun to the hand.
+      if (bindWeaponToHand && !wasWeaponOnHand) {
+        this.applyActiveWeaponPose(baseRotation);
+        this.weaponPose?.applyCamera(this.camera);
+        this.syncFpArmsToActiveWeapon();
       }
-      // While reloading, applyActiveWeaponPose already wrote position + rotation.
+
+      if (this.camera) {
+        this.fpArmsViewModel?.syncWeaponHandBinding(
+          active.mesh,
+          this.camera,
+          bindWeaponToHand,
+        );
+      }
+
+      const weaponOnHand = this.fpArmsViewModel?.isWeaponBoundToHand() ?? false;
+      // While the gun is on the right-hand bone, the arms clip owns its transform.
+      if (!weaponOnHand) {
+        this.applyActiveWeaponPose(ammoState.reloading ? baseRotation : undefined);
+        this.weaponPose?.applyCamera(this.camera);
+        const weaponRotation = this.weaponPose?.getWeaponRotation(baseRotation) ?? baseRotation;
+        if (!ammoState.reloading) {
+          // Layer order: pose position (already applied) → pose rotation →
+          // spring kickback (additive) → sway/look-lag (additive).
+          active.mesh.rotation.copy(weaponRotation);
+          active.feel.applyWeaponVisual(active.mesh);
+          this.weaponSway?.apply(active.mesh, weaponRotation);
+        }
+      } else {
+        this.weaponPose?.applyCamera(this.camera);
+      }
+      this.syncFpArmsToActiveWeapon();
 
       // Barrel smoke + screen-flash decay track the live muzzle position.
       if (this.gunJuice) {
@@ -1817,6 +1857,12 @@ export class Player {
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
       this.weaponPose?.applyCamera(this.camera);
+      this.fpArmsViewModel?.setReloading(false);
+      this.fpArmsViewModel?.setSprinting(false);
+      if (this.camera) {
+        this.fpArmsViewModel?.syncWeaponHandBinding(null, this.camera, false);
+      }
+      this.syncFpArmsToActiveWeapon();
       this.grenadeViewModel?.update(
         delta,
         isWalking,
@@ -1829,6 +1875,12 @@ export class Player {
       this.gunJuice?.update(delta, null, false);
       this.tryStartShieldRecharge(input);
       if (this.aimControls) this.aimControls.pointerSpeed = 1;
+      this.fpArmsViewModel?.setReloading(false);
+      this.fpArmsViewModel?.setSprinting(false);
+      if (this.camera) {
+        this.fpArmsViewModel?.syncWeaponHandBinding(null, this.camera, false);
+      }
+      this.syncFpArmsToActiveWeapon();
     }
 
     if (this.yawRecoilRig && this.pitchRecoilRig) {
@@ -1965,6 +2017,7 @@ export class Player {
 
     this.headBob.update(delta, groundedMoving, isSprinting);
     if (this.headRig) this.headBob.apply(this.headRig, isSprinting);
+    this.fpArmsViewModel?.update(delta);
   }
 
   resize(): void {
@@ -1996,11 +2049,16 @@ export class Player {
     this.handRig = null;
     this.spineBone = null;
     this.lookRigFollowsHead = false;
+    if (this.camera) {
+      this.fpArmsViewModel?.syncWeaponHandBinding(null, this.camera, false);
+    }
     this.loadout?.dispose();
     this.loadout = null;
     this.matchWeaponStatsById = null;
     this.grenadeViewModel?.dispose();
     this.grenadeViewModel = null;
+    this.fpArmsViewModel?.dispose();
+    this.fpArmsViewModel = null;
     this.gunJuice?.dispose();
     this.gunJuice = null;
     this.katanaSlashFx?.dispose();
@@ -2095,6 +2153,32 @@ export class Player {
     if (!this.loadout || !this.camera) return;
     this.loadout.setMeshesVisible(!this.throwableEquipped);
     this.grenadeViewModel?.setVisible(this.throwableEquipped);
+    this.syncFpArmsVisibility();
+  }
+
+  private syncFpArmsVisibility(): void {
+    const show = !this.throwableEquipped && !!this.loadout?.getActive();
+    this.fpArmsViewModel?.setVisible(show);
+    if (!show) {
+      this.fpArmsViewModel?.setReloading(false);
+      this.fpArmsViewModel?.setSprinting(false);
+      if (this.camera) {
+        this.fpArmsViewModel?.syncWeaponHandBinding(null, this.camera, false);
+      }
+    }
+    this.syncFpArmsToActiveWeapon();
+  }
+
+  /** Parent FPS arms under the active weapon so pose/sway move both together. */
+  private syncFpArmsToActiveWeapon(): void {
+    if (!this.fpArmsViewModel) return;
+    if (this.throwableEquipped) {
+      this.fpArmsViewModel.syncToWeapon(null);
+      return;
+    }
+    const active = this.loadout?.getActive() ?? null;
+    const grip = active?.config.view.fpArmsGrip;
+    this.fpArmsViewModel.syncToWeapon(active?.mesh ?? null, grip);
   }
 
   private tryThrowGrenade(): void {

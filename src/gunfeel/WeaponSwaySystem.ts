@@ -17,12 +17,14 @@ const CARRY_SHOOTING_GRACE_SEC = 0.1;
 const ADS_BLOCK_CARRY_BLEND = 0.16;
 const ADS_ALLOW_CARRY_BLEND = 0.1;
 
-/** Right-side high carry — muzzle toward the sky while sprinting. */
+/** Right-side high carry — disabled for now (FPS arms sprint anim later). */
 const SPRINT_CARRY = {
   position: { x: 0.12, y: 0.05, z: -0.1 },
   rotation: { x: 1.48, y: -0.1, z: -0.32 },
-  bobAmp: 0.016,
+  bobAmp: 0,
   bobFreq: 3.1,
+  /** When false, sprint does not lift/bob the weapon mesh. */
+  enabled: false,
 } as const;
 
 const _basePos = new THREE.Vector3();
@@ -174,7 +176,8 @@ export class WeaponSwaySystem {
     }
 
     const carryRaw =
-      (input.grounded || this.carryGroundedGrace > 0)
+      SPRINT_CARRY.enabled
+      && (input.grounded || this.carryGroundedGrace > 0)
       && input.sprinting
       && (this.carryShootingGrace > 0 || !input.shooting)
       && !this.adsBlocksCarry

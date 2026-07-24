@@ -1,4 +1,5 @@
 import type { RecoilKick, WeaponConfig } from '../../shared/content/weaponConfig';
+import { DEFAULT_FP_ARMS_GRIP } from '../../shared/content/weaponConfig';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import {
   WEAPON_DAMAGE,
@@ -10,6 +11,7 @@ import { MAP_PALETTE } from '../../shared/level/mapPalette';
 import { PROJECTILE_SPEED } from '../combat/projectileConfig';
 
 export type { WeaponConfig };
+export { DEFAULT_FP_ARMS_GRIP };
 
 const SNIPER_PROJECTILE_SPEED = 675;
 
@@ -74,6 +76,7 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: buildPlasmaRifleRecoilPattern(),
@@ -144,6 +147,11 @@ export const PISTOL_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: {
+      x: 0.55 * -3.25,
+      y: 0,
+      z: 0,
+    },
   },
   recoil: {
     pattern: buildPistolRecoilPattern(),
@@ -216,6 +224,7 @@ export const KATANA_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 2.2, y: 1.2, z: 5.2 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: -2.2, y: -1.2, z: -5.2 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: [{ pitch: 0, yaw: 0 }],
@@ -264,6 +273,11 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: {
+      x: 0.55 * -2.25,
+      y: 0,
+      z: 0,
+    },
   },
   recoil: {
     pattern: buildSniperRecoilPattern(),
@@ -337,6 +351,7 @@ export const ROOT_BIO_CARBINE_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: buildPlasmaRifleRecoilPattern(),
@@ -414,6 +429,7 @@ export const BIO_LIQUID_RIFLE_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: buildBioLiquidRifleRecoilPattern(),
@@ -510,6 +526,7 @@ export const BIO_MACHINE_GUN_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: buildBioMachineGunRecoilPattern(),
@@ -600,6 +617,7 @@ export const BIO_SMG_1_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: buildBioSmg1RecoilPattern(),
@@ -675,6 +693,7 @@ export const PLASMA_SHOTGUN_CONFIG: WeaponConfig = {
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
+    fpArmsGrip: DEFAULT_FP_ARMS_GRIP,
   },
   recoil: {
     pattern: buildPlasmaShotgunRecoilPattern(),

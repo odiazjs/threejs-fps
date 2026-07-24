@@ -4,7 +4,7 @@ import { KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
 
 const HIP_FOV = 75;
 const DEFAULT_ADS_FOV = 68;
-const HIP_CAMERA_NEAR = 0.1;
+const HIP_CAMERA_NEAR = 0.01;
 const ADS_CAMERA_NEAR = 0.01;
 /** Fallback ADS blend rate when a weapon has no adsTime (≈0.18s hip→ADS). */
 const DEFAULT_ADS_BLEND_SPEED = 30;
@@ -45,43 +45,6 @@ function clamp01(t: number): number {
 function easeOutCubic(t: number): number {
   const x = clamp01(t);
   return 1 - Math.pow(1 - x, 3);
-}
-
-function easeOutBack(t: number): number {
-  const x = clamp01(t);
-  const c1 = 1.6;
-  const c3 = c1 + 1;
-  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
-}
-
-function sampleReloadOffsets(progress: number): PoseOffsets {
-  const t = clamp01(progress);
-
-  let drop = 0;
-  if (t < 0.2) {
-    // Bias the ease so the first frames already read as mag-out (t=0 still kicks).
-    drop = easeOutCubic(0.28 + (t / 0.2) * 0.72);
-  } else if (t < 0.5) {
-    drop = 1;
-  } else {
-    drop = 1 - easeOutBack((t - 0.5) / 0.5);
-  }
-
-  const insertPhase = t >= 0.2 && t < 0.5;
-  const insertT = insertPhase ? (t - 0.2) / 0.3 : 0;
-  const click = insertPhase ? Math.abs(Math.sin(insertT * Math.PI * 3)) * 0.28 : 0;
-
-  const rack = t >= 0.5 ? easeOutBack((t - 0.5) / 0.5) : 0;
-  const rackSnap = Math.sin(rack * Math.PI) * 0.18;
-
-  return {
-    x: -0.18 * drop + click * 0.045,
-    y: -0.24 * drop - rackSnap * 0.06,
-    z: 0.14 * drop + rackSnap * 0.09,
-    rx: 0.62 * drop + rackSnap * 0.12,
-    ry: 0.4 * drop + click * 0.1,
-    rz: 0.32 * drop + click * 0.08,
-  };
 }
 
 /** Horizontal slash — katana sweeps right to left across the view. */
@@ -136,7 +99,7 @@ function copyViewOffset(target: THREE.Vector3, offset: { x: number; y: number; z
   target.set(offset.x, offset.y, offset.z);
 }
 
-/** Blends the local weapon between hip-fire, ADS, and reload poses. */
+/** Blends the local weapon between hip-fire and ADS (reload uses FP arms anim). */
 export class WeaponPose {
   private blend = 0;
   private reloading = false;
@@ -221,7 +184,7 @@ export class WeaponPose {
     ads: boolean,
     reloading: boolean,
     reloadProgress: number,
-    options?: { ignoreAds?: boolean },
+    options?: { ignoreAds?: boolean; forceHip?: boolean },
   ): void {
     const wasReloading = this.reloading;
     this.reloading = reloading;
@@ -241,30 +204,29 @@ export class WeaponPose {
       this.slashTimeLeft = Math.max(0, this.slashTimeLeft - delta);
     }
 
-    // Reload owns the viewmodel — clear slash leftover and snap out of ADS.
-    if (reloading) {
+    const forceHip = (options?.forceHip ?? false) || reloading;
+
+    // Reload / sprint owns the viewmodel — clear slash leftover and snap out of ADS.
+    if (forceHip) {
       this.slashTimeLeft = 0;
-      if (!wasReloading) {
+      if (reloading && !wasReloading) {
         this.blend = 0;
       }
     }
 
-    const canAim = !reloading && !this.isSwitching() && !this.isSlashing();
+    const canAim = !forceHip && !this.isSwitching() && !this.isSlashing();
     const ignoreAds = options?.ignoreAds ?? false;
     const targetAds = !ignoreAds && ads && canAim ? 1 : 0;
     const blendSpeed =
-      reloading || this.isSwitching() ? RELOAD_ADS_BLEND_SPEED : this.adsBlendSpeed;
+      forceHip || this.isSwitching() ? RELOAD_ADS_BLEND_SPEED : this.adsBlendSpeed;
     this.blend += (targetAds - this.blend) * (1 - Math.exp(-blendSpeed * delta));
-    if (reloading) {
+    if (forceHip) {
       this.blend = 0;
     }
   }
 
   private getActivePoseOffsets(): PoseOffsets | null {
-    // Reload beats slash/switch so mag-out always reads on the viewmodel.
-    if (this.reloading) {
-      return sampleReloadOffsets(this.reloadProgress);
-    }
+    // Local reload is driven by FP arms animation — no procedural weapon drop.
     if (this.slashTimeLeft > 0) {
       return sampleSlashOffsets(this.getSlashProgress());
     }

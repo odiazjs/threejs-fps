@@ -359,6 +359,8 @@ export class Game {
     onLoadingMessage?.('Loading loadouts...');
     await this.refreshLoadoutSwitcher();
     this.initPlayer(initialMapId, joinIntent?.gameMode);
+    // Inventory HUD needs the local player; refresh again now that it exists.
+    this.refreshInventoryHud();
     this.applyActiveMap();
     this.initResize();
     onLoadingMessage?.('Compiling shaders...');
@@ -1053,6 +1055,8 @@ export class Game {
   }
 
   private refreshInventoryHud(): void {
+    if (!this.player) return;
+
     const snapshot = this.network?.getLocalSnapshot();
     const players = this.network?.getAllPlayers() ?? [];
     const unitsInField = players.filter((player) => player.alive).length;
