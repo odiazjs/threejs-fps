@@ -10,7 +10,7 @@ import { SHIPPED_WEAPON_BASE_STATS } from '../../shared/content/weaponUpgrades';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
 import { PROJECTILE_SPEED } from '../combat/projectileConfig';
 
-export type { WeaponConfig };
+export type { WeaponConfig, FpArmsGripConfig } from '../../shared/content/weaponConfig';
 export { DEFAULT_FP_ARMS_GRIP };
 
 const SNIPER_PROJECTILE_SPEED = 675;
@@ -148,9 +148,8 @@ export const PISTOL_CONFIG: WeaponConfig = {
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
     fpArmsGrip: {
-      x: 0.55 * -3.25,
-      y: 0,
-      z: 0,
+      hip: { x: 0.55 * -3.25, y: 0, z: 0 },
+      ads: { x: 0.55 * -3.25, y: 0, z: 0 },
     },
   },
   recoil: {
@@ -274,9 +273,8 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
     fpArmsGrip: {
-      x: 0.55 * -2.25,
-      y: 0,
-      z: 0,
+      hip: { x: 0.55 * -2.25, y: 0, z: 0 },
+      ads: { x: 0.55 * -2.25, y: 0, z: 0 },
     },
   },
   recoil: {

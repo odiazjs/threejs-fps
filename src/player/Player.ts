@@ -1750,6 +1750,7 @@ export class Player {
         shellReload,
       );
       this.fpArmsViewModel?.setSprinting(isSprinting && !ammoState.reloading);
+      this.fpArmsViewModel?.setStance(active.config.id === 'pistol' ? 'pistol' : 'rifle');
       shooting =
         this.throwableEquipped
           ? false
@@ -2178,7 +2179,8 @@ export class Player {
     }
     const active = this.loadout?.getActive() ?? null;
     const grip = active?.config.view.fpArmsGrip;
-    this.fpArmsViewModel.syncToWeapon(active?.mesh ?? null, grip);
+    const adsBlend = this.weaponPose?.adsBlend ?? 0;
+    this.fpArmsViewModel.syncToWeapon(active?.mesh ?? null, grip, adsBlend);
   }
 
   private tryThrowGrenade(): void {
@@ -2759,11 +2761,13 @@ export class Player {
   }
 
   private applyActiveWeaponPose(baseRotation?: THREE.Euler): void {
-    if (!this.loadout) return;
-
-    const active = this.loadout.getActive();
+    const active = this.loadout?.getActive();
     if (!active) return;
+    this.applyActiveWeaponPoseTo(active.mesh, baseRotation);
+    this.syncActiveDigitalSight(active.mesh);
+  }
 
+  private applyActiveWeaponPoseTo(target: THREE.Object3D, baseRotation?: THREE.Euler): void {
     let wallPullback = 0;
     if (this.camera) {
       const physics = getClientPhysicsWorld();
@@ -2784,22 +2788,25 @@ export class Player {
       }
     }
 
-    this.weaponPose?.apply(active.mesh, wallPullback, baseRotation);
+    this.weaponPose?.apply(target, wallPullback, baseRotation);
+  }
 
-    if (this.camera) {
-      const adsBlend = this.weaponPose?.adsBlend ?? 0;
-      const sightEntry = getDigitalSightCatalogEntry(
-        getEquippedSightForWeapon(active.weaponId),
-      );
-      const sightAllowed = sightEntry != null && weaponHasDigitalSight(active.weaponId);
-      if (sightEntry) {
-        applyDigitalSightStyle(active.mesh, digitalSightStyleFromEntry(sightEntry));
-      }
-      updateDigitalSightAdsVisibility(active.mesh, adsBlend, sightAllowed);
-      // Keep digital optic on the HUD crosshair (camera look-ray center).
-      if (sightAllowed) {
-        alignDigitalSightToCrosshair(active.mesh, this.camera);
-      }
+  private syncActiveDigitalSight(mesh: THREE.Object3D): void {
+    if (!this.camera || !this.loadout) return;
+    const active = this.loadout.getActive();
+    if (!active || active.mesh !== mesh) return;
+
+    const adsBlend = this.weaponPose?.adsBlend ?? 0;
+    const sightEntry = getDigitalSightCatalogEntry(
+      getEquippedSightForWeapon(active.weaponId),
+    );
+    const sightAllowed = sightEntry != null && weaponHasDigitalSight(active.weaponId);
+    if (sightEntry) {
+      applyDigitalSightStyle(mesh, digitalSightStyleFromEntry(sightEntry));
+    }
+    updateDigitalSightAdsVisibility(mesh, adsBlend, sightAllowed);
+    if (sightAllowed) {
+      alignDigitalSightToCrosshair(mesh, this.camera);
     }
   }
 

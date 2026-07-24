@@ -2,14 +2,18 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import {
   DEFAULT_FP_ARMS_GRIP,
-  type WeaponViewOffset,
+  type FpArmsGripConfig,
 } from '../../shared/content/weaponConfig';
 import { getActiveCharacterId } from '../content/activeCharacterMesh';
 import { applyMeshyCharacterMaterial } from '../content/meshyCharacterMaterial';
 
 const ASSET_BASE = '/3d/';
-/** Blender FPS arms rig with embedded rifle-idle clip (used for any equipped gun/melee). */
+/** Default rifle idle (any non-pistol gun / melee). */
 export const FP_ARMS_RIFLE_IDLE_FILE = 'fps_arms/meshy_fps_arms_rifle_idle.fbx';
+/** Pistol idle while pistol is equipped. */
+export const FP_ARMS_PISTOL_IDLE_FILE = 'fps_arms/character_fps_arms_pistol_idle.fbx';
+/** One-shot pistol fire clip. */
+export const FP_ARMS_PISTOL_SHOT_FILE = 'fps_arms/character_fps_arms_pistol_shot.fbx';
 /** Reload clip — played on the idle arms skeleton when the local weapon reloads. */
 export const FP_ARMS_RELOAD_FILE = 'fps_arms/character_fps_arms_reloading.fbx';
 /** Sprint clip — looping while sprinting with a weapon equipped. */
@@ -24,13 +28,16 @@ const TARGET_EXTENT = 0.55 * 1.1;
 const MODEL_YAW = Math.PI / 2;
 
 const FADE_SEC = 0.12;
+const SHOT_FADE_SEC = 0.06;
 const SKIN_WEIGHT_WARNING = 'more than 4 skinning weights';
 
-type ArmsAnimMode = 'idle' | 'reload' | 'sprint';
+export type FpArmsStance = 'rifle' | 'pistol';
+type ArmsAnimMode = 'idle' | 'reload' | 'sprint' | 'pistolShot';
 
 const _box = new THREE.Box3();
 const _size = new THREE.Vector3();
 const _center = new THREE.Vector3();
+const _gripPos = new THREE.Vector3();
 
 function assetUrl(file: string): string {
   return `${ASSET_BASE}${file
@@ -119,14 +126,15 @@ function prepareFpArmsContent(model: THREE.Group): number {
  * Local first-person arms viewmodel.
  *
  * Default: parented under the active weapon so hip/ADS/sway move gun + arms.
- * Reloading: hierarchy inverts — arms under camera, weapon under RightHand —
- * so the reload clip drives the gun.
+ * Reloading/sprint: hierarchy inverts — arms under camera, weapon under RightHand.
  */
 export class FpArmsViewModel {
   /** Attach point — reparented onto each active weapon mesh (or camera while reloading). */
   private readonly root = new THREE.Group();
   private mixer: THREE.AnimationMixer | null = null;
-  private idleAction: THREE.AnimationAction | null = null;
+  private rifleIdleAction: THREE.AnimationAction | null = null;
+  private pistolIdleAction: THREE.AnimationAction | null = null;
+  private pistolShotAction: THREE.AnimationAction | null = null;
   private reloadAction: THREE.AnimationAction | null = null;
   private sprintAction: THREE.AnimationAction | null = null;
   private meshRoot: THREE.Group | null = null;
@@ -139,11 +147,18 @@ export class FpArmsViewModel {
   private disposed = false;
   private visible = true;
   private ready = false;
+  private stance: FpArmsStance = 'rifle';
   private animMode: ArmsAnimMode = 'idle';
   private wantReloading = false;
   private wantSprinting = false;
   private wantReloadDurationSec = 1;
   private wantReloadLoop = false;
+  private readonly onMixerFinished = (event: { action: THREE.AnimationAction }): void => {
+    if (event.action !== this.pistolShotAction) return;
+    if (this.animMode !== 'pistolShot') return;
+    this.animMode = 'idle';
+    this.applyAnimState(true);
+  };
   private readonly loadPromise: Promise<void>;
 
   constructor() {
@@ -156,25 +171,46 @@ export class FpArmsViewModel {
       const loader = new FBXLoader();
       loader.setResourcePath(`${ASSET_BASE}fps_arms/`);
 
-      const [idleFbx, reloadFbx, sprintFbx] = await Promise.all([
-        loadFbx(loader, assetUrl(FP_ARMS_RIFLE_IDLE_FILE)),
-        loadFbx(loader, assetUrl(FP_ARMS_RELOAD_FILE)),
-        loadFbx(loader, assetUrl(FP_ARMS_SPRINT_FILE)),
-      ]);
+      const [rifleIdleFbx, pistolIdleFbx, pistolShotFbx, reloadFbx, sprintFbx] =
+        await Promise.all([
+          loadFbx(loader, assetUrl(FP_ARMS_RIFLE_IDLE_FILE)),
+          loadFbx(loader, assetUrl(FP_ARMS_PISTOL_IDLE_FILE)),
+          loadFbx(loader, assetUrl(FP_ARMS_PISTOL_SHOT_FILE)),
+          loadFbx(loader, assetUrl(FP_ARMS_RELOAD_FILE)),
+          loadFbx(loader, assetUrl(FP_ARMS_SPRINT_FILE)),
+        ]);
       if (this.disposed) return;
 
-      const idleClip = pickClip(idleFbx.animations, /idle|rifle|aim|equip|default/i);
+      const rifleIdleClip = pickClip(rifleIdleFbx.animations, /idle|rifle|aim|equip|default/i);
+      const pistolIdleClip = pickClip(pistolIdleFbx.animations, /idle|pistol|aim|equip|default/i);
+      const pistolShotClip = pickClip(pistolShotFbx.animations, /shot|fire|shoot|attack/i);
       const reloadClip = pickClip(reloadFbx.animations, /reload|mag|clip/i);
       const sprintClip = pickClip(sprintFbx.animations, /sprint|run|jog/i);
 
-      this.mixer = new THREE.AnimationMixer(idleFbx);
+      this.mixer = new THREE.AnimationMixer(rifleIdleFbx);
+      this.mixer.addEventListener('finished', this.onMixerFinished);
 
-      if (idleClip) {
-        this.idleAction = this.mixer.clipAction(idleClip);
-        this.idleAction.setLoop(THREE.LoopRepeat, Infinity);
-        this.idleAction.play();
+      if (rifleIdleClip) {
+        this.rifleIdleAction = this.mixer.clipAction(rifleIdleClip);
+        this.rifleIdleAction.setLoop(THREE.LoopRepeat, Infinity);
+        this.rifleIdleAction.play();
       } else {
         console.warn('[FpArmsViewModel] No idle clip in', FP_ARMS_RIFLE_IDLE_FILE);
+      }
+
+      if (pistolIdleClip) {
+        this.pistolIdleAction = this.mixer.clipAction(pistolIdleClip);
+        this.pistolIdleAction.setLoop(THREE.LoopRepeat, Infinity);
+      } else {
+        console.warn('[FpArmsViewModel] No idle clip in', FP_ARMS_PISTOL_IDLE_FILE);
+      }
+
+      if (pistolShotClip) {
+        this.pistolShotAction = this.mixer.clipAction(pistolShotClip);
+        this.pistolShotAction.setLoop(THREE.LoopOnce, 1);
+        this.pistolShotAction.clampWhenFinished = true;
+      } else {
+        console.warn('[FpArmsViewModel] No shot clip in', FP_ARMS_PISTOL_SHOT_FILE);
       }
 
       if (reloadClip) {
@@ -194,7 +230,7 @@ export class FpArmsViewModel {
 
       this.mixer.update(0);
 
-      idleFbx.traverse((child) => {
+      rifleIdleFbx.traverse((child) => {
         if (child instanceof THREE.Mesh) {
           child.castShadow = false;
           child.receiveShadow = false;
@@ -203,21 +239,21 @@ export class FpArmsViewModel {
         }
       });
 
-      this.worldFitScale = prepareFpArmsContent(idleFbx);
+      this.worldFitScale = prepareFpArmsContent(rifleIdleFbx);
       this.rightHand =
-        findBoneBySuffix(idleFbx, 'RightHand') ?? findBoneBySuffix(idleFbx, 'Hand_R');
+        findBoneBySuffix(rifleIdleFbx, 'RightHand') ??
+        findBoneBySuffix(rifleIdleFbx, 'Hand_R');
       if (!this.rightHand) {
         console.warn('[FpArmsViewModel] No RightHand bone — reload weapon bind disabled');
       }
 
-      await applyMeshyCharacterMaterial(idleFbx, getActiveCharacterId());
+      await applyMeshyCharacterMaterial(rifleIdleFbx, getActiveCharacterId());
       if (this.disposed) return;
 
-      this.meshRoot = idleFbx;
-      this.root.add(idleFbx);
+      this.meshRoot = rifleIdleFbx;
+      this.root.add(rifleIdleFbx);
       this.ready = true;
       this.root.visible = this.visible;
-      // Apply any locomotion that started while assets were loading.
       this.animMode = 'idle';
       this.applyAnimState(true);
     } catch (error) {
@@ -229,9 +265,21 @@ export class FpArmsViewModel {
     return this.handBoundWeapon != null;
   }
 
+  /** Switch rifle vs pistol idle set (does not interrupt reload/sprint). */
+  setStance(stance: FpArmsStance): void {
+    if (this.stance === stance) return;
+    this.stance = stance;
+    if (this.animMode === 'pistolShot' && stance !== 'pistol') {
+      this.animMode = 'idle';
+    }
+    if (this.animMode === 'idle' || this.animMode === 'pistolShot') {
+      this.applyAnimState(true);
+    }
+  }
+
   /**
    * Drive reload / idle clips. `durationSec` scales the reload clip to match
-   * magazine (or per-shell) reload time. Reload overrides sprint.
+   * magazine (or per-shell) reload time. Reload overrides sprint / shot.
    */
   setReloading(reloading: boolean, durationSec = 1, loop = false): void {
     this.wantReloading = reloading;
@@ -246,24 +294,52 @@ export class FpArmsViewModel {
     this.applyAnimState();
   }
 
+  /** Play pistol fire one-shot (ignored while reloading / sprinting / non-pistol). */
+  playPistolShot(): void {
+    if (!this.ready || this.disposed) return;
+    if (this.stance !== 'pistol' || !this.pistolShotAction) return;
+    if (this.wantReloading || this.wantSprinting) return;
+
+    const prev = this.animMode;
+    this.animMode = 'pistolShot';
+    this.fadeOutMode(prev, SHOT_FADE_SEC);
+    this.pistolShotAction.reset();
+    this.pistolShotAction.setEffectiveWeight(1);
+    this.pistolShotAction.fadeIn(SHOT_FADE_SEC);
+    this.pistolShotAction.play();
+  }
+
+  private getIdleAction(): THREE.AnimationAction | null {
+    if (this.stance === 'pistol') {
+      return this.pistolIdleAction ?? this.rifleIdleAction;
+    }
+    return this.rifleIdleAction;
+  }
+
   private desiredAnimMode(): ArmsAnimMode {
     if (this.wantReloading) return 'reload';
     if (this.wantSprinting) return 'sprint';
+    if (this.animMode === 'pistolShot') return 'pistolShot';
     return 'idle';
+  }
+
+  private fadeOutMode(mode: ArmsAnimMode, fadeSec = FADE_SEC): void {
+    if (mode === 'reload') this.reloadAction?.fadeOut(fadeSec);
+    else if (mode === 'sprint') this.sprintAction?.fadeOut(fadeSec);
+    else if (mode === 'pistolShot') this.pistolShotAction?.fadeOut(fadeSec);
+    else {
+      this.rifleIdleAction?.fadeOut(fadeSec);
+      this.pistolIdleAction?.fadeOut(fadeSec);
+    }
   }
 
   private applyAnimState(force = false): void {
     if (!this.ready || this.disposed) return;
     const next = this.desiredAnimMode();
     if (!force && next === this.animMode) return;
-    if (!this.mixer || !this.idleAction) return;
+    if (!this.mixer || !this.rifleIdleAction) return;
 
     const prev = this.animMode;
-    const fadeOutPrev = (): void => {
-      if (prev === 'reload') this.reloadAction?.fadeOut(FADE_SEC);
-      else if (prev === 'sprint') this.sprintAction?.fadeOut(FADE_SEC);
-      else this.idleAction?.fadeOut(FADE_SEC);
-    };
 
     // Resolve to a playable mode if the preferred clip is missing.
     let play: ArmsAnimMode = next;
@@ -273,9 +349,12 @@ export class FpArmsViewModel {
     if (play === 'sprint' && !this.sprintAction) {
       play = 'idle';
     }
+    if (play === 'pistolShot' && !this.pistolShotAction) {
+      play = 'idle';
+    }
 
     this.animMode = play;
-    fadeOutPrev();
+    this.fadeOutMode(prev);
 
     if (play === 'reload' && this.reloadAction) {
       if (this.wantReloadLoop) {
@@ -300,10 +379,20 @@ export class FpArmsViewModel {
       return;
     }
 
-    this.idleAction.reset();
-    this.idleAction.setEffectiveWeight(1);
-    this.idleAction.fadeIn(FADE_SEC);
-    this.idleAction.play();
+    if (play === 'pistolShot' && this.pistolShotAction) {
+      this.pistolShotAction.reset();
+      this.pistolShotAction.setEffectiveWeight(1);
+      this.pistolShotAction.fadeIn(SHOT_FADE_SEC);
+      this.pistolShotAction.play();
+      return;
+    }
+
+    const idle = this.getIdleAction();
+    if (!idle) return;
+    idle.reset();
+    idle.setEffectiveWeight(1);
+    idle.fadeIn(FADE_SEC);
+    idle.play();
   }
 
   private syncReloadTimeScale(durationSec: number): void {
@@ -363,10 +452,12 @@ export class FpArmsViewModel {
   /**
    * Keep arms parented to the active weapon (or detach when none / grenade).
    * No-ops while the weapon is bound to the right hand for reload.
+   * `adsBlend` lerps {@link FpArmsGripConfig.hip} → {@link FpArmsGripConfig.ads}.
    */
   syncToWeapon(
     weaponMesh: THREE.Object3D | null,
-    gripOffset: WeaponViewOffset = DEFAULT_FP_ARMS_GRIP,
+    grip: FpArmsGripConfig = DEFAULT_FP_ARMS_GRIP,
+    adsBlend = 0,
   ): void {
     if (!this.ready || this.disposed) return;
 
@@ -394,7 +485,13 @@ export class FpArmsViewModel {
     // Weapon meshes use ~0.1 viewmodel scale — compensate so arms stay world-sized.
     const parentScale = Math.max(Math.abs(weaponMesh.scale.x), 1e-4);
     this.root.scale.setScalar(1 / parentScale);
-    this.root.position.set(gripOffset.x, gripOffset.y, gripOffset.z);
+    const t = THREE.MathUtils.clamp(adsBlend, 0, 1);
+    _gripPos.set(
+      THREE.MathUtils.lerp(grip.hip.x, grip.ads.x, t),
+      THREE.MathUtils.lerp(grip.hip.y, grip.ads.y, t),
+      THREE.MathUtils.lerp(grip.hip.z, grip.ads.z, t),
+    );
+    this.root.position.copy(_gripPos);
     this.root.rotation.set(0, 0, 0);
   }
 
@@ -422,13 +519,17 @@ export class FpArmsViewModel {
   dispose(): void {
     this.disposed = true;
     if (this.handBoundWeapon) {
-      // Detach without a camera host — parent may already be tearing down.
       this.handBoundWeapon.removeFromParent();
       this.handBoundWeapon = null;
     }
-    this.mixer?.stopAllAction();
+    if (this.mixer) {
+      this.mixer.removeEventListener('finished', this.onMixerFinished);
+      this.mixer.stopAllAction();
+    }
     this.mixer = null;
-    this.idleAction = null;
+    this.rifleIdleAction = null;
+    this.pistolIdleAction = null;
+    this.pistolShotAction = null;
     this.reloadAction = null;
     this.sprintAction = null;
     this.meshRoot?.removeFromParent();
