@@ -41,10 +41,16 @@ const TITLE_BY_VIEW: Record<ShellView, string> = {
 
 const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
   weapons: 'Loading weapons...',
-  leaderboard: 'Loading leaderboard...',
+  // Leaderboard keeps the lobby 3D scene live for the landmark fly-to, so skip the
+  // opaque loading veil that would hide the camera move.
   store: 'Loading store...',
   characters: 'Loading characters...',
 };
+
+/** Views that keep rendering the lobby WebGL scene underneath. */
+function keepsLobbySceneAlive(view: ShellView): boolean {
+  return view === 'lobby' || view === 'leaderboard';
+}
 
 export function parseShellViewFromUrl(): ShellView {
   const view = new URLSearchParams(window.location.search).get('view');
@@ -88,8 +94,9 @@ export class AppShell {
     document.getElementById('lobby-store-btn')!.addEventListener('click', () => {
       void this.showView('store');
     });
+    // Camera fly-to test: stay in lobby, don't open the leaderboard page.
     document.getElementById('lobby-leaderboard-btn')!.addEventListener('click', () => {
-      void this.showView('leaderboard');
+      void this.lobbyScene.toggleLandmarkFly('tower_control');
     });
     document.getElementById('lobby-settings-btn')!.addEventListener('click', () => {
       void this.showView('settings');
@@ -129,7 +136,7 @@ export class AppShell {
     }
 
     try {
-      await this.deactivateView(this.currentView);
+      await this.deactivateView(this.currentView, view);
       this.currentView = view;
       this.applyBodyClass(view);
       await this.activateView(view);
@@ -196,15 +203,20 @@ export class AppShell {
     document.body.classList.add(PAGE_CLASS_BY_VIEW[view]);
   }
 
-  private async deactivateView(view: ShellView): Promise<void> {
+  private async deactivateView(view: ShellView, nextView: ShellView): Promise<void> {
     document.getElementById(`app-view-${view}`)!.hidden = true;
 
     if (view === 'lobby') {
-      this.lobbyScene.setActive(false);
+      if (!keepsLobbySceneAlive(nextView)) {
+        this.lobbyScene.setActive(false);
+      }
     } else if (view === 'weapons') {
       this.weaponsView.unmount();
     } else if (view === 'leaderboard') {
       this.leaderboardView.unmount();
+      if (!keepsLobbySceneAlive(nextView)) {
+        this.lobbyScene.setActive(false);
+      }
     } else if (view === 'store') {
       this.storeView.unmount();
     } else if (view === 'characters') {
@@ -220,6 +232,7 @@ export class AppShell {
 
     if (view === 'lobby') {
       this.lobbyScene.setActive(true);
+      void this.lobbyScene.flyToLobbyHome();
       void refreshLobbyProfileStats();
       // Refresh party + local look after store / armory / characters changes.
       this.lobbyClient.requestPartySnapshot();
@@ -236,6 +249,13 @@ export class AppShell {
       return;
     }
 
+    if (view === 'leaderboard') {
+      this.lobbyScene.setActive(true);
+      void this.lobbyScene.flyToLandmark('tower_control');
+      await this.leaderboardView.mount();
+      return;
+    }
+
     viewEl.classList.add('app-view--loading');
     await waitForPaint();
 
@@ -244,10 +264,8 @@ export class AppShell {
         await this.weaponsView.mount();
       } else if (view === 'store') {
         await this.storeView.mount();
-      } else if (view === 'characters') {
-        await this.charactersView.mount();
       } else {
-        await this.leaderboardView.mount();
+        await this.charactersView.mount();
       }
     } finally {
       viewEl.classList.remove('app-view--loading');

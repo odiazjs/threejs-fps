@@ -34,7 +34,21 @@ const BASE_CAMERA_Y = 1.55;
 const BASE_CAMERA_Z = 5.15;
 const CAMERA_LOOK_Y = 1.15;
 const CAMERA_ZOOM_PER_MEMBER = 0.22;
+const CAMERA_HOME_FOV = 42;
+const CAMERA_LANDMARK_FOV = 30;
 const FALLBACK_LOBBY_WEAPON: WeaponId = 'plasma_rifle';
+
+interface LobbyCameraDrive {
+  fromPos: THREE.Vector3;
+  toPos: THREE.Vector3;
+  fromLook: THREE.Vector3;
+  toLook: THREE.Vector3;
+  fromFov: number;
+  toFov: number;
+  duration: number;
+  elapsed: number;
+  resolve: () => void;
+}
 
 /** Decorative lobby drones — visual only, orbit near background rocks. */
 const LOBBY_DRONE_COUNT = 5;
@@ -85,6 +99,11 @@ export class LobbyScene {
   private avatarLoadToken = 0;
   private readonly readyPromise: Promise<void>;
   private resolveReady!: () => void;
+  /** `followStand` = party-framed lobby cam; `hold` = stay on last fly-to pose. */
+  private cameraMode: 'followStand' | 'hold' = 'followStand';
+  private cameraDrive: LobbyCameraDrive | null = null;
+  private readonly cameraLookScratch = new THREE.Vector3();
+  private readonly cameraHoldLookAt = new THREE.Vector3();
 
   constructor(container: HTMLElement, localUserId: string) {
     this.localUserId = localUserId;
@@ -162,6 +181,53 @@ export class LobbyScene {
       cancelAnimationFrame(this.animationId);
       this.animationId = 0;
     }
+  }
+
+  /**
+   * Fly the lobby camera toward a named map landmark (e.g. `tower_control`).
+   * Keeps the final pose until {@link flyToLobbyHome}.
+   */
+  flyToLandmark(objectName: string, durationSec = 1.35): Promise<void> {
+    const focus = this.lobbyMap.getLandmarkFocusPose(objectName);
+    if (!focus) {
+      console.warn(`[LobbyScene] Landmark not found for camera fly-to: ${objectName}`);
+      return Promise.resolve();
+    }
+    this.cameraMode = 'hold';
+    this.cameraHoldLookAt.copy(focus.lookAt);
+    return this.beginCameraDrive(
+      focus.position.clone(),
+      focus.lookAt.clone(),
+      CAMERA_LANDMARK_FOV,
+      durationSec,
+    );
+  }
+
+  /** Return the camera to the default party stand framing. */
+  flyToLobbyHome(durationSec = 1.15): Promise<void> {
+    if (this.cameraMode === 'followStand' && !this.cameraDrive) {
+      this.updateCamera(Math.max(1, this.partyMembers.length));
+      return Promise.resolve();
+    }
+
+    const home = this.getStandCameraPose();
+    return this.beginCameraDrive(
+      home.position,
+      home.lookAt,
+      CAMERA_HOME_FOV,
+      durationSec,
+    ).then(() => {
+      this.cameraMode = 'followStand';
+      this.updateCamera(Math.max(1, this.partyMembers.length));
+    });
+  }
+
+  /** Toggle landmark fly-to vs home — for menu camera tests without leaving the lobby. */
+  toggleLandmarkFly(objectName: string): Promise<void> {
+    if (this.cameraMode === 'hold' || this.cameraDrive) {
+      return this.flyToLobbyHome();
+    }
+    return this.flyToLandmark(objectName);
   }
 
   /** Re-read default loadout and swap idle pose + equipped primary. */
@@ -459,8 +525,32 @@ export class LobbyScene {
     }
   }
 
-  private updateCamera(memberCount: number): void {
+  private getStandCameraPose(): {
+    position: THREE.Vector3;
+    lookAt: THREE.Vector3;
+  } {
+    const memberCount = Math.max(1, this.partyMembers.length);
     const zoom = 1 + CAMERA_ZOOM_PER_MEMBER * Math.max(0, memberCount - 1);
+    return {
+      position: new THREE.Vector3(
+        this.standPose.x,
+        this.standPose.y + BASE_CAMERA_Y,
+        this.standPose.z + BASE_CAMERA_Z * zoom,
+      ),
+      lookAt: new THREE.Vector3(
+        this.standPose.x,
+        this.standPose.y + CAMERA_LOOK_Y,
+        this.standPose.z,
+      ),
+    };
+  }
+
+  private updateCamera(memberCount: number): void {
+    if (this.cameraDrive || this.cameraMode === 'hold') return;
+
+    const zoom = 1 + CAMERA_ZOOM_PER_MEMBER * Math.max(0, memberCount - 1);
+    this.camera.fov = CAMERA_HOME_FOV;
+    this.camera.updateProjectionMatrix();
     this.camera.position.set(
       this.standPose.x,
       this.standPose.y + BASE_CAMERA_Y,
@@ -471,6 +561,62 @@ export class LobbyScene {
       this.standPose.y + CAMERA_LOOK_Y,
       this.standPose.z,
     );
+  }
+
+  private beginCameraDrive(
+    toPos: THREE.Vector3,
+    toLook: THREE.Vector3,
+    toFov: number,
+    durationSec: number,
+  ): Promise<void> {
+    if (this.cameraDrive) {
+      this.cameraDrive.resolve();
+      this.cameraDrive = null;
+    }
+
+    this.camera.getWorldDirection(this.cameraLookScratch);
+    const fromLook = this.camera.position
+      .clone()
+      .addScaledVector(this.cameraLookScratch, 4);
+
+    return new Promise((resolve) => {
+      this.cameraDrive = {
+        fromPos: this.camera.position.clone(),
+        toPos,
+        fromLook,
+        toLook,
+        fromFov: this.camera.fov,
+        toFov,
+        duration: Math.max(0.05, durationSec),
+        elapsed: 0,
+        resolve,
+      };
+    });
+  }
+
+  private tickCameraDrive(delta: number): void {
+    const drive = this.cameraDrive;
+    if (!drive) return;
+
+    drive.elapsed += delta;
+    const u = Math.min(1, drive.elapsed / drive.duration);
+    // Smoothstep — soft ease in/out for a cinematic fly.
+    const t = u * u * (3 - 2 * u);
+
+    this.camera.position.lerpVectors(drive.fromPos, drive.toPos, t);
+    this.cameraLookScratch.lerpVectors(drive.fromLook, drive.toLook, t);
+    this.camera.lookAt(this.cameraLookScratch);
+    this.camera.fov = drive.fromFov + (drive.toFov - drive.fromFov) * t;
+    this.camera.updateProjectionMatrix();
+
+    if (u >= 1) {
+      this.camera.position.copy(drive.toPos);
+      this.camera.lookAt(drive.toLook);
+      this.camera.fov = drive.toFov;
+      this.camera.updateProjectionMatrix();
+      this.cameraDrive = null;
+      drive.resolve();
+    }
   }
 
   private updateDrones(t: number): void {
@@ -496,6 +642,7 @@ export class LobbyScene {
     const delta = this.clock.getDelta();
     const t = this.clock.getElapsedTime();
 
+    this.tickCameraDrive(delta);
     this.updateDrones(t);
     this.characterInstance?.update(delta);
 

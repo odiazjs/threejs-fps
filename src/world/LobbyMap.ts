@@ -37,6 +37,12 @@ export interface LobbyStandPose {
   readonly z: number;
 }
 
+/** Camera frame for a named lobby landmark (menu fly-to). */
+export interface LobbyLandmarkFocusPose {
+  readonly position: THREE.Vector3;
+  readonly lookAt: THREE.Vector3;
+}
+
 /** Solid Floor color when the export has no albedo texture. */
 const FLOOR_SOLID_COLOR = 0x35354b;
 
@@ -177,6 +183,39 @@ export class LobbyMap {
       y: box.max.y,
       z: (box.min.z + box.max.z) * 0.5,
     };
+  }
+
+  /**
+   * Camera pose that frames a named map object (e.g. `tower_control`) for lobby menu fly-tos.
+   * Approaches from the +Z lobby side so the move reads as a forward zoom from the stand cam.
+   */
+  getLandmarkFocusPose(objectName: string): LobbyLandmarkFocusPose | null {
+    if (!this.mapRoot) return null;
+    this.mapRoot.updateWorldMatrix(true, true);
+
+    const targetName = objectName.toLowerCase();
+    let target: THREE.Object3D | null = null;
+    this.mapRoot.traverse((child) => {
+      if (target || !child.visible) return;
+      if (child.name.toLowerCase() === targetName) target = child;
+    });
+    if (!target) return null;
+
+    const box = new THREE.Box3().setFromObject(target);
+    if (box.isEmpty()) return null;
+
+    const lookAt = box.getCenter(new THREE.Vector3());
+    lookAt.y = box.min.y + (box.max.y - box.min.y) * 0.55;
+    const size = box.getSize(new THREE.Vector3());
+    const extent = Math.max(size.x, size.y, size.z, 0.35);
+    const dist = Math.max(1.85, extent * 1.7);
+    const position = new THREE.Vector3(
+      lookAt.x + 0.55,
+      lookAt.y + extent * 0.1,
+      lookAt.z + dist,
+    );
+
+    return { position, lookAt };
   }
 
   /**
