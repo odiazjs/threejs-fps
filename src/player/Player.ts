@@ -310,6 +310,8 @@ export class Player {
   private pendingShotEndEcho = false;
   /** Remaining shots in an active burst (0 = idle / between bursts). */
   private burstShotsRemaining = 0;
+  /** Countdown to auto-reload after an emptying shot (0 = none pending). */
+  private pendingAutoReloadSec = 0;
   private weaponSounds: WeaponSoundService | null = null;
   private grenadeSounds: GrenadeSoundService | null = null;
   private projectileSpawnOptions: {
@@ -1730,6 +1732,7 @@ export class Player {
 
     if (active && !this.throwableEquipped) {
       if (input.isJustPressed('KeyR')) {
+        this.pendingAutoReloadSec = 0;
         this.beginActiveWeaponReload();
       }
 
@@ -2311,6 +2314,7 @@ export class Player {
 
     if (equip) this.unequipThrowable();
 
+    this.pendingAutoReloadSec = 0;
     this.stopWeaponAutoFire();
     this.stopReloadAudio();
     this.onReloadStopNetwork?.();
@@ -2362,6 +2366,7 @@ export class Player {
     if (!this.loadout.trySwitch(slotIndex)) return false;
 
     this.unequipThrowable();
+    this.pendingAutoReloadSec = 0;
     this.stopWeaponAutoFire();
     this.stopReloadAudio();
     this.onReloadStopNetwork?.();
@@ -2540,6 +2545,13 @@ export class Player {
 
     this.fireCooldown = Math.max(0, this.fireCooldown - delta);
 
+    if (this.pendingAutoReloadSec > 0) {
+      this.pendingAutoReloadSec = Math.max(0, this.pendingAutoReloadSec - delta);
+      if (this.pendingAutoReloadSec <= 0) {
+        this.beginActiveWeaponReload();
+      }
+    }
+
     const wantsFire = this.isFiring(pointer, active.config.fireMode);
     if (!wantsFire) {
       if (this.pendingShotEndEcho && this.burstShotsRemaining <= 0) {
@@ -2581,7 +2593,12 @@ export class Player {
       active.config.autoReload === true &&
       active.ammo.getClip() <= 0
     ) {
-      this.beginActiveWeaponReload();
+      const delaySec = Math.max(0, Number(active.config.autoReloadDelaySec) || 0);
+      if (delaySec <= 0) {
+        this.beginActiveWeaponReload();
+      } else {
+        this.pendingAutoReloadSec = delaySec;
+      }
     }
 
     if (active.config.fireMode === 'burst') {

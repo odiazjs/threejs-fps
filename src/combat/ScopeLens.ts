@@ -10,7 +10,8 @@ const RT_HEIGHT = 720;
  * "zoomed" fullscreen reads as zoomed-OUT inside that small circle next to the
  * hip FOV view. Tighten further so the glass shows real sniper magnification.
  */
-const SCOPE_PIP_FOV_SCALE = 0.33;
+/** Higher = less magnification. 0.33 * 1.15 ≈ 15% less zoom. */
+const SCOPE_PIP_FOV_SCALE = 0.3795;
 /** HUD neon cyan — matches `.crosshair-ads-dot`. */
 const SCOPE_RETICLE_COLOR = 0x2efcff;
 /** Reticle bar thickness in lens-local units (circle radius = 1). */
@@ -201,8 +202,7 @@ export class ScopeLens {
     this.scopeCamera.position.copy(_camPos);
     this.scopeCamera.quaternion.copy(_camQuat);
     this.scopeCamera.up.copy(mainCamera.up);
-    // Zoom IN: lower FOV = tighter magnification. Scale adsFov down for PiP so
-    // the glass reads as a sniper optic against the surrounding hip FOV view.
+    // Extra magnification on the glass vs the already-zoomed main ADS FOV.
     const zoomFov = Math.min(
       this.adsFov * SCOPE_PIP_FOV_SCALE,
       mainCamera.fov * SCOPE_PIP_FOV_SCALE,

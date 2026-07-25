@@ -33,17 +33,18 @@ export class WorldBuilder {
       : isFiringRange
         ? createKillhouseSkyboxTexture()
         : createSkyboxTexture();
+    // AAA atmosphere: visible distance haze without washing mid-range detail.
     const fogColor = isKillhouse || isFiringRange
-      ? 0xc8a060
+      ? 0xd0a868
       : this.mapDef.outdoor
-        ? 0x88d4f0
+        ? 0x8ec8e8
         : 0x1a2228;
     const fogNear = isKillhouse || isFiringRange
-      ? this.mapDef.mapHalf * 1.4
+      ? this.mapDef.mapHalf * 1.25
       : this.mapDef.mapHalf * 0.5;
     const fogFar = isKillhouse || isFiringRange
-      ? this.mapDef.mapHalf * 5
-      : this.mapDef.mapHalf * 2.2;
+      ? this.mapDef.mapHalf * 4.6
+      : this.mapDef.mapHalf * 2.15;
     this.sceneBuilder
       .build()
       .addBackground(skybox)

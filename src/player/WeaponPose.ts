@@ -144,8 +144,8 @@ export class WeaponPose {
   private slashDuration = KATANA_SLASH_DURATION_SEC;
   private slashTimeLeft = 0;
   private adsFov = DEFAULT_ADS_FOV;
+  private mainAdsFov = DEFAULT_ADS_FOV;
   private adsBlendSpeed = DEFAULT_ADS_BLEND_SPEED;
-  /** When true, main camera keeps hip FOV; zoom is handled by ScopeLens. */
   private scopeLensAds = false;
   private view: WeaponViewConfig | null = null;
 
@@ -199,6 +199,8 @@ export class WeaponPose {
     this.view = view;
     this.adsFov = view.adsFov ?? DEFAULT_ADS_FOV;
     this.scopeLensAds = view.scopeLensAds === true;
+    this.mainAdsFov =
+      view.mainAdsFov ?? (this.scopeLensAds ? DEFAULT_ADS_FOV : this.adsFov);
     if (adsTimeSec !== undefined && Number.isFinite(adsTimeSec) && adsTimeSec > 0) {
       this.adsBlendSpeed = adsBlendSpeedFromAdsTime(adsTimeSec);
     }
@@ -335,9 +337,8 @@ export class WeaponPose {
   }
 
   applyCamera(camera: THREE.PerspectiveCamera): void {
-    // Scope-lens weapons keep a wide main view; zoom is drawn on the optic glass.
-    const targetFov = this.scopeLensAds ? HIP_FOV : this.adsFov;
-    camera.fov = THREE.MathUtils.lerp(HIP_FOV, targetFov, this.blend);
+    // Main view uses mainAdsFov; scope-lens optic still uses the tighter adsFov.
+    camera.fov = THREE.MathUtils.lerp(HIP_FOV, this.mainAdsFov, this.blend);
     camera.near = THREE.MathUtils.lerp(HIP_CAMERA_NEAR, ADS_CAMERA_NEAR, this.blend);
     camera.updateProjectionMatrix();
   }

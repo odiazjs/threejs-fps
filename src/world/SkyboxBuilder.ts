@@ -44,11 +44,12 @@ function hash2(x: number, y: number): number {
 
 function skyGradient(y: number): RGB {
   const t = clamp01((y + 0.02) / 0.98);
-  const zenith: RGB = [0.1, 0.06, 0.3];
-  const upper: RGB = [0.16, 0.28, 0.62];
-  const mid: RGB = [0.24, 0.52, 0.84];
-  const horizon: RGB = [0.44, 0.8, 0.95];
-  const glow: RGB = [0.58, 0.9, 0.98];
+  // Deeper azure zenith + hazier horizon (MW cinematic sky, less candy cyan).
+  const zenith: RGB = [0.07, 0.08, 0.28];
+  const upper: RGB = [0.12, 0.26, 0.58];
+  const mid: RGB = [0.22, 0.48, 0.78];
+  const horizon: RGB = [0.42, 0.68, 0.82];
+  const glow: RGB = [0.55, 0.72, 0.78];
 
   if (t > 0.62) {
     return lerpRgb(upper, zenith, (t - 0.62) / 0.38);
@@ -207,4 +208,45 @@ function sampleKillhouseSky(u: number, v: number): RGB {
 /** Dusk panorama with sun glow — used by Chrono-Bowl. */
 export function createKillhouseSkyboxTexture(): THREE.Texture {
   return createPanoramaTexture(sampleKillhouseSky);
+}
+
+/** Soft dawn / blue-hour lobby sky — peach horizon → lavender → periwinkle zenith. */
+function lobbySkyGradient(y: number): RGB {
+  const t = clamp01((y + 0.04) / 0.96);
+  const zenith: RGB = [0.55, 0.58, 0.78];
+  const upper: RGB = [0.68, 0.62, 0.8];
+  const mid: RGB = [0.82, 0.7, 0.78];
+  const horizon: RGB = [0.96, 0.78, 0.62];
+  const glow: RGB = [0.98, 0.86, 0.7];
+
+  if (t > 0.62) {
+    return lerpRgb(upper, zenith, (t - 0.62) / 0.38);
+  }
+  if (t > 0.32) {
+    return lerpRgb(mid, upper, (t - 0.32) / 0.3);
+  }
+  if (t > 0.1) {
+    return lerpRgb(horizon, mid, (t - 0.1) / 0.22);
+  }
+  return lerpRgb(glow, horizon, t / 0.1);
+}
+
+function sampleLobbySky(u: number, v: number): RGB {
+  const [, y] = directionFromUV(u, v);
+  let color = lobbySkyGradient(y);
+
+  // Soft warm band at the horizon (no hard sun disk).
+  const haze = smoothstep(-0.02, 0.08, y) * smoothstep(0.28, 0.1, y);
+  color = lerpRgb(color, [0.98, 0.82, 0.66], haze * 0.35);
+
+  // Cool purple atmospheric wash higher up.
+  const cool = smoothstep(0.15, 0.55, y);
+  color = lerpRgb(color, [0.62, 0.6, 0.82], cool * 0.12);
+
+  return [clamp01(color[0]), clamp01(color[1]), clamp01(color[2])];
+}
+
+/** Lobby showcase panorama — matches the soft peach / lavender reference lighting. */
+export function createLobbySkyboxTexture(): THREE.Texture {
+  return createPanoramaTexture(sampleLobbySky);
 }

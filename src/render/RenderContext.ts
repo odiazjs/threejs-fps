@@ -10,7 +10,6 @@ import {
 } from '../effects/EnemyOutlineFx';
 import { updateLineResolution } from '../visuals/edgeLines';
 import { ScopeWorldBlurPass } from './ScopeWorldBlurPass';
-import { VignettePass } from './VignettePass';
 
 export class RenderContext {
   readonly renderer: THREE.WebGLRenderer;
@@ -29,6 +28,9 @@ export class RenderContext {
       antialias: true,
       powerPreference: 'high-performance',
     });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.NoToneMapping;
+    this.renderer.toneMappingExposure = 1;
     this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
@@ -90,7 +92,6 @@ export class RenderContext {
     this.scopeWorldBlurPass.setStrength(this.scopeWorldBlur);
     this.composer.addPass(this.scopeWorldBlurPass);
 
-    this.composer.addPass(new VignettePass());
     this.composer.addPass(new OutputPass());
     this.syncComposerSize();
   }

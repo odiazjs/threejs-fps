@@ -14,7 +14,10 @@ const materials = new Set<LineMaterial>();
 const edgeLines = new Set<LineSegments2>();
 
 /** Width multiplier for edge lines (applied to the distance-based pixel width). */
-export const DEFAULT_EDGE_LINE_WIDTH = 1.55;
+export const DEFAULT_EDGE_LINE_WIDTH = 1.45;
+
+/** Soft ink — deep slate (readable, not pure black). */
+export const DEFAULT_EDGE_LINE_COLOR = 0x1e262c;
 
 const CLOSE_RAMP_START = 0.25;
 const CLOSE_RAMP_END = 2.8;
@@ -31,8 +34,8 @@ function edgePixelWidth(dist: number): number {
 
 function edgeOpacity(dist: number): number {
   const nearRamp = THREE.MathUtils.smoothstep(CLOSE_RAMP_START, CLOSE_RAMP_END, dist);
-  const nearOpacity = THREE.MathUtils.lerp(0.92, 1.0, nearRamp);
-  const farFade = THREE.MathUtils.clamp(1.0 - Math.max(0, dist - 18) * 0.0028, 0.7, 1.0);
+  const nearOpacity = THREE.MathUtils.lerp(0.72, 0.9, nearRamp);
+  const farFade = THREE.MathUtils.clamp(1.0 - Math.max(0, dist - 18) * 0.0028, 0.55, 1.0);
   return Math.min(nearOpacity, farFade);
 }
 
@@ -140,7 +143,7 @@ export function addEdgeLines(
   {
     thresholdAngle = 15,
     lineWidth = DEFAULT_EDGE_LINE_WIDTH,
-    color = 0x000000,
+    color = DEFAULT_EDGE_LINE_COLOR,
   }: EdgeLineOptions = {},
 ): LineSegments2 | null {
   const sourceGeometry = mesh.geometry;

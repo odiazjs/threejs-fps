@@ -17,26 +17,43 @@ import { applyCharacterFace } from '../player/characterFace';
 import { remoteWeaponMeshScale } from '../combat/WeaponLoadout';
 import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
 import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
-import { createSkyboxTexture } from '../world/SkyboxBuilder';
-import { addEdgeLines, updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
+import { createLobbySkyboxTexture } from '../world/SkyboxBuilder';
+import { updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
+import { LobbyMap } from '../world/LobbyMap';
 import { preloadDroneModel } from '../content/droneModel';
 import { createDroneVisual } from '../world/DroneField';
 import { LobbyPerfHud } from '../ui/LobbyPerfHud';
 import { LobbyPartyAvatar, partyMemberOffsets } from './LobbyPartyAvatar';
 import { fetchDefaultPrimaryWeaponId } from './lobbyLoadoutWeapon';
 
-const BASE_CAMERA_Z = 3.84;
-const CAMERA_ZOOM_PER_MEMBER = 0.2;
+/** Soft warm key — matches lobby dawn sky / reference lighting. */
+const LOBBY_SUN_DIR = new THREE.Vector3(4.5, 2.2, 3.5);
+
+const BASE_CAMERA_Y = 1.55;
+const BASE_CAMERA_Z = 5.15;
+const CAMERA_LOOK_Y = 1.15;
+const CAMERA_ZOOM_PER_MEMBER = 0.22;
 const FALLBACK_LOBBY_WEAPON: WeaponId = 'plasma_rifle';
 
-/** Decorative lobby drone — visual only, no interaction. */
-const LOBBY_DRONE_ORBIT_RADIUS_X = 1.85;
-const LOBBY_DRONE_ORBIT_RADIUS_Z = 1.35;
-const LOBBY_DRONE_ORBIT_CENTER_Z = -0.35;
-const LOBBY_DRONE_HEIGHT = 2.05;
-const LOBBY_DRONE_BOB = 0.28;
+/** Decorative lobby drones — visual only, orbit near background rocks. */
+const LOBBY_DRONE_COUNT = 5;
 const LOBBY_DRONE_SCALE = 0.42;
+/** ~25% farther from camera than the old near-avatar orbit. */
+const LOBBY_DRONE_DEPTH_SCALE = 1.25;
+
+interface LobbyDroneActor {
+  readonly root: THREE.Group;
+  readonly phase: number;
+  readonly speed: number;
+  readonly radiusX: number;
+  readonly radiusZ: number;
+  readonly centerX: number;
+  readonly centerZ: number;
+  readonly height: number;
+  readonly bob: number;
+  readonly bobSpeed: number;
+}
 
 export class LobbyScene {
   private readonly scene = new THREE.Scene();
@@ -49,9 +66,12 @@ export class LobbyScene {
   private handRig: THREE.Group | null = null;
   private weaponMesh: THREE.Group | null = null;
   private equippedWeaponId: WeaponId | null = null;
-  private readonly grassField: GrassField;
-  private readonly droneRoot = new THREE.Group();
-  private readonly dronePropellers: THREE.Group[] = [];
+  private grassField: GrassField | null = null;
+  private readonly lobbyMap: LobbyMap;
+  /** Local + party feet pose (top of center platform when map is ready). */
+  private standPose = { x: 0, y: 0, z: 0 };
+  private readonly droneFlockRoot = new THREE.Group();
+  private readonly drones: LobbyDroneActor[] = [];
   private readonly clock = new THREE.Clock();
   private readonly performanceHud = new LobbyPerfHud();
   private readonly localUserId: string;
@@ -76,10 +96,10 @@ export class LobbyScene {
       42,
       container.clientWidth / container.clientHeight,
       0.1,
-      100,
+      220,
     );
-    this.camera.position.set(0, 1.45, BASE_CAMERA_Z);
-    this.camera.lookAt(0, 1.1, 0);
+    this.camera.position.set(0, BASE_CAMERA_Y, BASE_CAMERA_Z);
+    this.camera.lookAt(0, CAMERA_LOOK_Y, 0);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -93,43 +113,30 @@ export class LobbyScene {
     this.labelRenderer.domElement.style.pointerEvents = 'none';
     container.appendChild(this.labelRenderer.domElement);
 
-    this.scene.background = createSkyboxTexture();
+    this.scene.background = createLobbySkyboxTexture();
+    // Soft purple atmospheric haze over distant canyon ridges.
+    this.scene.fog = new THREE.Fog(0xb8a8c8, 28, 145);
 
-    const hemi = new THREE.HemisphereLight(0xb8d4e8, 0x2a3038, 1.1);
-    const key = new THREE.DirectionalLight(0xffffff, 1.35);
-    key.position.set(2.5, 4, 3);
-    const rim = new THREE.DirectionalLight(0x82dbdb, 0.55);
-    rim.position.set(-2, 2, -2);
-    this.scene.add(hemi, key, rim);
+    // Soft dawn lighting: cool lavender fill + warm golden key (reference look).
+    const hemi = new THREE.HemisphereLight(0xd4c8e8, 0x6a5a58, 1.05);
+    const key = new THREE.DirectionalLight(0xffe0b8, 1.25);
+    key.position.copy(LOBBY_SUN_DIR);
+    const fill = new THREE.DirectionalLight(0xc8b8e0, 0.45);
+    fill.position.set(-3, 2.5, -2);
+    const rim = new THREE.DirectionalLight(0xffd0a0, 0.35);
+    rim.position.set(1.5, 1.2, -3);
+    this.scene.add(hemi, key, fill, rim);
 
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(3.4, 48),
-      new THREE.MeshStandardMaterial({
-        color: 0x48b440,
-        metalness: 0.05,
-        roughness: 0.92,
-      }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = 0;
-    addEdgeLines(floor);
-    this.scene.add(floor);
-
-    this.grassField = new GrassField(() => 0, {
-      halfExtent: 3.2,
-      maxBlades: 14_500,
-      gridStep: 0.08,
-      bladeHeight: 0.22,
-      bladeWidth: 0.026,
-      extraBladeChance: 0.78,
-      skipPatches: false,
-      seed: 0x10bb3,
-      sunDirection: new THREE.Vector3(2.5, 4, 3),
+    this.lobbyMap = new LobbyMap();
+    this.scene.add(this.lobbyMap.group);
+    void this.lobbyMap.whenReady.then(() => {
+      if (!this.active) return;
+      this.applyCenterPlatformStand();
+      this.mountLobbyGrass();
     });
-    this.scene.add(this.grassField.mesh);
 
-    this.scene.add(this.droneRoot);
-    void this.mountLobbyDrone();
+    this.scene.add(this.droneFlockRoot);
+    void this.mountLobbyDrones();
 
     this.bodyRoot.rotation.y = Math.PI * 1.12;
     this.avatar.add(this.bodyRoot);
@@ -170,19 +177,84 @@ export class LobbyScene {
     await this.applyLobbyLoadout(weaponId);
   }
 
-  private async mountLobbyDrone(): Promise<void> {
+  private async mountLobbyDrones(): Promise<void> {
     try {
       await preloadDroneModel();
       if (!this.active) return;
-      const { root, propellers } = createDroneVisual();
-      root.scale.setScalar(LOBBY_DRONE_SCALE);
-      this.droneRoot.clear();
-      this.droneRoot.add(root);
-      this.dronePropellers.length = 0;
-      this.dronePropellers.push(...propellers);
+
+      this.droneFlockRoot.clear();
+      this.drones.length = 0;
+
+      // Staggered orbits pushed toward the canyon rocks (further from camera).
+      const layouts = [
+        { phase: 0.0, speed: 0.28, rx: 2.4, rz: 1.85, cx: -1.2, cz: -2.1, h: 2.35, bob: 0.32, bobSpeed: 0.8 },
+        { phase: 1.3, speed: 0.22, rx: 3.1, rz: 2.2, cx: 1.6, cz: -2.6, h: 2.8, bob: 0.38, bobSpeed: 0.65 },
+        { phase: 2.5, speed: 0.34, rx: 2.0, rz: 1.55, cx: 0.2, cz: -1.8, h: 1.95, bob: 0.26, bobSpeed: 0.95 },
+        { phase: 3.8, speed: 0.26, rx: 2.7, rz: 2.0, cx: -2.4, cz: -3.0, h: 3.15, bob: 0.4, bobSpeed: 0.7 },
+        { phase: 5.1, speed: 0.3, rx: 2.2, rz: 1.7, cx: 2.5, cz: -2.35, h: 2.55, bob: 0.3, bobSpeed: 0.88 },
+      ] as const;
+
+      for (let i = 0; i < LOBBY_DRONE_COUNT; i++) {
+        const layout = layouts[i]!;
+        const { root } = createDroneVisual();
+        root.scale.setScalar(LOBBY_DRONE_SCALE * (0.92 + (i % 3) * 0.06));
+        this.droneFlockRoot.add(root);
+        this.drones.push({
+          root,
+          phase: layout.phase,
+          speed: layout.speed,
+          radiusX: layout.rx * LOBBY_DRONE_DEPTH_SCALE,
+          radiusZ: layout.rz * LOBBY_DRONE_DEPTH_SCALE,
+          centerX: layout.cx * LOBBY_DRONE_DEPTH_SCALE,
+          centerZ: layout.cz * LOBBY_DRONE_DEPTH_SCALE,
+          height: layout.h,
+          bob: layout.bob,
+          bobSpeed: layout.bobSpeed,
+        });
+      }
     } catch (error) {
-      console.warn('[LobbyScene] Failed to load lobby drone', error);
+      console.warn('[LobbyScene] Failed to load lobby drones', error);
     }
+  }
+
+  /** Snap local + party avatars onto the map's center platform top. */
+  private applyCenterPlatformStand(): void {
+    const stand = this.lobbyMap.getCenterPlatformStandPose();
+    if (stand) {
+      this.standPose = { x: stand.x, y: stand.y, z: stand.z };
+    }
+    this.avatar.position.set(this.standPose.x, this.standPose.y, this.standPose.z);
+    this.syncRemoteAvatars();
+    this.updateCamera(Math.max(1, this.partyMembers.length));
+  }
+
+  /** Spawn grass only on Floor gaps (no prop footprints / avatar pad). */
+  private mountLobbyGrass(): void {
+    if (this.grassField) {
+      this.scene.remove(this.grassField.mesh);
+      this.grassField.dispose();
+      this.grassField = null;
+    }
+
+    const placement = this.lobbyMap.createFloorGrassPlacement({
+      x: this.standPose.x,
+      z: this.standPose.z,
+    });
+    this.grassField = new GrassField(() => 0, {
+      halfExtent: placement?.halfExtent ?? 7.5,
+      maxBlades: 48_000,
+      gridStep: 0.055,
+      bladeHeight: 0.2,
+      bladeWidth: 0.028,
+      extraBladeChance: 0.92,
+      skipPatches: false,
+      seed: 0x10bb3,
+      sunDirection: LOBBY_SUN_DIR.clone(),
+      canPlace: placement?.canPlace,
+      shortBladeChance: 0.5,
+      shortBladeScale: 0.5,
+    });
+    this.scene.add(this.grassField.mesh);
   }
 
   private async bootstrapAvatar(): Promise<void> {
@@ -322,8 +394,13 @@ export class LobbyScene {
     remoteMembers.forEach((member, index) => {
       const lookKey = this.remoteLookKey(member);
       const existing = this.remoteAvatars.get(member.userId);
+      const offsetX = offsets[index] ?? 0;
       if (existing && this.remoteAvatarLookKeys.get(member.userId) === lookKey) {
-        existing.setPositionX(offsets[index] ?? 0);
+        existing.setPosition(
+          this.standPose.x + offsetX,
+          this.standPose.y,
+          this.standPose.z,
+        );
         return;
       }
 
@@ -333,10 +410,10 @@ export class LobbyScene {
         this.remoteAvatarLookKeys.delete(member.userId);
       }
 
-      void this.spawnRemoteAvatar(member, offsets[index] ?? 0, loadToken);
+      void this.spawnRemoteAvatar(member, offsetX, loadToken);
     });
 
-    this.avatar.position.x = 0;
+    this.avatar.position.set(this.standPose.x, this.standPose.y, this.standPose.z);
   }
 
   private async spawnRemoteAvatar(
@@ -369,7 +446,11 @@ export class LobbyScene {
         characterId,
         operatorId,
       );
-      avatar.setPositionX(positionX);
+      avatar.setPosition(
+        this.standPose.x + positionX,
+        this.standPose.y,
+        this.standPose.z,
+      );
       this.scene.add(avatar.root);
       this.remoteAvatars.set(member.userId, avatar);
       this.remoteAvatarLookKeys.set(member.userId, lookKey);
@@ -380,22 +461,33 @@ export class LobbyScene {
 
   private updateCamera(memberCount: number): void {
     const zoom = 1 + CAMERA_ZOOM_PER_MEMBER * Math.max(0, memberCount - 1);
-    this.camera.position.z = BASE_CAMERA_Z * zoom;
+    this.camera.position.set(
+      this.standPose.x,
+      this.standPose.y + BASE_CAMERA_Y,
+      this.standPose.z + BASE_CAMERA_Z * zoom,
+    );
+    this.camera.lookAt(
+      this.standPose.x,
+      this.standPose.y + CAMERA_LOOK_Y,
+      this.standPose.z,
+    );
   }
 
-  private updateDrone(t: number): void {
-    // Slower orbit; keep a fixed facing (no yaw/bank spin on the mesh itself).
-    const orbitAngle = t * 0.32;
-    const bobPhase = t * 0.85;
+  private updateDrones(t: number): void {
+    const baseX = this.standPose.x;
+    const baseY = this.standPose.y;
+    const baseZ = this.standPose.z;
 
-    this.droneRoot.position.set(
-      this.avatar.position.x + Math.cos(orbitAngle) * LOBBY_DRONE_ORBIT_RADIUS_X,
-      LOBBY_DRONE_HEIGHT + Math.sin(bobPhase) * LOBBY_DRONE_BOB,
-      this.avatar.position.z +
-        LOBBY_DRONE_ORBIT_CENTER_Z +
-        Math.sin(orbitAngle) * LOBBY_DRONE_ORBIT_RADIUS_Z,
-    );
-    this.droneRoot.rotation.set(0, 0, 0);
+    for (const drone of this.drones) {
+      const angle = t * drone.speed + drone.phase;
+      const bob = Math.sin(t * drone.bobSpeed + drone.phase) * drone.bob;
+      drone.root.position.set(
+        baseX + drone.centerX + Math.cos(angle) * drone.radiusX,
+        baseY + drone.height + bob,
+        baseZ + drone.centerZ + Math.sin(angle) * drone.radiusZ,
+      );
+      drone.root.rotation.set(0, 0, 0);
+    }
   }
 
   private loop = (): void => {
@@ -404,14 +496,14 @@ export class LobbyScene {
     const delta = this.clock.getDelta();
     const t = this.clock.getElapsedTime();
 
-    this.updateDrone(t);
+    this.updateDrones(t);
     this.characterInstance?.update(delta);
 
     for (const avatar of this.remoteAvatars.values()) {
       avatar.update(delta);
     }
 
-    this.grassField.update(t, { cameraPos: this.camera.position });
+    this.grassField?.update(t, { cameraPos: this.camera.position });
 
     updateEdgeLinesForCamera(this.camera);
     this.renderer.render(this.scene, this.camera);
@@ -468,7 +560,8 @@ export class LobbyScene {
     this.remoteAvatarLookKeys.clear();
     this.clearLocalCharacter();
     this.equippedWeaponId = null;
-    this.grassField.dispose();
+    this.grassField?.dispose();
+    this.grassField = null;
     this.labelRenderer.domElement.remove();
     this.renderer.dispose();
     this.renderer.domElement.remove();

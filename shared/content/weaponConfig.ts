@@ -29,13 +29,19 @@ export interface WeaponViewConfig {
   readonly hip: WeaponViewOffset;
   readonly ads: WeaponViewOffset;
   /**
-   * ADS zoom FOV (higher = less zoom). Defaults to 68.
-   * With `scopeLensAds`, this drives the scope-lens camera instead of the main view.
+   * ADS zoom FOV for the main camera (higher = less zoom). Defaults to 68.
+   * With `scopeLensAds`, prefer `mainAdsFov` for the main view and keep this
+   * as the optic's base zoom target.
    */
   readonly adsFov?: number;
   /**
-   * When true, ADS zoom is applied to the optic's `scope_camera_decal` render
-   * target; the main first-person camera stays near hip FOV.
+   * Optional milder main-camera ADS FOV when `scopeLensAds` is set.
+   * Falls back to `adsFov` when omitted.
+   */
+  readonly mainAdsFov?: number;
+  /**
+   * When true, ADS also bakes a tighter zoom onto the optic's `scope_camera_decal`
+   * render target (in addition to the main-camera FOV).
    */
   readonly scopeLensAds?: boolean;
   /** Mouse look speed multiplier when fully ADS (1 = unchanged). */
@@ -217,6 +223,11 @@ export interface WeaponConfig {
   readonly reloadStyle?: 'magazine' | 'shell';
   /** After a shot empties the clip, start reload without waiting for KeyR. */
   readonly autoReload?: boolean;
+  /**
+   * Delay (seconds) after an emptying shot before `autoReload` starts.
+   * Lets recoil / kickback read before the reload pose takes over.
+   */
+  readonly autoReloadDelaySec?: number;
   readonly reserveClips: number;
   /** Shots per second. Use 0 for uncapped (semi: as fast as the player can click). */
   readonly fireRate: number;

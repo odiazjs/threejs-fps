@@ -24,6 +24,12 @@ export interface GrassFieldOptions {
   skipPatches?: boolean;
   seed?: number;
   sunDirection?: THREE.Vector3;
+  /** When set, only keep candidate points that return true (world XZ). */
+  canPlace?: (x: number, z: number) => boolean;
+  /** Fraction of blades that use {@link shortBladeScale} (0–1). */
+  shortBladeChance?: number;
+  /** Height multiplier for short blades (default 0.5). */
+  shortBladeScale?: number;
 }
 
 export interface GrassUpdateContext {
@@ -277,37 +283,46 @@ export class GrassField {
     const rand = seededRandom(options.seed ?? 42);
     const primary: Array<{ x: number; z: number }> = [];
     const extras: Array<{ x: number; z: number }> = [];
+    const canPlace = options.canPlace;
+    const shortBladeChance = Math.max(0, Math.min(1, options.shortBladeChance ?? 0));
+    const shortBladeScale = Math.max(0.05, options.shortBladeScale ?? 0.5);
 
     const boostedExtraChance = Math.min(0.95, extraBladeChance + extraBladeChance * 0.3);
     const patchWeightAttr = geometry.getAttribute('aPatchWeight') as THREE.InstancedBufferAttribute;
     const patchVariantAttr = geometry.getAttribute('aPatchVariant') as THREE.InstancedBufferAttribute;
+
+    const accept = (x: number, z: number): boolean => {
+      if (skipPatches && shouldSkipGrass(x, z)) return false;
+      if (canPlace && !canPlace(x, z)) return false;
+      return true;
+    };
 
     for (let gx = -half; gx < half; gx += gridStep) {
       for (let gz = -half; gz < half; gz += gridStep) {
         const jitter = gridStep * 0.92;
         const x = gx + (rand() - 0.5) * jitter;
         const z = gz + (rand() - 0.5) * jitter;
-        if (skipPatches && shouldSkipGrass(x, z)) continue;
+        if (!accept(x, z)) continue;
         primary.push({ x, z });
 
         if (boostedExtraChance > 0 && rand() < boostedExtraChance) {
           const x2 = x + (rand() - 0.5) * gridStep * 0.65;
           const z2 = z + (rand() - 0.5) * gridStep * 0.65;
-          if (!skipPatches || !shouldSkipGrass(x2, z2)) {
+          if (accept(x2, z2)) {
             extras.push({ x: x2, z: z2 });
           }
         }
         if (boostedExtraChance > 0 && rand() < boostedExtraChance * 0.5) {
           const x3 = x + (rand() - 0.5) * gridStep * 0.55;
           const z3 = z + (rand() - 0.5) * gridStep * 0.55;
-          if (!skipPatches || !shouldSkipGrass(x3, z3)) {
+          if (accept(x3, z3)) {
             extras.push({ x: x3, z: z3 });
           }
         }
         if (boostedExtraChance > 0 && rand() < boostedExtraChance * 0.28) {
           const x4 = x + (rand() - 0.5) * gridStep * 0.45;
           const z4 = z + (rand() - 0.5) * gridStep * 0.45;
-          if (!skipPatches || !shouldSkipGrass(x4, z4)) {
+          if (accept(x4, z4)) {
             extras.push({ x: x4, z: z4 });
           }
         }
@@ -331,7 +346,9 @@ export class GrassField {
       const patchVariant = coloredPatchVariant(x, z);
       const widthScale = (0.72 + rand() * 0.42) * 1.08;
       const patchHeightMul = 1.0 - patchWeight * (1.0 - PATCH_HEIGHT_SCALE);
-      const heightScale = (2.5 + rand() * 1.1) * GLOBAL_HEIGHT_SCALE * patchHeightMul;
+      const shortMul = shortBladeChance > 0 && rand() < shortBladeChance ? shortBladeScale : 1;
+      const heightScale =
+        (2.5 + rand() * 1.1) * GLOBAL_HEIGHT_SCALE * patchHeightMul * shortMul;
 
       const rotY = rand() * Math.PI * 2;
       const lean = (rand() - 0.5) * 0.2;

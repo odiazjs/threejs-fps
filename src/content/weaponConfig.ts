@@ -264,6 +264,8 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   clipSize: 1,
   reloadSec: WEAPON_RELOAD_SEC.sniper_rifle,
   autoReload: true,
+  // Let kickback/recoil read before the reload pose cuts in.
+  autoReloadDelaySec: 0.4,
   reserveClips: 16,
   fireRate: SHIPPED_WEAPON_BASE_STATS.sniper_rifle.fireRate,
   fireMode: 'semi',
@@ -275,8 +277,10 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     hip: { x: 0.1, y: -0.24, z: -0.44 },
     // Closer ADS hold so the optic fills more of the view while keeping the lens readable.
     ads: { x: 0, y: -0.15, z: -0.23 },
-    // Base optic FOV (ScopeLens tightens further for PiP magnification).
+    // Optic base FOV (ScopeLens tightens further for PiP magnification).
     adsFov: 12,
+    // Mild main-view zoom — full adsFov is far too tight for the outer frame.
+    mainAdsFov: 52,
     scopeLensAds: true,
     adsLookSensitivity: 0.5,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },

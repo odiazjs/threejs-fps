@@ -42,8 +42,8 @@ export class LobbyPartyAvatar {
     this.root.add(this.nameLabel);
   }
 
-  setPositionX(x: number): void {
-    this.root.position.x = x;
+  setPosition(x: number, y = 0, z = 0): void {
+    this.root.position.set(x, y, z);
   }
 
   update(delta: number): void {
