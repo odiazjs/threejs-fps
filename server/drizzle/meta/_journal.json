@@ -316,6 +316,20 @@
       "when": 1784080000000,
       "tag": "0044_pistol_base_recoil",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1784090000000,
+      "tag": "0045_physical_weapon_sights",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0046_precision_core_sight_2",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,13 @@ const HIT_ATTACK_SEC = 0.045;
 const HIT_HOLD_SEC = 0.12;
 const HIT_SCALE_BOOST = 0.75;
 
+/** Hip reticle arm gap (px from rest) — idle / walk / sprint. */
+const SPREAD_IDLE_PX = 0;
+const SPREAD_WALK_PX = 5;
+const SPREAD_SPRINT_PX = 11;
+/** Exponential approach rate for spread tween (higher = snappier). */
+const SPREAD_LERP_SPEED = 10;
+
 type HitMode = 'sniper' | 'weapon';
 
 export class CrosshairHud {
@@ -19,8 +26,12 @@ export class CrosshairHud {
   private aimOffsetY = 0;
   /** Master toggle from play/pause/death HUD state. */
   private playVisible = false;
-  /** Hidden while ADS with a digital sight; stays on for hip-fire / iron-sight ADS. */
-  private hipFireVisible = true;
+  /** Global ADS style: centered neon cyan circle for every weapon. */
+  private adsActive = false;
+  private moving = false;
+  private sprinting = false;
+  private spreadPx = 0;
+  private targetSpreadPx = 0;
 
   constructor() {
     this.root = document.getElementById('crosshair')!;
@@ -29,6 +40,7 @@ export class CrosshairHud {
     this.weaponReticle = this.root.querySelector('.crosshair-reticle')!;
     this.hitReticle = this.hitRoot.querySelector('.crosshair-reticle')!;
     this.applyRootTransform();
+    this.applySpreadCss();
     this.applyVisibility();
   }
 
@@ -38,23 +50,52 @@ export class CrosshairHud {
     if (!visible) {
       this.resetHit();
       this.setAimOffset(0, 0);
+      this.spreadPx = 0;
+      this.targetSpreadPx = 0;
+      this.applySpreadCss();
     }
   }
 
-  /** `true` when the HUD reticle should show; `false` when a digital optic owns ADS. */
-  setHipFireVisible(visible: boolean): void {
-    if (this.hipFireVisible === visible) return;
-    this.hipFireVisible = visible;
+  /**
+   * When true, hip 4-line reticle is replaced by a screen-centered neon cyan
+   * circle. Applies to every weapon (with or without a mounted optic).
+   */
+  setAdsActive(ads: boolean): void {
+    if (this.adsActive === ads) return;
+    this.adsActive = ads;
+    this.root.classList.toggle('ads', ads);
+    this.syncSpreadTarget();
     this.applyVisibility();
   }
 
+  /** Drive hip-fire arm separation from locomotion (tweened in {@link update}). */
+  setMovementSpread(moving: boolean, sprinting: boolean): void {
+    this.moving = moving;
+    this.sprinting = sprinting;
+    this.syncSpreadTarget();
+  }
+
+  private syncSpreadTarget(): void {
+    if (this.adsActive || !this.playVisible) {
+      this.targetSpreadPx = SPREAD_IDLE_PX;
+      return;
+    }
+    if (this.sprinting) {
+      this.targetSpreadPx = SPREAD_SPRINT_PX;
+    } else if (this.moving) {
+      this.targetSpreadPx = SPREAD_WALK_PX;
+    } else {
+      this.targetSpreadPx = SPREAD_IDLE_PX;
+    }
+  }
+
   private applyVisibility(): void {
-    const crosshairDisplay = this.playVisible && this.hipFireVisible ? 'block' : 'none';
+    const crosshairDisplay = this.playVisible ? 'block' : 'none';
     this.root.style.display = crosshairDisplay;
-    this.referenceRoot.style.display = crosshairDisplay;
-    // Hit pulse can show during ADS even when the hip/iron-sight reticle is hidden.
+    // Soft reference pip is hip-only — ADS uses the neon circle.
+    this.referenceRoot.style.display = this.playVisible && !this.adsActive ? 'block' : 'none';
     const hitDisplay =
-      this.playVisible && (this.hipFireVisible || this.hitMode != null) ? 'block' : 'none';
+      this.playVisible && (!this.adsActive || this.hitMode != null) ? 'block' : 'none';
     this.hitRoot.style.display = hitDisplay;
   }
 
@@ -67,8 +108,8 @@ export class CrosshairHud {
   onHit(weaponId: WeaponId): void {
     this.hitElapsed = 0;
 
-    // ADS with a digital sight hides the hip reticle — use the dedicated red hit pulse.
-    if (!this.hipFireVisible || weaponId === 'sniper_rifle') {
+    // ADS / sniper: pulse the dedicated hit reticle (hip lines are hidden in ADS).
+    if (this.adsActive || weaponId === 'sniper_rifle') {
       this.hitMode = 'sniper';
       this.hitReticle.style.opacity = '1';
       this.applyVisibility();
@@ -80,6 +121,16 @@ export class CrosshairHud {
   }
 
   update(delta: number): void {
+    const dt = Math.max(0, delta);
+    if (dt > 0) {
+      const t = 1 - Math.exp(-SPREAD_LERP_SPEED * dt);
+      this.spreadPx += (this.targetSpreadPx - this.spreadPx) * t;
+      if (Math.abs(this.targetSpreadPx - this.spreadPx) < 0.05) {
+        this.spreadPx = this.targetSpreadPx;
+      }
+      this.applySpreadCss();
+    }
+
     if (!this.hitMode) return;
 
     this.hitElapsed += delta;
@@ -95,6 +146,10 @@ export class CrosshairHud {
     if (this.hitElapsed >= HIT_PULSE_SEC) {
       this.resetHit();
     }
+  }
+
+  private applySpreadCss(): void {
+    this.weaponReticle.style.setProperty('--spread', `${this.spreadPx.toFixed(2)}px`);
   }
 
   private applyRootTransform(): void {

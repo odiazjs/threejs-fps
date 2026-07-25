@@ -9,6 +9,10 @@ import {
   digitalSightStyleFromEntry,
   getDigitalSightCatalogEntry,
 } from '../content/digitalWeaponSights';
+import {
+  syncPhysicalSightOnWeapon,
+  weaponUsesPhysicalSights,
+} from '../content/physicalWeaponSights';
 import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from './disposeMesh';
@@ -172,8 +176,8 @@ export class WeaponsScene {
   }
 
   /**
-   * Preview a digital sight on the mounted weapon (works for locked unlockables).
-   * Pass null to hide the optic.
+   * Preview a sight on the mounted weapon (3D rail optic or legacy digital).
+   * Works for locked unlockables. Pass null to hide the optic.
    */
   previewSight(sightId: string | null): void {
     this.previewSightId = sightId?.trim() || null;
@@ -225,16 +229,27 @@ export class WeaponsScene {
     }
 
     const weapon = createWeaponMesh(weaponId);
-    this.fitWeaponForShowcase(weapon);
     this.weaponPivot.add(weapon);
     this.currentWeapon = weapon;
     this.currentWeaponId = weaponId;
+    // Sight first so showcase fit includes the optic bounds.
     this.applySightPreview();
+    this.fitWeaponForShowcase(weapon);
     this.resetOrbit();
   }
 
   private applySightPreview(): void {
     if (!this.currentWeapon) return;
+
+    // Rail-mounted 3D optics (pistol and future socketed guns).
+    if (weaponUsesPhysicalSights(this.currentWeapon)) {
+      if (this.currentWeaponId === 'katana' || !this.previewSightId) {
+        syncPhysicalSightOnWeapon(this.currentWeapon, null);
+        return;
+      }
+      syncPhysicalSightOnWeapon(this.currentWeapon, this.previewSightId);
+      return;
+    }
 
     if (this.currentWeaponId === 'katana' || !this.previewSightId) {
       setDigitalSightVisible(this.currentWeapon, false);
@@ -247,7 +262,7 @@ export class WeaponsScene {
       return;
     }
 
-    // Slightly larger in the armory orbit view so the reticle reads at distance.
+    // Legacy digital reticle — slightly larger in the armory orbit view.
     applyDigitalSightStyle(this.currentWeapon, {
       ...digitalSightStyleFromEntry(entry),
       size: entry.size * 1.35,

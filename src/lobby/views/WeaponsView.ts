@@ -56,6 +56,8 @@ export class WeaponsView {
         : firstPickerWeaponId(picker);
 
     await this.scene.showWeapon(initialWeaponId);
+    // Loadout mount may have set a showcase sight before the mesh was ready.
+    this.scene.previewSight(this.loadouts.getShowcaseSightId());
     await this.statsPanel.mount(initialWeaponId);
 
     // Loading veil / stats panel can change stage size after first paint.

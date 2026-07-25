@@ -1,5 +1,6 @@
 import type { EquippedWeaponSightsMap } from '../../shared/api/weaponUnlockables';
 import { getDigitalSightCatalogEntry } from './digitalWeaponSights';
+import { getPhysicalSightAsset } from './physicalWeaponSights';
 
 /** Per-weapon equipped sight unlockable ids for the local player. */
 const equippedSightByWeaponId = new Map<string, string | null>();
@@ -45,9 +46,11 @@ export function applyLoadoutSightAssignments(input: {
   }
 }
 
-/** Whether this weapon has any known digital optic equipped. */
+/** Whether this weapon has any known optic equipped (3D rail or legacy digital). */
 export function weaponHasDigitalSight(weaponId: string): boolean {
-  return getDigitalSightCatalogEntry(getEquippedSightForWeapon(weaponId)) != null;
+  const sightId = getEquippedSightForWeapon(weaponId);
+  if (!sightId) return false;
+  return getPhysicalSightAsset(sightId) != null || getDigitalSightCatalogEntry(sightId) != null;
 }
 
 /** @deprecated Use weaponHasDigitalSight — kept for older call sites. */

@@ -25,11 +25,16 @@ import {
   mountDigitalSightSocketOnWeapon,
   preloadDigitalSightTextures,
 } from './digitalWeaponSights';
+import { getEquippedSightForWeapon } from './equippedWeaponSights';
+import {
+  preloadPhysicalSightModels,
+  syncPhysicalSightOnWeapon,
+  weaponUsesPhysicalSights,
+} from './physicalWeaponSights';
 
-/** FBX content group name per gun — used to place the digital sight on the weapon root. */
+/** FBX content group name per gun — used to place legacy digital sights. */
 const DIGITAL_SIGHT_CONTENT_NAME: Partial<Record<WeaponId, string>> = {
-  pistol: 'pistolContent',
-  plasma_rifle: 'rifleContent',
+  // plasma_rifle uses physical rail sights (sight_mount) — not digital decals.
   sniper_rifle: 'sniperContent',
   root_bio_carbine: 'rootBioCarbineContent',
   bio_liquid_rifle: 'bioLiquidRifleContent',
@@ -38,8 +43,15 @@ const DIGITAL_SIGHT_CONTENT_NAME: Partial<Record<WeaponId, string>> = {
   plasma_shotgun: 'plasmaShotgunContent',
 };
 
-function withEquippableDigitalSight(weaponId: WeaponId, mesh: THREE.Group): THREE.Group {
+function withEquippableSight(weaponId: WeaponId, mesh: THREE.Group): THREE.Group {
   if (!isPickableWeaponId(weaponId)) return mesh;
+
+  // Prefer authored rail socket + 3D optic (pistol and future guns).
+  if (weaponUsesPhysicalSights(mesh)) {
+    syncPhysicalSightOnWeapon(mesh, getEquippedSightForWeapon(weaponId));
+    return mesh;
+  }
+
   const contentName = DIGITAL_SIGHT_CONTENT_NAME[weaponId];
   if (!contentName) return mesh;
   mountDigitalSightSocketOnWeapon(mesh, contentName);
@@ -57,6 +69,7 @@ export function preloadWeaponMeshes(): Promise<void> {
     preloadBioSmg1WeaponModel(),
     preloadPlasmaShotgunWeaponModel(),
     preloadKatanaWeaponModel(),
+    preloadPhysicalSightModels(),
     preloadDigitalSightTextures(),
   ]).then(() => undefined);
 }
@@ -93,5 +106,5 @@ export function createWeaponMesh(id: WeaponId): THREE.Group {
       mesh = createRifleWeaponMesh();
       break;
   }
-  return withEquippableDigitalSight(id, mesh);
+  return withEquippableSight(id, mesh);
 }

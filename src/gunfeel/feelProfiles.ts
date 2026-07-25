@@ -99,15 +99,39 @@ export interface SwayFeel {
   readonly idleFreq: number;
   /** Layered-noise contribution as a fraction of idleAmp. */
   readonly noiseAmp: number;
+  /** Slow breathing bob on Y while idle (m). */
+  readonly idleBobAmp: number;
+  /** Breathing bob frequency (Hz). */
+  readonly idleBobFreq: number;
   /** Sway amplitude / frequency multipliers while walking. */
   readonly walkAmpMultiplier: number;
   readonly walkFreqMultiplier: number;
+  /** Footstep-synced vertical weapon bob while walking (m). */
+  readonly walkBobAmp: number;
+  /** Footstep-synced lateral weapon bob while walking (m). */
+  readonly walkBobLateralAmp: number;
   /** Sway multiplier at full ADS (before breath modifiers). */
   readonly adsScale: number;
   /** Weapon shift (m) opposite to strafe direction at full input. */
   readonly moveSwayAmp: number;
   /** Smoothing speed for the movement-sway offset. */
   readonly moveSwaySmoothing: number;
+  /** Extra roll (rad) from strafe at full input. */
+  readonly strafeRollAmp: number;
+  /** Extra pitch (rad) from strafe at full input. */
+  readonly strafePitchAmp: number;
+  /** Jump impulse: weapon Y velocity kick (m/s into spring). */
+  readonly jumpKick: number;
+  /** Jump impulse: pitch velocity kick (rad/s into spring). */
+  readonly jumpPitchKick: number;
+  /** Land impulse: weapon Y velocity kick (negative = dip). */
+  readonly landKick: number;
+  /** Land impulse: pitch velocity kick (rad/s). */
+  readonly landPitchKick: number;
+  /** How much vertical velocity pulls the gun while airborne (s). */
+  readonly airborneInertia: number;
+  /** Fraction of jump/land pitch mirrored onto the camera rigs. */
+  readonly landCameraScale: number;
   readonly lookLag: LookLagFeel;
   /**
    * Look-lag (weapon trailing mouse flicks) multiplier at full ADS.
@@ -180,15 +204,27 @@ const PISTOL_FEEL: WeaponFeelProfile = {
     adsScale: 0.65,
   },
   sway: {
-    idleAmp: 0.0022,
-    idleRotAmp: 0.0024,
-    idleFreq: 0.5,
-    noiseAmp: 0.35,
-    walkAmpMultiplier: 2.1,
+    idleAmp: 0.003,
+    idleRotAmp: 0.0032,
+    idleFreq: 0.52,
+    noiseAmp: 0.42,
+    idleBobAmp: 0.0014,
+    idleBobFreq: 0.28,
+    walkAmpMultiplier: 2.2,
     walkFreqMultiplier: 2.3,
+    walkBobAmp: 0.006,
+    walkBobLateralAmp: 0.0035,
     adsScale: 0.2,
-    moveSwayAmp: 0.014,
-    moveSwaySmoothing: 9,
+    moveSwayAmp: 0.02,
+    moveSwaySmoothing: 8,
+    strafeRollAmp: 0.045,
+    strafePitchAmp: 0.012,
+    jumpKick: 0.9,
+    jumpPitchKick: 1.8,
+    landKick: -2.4,
+    landPitchKick: 3.2,
+    airborneInertia: 0.012,
+    landCameraScale: 0.3,
     // Very light gun — barely trails the camera.
     lookLag: {
       spring: { stiffness: 620, dampingRatio: 0.9 },
@@ -229,15 +265,27 @@ const AR_FEEL: WeaponFeelProfile = {
     adsScale: 0.45,
   },
   sway: {
-    idleAmp: 0.0028,
-    idleRotAmp: 0.003,
+    idleAmp: 0.0036,
+    idleRotAmp: 0.0038,
     idleFreq: 0.42,
-    noiseAmp: 0.4,
-    walkAmpMultiplier: 2.2,
+    noiseAmp: 0.48,
+    idleBobAmp: 0.0018,
+    idleBobFreq: 0.24,
+    walkAmpMultiplier: 2.3,
     walkFreqMultiplier: 2.5,
+    walkBobAmp: 0.008,
+    walkBobLateralAmp: 0.0045,
     adsScale: 0.22,
-    moveSwayAmp: 0.02,
-    moveSwaySmoothing: 7.5,
+    moveSwayAmp: 0.028,
+    moveSwaySmoothing: 6.5,
+    strafeRollAmp: 0.06,
+    strafePitchAmp: 0.016,
+    jumpKick: 1.1,
+    jumpPitchKick: 2.2,
+    landKick: -3.0,
+    landPitchKick: 4.0,
+    airborneInertia: 0.016,
+    landCameraScale: 0.32,
     // Noticeable but controlled trail.
     lookLag: {
       spring: { stiffness: 340, dampingRatio: 0.85 },
@@ -279,15 +327,27 @@ const LMG_FEEL: WeaponFeelProfile = {
     adsScale: 0.5,
   },
   sway: {
-    idleAmp: 0.0034,
-    idleRotAmp: 0.0036,
-    idleFreq: 0.38,
-    noiseAmp: 0.5,
-    walkAmpMultiplier: 2.5,
+    idleAmp: 0.0042,
+    idleRotAmp: 0.0044,
+    idleFreq: 0.36,
+    noiseAmp: 0.55,
+    idleBobAmp: 0.0022,
+    idleBobFreq: 0.2,
+    walkAmpMultiplier: 2.6,
     walkFreqMultiplier: 2.3,
+    walkBobAmp: 0.01,
+    walkBobLateralAmp: 0.0055,
     adsScale: 0.28,
-    moveSwayAmp: 0.028,
-    moveSwaySmoothing: 6.5,
+    moveSwayAmp: 0.036,
+    moveSwaySmoothing: 5.5,
+    strafeRollAmp: 0.075,
+    strafePitchAmp: 0.02,
+    jumpKick: 1.35,
+    jumpPitchKick: 2.6,
+    landKick: -3.8,
+    landPitchKick: 4.8,
+    airborneInertia: 0.02,
+    landCameraScale: 0.36,
     lookLag: {
       spring: { stiffness: 220, dampingRatio: 0.88 },
       weight: 0.72,
@@ -327,15 +387,27 @@ const BURST_FEEL: WeaponFeelProfile = {
     adsScale: 0.45,
   },
   sway: {
-    idleAmp: 0.0026,
-    idleRotAmp: 0.0028,
+    idleAmp: 0.0034,
+    idleRotAmp: 0.0036,
     idleFreq: 0.44,
-    noiseAmp: 0.38,
-    walkAmpMultiplier: 2.2,
+    noiseAmp: 0.45,
+    idleBobAmp: 0.0016,
+    idleBobFreq: 0.26,
+    walkAmpMultiplier: 2.3,
     walkFreqMultiplier: 2.5,
+    walkBobAmp: 0.0075,
+    walkBobLateralAmp: 0.004,
     adsScale: 0.22,
-    moveSwayAmp: 0.018,
-    moveSwaySmoothing: 8,
+    moveSwayAmp: 0.026,
+    moveSwaySmoothing: 7,
+    strafeRollAmp: 0.055,
+    strafePitchAmp: 0.014,
+    jumpKick: 1.05,
+    jumpPitchKick: 2.0,
+    landKick: -2.8,
+    landPitchKick: 3.6,
+    airborneInertia: 0.014,
+    landCameraScale: 0.3,
     lookLag: {
       spring: { stiffness: 380, dampingRatio: 0.85 },
       weight: 0.5,
@@ -375,16 +447,28 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     adsScale: 0.85,
   },
   sway: {
-    idleAmp: 0.0036,
-    idleRotAmp: 0.004,
-    idleFreq: 0.36,
-    noiseAmp: 0.55,
-    walkAmpMultiplier: 2.4,
+    idleAmp: 0.0044,
+    idleRotAmp: 0.0048,
+    idleFreq: 0.34,
+    noiseAmp: 0.58,
+    idleBobAmp: 0.002,
+    idleBobFreq: 0.22,
+    walkAmpMultiplier: 2.5,
     walkFreqMultiplier: 2.4,
+    walkBobAmp: 0.009,
+    walkBobLateralAmp: 0.005,
     // Scope FOV (~18°) magnifies camera sway — keep ADS almost still.
     adsScale: 0.018,
-    moveSwayAmp: 0.01,
-    moveSwaySmoothing: 6,
+    moveSwayAmp: 0.016,
+    moveSwaySmoothing: 5.5,
+    strafeRollAmp: 0.05,
+    strafePitchAmp: 0.014,
+    jumpKick: 1.2,
+    jumpPitchKick: 2.4,
+    landKick: -3.2,
+    landPitchKick: 4.2,
+    airborneInertia: 0.018,
+    landCameraScale: 0.22,
     // Hipfire: long heavy rifle drags behind fast flicks. ADS: none — scope
     // FOV makes look-lag feel like the whole world sliding.
     lookLag: {
@@ -431,15 +515,27 @@ const SHOTGUN_FEEL: WeaponFeelProfile = {
     adsScale: 0.7,
   },
   sway: {
-    idleAmp: 0.003,
-    idleRotAmp: 0.0032,
+    idleAmp: 0.0038,
+    idleRotAmp: 0.004,
     idleFreq: 0.4,
-    noiseAmp: 0.42,
-    walkAmpMultiplier: 2.3,
+    noiseAmp: 0.5,
+    idleBobAmp: 0.002,
+    idleBobFreq: 0.22,
+    walkAmpMultiplier: 2.4,
     walkFreqMultiplier: 2.4,
+    walkBobAmp: 0.0095,
+    walkBobLateralAmp: 0.005,
     adsScale: 0.3,
-    moveSwayAmp: 0.022,
-    moveSwaySmoothing: 6.5,
+    moveSwayAmp: 0.032,
+    moveSwaySmoothing: 5.8,
+    strafeRollAmp: 0.07,
+    strafePitchAmp: 0.018,
+    jumpKick: 1.3,
+    jumpPitchKick: 2.5,
+    landKick: -3.6,
+    landPitchKick: 4.6,
+    airborneInertia: 0.019,
+    landCameraScale: 0.34,
     lookLag: {
       spring: { stiffness: 240, dampingRatio: 0.9 },
       weight: 0.65,
@@ -478,15 +574,27 @@ const MELEE_FEEL: WeaponFeelProfile = {
     adsScale: 1,
   },
   sway: {
-    idleAmp: 0.0034,
-    idleRotAmp: 0.0038,
+    idleAmp: 0.004,
+    idleRotAmp: 0.0044,
     idleFreq: 0.46,
-    noiseAmp: 0.45,
-    walkAmpMultiplier: 2.2,
+    noiseAmp: 0.5,
+    idleBobAmp: 0.0018,
+    idleBobFreq: 0.26,
+    walkAmpMultiplier: 2.3,
     walkFreqMultiplier: 2.5,
+    walkBobAmp: 0.007,
+    walkBobLateralAmp: 0.004,
     adsScale: 1,
-    moveSwayAmp: 0.016,
-    moveSwaySmoothing: 8,
+    moveSwayAmp: 0.022,
+    moveSwaySmoothing: 7,
+    strafeRollAmp: 0.05,
+    strafePitchAmp: 0.014,
+    jumpKick: 1.0,
+    jumpPitchKick: 2.0,
+    landKick: -2.6,
+    landPitchKick: 3.4,
+    airborneInertia: 0.014,
+    landCameraScale: 0.28,
     lookLag: {
       spring: { stiffness: 520, dampingRatio: 0.9 },
       weight: 0.35,
@@ -542,8 +650,11 @@ const WEAPON_FEEL_OVERRIDES: Partial<Record<WeaponId, FeelOverride>> = {
       maxPitch: 0.14,
     },
     sway: {
-      idleAmp: 0.0031,
-      moveSwayAmp: 0.023,
+      idleAmp: 0.0038,
+      moveSwayAmp: 0.032,
+      walkBobAmp: 0.009,
+      landKick: -3.4,
+      landPitchKick: 4.4,
       lookLag: {
         spring: { stiffness: 260, dampingRatio: 0.88 },
         weight: 0.65,

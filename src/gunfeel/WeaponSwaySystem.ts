@@ -17,6 +17,10 @@ const CARRY_SHOOTING_GRACE_SEC = 0.1;
 const ADS_BLOCK_CARRY_BLEND = 0.16;
 const ADS_ALLOW_CARRY_BLEND = 0.1;
 
+/** Jump/land springs — snappy settle without long wobble. */
+const LOCO_SPRING = { stiffness: 420, dampingRatio: 0.92 } as const;
+const AIRBORNE_BLEND_SPEED = 10;
+
 /** Right-side high carry — disabled for now (FPS arms sprint anim later). */
 const SPRINT_CARRY = {
   position: { x: 0.12, y: 0.05, z: -0.1 },
@@ -52,11 +56,22 @@ export interface SwayFrameInput {
   reloading: boolean;
   /** Hold-breath input (sniper stabilizer). */
   holdingBreath: boolean;
+  /** Player vertical velocity (m/s) — airborne inertia. */
+  verticalVelocity: number;
+  /** Left ground this frame (jump / fall start). */
+  justJumped: boolean;
+  /** Became grounded this frame. */
+  justLanded: boolean;
+  /**
+   * Shared walk/sprint bob phase from HeadBob (cycles). When omitted, sway
+   * advances its own walk phase at the same frequencies.
+   */
+  walkPhase?: number;
 }
 
 /**
  * Weapon weight: layered-noise figure-8 idle sway, movement sway opposite to
- * strafe, and spring-driven look-lag so the model trails fast camera flicks.
+ * strafe, spring-driven look-lag, walk bob, and jump/land kicks.
  * Also owns the sprint high-carry pose and the sniper hold-breath meter.
  *
  * TRANSFORM HOOKUP: `apply(weaponMesh, baseRotation)` runs after the pose +
@@ -68,6 +83,8 @@ export class WeaponSwaySystem {
 
   private phase = 0;
   private noiseTime = 0;
+  private breathPhase = 0;
+  private walkPhase = 0;
   private carryPhase = 0;
   private walkBlend = 0;
   private carryBlend = 0;
@@ -81,14 +98,23 @@ export class WeaponSwaySystem {
   /** Look-lag scale this frame (ADS can zero it for sniper). */
   private lookLagScale = 1;
   private reloading = false;
+  private adsFactor = 1;
 
   /** Smoothed movement-sway offset (m). */
   private moveOffsetX = 0;
   private moveOffsetZ = 0;
+  /** Smoothed strafe lean (input units). */
+  private strafeLean = 0;
 
   /** Look-lag springs — displaced by look deltas, pulled home by Hooke's law. */
   private readonly lagYaw: SpringDamper1D;
   private readonly lagPitch: SpringDamper1D;
+
+  /** Jump/land positional (Y) and pitch springs. */
+  private readonly locoY: SpringDamper1D;
+  private readonly locoPitch: SpringDamper1D;
+  /** Smoothed airborne vertical-velocity contribution (m). */
+  private airOffsetY = 0;
 
   /** Breath meter 0..1 (sniper hold-breath). */
   private breath = 1;
@@ -99,6 +125,8 @@ export class WeaponSwaySystem {
     const lag = this.feel.lookLag.spring;
     this.lagYaw = new SpringDamper1D(lag.stiffness, lag.dampingRatio);
     this.lagPitch = new SpringDamper1D(lag.stiffness, lag.dampingRatio);
+    this.locoY = new SpringDamper1D(LOCO_SPRING.stiffness, LOCO_SPRING.dampingRatio);
+    this.locoPitch = new SpringDamper1D(LOCO_SPRING.stiffness, LOCO_SPRING.dampingRatio);
   }
 
   /** Swap tuning when the active weapon changes; lag springs re-tune live. */
@@ -114,6 +142,8 @@ export class WeaponSwaySystem {
   reset(): void {
     this.phase = 0;
     this.noiseTime = 0;
+    this.breathPhase = 0;
+    this.walkPhase = 0;
     this.carryPhase = 0;
     this.walkBlend = 0;
     this.carryBlend = 0;
@@ -124,10 +154,15 @@ export class WeaponSwaySystem {
     this.swayScale = 1;
     this.lookLagScale = 1;
     this.reloading = false;
+    this.adsFactor = 1;
     this.moveOffsetX = 0;
     this.moveOffsetZ = 0;
+    this.strafeLean = 0;
+    this.airOffsetY = 0;
     this.lagYaw.reset();
     this.lagPitch.reset();
+    this.locoY.reset();
+    this.locoPitch.reset();
     this.breath = 1;
     this.breathHeld = false;
   }
@@ -216,27 +251,54 @@ export class WeaponSwaySystem {
     const adsAmp = breath
       ? feel.adsScale * breath.adsAmpMultiplier * breathScale
       : feel.adsScale;
-    const adsFactor = THREE.MathUtils.lerp(1, adsAmp, input.adsBlend);
+    this.adsFactor = THREE.MathUtils.lerp(1, adsAmp, input.adsBlend);
     const reloadDamp = input.reloading ? 0.12 : 1;
-    this.swayScale = adsFactor * reloadDamp * (1 - this.carryBlend);
+    this.swayScale = this.adsFactor * reloadDamp * (1 - this.carryBlend);
     this.lookLagScale = THREE.MathUtils.lerp(1, feel.lookLagAdsScale, input.adsBlend);
 
     /* ---- phase advance ---- */
     const freq = feel.idleFreq * THREE.MathUtils.lerp(1, feel.walkFreqMultiplier, this.walkBlend);
     this.phase += delta * freq;
     this.noiseTime += delta;
+    this.breathPhase += delta * feel.idleBobFreq;
+    if (typeof input.walkPhase === 'number') {
+      this.walkPhase = input.walkPhase;
+    } else if (input.grounded && (input.walking || input.sprinting) && !input.reloading) {
+      const bobFreq = input.sprinting ? 3.2 : 2.2;
+      this.walkPhase += delta * bobFreq;
+    }
     if (this.carryBlend > 0.01) {
       this.carryPhase += delta * SPRINT_CARRY.bobFreq;
     } else if (this.carryPhase !== 0) {
       this.carryPhase = 0;
     }
 
-    /* ---- movement sway (opposite of strafe) ---- */
+    /* ---- movement sway (opposite of strafe) + lean ---- */
     const moveStep = expBlend(feel.moveSwaySmoothing, delta);
-    const targetX = -input.moveX * feel.moveSwayAmp * adsFactor;
-    const targetZ = input.moveZ * feel.moveSwayAmp * 0.55 * adsFactor;
+    const targetX = -input.moveX * feel.moveSwayAmp * this.adsFactor;
+    const targetZ = input.moveZ * feel.moveSwayAmp * 0.55 * this.adsFactor;
     this.moveOffsetX += (targetX - this.moveOffsetX) * moveStep;
     this.moveOffsetZ += (targetZ - this.moveOffsetZ) * moveStep;
+    this.strafeLean += (input.moveX - this.strafeLean) * moveStep;
+
+    /* ---- jump / land impulses + airborne inertia ---- */
+    if (input.justJumped) {
+      this.locoY.impulse(feel.jumpKick);
+      this.locoPitch.impulse(feel.jumpPitchKick);
+    }
+    if (input.justLanded) {
+      this.locoY.impulse(feel.landKick);
+      this.locoPitch.impulse(feel.landPitchKick);
+    }
+    this.locoY.update(delta);
+    this.locoPitch.update(delta);
+
+    const airTarget =
+      !input.grounded
+        ? THREE.MathUtils.clamp(input.verticalVelocity * feel.airborneInertia, -0.08, 0.08)
+        : 0;
+    const airStep = expBlend(AIRBORNE_BLEND_SPEED, delta);
+    this.airOffsetY += (airTarget - this.airOffsetY) * airStep;
 
     /* ---- look-lag ---- */
     const lag = feel.lookLag;
@@ -297,7 +359,7 @@ export class WeaponSwaySystem {
       weapon.rotation.setFromQuaternion(_targetQuat);
     }
 
-    /* ---- idle / walk figure-8 + layered noise ---- */
+    /* ---- idle / walk figure-8 + layered noise + breath bob ---- */
     const walkAmp = this.walkAmpFactor();
     const p = feel.idleAmp * walkAmp * this.swayScale;
     const r = feel.idleRotAmp * walkAmp * this.swayScale;
@@ -319,12 +381,34 @@ export class WeaponSwaySystem {
       weapon.rotation.z += fig8X * r;
     }
 
-    /* ---- movement sway + look-lag (suppressed by carry / reload) ---- */
+    // Slow breathing bob — strongest at true idle, eased while walking.
+    const breathIdle = 1 - this.walkBlend * 0.65;
+    const breathAmp = feel.idleBobAmp * this.swayScale * breathIdle;
+    if (breathAmp > 1e-5) {
+      weapon.position.y += Math.sin(this.breathPhase * TAU) * breathAmp;
+    }
+
+    // Footstep-synced walk bob (phase shared with HeadBob when provided).
+    if (this.walkBlend > 0.01) {
+      const bobScale = this.walkBlend * this.swayScale;
+      const foot = Math.sin(this.walkPhase * TAU);
+      const footSide = Math.sin(this.walkPhase * TAU + Math.PI * 0.5);
+      weapon.position.y += foot * feel.walkBobAmp * bobScale;
+      weapon.position.x += footSide * feel.walkBobLateralAmp * bobScale;
+      weapon.rotation.z += footSide * feel.walkBobLateralAmp * 2.8 * bobScale;
+      weapon.rotation.x += foot * feel.walkBobAmp * 1.6 * bobScale;
+    }
+
+    /* ---- movement sway + strafe lean + look-lag + loco springs ---- */
     const dynScale = (1 - this.carryBlend) * (this.reloading ? 0.2 : 1);
     if (dynScale > 0.001) {
       weapon.position.x += this.moveOffsetX * dynScale;
       weapon.position.z += this.moveOffsetZ * dynScale;
+      // Base roll from lateral shift, plus authored strafe lean.
       weapon.rotation.z += this.moveOffsetX * 2.2 * dynScale;
+      weapon.rotation.z += -this.strafeLean * feel.strafeRollAmp * this.adsFactor * dynScale;
+      weapon.rotation.x += Math.abs(this.strafeLean) * feel.strafePitchAmp * this.adsFactor * dynScale;
+      weapon.rotation.y += -this.strafeLean * feel.strafeRollAmp * 0.22 * this.adsFactor * dynScale;
 
       const lag = this.feel.lookLag;
       const lagYaw = this.lagYaw.value * dynScale * this.lookLagScale;
@@ -334,20 +418,34 @@ export class WeaponSwaySystem {
       weapon.position.x += lagYaw * lag.posPerRad;
       weapon.position.y += lagPitch * lag.posPerRad * 0.6;
     }
+
+    // Jump/land + airborne — still apply lightly while reloading (gun is visible).
+    const locoScale = this.adsFactor * (this.reloading ? 0.35 : 1) * (1 - this.carryBlend * 0.5);
+    if (locoScale > 0.001) {
+      weapon.position.y += (this.locoY.value + this.airOffsetY) * locoScale;
+      weapon.rotation.x += this.locoPitch.value * locoScale;
+    }
   }
 
   /**
    * Additive camera breathe on the recoil rigs (after recoil applyAim).
    * Deliberately excludes look-lag — camera stays crisp, only the model lags.
+   * Jump/land pitch is mirrored lightly so landings read when the gun is hand-bound.
    */
   applyCamera(yawRig: THREE.Object3D, pitchRig: THREE.Object3D): void {
     const r = this.feel.idleRotAmp * this.walkAmpFactor() * this.swayScale * CAMERA_SWAY_SCALE;
-    if (r <= 0) return;
+    if (r > 0) {
+      const t = this.phase * TAU;
+      const nX = layeredNoise1D(this.noiseTime * 0.55, 3.1) * this.feel.noiseAmp;
+      const nY = layeredNoise1D(this.noiseTime * 0.47, 7.7) * this.feel.noiseAmp;
+      yawRig.rotation.y += (Math.sin(t) * 0.4 + nX * 0.6) * r * 0.55;
+      pitchRig.rotation.x += (Math.sin(t * 2) * 0.35 + nY * 0.6) * r * 0.7;
+    }
 
-    const t = this.phase * TAU;
-    const nX = layeredNoise1D(this.noiseTime * 0.55, 3.1) * this.feel.noiseAmp;
-    const nY = layeredNoise1D(this.noiseTime * 0.47, 7.7) * this.feel.noiseAmp;
-    yawRig.rotation.y += (Math.sin(t) * 0.4 + nX * 0.6) * r * 0.55;
-    pitchRig.rotation.x += (Math.sin(t * 2) * 0.35 + nY * 0.6) * r * 0.7;
+    const camLoco = this.feel.landCameraScale * this.adsFactor;
+    if (camLoco > 0.001) {
+      pitchRig.rotation.x += this.locoPitch.value * camLoco;
+      // Tiny vertical feel via pitch rig only — avoid fighting HeadBob on position.
+    }
   }
 }

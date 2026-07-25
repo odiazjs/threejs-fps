@@ -6,18 +6,15 @@ import {
   FBX_WEAPON_ASSET_BASE,
   prepareFbxWeaponMesh,
 } from './fbxWeaponMesh';
-import {
-  RETHER_PULSE_DIGITAL_SIGHT_MOUNT,
-  RETHER_PULSE_SIGHT_TEXTURE,
-} from './digitalWeaponSights';
 
-const PISTOL_MODEL_FILE = 'bio_liquid_pistol_1.fbx';
-const PISTOL_EMISSIVE_MAP_URL = '/3d/weapons/bio_liquid_pistol_1_texture.png';
+const PISTOL_MODEL_FILE = 'weapons/pistol/bio_liquid_pistol_1.fbx';
+const PISTOL_EMISSIVE_MAP_URL = '/3d/weapons/pistol/bio_liquid_pistol_1_texture.png';
 /**
  * Barrel length in mesh space before WeaponLoadout's 0.1 viewmodel scale.
  * (Procedural weapons use ~1.8–2 unit geometry, then ×0.1 from the loadout.)
+ * +15% vs the initial bio-liquid pistol fit.
  */
-const PISTOL_MESH_LENGTH = 1.85;
+const PISTOL_MESH_LENGTH = 1.85 * 1.15;
 /**
  * Bio liquid pistol is authored with the barrel along +X (same as meshy LMG).
  * modelYaw 0 → prepare applies +π so the muzzle tip lands on +X.
@@ -29,12 +26,14 @@ const PISTOL_MESH_CONFIG = {
   modelYaw: PISTOL_MODEL_YAW,
   contentName: 'pistolContent',
   rootName: 'pistolWeaponRoot',
+  // Prefer authored `sight_mount`; current FBX export only has mesh_node so we
+  // synthesize a rail socket until the empty is re-exported into the asset.
+  sightMount: {
+    alongBarrelFromMuzzle: 0.5,
+    heightAboveTop: 0.01,
+    lateral: 0.5,
+  },
 } as const;
-
-/** @deprecated Use RETHER_PULSE_* from retherPulseSight — kept for existing imports. */
-export const PISTOL_DIGITAL_SIGHT_TEXTURE = RETHER_PULSE_SIGHT_TEXTURE;
-/** @deprecated Use RETHER_PULSE_DIGITAL_SIGHT_MOUNT from retherPulseSight. */
-export const PISTOL_DIGITAL_SIGHT_MOUNT = RETHER_PULSE_DIGITAL_SIGHT_MOUNT;
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -86,7 +85,7 @@ function loadPistolTemplate(): Promise<THREE.Group> {
 
   pistolLoadPromise = (async () => {
     const loader = new FBXLoader();
-    loader.setResourcePath(FBX_WEAPON_ASSET_BASE);
+    loader.setResourcePath(`${FBX_WEAPON_ASSET_BASE}weapons/pistol/`);
     const [fbx, emissiveMap] = await Promise.all([
       loader.loadAsync(fbxWeaponAssetUrl(PISTOL_MODEL_FILE)),
       loadEmissiveTexture(PISTOL_EMISSIVE_MAP_URL),

@@ -25,9 +25,9 @@ export const weaponUnlockables = pgTable('weapon_unlockables', {
   defaultUnlocked: boolean('default_unlocked').notNull().default(false),
   enabled: boolean('enabled').notNull().default(true),
   sortOrder: integer('sort_order').notNull().default(0),
-  /** Preview / reticle image under /images/ (e.g. weapons/red_dot_1.png). */
+  /** Store / loadout card icon under /images/ (e.g. weapons/red_dot_1.png). */
   iconFile: text('icon_file'),
-  /** Client asset key for mounting (e.g. red_dot_1). */
+  /** Client asset key for the 3D optic FBX stem (e.g. sight_1 → weapons/sights/sight_1.fbx). */
   assetKey: text('asset_key'),
   /**
    * Reserved. Sights are universal (any weapon).

@@ -50,6 +50,10 @@ import {
   digitalSightStyleFromEntry,
   getDigitalSightCatalogEntry,
 } from '../content/digitalWeaponSights';
+import {
+  syncPhysicalSightOnWeapon,
+  weaponUsesPhysicalSights,
+} from '../content/physicalWeaponSights';
 import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readWeaponSideVentFlashOffsets, readScreenHoldWorldPosition } from '../combat/aiming';
 import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
@@ -195,6 +199,9 @@ export class Player {
   /** Sprint charge frozen at jump takeoff for land-slides. */
   private airborneSlideChargeSec = 0;
   private headBob = new HeadBob();
+  /** Consumed by weapon sway next frame (sway runs before physics). */
+  private pendingSwayJump = false;
+  private pendingSwayLand = false;
   private readonly grenadeThrowKick = new GrenadeThrowKick();
   private readonly explosionCameraShake = new ExplosionCameraShake();
   private footstepSounds: FootstepSoundService | null = null;
@@ -274,6 +281,8 @@ export class Player {
   private targetShieldRechargeEndAt = 0;
   private locomotionWalking = false;
   private locomotionWalkingBackward = false;
+  private locomotionMoving = false;
+  private locomotionSprinting = false;
   private locomotionJumping = false;
   private locomotionCrouching = false;
   private crouchBlend = 0;
@@ -1098,11 +1107,10 @@ export class Player {
   updateCrosshairAim(hud: CrosshairHud, _width: number, _height: number): void {
     // Camera-recoil aim: reticle stays screen-center; weapon sway/visual kick are cosmetic only.
     hud.setAimOffset(0, 0);
-    // Hide HUD crosshair only when ADS with a digital sight — iron-sight ADS keeps it.
+    // Global ADS rule: every weapon uses a centered neon cyan circle (not hip lines).
     const ads = (this.weaponPose?.adsBlend ?? 0) > 0.15;
-    const activeId = this.loadout?.getActiveWeaponId();
-    const hasSight = activeId != null && weaponHasDigitalSight(activeId);
-    hud.setHipFireVisible(!ads || !hasSight);
+    hud.setAdsActive(ads);
+    hud.setMovementSpread(this.locomotionMoving, this.locomotionSprinting);
   }
 
   getFeetPosition(): THREE.Vector3 {
@@ -1688,6 +1696,8 @@ export class Player {
       isWalking && input.isPressed('KeyS') && !input.isPressed('KeyW');
     this.locomotionWalking = isWalking;
     this.locomotionWalkingBackward = isWalkingBackward;
+    this.locomotionMoving = isMoving;
+    this.locomotionSprinting = isSprinting || isSliding;
 
     this.loadout.update(delta);
 
@@ -1786,6 +1796,10 @@ export class Player {
       }
       const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
       this.weaponSway?.setWeapon(active.config.id);
+      const justJumped = this.pendingSwayJump;
+      const justLanded = this.pendingSwayLand;
+      this.pendingSwayJump = false;
+      this.pendingSwayLand = false;
       this.weaponSway?.update(delta, {
         moveX: (input.isPressed('KeyD') ? 1 : 0) - (input.isPressed('KeyA') ? 1 : 0),
         moveZ: (input.isPressed('KeyW') ? 1 : 0) - (input.isPressed('KeyS') ? 1 : 0),
@@ -1799,6 +1813,11 @@ export class Player {
         reloading: ammoState.reloading,
         // Sniper stabilizer — Shift while scoped (sprint needs W + ground anyway).
         holdingBreath: input.isPressed('ShiftLeft'),
+        verticalVelocity: this.physics.verticalVelocity,
+        justJumped,
+        justLanded,
+        // Previous-frame HeadBob phase keeps weapon footstep bob locked in.
+        walkPhase: this.headBob.getPhase(),
       });
 
       // Fast counter-tracking dampens incoming recoil (Apex recoil smoothing).
@@ -1961,6 +1980,7 @@ export class Player {
 
     if (jump && wasGrounded) {
       this.locomotionJumping = true;
+      this.pendingSwayJump = true;
     }
     // Freeze sprint build-up whenever leaving the ground (jump or fall).
     // Jump-only / no sprint → 0 → minimum land-slide.
@@ -1974,6 +1994,7 @@ export class Player {
     // Just landed — open a short window to slide without sprinting.
     // Holding C through the landing also starts a slide immediately.
     if (!wasGrounded && this.physics.grounded) {
+      this.pendingSwayLand = true;
       this.landSlideGraceSec = LAND_SLIDE_GRACE_SEC;
       if (input.isPressed('KeyC') && !this.slide.isActive()) {
         const charge01 = Math.min(
@@ -2816,10 +2837,17 @@ export class Player {
     const active = this.loadout.getActive();
     if (!active || active.mesh !== mesh) return;
 
+    const sightId = getEquippedSightForWeapon(active.weaponId);
+
+    // Pistol (and any gun with sight_mount): real 3D optic on the rail.
+    if (weaponUsesPhysicalSights(mesh)) {
+      syncPhysicalSightOnWeapon(mesh, sightId);
+      return;
+    }
+
+    // Legacy digital reticle sprites for guns without a rail socket yet.
     const adsBlend = this.weaponPose?.adsBlend ?? 0;
-    const sightEntry = getDigitalSightCatalogEntry(
-      getEquippedSightForWeapon(active.weaponId),
-    );
+    const sightEntry = getDigitalSightCatalogEntry(sightId);
     const sightAllowed = sightEntry != null && weaponHasDigitalSight(active.weaponId);
     if (sightEntry) {
       applyDigitalSightStyle(mesh, digitalSightStyleFromEntry(sightEntry));

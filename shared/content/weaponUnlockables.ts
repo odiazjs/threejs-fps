@@ -1,13 +1,14 @@
-/** Catalog id for the Rether Pulse digital sight. */
+/** Catalog id for the Rether Pulse optic (3D rail sight). */
 export const RETHER_PULSE_SIGHT_ID = 'rether_pulse';
 
-/** Catalog id for the Precision Core digital sight. */
+/** Catalog id for the Precision Core optic (3D rail sight). */
 export const PRECISION_CORE_SIGHT_ID = 'precision_core';
 
-/** Asset key used by the client DigitalSight mount. */
-export const RETHER_PULSE_ASSET_KEY = 'red_dot_1';
+/** Client / DB asset key — Rether Pulse → `weapons/sights/sight_1.fbx`. */
+export const RETHER_PULSE_ASSET_KEY = 'sight_1';
 
-export const PRECISION_CORE_ASSET_KEY = 'red_dot_2';
+/** Client / DB asset key — Precision Core → `weapons/assault_rifle_1/sight_2.fbx`. */
+export const PRECISION_CORE_ASSET_KEY = 'sight_2';
 
 /** All digital optic unlockable ids known to the client. */
 export const DIGITAL_SIGHT_IDS = [

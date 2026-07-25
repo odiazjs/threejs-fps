@@ -336,6 +336,11 @@ export class ArmoryLoadoutsController {
     return primary || null;
   }
 
+  /** Current optic id shown on the 3D weapon showcase (click-to-preview). */
+  getShowcaseSightId(): string | null {
+    return this.showcaseSightId;
+  }
+
   private setBusy(busy: boolean): void {
     this.busy = busy;
     this.createBtn.disabled = busy;
