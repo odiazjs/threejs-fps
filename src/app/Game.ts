@@ -1573,6 +1573,13 @@ export class Game {
 
     updateEdgeLinesForCamera(camera);
     this.player.object.updateMatrixWorld(true);
+    // Sniper optic glass RT must bake before the main view samples it.
+    if (camera) {
+      this.player.renderScopeLens(this.renderContext.renderer, this.scene);
+      this.renderContext.setScopeWorldBlur(this.player.getScopeWorldBlur());
+    } else {
+      this.renderContext.setScopeWorldBlur(0);
+    }
     this.renderContext.render(this.scene, camera);
     this.performanceHud.update(delta, this.renderContext.renderer);
     this.input.endFrame();

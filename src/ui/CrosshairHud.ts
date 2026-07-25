@@ -28,6 +28,8 @@ export class CrosshairHud {
   private playVisible = false;
   /** Global ADS style: centered neon cyan circle for every weapon. */
   private adsActive = false;
+  /** Sniper scope lens draws its own reticle — hide the HUD center dot. */
+  private hideAdsDot = false;
   private moving = false;
   private sprinting = false;
   private spreadPx = 0;
@@ -58,12 +60,15 @@ export class CrosshairHud {
 
   /**
    * When true, hip 4-line reticle is replaced by a screen-centered neon cyan
-   * circle. Applies to every weapon (with or without a mounted optic).
+   * circle. Scope-lens weapons pass `hideCenterDot` so only the optic reticle shows.
    */
-  setAdsActive(ads: boolean): void {
-    if (this.adsActive === ads) return;
+  setAdsActive(ads: boolean, options?: { hideCenterDot?: boolean }): void {
+    const hideCenterDot = options?.hideCenterDot === true;
+    if (this.adsActive === ads && this.hideAdsDot === hideCenterDot) return;
     this.adsActive = ads;
+    this.hideAdsDot = hideCenterDot;
     this.root.classList.toggle('ads', ads);
+    this.root.classList.toggle('ads-scope-lens', ads && hideCenterDot);
     this.syncSpreadTarget();
     this.applyVisibility();
   }

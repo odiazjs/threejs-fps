@@ -54,6 +54,7 @@ import {
   syncPhysicalSightOnWeapon,
   weaponUsesPhysicalSights,
 } from '../content/physicalWeaponSights';
+import { ScopeLens } from '../combat/ScopeLens';
 import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readWeaponSideVentFlashOffsets, readScreenHoldWorldPosition } from '../combat/aiming';
 import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
@@ -248,6 +249,8 @@ export class Player {
   private readonly pelletDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSwaySystem | null = null;
+  /** Sniper optic glass — zoomed world view on `scope_camera_decal`. */
+  private readonly scopeLens = new ScopeLens();
   /** Screen flash + barrel smoke layers (world-space; group added by Game). */
   private gunJuice: GunJuice | null = null;
   /** Previous-frame pointer look, for look-lag deltas + recoil smoothing speed. */
@@ -933,6 +936,22 @@ export class Player {
     return this.loadout?.getActiveWeaponId() ?? null;
   }
 
+  /**
+   * Render the sniper scope-lens RT (call before the main scene render).
+   * No-op when the optic isn't bound or ADS is inactive.
+   */
+  renderScopeLens(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
+    if (!this.camera || !this.scopeLens.isBound) return;
+    this.scopeLens.render(renderer, scene, this.camera);
+  }
+
+  /** 0–1 main-view blur while sniper scope-lens ADS is active. */
+  getScopeWorldBlur(): number {
+    if (!this.scopeLens.isBound) return 0;
+    if (this.loadout?.getActive()?.config.view.scopeLensAds !== true) return 0;
+    return this.weaponPose?.adsBlend ?? 0;
+  }
+
   getActiveDamage(): number {
     return this.loadout?.getActiveDamage() ?? 0;
   }
@@ -1107,9 +1126,10 @@ export class Player {
   updateCrosshairAim(hud: CrosshairHud, _width: number, _height: number): void {
     // Camera-recoil aim: reticle stays screen-center; weapon sway/visual kick are cosmetic only.
     hud.setAimOffset(0, 0);
-    // Global ADS rule: every weapon uses a centered neon cyan circle (not hip lines).
+    // Global ADS rule: centered neon cyan circle — except sniper scope lens (optic reticle).
     const ads = (this.weaponPose?.adsBlend ?? 0) > 0.15;
-    hud.setAdsActive(ads);
+    const scopeLensAds = this.loadout?.getActive()?.config.view.scopeLensAds === true;
+    hud.setAdsActive(ads, { hideCenterDot: ads && scopeLensAds });
     hud.setMovementSpread(this.locomotionMoving, this.locomotionSprinting);
   }
 
@@ -1710,24 +1730,7 @@ export class Player {
 
     if (active && !this.throwableEquipped) {
       if (input.isJustPressed('KeyR')) {
-        if (
-          !meleeEquipped &&
-          this.loadout.isWeaponReady() &&
-          !this.weaponPose?.isSwitching() &&
-          active.ammo.tryReload()
-        ) {
-          this.stopWeaponAutoFire();
-          const weaponId = this.loadout.getActiveWeaponId();
-          const durationSec = active.ammo.getReloadSequenceDuration();
-          if (active.ammo.isShellReloadStyle()) {
-            // Shell inserts play SFX as each round chambers — not a stretched mag clip.
-            if (weaponId) this.onReloadNetwork?.(weaponId, durationSec);
-          } else {
-            const reloadSec = Math.max(0.05, Number(active.config.reloadSec) || 0.05);
-            this.weaponSounds?.playReload(active.config.sounds, reloadSec);
-            if (weaponId) this.onReloadNetwork?.(weaponId, reloadSec);
-          }
-        }
+        this.beginActiveWeaponReload();
       }
 
       this.tryStartShieldRecharge(input);
@@ -1875,6 +1878,8 @@ export class Player {
         }
       } else {
         this.weaponPose?.applyCamera(this.camera);
+        // Hand-bind path skips pose/sight sync — still update scope-lens zoom.
+        this.syncScopeLens(active);
       }
       this.syncFpArmsToActiveWeapon();
       // After hand-bind so melee hide can't unbind/rebind in the same frame.
@@ -2088,6 +2093,7 @@ export class Player {
     if (this.camera) {
       this.fpArmsViewModel?.syncWeaponHandBinding(null, this.camera, false);
     }
+    this.scopeLens.dispose();
     this.loadout?.dispose();
     this.loadout = null;
     this.matchWeaponStatsById = null;
@@ -2571,6 +2577,13 @@ export class Player {
     this.fireTriggerHadShot = true;
     this.fireCooldown += active.fireInterval;
 
+    if (
+      active.config.autoReload === true &&
+      active.ammo.getClip() <= 0
+    ) {
+      this.beginActiveWeaponReload();
+    }
+
     if (active.config.fireMode === 'burst') {
       this.burstShotsRemaining = Math.max(0, this.burstShotsRemaining - 1);
       if (this.burstShotsRemaining === 0) {
@@ -2581,6 +2594,29 @@ export class Player {
         }
       }
     }
+  }
+
+  /** Start reload on the active gun (manual KeyR or auto-reload after empty). */
+  private beginActiveWeaponReload(): boolean {
+    if (!this.loadout || this.throwableEquipped) return false;
+    if (this.loadout.isMeleeEquipped()) return false;
+    if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return false;
+
+    const active = this.loadout.getActive();
+    if (!active || !active.ammo.tryReload()) return false;
+
+    this.stopWeaponAutoFire();
+    const weaponId = this.loadout.getActiveWeaponId();
+    const durationSec = active.ammo.getReloadSequenceDuration();
+    if (active.ammo.isShellReloadStyle()) {
+      // Shell inserts play SFX as each round chambers — not a stretched mag clip.
+      if (weaponId) this.onReloadNetwork?.(weaponId, durationSec);
+    } else {
+      const reloadSec = Math.max(0.05, Number(active.config.reloadSec) || 0.05);
+      this.weaponSounds?.playReload(active.config.sounds, reloadSec);
+      if (weaponId) this.onReloadNetwork?.(weaponId, reloadSec);
+    }
+    return true;
   }
 
   private stopWeaponAutoFire(): void {
@@ -2832,6 +2868,24 @@ export class Player {
     this.weaponPose?.apply(target, wallPullback, baseRotation);
   }
 
+  private syncScopeLens(active: { mesh: THREE.Object3D; config: { view: { scopeLensAds?: boolean; adsFov?: number } } }): void {
+    if (!this.camera || !active.config.view.scopeLensAds) {
+      this.scopeLens.unbind();
+      return;
+    }
+
+    // Hide the FP camera subtree (viewmodel + arms) while baking the lens feed.
+    if (!this.scopeLens.bind(active.mesh, this.camera)) {
+      this.scopeLens.unbind();
+      return;
+    }
+
+    this.scopeLens.setZoom(
+      this.weaponPose?.adsBlend ?? 0,
+      active.config.view.adsFov ?? 18,
+    );
+  }
+
   private syncActiveDigitalSight(mesh: THREE.Object3D): void {
     if (!this.camera || !this.loadout) return;
     const active = this.loadout.getActive();
@@ -2841,9 +2895,12 @@ export class Player {
 
     // Pistol (and any gun with sight_mount): real 3D optic on the rail.
     if (weaponUsesPhysicalSights(mesh)) {
-      syncPhysicalSightOnWeapon(mesh, sightId);
+      syncPhysicalSightOnWeapon(mesh, sightId, active.weaponId);
+      this.syncScopeLens(active);
       return;
     }
+
+    this.scopeLens.unbind();
 
     // Legacy digital reticle sprites for guns without a rail socket yet.
     const adsBlend = this.weaponPose?.adsBlend ?? 0;

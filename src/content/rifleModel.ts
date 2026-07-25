@@ -25,12 +25,8 @@ const RIFLE_MESH_CONFIG = {
   modelYaw: RIFLE_MODEL_YAW,
   contentName: 'rifleContent',
   rootName: 'rifleWeaponRoot',
-  // Prefer authored `sight_mount`; synthesize a rail socket if the empty is missing.
-  sightMount: {
-    alongBarrelFromMuzzle: 0.42,
-    heightAboveTop: 0.01,
-    lateral: 0.5,
-  },
+  // Use authored FBX `sight_mount` center only (no synthesized socket).
+  sightMount: true,
 } as const;
 
 const textureLoader = new THREE.TextureLoader();

@@ -34,8 +34,7 @@ import {
 
 /** FBX content group name per gun — used to place legacy digital sights. */
 const DIGITAL_SIGHT_CONTENT_NAME: Partial<Record<WeaponId, string>> = {
-  // plasma_rifle uses physical rail sights (sight_mount) — not digital decals.
-  sniper_rifle: 'sniperContent',
+  // plasma_rifle / sniper_rifle use physical rail sights (sight_mount) — not digital decals.
   root_bio_carbine: 'rootBioCarbineContent',
   bio_liquid_rifle: 'bioLiquidRifleContent',
   bio_machine_gun: 'bioMachineGunContent',
@@ -48,7 +47,8 @@ function withEquippableSight(weaponId: WeaponId, mesh: THREE.Group): THREE.Group
 
   // Prefer authored rail socket + 3D optic (pistol and future guns).
   if (weaponUsesPhysicalSights(mesh)) {
-    syncPhysicalSightOnWeapon(mesh, getEquippedSightForWeapon(weaponId));
+    mesh.userData.weaponId = weaponId;
+    syncPhysicalSightOnWeapon(mesh, getEquippedSightForWeapon(weaponId), weaponId);
     return mesh;
   }
 

@@ -178,6 +178,10 @@ body.game-page * {
 #crosshair.ads .crosshair-ads-dot {
   display: block;
 }
+/* Sniper scope lens has its own glass reticle — no HUD center dot. */
+#crosshair.ads-scope-lens .crosshair-ads-dot {
+  display: none;
+}
 #crosshair.ads.hit .crosshair-ads-dot {
   border-color: rgb(255, 72, 58);
   background: rgba(255, 72, 58, 0.4);

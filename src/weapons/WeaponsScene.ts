@@ -244,10 +244,14 @@ export class WeaponsScene {
     // Rail-mounted 3D optics (pistol and future socketed guns).
     if (weaponUsesPhysicalSights(this.currentWeapon)) {
       if (this.currentWeaponId === 'katana' || !this.previewSightId) {
-        syncPhysicalSightOnWeapon(this.currentWeapon, null);
+        syncPhysicalSightOnWeapon(this.currentWeapon, null, this.currentWeaponId);
         return;
       }
-      syncPhysicalSightOnWeapon(this.currentWeapon, this.previewSightId);
+      syncPhysicalSightOnWeapon(
+        this.currentWeapon,
+        this.previewSightId,
+        this.currentWeaponId,
+      );
       return;
     }
 

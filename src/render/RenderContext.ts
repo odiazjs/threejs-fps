@@ -9,6 +9,7 @@ import {
   EnemyOutlineFx,
 } from '../effects/EnemyOutlineFx';
 import { updateLineResolution } from '../visuals/edgeLines';
+import { ScopeWorldBlurPass } from './ScopeWorldBlurPass';
 import { VignettePass } from './VignettePass';
 
 export class RenderContext {
@@ -19,6 +20,8 @@ export class RenderContext {
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
   private outlinePass: OutlinePass | null = null;
+  private scopeWorldBlurPass: ScopeWorldBlurPass | null = null;
+  private scopeWorldBlur = 0;
   private readonly resolution = new THREE.Vector2();
 
   constructor() {
@@ -44,6 +47,12 @@ export class RenderContext {
     this.maxPixelRatio = Math.max(1, ratio);
     this.applyPixelRatio();
     this.syncComposerSize();
+  }
+
+  /** 0–1 sniper ADS soft-focus on the main view. */
+  setScopeWorldBlur(amount: number): void {
+    this.scopeWorldBlur = THREE.MathUtils.clamp(amount, 0, 1);
+    this.scopeWorldBlurPass?.setStrength(this.scopeWorldBlur);
   }
 
   private applyPixelRatio(): void {
@@ -76,6 +85,10 @@ export class RenderContext {
     // No through-wall x-ray — silhouette of the visible player only.
     this.outlinePass.hiddenEdgeColor.setHex(0x000000);
     this.composer.addPass(this.outlinePass);
+
+    this.scopeWorldBlurPass = new ScopeWorldBlurPass();
+    this.scopeWorldBlurPass.setStrength(this.scopeWorldBlur);
+    this.composer.addPass(this.scopeWorldBlurPass);
 
     this.composer.addPass(new VignettePass());
     this.composer.addPass(new OutputPass());

@@ -4,16 +4,23 @@ export const RETHER_PULSE_SIGHT_ID = 'rether_pulse';
 /** Catalog id for the Precision Core optic (3D rail sight). */
 export const PRECISION_CORE_SIGHT_ID = 'precision_core';
 
+/** Catalog id for the Sniper Precision optic (3D rail scope). */
+export const SNIPER_PRECISION_SIGHT_ID = 'sniper_precision';
+
 /** Client / DB asset key — Rether Pulse → `weapons/sights/sight_1.fbx`. */
 export const RETHER_PULSE_ASSET_KEY = 'sight_1';
 
 /** Client / DB asset key — Precision Core → `weapons/assault_rifle_1/sight_2.fbx`. */
 export const PRECISION_CORE_ASSET_KEY = 'sight_2';
 
-/** All digital optic unlockable ids known to the client. */
+/** Client / DB asset key — Sniper Precision → `weapons/sniper_1/sniper_sight_1.fbx`. */
+export const SNIPER_PRECISION_ASSET_KEY = 'sniper_sight_1';
+
+/** All optic unlockable ids known to the client. */
 export const DIGITAL_SIGHT_IDS = [
   RETHER_PULSE_SIGHT_ID,
   PRECISION_CORE_SIGHT_ID,
+  SNIPER_PRECISION_SIGHT_ID,
 ] as const;
 
 export type DigitalSightId = (typeof DIGITAL_SIGHT_IDS)[number];

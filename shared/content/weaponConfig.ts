@@ -28,8 +28,16 @@ export const DEFAULT_FP_ARMS_GRIP: FpArmsGripConfig = {
 export interface WeaponViewConfig {
   readonly hip: WeaponViewOffset;
   readonly ads: WeaponViewOffset;
-  /** Camera FOV when fully ADS (higher = less zoom). Defaults to 68. */
+  /**
+   * ADS zoom FOV (higher = less zoom). Defaults to 68.
+   * With `scopeLensAds`, this drives the scope-lens camera instead of the main view.
+   */
   readonly adsFov?: number;
+  /**
+   * When true, ADS zoom is applied to the optic's `scope_camera_decal` render
+   * target; the main first-person camera stays near hip FOV.
+   */
+  readonly scopeLensAds?: boolean;
   /** Mouse look speed multiplier when fully ADS (1 = unchanged). */
   readonly adsLookSensitivity?: number;
   /** Extra euler (radians) added on first-person attach rotation. */
@@ -207,6 +215,8 @@ export interface WeaponConfig {
    * (per-shell time = reloadSec / clipSize). Can interrupt to fire mid-reload.
    */
   readonly reloadStyle?: 'magazine' | 'shell';
+  /** After a shot empties the clip, start reload without waiting for KeyR. */
+  readonly autoReload?: boolean;
   readonly reserveClips: number;
   /** Shots per second. Use 0 for uncapped (semi: as fast as the player can click). */
   readonly fireRate: number;

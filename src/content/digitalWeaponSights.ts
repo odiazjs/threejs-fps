@@ -2,6 +2,7 @@ import type * as THREE from 'three';
 import {
   PRECISION_CORE_SIGHT_ID,
   RETHER_PULSE_SIGHT_ID,
+  SNIPER_PRECISION_SIGHT_ID,
   type DigitalSightId,
 } from '../../shared/content/weaponUnlockables';
 import {
@@ -20,7 +21,10 @@ export interface DigitalSightCatalogEntry {
 
 const DEFAULT_SIZE = 0.225;
 
-/** Client catalog of digital optics (texture + size). */
+/**
+ * Client catalog of optic unlockables for the legacy digital-decal path.
+ * Physical-rail weapons ignore these textures and mount FBX optics instead.
+ */
 export const DIGITAL_SIGHT_CATALOG: Record<DigitalSightId, DigitalSightCatalogEntry> = {
   [RETHER_PULSE_SIGHT_ID]: {
     id: RETHER_PULSE_SIGHT_ID,
@@ -29,6 +33,12 @@ export const DIGITAL_SIGHT_CATALOG: Record<DigitalSightId, DigitalSightCatalogEn
   },
   [PRECISION_CORE_SIGHT_ID]: {
     id: PRECISION_CORE_SIGHT_ID,
+    textureUrl: '/images/weapons/red_dot_2.png',
+    size: DEFAULT_SIZE,
+  },
+  [SNIPER_PRECISION_SIGHT_ID]: {
+    id: SNIPER_PRECISION_SIGHT_ID,
+    // Fallback only — sniper_precision mounts as a physical FBX on rail weapons.
     textureUrl: '/images/weapons/red_dot_2.png',
     size: DEFAULT_SIZE,
   },

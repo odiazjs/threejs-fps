@@ -26,13 +26,8 @@ const PISTOL_MESH_CONFIG = {
   modelYaw: PISTOL_MODEL_YAW,
   contentName: 'pistolContent',
   rootName: 'pistolWeaponRoot',
-  // Prefer authored `sight_mount`; current FBX export only has mesh_node so we
-  // synthesize a rail socket until the empty is re-exported into the asset.
-  sightMount: {
-    alongBarrelFromMuzzle: 0.5,
-    heightAboveTop: 0.01,
-    lateral: 0.5,
-  },
+  // Use authored FBX `sight_mount` center only (no synthesized socket).
+  sightMount: true,
 } as const;
 
 const textureLoader = new THREE.TextureLoader();

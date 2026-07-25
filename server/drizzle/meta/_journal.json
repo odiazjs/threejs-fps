@@ -330,6 +330,13 @@
       "when": 1784100000000,
       "tag": "0046_precision_core_sight_2",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1784110000000,
+      "tag": "0047_sniper_precision_sight",
+      "breakpoints": true
     }
   ]
 }

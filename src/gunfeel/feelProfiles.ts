@@ -447,18 +447,18 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     adsScale: 0.85,
   },
   sway: {
-    idleAmp: 0.0044,
-    idleRotAmp: 0.0048,
-    idleFreq: 0.34,
-    noiseAmp: 0.58,
-    idleBobAmp: 0.002,
-    idleBobFreq: 0.22,
+    idleAmp: 0.0048,
+    idleRotAmp: 0.0056,
+    idleFreq: 0.3,
+    noiseAmp: 0.65,
+    idleBobAmp: 0.003,
+    idleBobFreq: 0.17,
     walkAmpMultiplier: 2.5,
     walkFreqMultiplier: 2.4,
     walkBobAmp: 0.009,
     walkBobLateralAmp: 0.005,
-    // Scope FOV (~18°) magnifies camera sway — keep ADS almost still.
-    adsScale: 0.018,
+    // Scope lens keeps main FOV wide — ADS sway must stay readable on the glass.
+    adsScale: 0.34,
     moveSwayAmp: 0.016,
     moveSwaySmoothing: 5.5,
     strafeRollAmp: 0.05,
@@ -469,21 +469,20 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     landPitchKick: 4.2,
     airborneInertia: 0.018,
     landCameraScale: 0.22,
-    // Hipfire: long heavy rifle drags behind fast flicks. ADS: none — scope
-    // FOV makes look-lag feel like the whole world sliding.
+    // Hipfire: long heavy rifle drags behind fast flicks. ADS: light lag only.
     lookLag: {
       spring: { stiffness: 165, dampingRatio: 0.95 },
       weight: 0.85,
       maxRad: 0.13,
       posPerRad: 0.22,
     },
-    lookLagAdsScale: 0.15,
+    lookLagAdsScale: 0.2,
     breath: {
-      // Effective ADS sway ≈ adsScale * adsAmpMultiplier (~0.006 of hipfire).
-      adsAmpMultiplier: 0.35,
-      holdSteadyScale: 0.04,
-      holdDurationSec: 3.5,
-      recoverPerSec: 0.45,
+      // Scope wander; Shift hold-breath steadies but does not freeze.
+      adsAmpMultiplier: 0.78,
+      holdSteadyScale: 0.14,
+      holdDurationSec: 3.2,
+      recoverPerSec: 0.4,
     },
   },
   juice: { screenFlash: 0.12, smokeShotsToPrime: 1, smokeDurationSec: 1.6 },

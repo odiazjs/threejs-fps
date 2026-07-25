@@ -263,6 +263,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   name: 'Sniper Rifle',
   clipSize: 1,
   reloadSec: WEAPON_RELOAD_SEC.sniper_rifle,
+  autoReload: true,
   reserveClips: 16,
   fireRate: SHIPPED_WEAPON_BASE_STATS.sniper_rifle.fireRate,
   fireMode: 'semi',
@@ -272,8 +273,11 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.sniper_rifle,
   view: {
     hip: { x: 0.1, y: -0.24, z: -0.44 },
-    ads: { x: 0, y: -0.15, z: -0.24 },
-    adsFov: 18,
+    // Closer ADS hold so the optic fills more of the view while keeping the lens readable.
+    ads: { x: 0, y: -0.15, z: -0.23 },
+    // Base optic FOV (ScopeLens tightens further for PiP magnification).
+    adsFov: 12,
+    scopeLensAds: true,
     adsLookSensitivity: 0.5,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -325,7 +329,7 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
       durationScale: 0.5,
     },
   },
-  sway: { intensity: 0.15 },
+  sway: { intensity: 1.15 },
   sounds: {
     singleShot: { src: '/sounds/sniper_3.wav', reverbLevel: 0.5 },
     reload: { src: '/sounds/sniper_reload_1.wav', volume: 0.15, reverbLevel: 0.08 },

@@ -2,27 +2,16 @@ import * as THREE from 'three';
 
 export const FBX_WEAPON_ASSET_BASE = '/3d/';
 
-export interface FbxSightMountConfig {
-  /**
-   * 0 = at muzzle tip, 1 = at butt. Mid-slide / upper rail is typically ~0.4–0.55.
-   */
-  alongBarrelFromMuzzle?: number;
-  /** World-space lift above the weapon's top bound (content space after fit). */
-  heightAboveTop?: number;
-  /** 0–1 across the bore lateral axis (0.5 = centered). */
-  lateral?: number;
-}
-
 export interface FbxWeaponMeshConfig {
   meshLength: number;
   modelYaw: number;
   contentName: string;
   rootName: string;
   /**
-   * When set, bind `weaponSightMount` for 3D optics.
-   * Prefers an authored `sight_mount` empty; otherwise creates one on the rail.
+   * When true, wire `weaponSightMount` from the authored FBX `sight_mount` empty.
+   * Never synthesizes a socket — if the empty is missing, no mount is bound.
    */
-  sightMount?: FbxSightMountConfig | true;
+  sightMount?: boolean;
 }
 
 export function fbxWeaponAssetUrl(file: string): string {
@@ -112,15 +101,15 @@ export function prepareFbxWeaponMesh(model: THREE.Group, config: FbxWeaponMeshCo
   root.userData.weaponMuzzle = muzzle;
   root.userData.weaponSideVents = [ventLeft, ventRight];
 
-  if (config.sightMount) {
-    const mountOpts = config.sightMount === true ? {} : config.sightMount;
-    const sightMount = resolveOrCreateSightMount(content, model, bounds, mountOpts);
-    root.userData.weaponSightMount = sightMount;
-  } else {
-    const authored = findNamedObject(content, 'sight_mount') ?? findNamedObject(model, 'sight_mount');
-    if (authored) {
-      root.userData.weaponSightMount = bindSightMountToContent(content, authored);
-    }
+  // Authored `sight_mount` only — never invent a rail position.
+  const authored =
+    findNamedObject(content, 'sight_mount') ?? findNamedObject(model, 'sight_mount');
+  if (authored) {
+    root.userData.weaponSightMount = bindSightMountToContent(content, authored);
+  } else if (config.sightMount) {
+    console.warn(
+      `[fbxWeaponMesh] ${config.rootName}: sightMount requested but no authored sight_mount in FBX`,
+    );
   }
 
   return root;
@@ -139,9 +128,9 @@ function findNamedObject(root: THREE.Object3D, name: string): THREE.Object3D | n
 }
 
 /**
- * Authored sockets are often children of Meshy `mesh_node` (scale ~100).
- * Reparent onto fitted content, keep world position + rotation, drop scale so
- * attachments keep the socket's authored axes without the ×100 blow-up.
+ * Authored sockets are often children of Meshy meshes (scale ~100).
+ * Reparent onto fitted content so attachments don't inherit ×100 scale.
+ * World-space center position of the empty is preserved exactly — no guessed offsets.
  */
 function bindSightMountToContent(
   content: THREE.Object3D,
@@ -151,51 +140,15 @@ function bindSightMountToContent(
   mount.updateMatrixWorld(true);
 
   const worldPos = new THREE.Vector3();
-  const worldQuat = new THREE.Quaternion();
-  const worldScale = new THREE.Vector3();
-  mount.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+  mount.getWorldPosition(worldPos);
 
   content.add(mount);
   mount.position.copy(content.worldToLocal(worldPos.clone()));
-  const parentQuat = content.getWorldQuaternion(new THREE.Quaternion());
-  mount.quaternion.copy(parentQuat.invert().multiply(worldQuat));
+  // Position marker only — drop inherited mesh tilt/scale so the empty's
+  // center is the sole placement authority for optics.
+  mount.quaternion.identity();
   mount.scale.set(1, 1, 1);
   mount.name = 'sight_mount';
-  return mount;
-}
-
-function resolveOrCreateSightMount(
-  content: THREE.Object3D,
-  model: THREE.Object3D,
-  bounds: THREE.Box3,
-  opts: FbxSightMountConfig,
-): THREE.Object3D {
-  const authored = findNamedObject(content, 'sight_mount') ?? findNamedObject(model, 'sight_mount');
-  if (authored) return bindSightMountToContent(content, authored);
-
-  const size = bounds.getSize(new THREE.Vector3());
-  const barrelAlongZ = size.z > size.x;
-  const along = THREE.MathUtils.clamp(opts.alongBarrelFromMuzzle ?? 0.48, 0, 1);
-  const lateralT = THREE.MathUtils.clamp(opts.lateral ?? 0.5, 0, 1);
-  const lift = opts.heightAboveTop ?? 0.02;
-
-  let worldX: number;
-  let worldY: number;
-  let worldZ: number;
-  if (barrelAlongZ) {
-    worldX = THREE.MathUtils.lerp(bounds.min.x, bounds.max.x, lateralT);
-    worldY = bounds.max.y + lift;
-    worldZ = THREE.MathUtils.lerp(bounds.max.z, bounds.min.z, along);
-  } else {
-    worldX = THREE.MathUtils.lerp(bounds.max.x, bounds.min.x, along);
-    worldY = bounds.max.y + lift;
-    worldZ = THREE.MathUtils.lerp(bounds.min.z, bounds.max.z, lateralT);
-  }
-
-  const mount = new THREE.Object3D();
-  mount.name = 'sight_mount';
-  mount.position.copy(content.worldToLocal(new THREE.Vector3(worldX, worldY, worldZ)));
-  content.add(mount);
   return mount;
 }
 
