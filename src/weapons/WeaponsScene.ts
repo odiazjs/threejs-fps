@@ -86,18 +86,6 @@ export class WeaponsScene {
     rim.position.set(0, 2, -4);
     this.scene.add(hemi, key, fill, rim);
 
-    const pedestal = new THREE.Mesh(
-      new THREE.CircleGeometry(1.15, 48),
-      new THREE.MeshStandardMaterial({
-        color: 0x1a2228,
-        metalness: 0.35,
-        roughness: 0.82,
-      }),
-    );
-    pedestal.rotation.x = -Math.PI / 2;
-    pedestal.position.y = -0.55 * 1.5;
-    this.scene.add(pedestal);
-
     this.scene.add(this.weaponPivot);
 
     this.pickerButtons = [...pickerRoot.querySelectorAll<HTMLButtonElement>('.weapons-picker-btn')];

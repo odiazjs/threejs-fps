@@ -44,8 +44,8 @@ function buildPlasmaRifleRecoilPattern(): RecoilKick[] {
 /** Semi-auto sidearm: heavy single-shot kick. */
 function buildPistolRecoilPattern(): RecoilKick[] {
   return Array.from({ length: 12 }, (_, i) => ({
-    pitch: 0.16,
-    yaw: (i % 2 === 0 ? 1 : -1) * 0.032,
+    pitch: 0.045,
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.01,
   }));
 }
 
@@ -141,15 +141,15 @@ export const PISTOL_CONFIG: WeaponConfig = {
   projectileSpeed: PROJECTILE_SPEED,
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.pistol,
   view: {
-    hip: { x: 0.12, y: -0.16, z: -0.28 },
+    hip: { x: 0.12, y: -0.16, z: -0.30 },
     ads: { x: 0.0, y: -0.125, z: -0.25 },
     adsFov: 70,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },
     fpArmsGrip: {
-      hip: { x: 0.55 * -3.25, y: 0, z: 0 },
-      ads: { x: 0.55 * -3.25, y: 0, z: 0 },
+      hip: { x: 0.55 * -5.1, y: 0, z: 0 },
+      ads: { x: 0.55 * -5.1, y: 0, z: 0 },
     },
   },
   recoil: {
@@ -159,19 +159,19 @@ export const PISTOL_CONFIG: WeaponConfig = {
     recoveryDelaySec: 0.18,
     aimSmoothSpeed: 14,
     adsMultiplier: 0.7,
-    yawScale: 1.25,
-    visualKick: 2.4,
-    visualRecoverySpeed: 9,
-    adsVisualMultiplier: 0.75,
+    yawScale: 0.85,
+    visualKick: 0.65,
+    visualRecoverySpeed: 12,
+    adsVisualMultiplier: 0.6,
     visualStyle: {
-      rotX: 0.55,
-      rotYFromYaw: -0.28,
-      rotZ: -0.22,
-      posXFromYaw: -0.07,
-      posY: -0.06,
+      rotX: 0.22,
+      rotYFromYaw: -0.12,
+      rotZ: -0.1,
+      posXFromYaw: -0.03,
+      posY: -0.025,
       posZ: 0,
-      kickBack: 0.85,
-      kickUp: -0.09,
+      kickBack: 0.28,
+      kickUp: -0.03,
     },
   },
   muzzleFlash: {

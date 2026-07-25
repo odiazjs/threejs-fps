@@ -78,6 +78,39 @@ function sampleSwitchOffsets(progress: number): PoseOffsets {
   };
 }
 
+/** Drop into the hidden pose over this fraction of reload. */
+const PISTOL_RELOAD_DIP_IN = 0.12;
+/** Stay fully down until this progress, then snap back up for the remainder. */
+const PISTOL_RELOAD_DIP_HOLD_UNTIL = 0.82;
+
+/**
+ * Procedural pistol reload — drop fast, stay hidden most of the reload,
+ * then snappy ease-out return near the end.
+ */
+function sampleReloadDipOffsets(progress: number): PoseOffsets {
+  const t = clamp01(progress);
+  let dip: number;
+  if (t <= PISTOL_RELOAD_DIP_IN) {
+    // Snappy drop (ease-out into the low pose).
+    dip = easeOutCubic(t / PISTOL_RELOAD_DIP_IN);
+  } else if (t < PISTOL_RELOAD_DIP_HOLD_UNTIL) {
+    dip = 1;
+  } else {
+    // Fast snappy return over the final stretch.
+    const u = (t - PISTOL_RELOAD_DIP_HOLD_UNTIL) / (1 - PISTOL_RELOAD_DIP_HOLD_UNTIL);
+    dip = 1 - easeOutCubic(u);
+  }
+
+  return {
+    x: 0.02 * dip,
+    y: -0.24 * dip,
+    z: 0.08 * dip,
+    rx: 0.42 * dip,
+    ry: -0.06 * dip,
+    rz: 0.1 * dip,
+  };
+}
+
 function applyPoseOffsets(target: THREE.Vector3, base: THREE.Vector3, offsets: PoseOffsets): void {
   target.set(
     base.x + offsets.x,
@@ -99,11 +132,13 @@ function copyViewOffset(target: THREE.Vector3, offset: { x: number; y: number; z
   target.set(offset.x, offset.y, offset.z);
 }
 
-/** Blends the local weapon between hip-fire and ADS (reload uses FP arms anim). */
+/** Blends the local weapon between hip-fire and ADS. */
 export class WeaponPose {
   private blend = 0;
   private reloading = false;
   private reloadProgress = 0;
+  /** When true, reload dips the weapon in code instead of FP arms anim. */
+  private proceduralReload = false;
   private switchDuration = WEAPON_SWITCH_SEC;
   private switchTimeLeft = 0;
   private slashDuration = KATANA_SLASH_DURATION_SEC;
@@ -175,6 +210,7 @@ export class WeaponPose {
     this.blend = 0;
     this.reloading = false;
     this.reloadProgress = 0;
+    this.proceduralReload = false;
     this.switchTimeLeft = 0;
     this.slashTimeLeft = 0;
   }
@@ -184,10 +220,11 @@ export class WeaponPose {
     ads: boolean,
     reloading: boolean,
     reloadProgress: number,
-    options?: { ignoreAds?: boolean; forceHip?: boolean },
+    options?: { ignoreAds?: boolean; forceHip?: boolean; proceduralReload?: boolean },
   ): void {
     const wasReloading = this.reloading;
     this.reloading = reloading;
+    this.proceduralReload = options?.proceduralReload ?? false;
     this.reloadProgress = reloading
       ? THREE.MathUtils.clamp(
           Number.isFinite(reloadProgress) ? reloadProgress : 0,
@@ -226,12 +263,14 @@ export class WeaponPose {
   }
 
   private getActivePoseOffsets(): PoseOffsets | null {
-    // Local reload is driven by FP arms animation — no procedural weapon drop.
     if (this.slashTimeLeft > 0) {
       return sampleSlashOffsets(this.getSlashProgress());
     }
     if (this.isSwitching()) {
       return sampleSwitchOffsets(this.getSwitchProgress());
+    }
+    if (this.reloading && this.proceduralReload) {
+      return sampleReloadDipOffsets(this.reloadProgress);
     }
     return null;
   }

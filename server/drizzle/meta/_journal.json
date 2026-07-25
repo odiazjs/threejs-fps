@@ -309,6 +309,13 @@
       "when": 1784070000000,
       "tag": "0043_shared_character_mesh_quads",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1784080000000,
+      "tag": "0044_pistol_base_recoil",
+      "breakpoints": true
     }
   ]
 }

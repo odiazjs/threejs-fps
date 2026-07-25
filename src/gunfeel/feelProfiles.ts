@@ -153,31 +153,31 @@ export type WeaponArchetype =
 /* Archetype presets                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Pistol (Wingman-style): light in the hands, huge snappy visual kick. */
+/** Pistol: light in the hands, soft snappy kick (low base recoil). */
 const PISTOL_FEEL: WeaponFeelProfile = {
   recoil: {
-    bloom: 0.07,
-    recoveryDelaySec: 0.14,
-    recoveryDurationSec: 0.16,
+    bloom: 0.03,
+    recoveryDelaySec: 0.1,
+    recoveryDurationSec: 0.14,
     recoveryCurve: 'easeOutExpo',
-    aimSmoothSpeed: 20,
+    aimSmoothSpeed: 22,
     smoothingThreshold: 1.6,
     smoothingStrength: 0.45,
   },
   kickback: {
-    // Hard snappy punch — big shoulder shove + muzzle flip, quick settle.
+    // Soft punch — readable feedback without throwing aim.
     weaponSpring: { stiffness: 1400, dampingRatio: 0.95 },
     cameraSpring: { stiffness: 1100, dampingRatio: 0.95 },
-    kickBack: 22,
-    kickUp: 3.2,
-    kickPitch: 26,
-    kickYawJitter: 5.5,
-    kickRoll: 7.5,
-    maxBack: 0.42,
-    maxPitch: 0.38,
-    cameraPitch: 5.8,
-    cameraYawJitter: 1.4,
-    adsScale: 0.7,
+    kickBack: 6,
+    kickUp: 0.9,
+    kickPitch: 7,
+    kickYawJitter: 1.6,
+    kickRoll: 2.2,
+    maxBack: 0.14,
+    maxPitch: 0.12,
+    cameraPitch: 1.6,
+    cameraYawJitter: 0.4,
+    adsScale: 0.65,
   },
   sway: {
     idleAmp: 0.0022,

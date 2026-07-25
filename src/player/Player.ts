@@ -1746,15 +1746,18 @@ export class Player {
         ? Math.max(0.05, active.config.reloadSec / Math.max(1, active.config.clipSize))
         : Math.max(0.05, Number(active.config.reloadSec) || 1);
       // FPS arms are guns-only — hide + no sprint/reload clips while melee is out.
-      const armsReload = !meleeEquipped && ammoState.reloading;
+      // Pistol reload skips the arms clip and dips the gun procedurally instead.
+      const pistolEquipped = active.config.id === 'pistol';
+      const armsReload = !meleeEquipped && !pistolEquipped && ammoState.reloading;
       const armsSprint = !meleeEquipped && isSprinting && !ammoState.reloading;
       this.fpArmsViewModel?.setReloading(
         armsReload,
         reloadDurationSec,
         shellReload,
       );
+      // Stance before sprint so pistol → sprint mesh swap uses the right set.
+      this.fpArmsViewModel?.setStance(pistolEquipped ? 'pistol' : 'rifle');
       this.fpArmsViewModel?.setSprinting(armsSprint);
-      this.fpArmsViewModel?.setStance(active.config.id === 'pistol' ? 'pistol' : 'rifle');
 
       shooting =
         this.throwableEquipped
@@ -1770,7 +1773,11 @@ export class Player {
         ads,
         ammoState.reloading,
         ammoState.reloadProgress,
-        { ignoreAds: meleeEquipped, forceHip: bindWeaponToHand },
+        {
+          ignoreAds: meleeEquipped,
+          forceHip: bindWeaponToHand || (pistolEquipped && ammoState.reloading),
+          proceduralReload: pistolEquipped,
+        },
       );
       if (this.aimControls) {
         const adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;

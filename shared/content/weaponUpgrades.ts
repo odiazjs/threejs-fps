@@ -175,7 +175,7 @@ export function resolveEffectiveWeaponStats(
 export const SHIPPED_WEAPON_BASE_STATS: Record<WeaponId, WeaponBaseStats> = {
   pistol: {
     damage: 11,
-    recoil: 55,
+    recoil: 12,
     range: 75,
     magazineSize: 12,
     reloadTime: 1.5,
