@@ -4,6 +4,8 @@ import { waitForPaint } from '../ui/waitForPaint';
 import type { LobbyClient } from '../lobby/LobbyClient';
 import type { LobbyScene } from '../lobby/LobbyScene';
 import type { FriendsPanel } from '../lobby/FriendsPanel';
+import { LobbyLeaderboardOverlay } from '../lobby/LobbyLeaderboardOverlay';
+import { LobbySettingsOverlay } from '../lobby/LobbySettingsOverlay';
 import { LeaderboardView } from '../lobby/views/LeaderboardView';
 import { refreshLobbyProfileStats } from '../lobby/lobbyProfileStats';
 import { SettingsView } from '../lobby/views/SettingsView';
@@ -70,11 +72,14 @@ export class AppShell {
   private currentView: ShellView = 'lobby';
   private readonly weaponsView = new WeaponsView();
   private readonly leaderboardView = new LeaderboardView();
+  private readonly lobbyLeaderboardOverlay = new LobbyLeaderboardOverlay();
+  private readonly lobbySettingsOverlay = new LobbySettingsOverlay();
   private readonly settingsView = new SettingsView();
   private readonly storeView = new StoreView();
   private readonly charactersView = new CharactersView();
   private readonly loading = LoadingOverlay.shared();
   private navigating = false;
+  private lobbyLandmarkBusy = false;
 
   constructor(
     private readonly lobbyClient: LobbyClient,
@@ -82,9 +87,18 @@ export class AppShell {
     private readonly friendsPanel: FriendsPanel | null = null,
   ) {
     window.addEventListener('popstate', this.onPopState);
+    this.lobbyLeaderboardOverlay.setCloseHandler(() => {
+      void this.closeLobbyLandmarkMenus();
+    });
+    this.lobbySettingsOverlay.setCloseHandler(() => {
+      void this.closeLobbyLandmarkMenus();
+    });
   }
 
   bindNavigation(): void {
+    document.getElementById('lobby-home-btn')!.addEventListener('click', () => {
+      void this.goLobbyHome();
+    });
     document.getElementById('lobby-weapons-btn')!.addEventListener('click', () => {
       void this.showView('weapons');
     });
@@ -94,12 +108,11 @@ export class AppShell {
     document.getElementById('lobby-store-btn')!.addEventListener('click', () => {
       void this.showView('store');
     });
-    // Camera fly-to test: stay in lobby, don't open the leaderboard page.
     document.getElementById('lobby-leaderboard-btn')!.addEventListener('click', () => {
-      void this.lobbyScene.toggleLandmarkFly('tower_control');
+      void this.toggleLobbyLeaderboard();
     });
     document.getElementById('lobby-settings-btn')!.addEventListener('click', () => {
-      void this.showView('settings');
+      void this.toggleLobbySettings();
     });
     document.getElementById('weapons-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
@@ -116,6 +129,61 @@ export class AppShell {
     document.getElementById('settings-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
     });
+  }
+
+  /** Fly to tower + open overlay, or close if already open. */
+  private async toggleLobbyLeaderboard(): Promise<void> {
+    if (this.lobbyLeaderboardOverlay.isOpen) {
+      await this.closeLobbyLandmarkMenus();
+      return;
+    }
+    if (this.lobbyLandmarkBusy) return;
+    this.lobbyLandmarkBusy = true;
+    try {
+      this.lobbySettingsOverlay.dispose();
+      const arrived = await this.lobbyScene.flyToLandmark('tower_control', {
+        frameSide: 'left',
+      });
+      if (!arrived || !this.lobbyScene.isLandmarkFocused()) return;
+      await this.lobbyLeaderboardOverlay.open();
+    } finally {
+      this.lobbyLandmarkBusy = false;
+    }
+  }
+
+  /** Fly to 3d printer + open settings overlay, or close if already open. */
+  private async toggleLobbySettings(): Promise<void> {
+    if (this.lobbySettingsOverlay.isOpen) {
+      await this.closeLobbyLandmarkMenus();
+      return;
+    }
+    if (this.lobbyLandmarkBusy) return;
+    this.lobbyLandmarkBusy = true;
+    try {
+      this.lobbyLeaderboardOverlay.dispose();
+      const arrived = await this.lobbyScene.flyToLandmark('3d_printer', {
+        frameSide: 'right',
+      });
+      if (!arrived || !this.lobbyScene.isLandmarkFocused()) return;
+      this.lobbySettingsOverlay.open();
+    } finally {
+      this.lobbyLandmarkBusy = false;
+    }
+  }
+
+  private async closeLobbyLandmarkMenus(): Promise<void> {
+    this.lobbyLeaderboardOverlay.dispose();
+    this.lobbySettingsOverlay.dispose();
+    await this.lobbyScene.flyToLobbyHome();
+  }
+
+  /** Always return to the default lobby camera + dismiss landmark menus. */
+  private async goLobbyHome(): Promise<void> {
+    if (this.currentView !== 'lobby') {
+      await this.showView('lobby');
+      return;
+    }
+    await this.closeLobbyLandmarkMenus();
   }
 
   async initFromUrl(): Promise<void> {
@@ -160,6 +228,8 @@ export class AppShell {
 
   teardown(): void {
     window.removeEventListener('popstate', this.onPopState);
+    this.lobbyLeaderboardOverlay.dispose();
+    this.lobbySettingsOverlay.dispose();
     this.weaponsView.unmount();
     this.leaderboardView.unmount();
     this.settingsView.unmount();
@@ -207,6 +277,8 @@ export class AppShell {
     document.getElementById(`app-view-${view}`)!.hidden = true;
 
     if (view === 'lobby') {
+      this.lobbyLeaderboardOverlay.dispose();
+      this.lobbySettingsOverlay.dispose();
       if (!keepsLobbySceneAlive(nextView)) {
         this.lobbyScene.setActive(false);
       }

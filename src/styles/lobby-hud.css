@@ -1365,6 +1365,121 @@ body.leaderboard-page {
   background: transparent;
 }
 
+/* Shared lobby landmark modals (leaderboard + settings). */
+.lobby-landmark-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem 1.1rem 1.1rem;
+  box-sizing: border-box;
+}
+
+.lobby-landmark-panel {
+  pointer-events: auto;
+  box-sizing: border-box;
+  width: min(56rem, calc(100vw - 2.2rem));
+  /* Fixed footprint — avoids Loading → content size snaps. */
+  height: min(76rem, calc(100dvh - 2.2rem));
+  margin: 0;
+  padding: 1.35rem 1.4rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border-radius: 6px;
+  background:
+    linear-gradient(165deg, rgba(12, 22, 34, 0.82), rgba(6, 10, 16, 0.88)),
+    var(--hud-bg);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow:
+    0 0 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.lobby-landmark-panel .leaderboard-subtitle,
+.lobby-landmark-panel .leaderboard-title,
+.lobby-landmark-panel .leaderboard-status,
+.lobby-landmark-panel .lobby-landmark-close {
+  flex: 0 0 auto;
+}
+
+.lobby-landmark-panel .leaderboard-list,
+.lobby-landmark-panel .lobby-landmark-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0.15rem;
+  overflow-y: auto;
+}
+
+.lobby-landmark-close {
+  flex: 0 0 auto;
+  width: 100%;
+  margin-top: 0.2rem;
+}
+
+/* Settings content — match leaderboard block / cyan HUD language. */
+.lobby-landmark-panel .lobby-landmark-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lobby-landmark-panel .settings-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(0, 242, 255, 0.12);
+}
+
+.lobby-landmark-panel .settings-option + .settings-option {
+  margin-top: 0;
+}
+
+.lobby-landmark-panel .settings-label {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hud-cyan-dim) !important;
+}
+
+.lobby-landmark-panel .settings-value {
+  font-size: 0.95rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+.lobby-landmark-panel .settings-title {
+  display: none;
+}
+
+.lobby-landmark-panel .settings-controls-list {
+  border: 1px solid rgba(0, 242, 255, 0.12);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.lobby-landmark-panel .settings-controls-section-label {
+  color: var(--hud-cyan-dim);
+  letter-spacing: 0.1em;
+}
+
+.lobby-landmark-panel .settings-controls-keys {
+  color: var(--hud-cyan);
+}
+
+.lobby-landmark-panel .settings-controls-desc {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .leaderboard-shell,
 .settings-shell {
   border: 1px solid var(--hud-cyan-border);

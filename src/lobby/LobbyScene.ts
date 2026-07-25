@@ -20,7 +20,7 @@ import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
 import { createLobbySkyboxTexture } from '../world/SkyboxBuilder';
 import { updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
-import { LobbyMap } from '../world/LobbyMap';
+import { LobbyMap, type LandmarkFrameSide } from '../world/LobbyMap';
 import { preloadDroneModel } from '../content/droneModel';
 import { createDroneVisual } from '../world/DroneField';
 import { LobbyPerfHud } from '../ui/LobbyPerfHud';
@@ -47,7 +47,8 @@ interface LobbyCameraDrive {
   toFov: number;
   duration: number;
   elapsed: number;
-  resolve: () => void;
+  /** `true` when the tween finished; `false` when interrupted. */
+  resolve: (completed: boolean) => void;
 }
 
 /** Decorative lobby drones — visual only, orbit near background rocks. */
@@ -183,51 +184,63 @@ export class LobbyScene {
     }
   }
 
+  /** True once a landmark fly has finished (camera held on the focus pose). */
+  isLandmarkFocused(): boolean {
+    return this.cameraMode === 'hold' && !this.cameraDrive;
+  }
+
   /**
    * Fly the lobby camera toward a named map landmark (e.g. `tower_control`).
    * Keeps the final pose until {@link flyToLobbyHome}.
+   * @returns `true` if the fly completed; `false` if interrupted / landmark missing.
    */
-  flyToLandmark(objectName: string, durationSec = 1.35): Promise<void> {
-    const focus = this.lobbyMap.getLandmarkFocusPose(objectName);
+  async flyToLandmark(
+    objectName: string,
+    options: { durationSec?: number; frameSide?: LandmarkFrameSide } = {},
+  ): Promise<boolean> {
+    const durationSec = options.durationSec ?? 0.55;
+    const frameSide = options.frameSide ?? 'left';
+    const focus = this.lobbyMap.getLandmarkFocusPose(objectName, frameSide);
     if (!focus) {
       console.warn(`[LobbyScene] Landmark not found for camera fly-to: ${objectName}`);
-      return Promise.resolve();
+      return false;
     }
-    this.cameraMode = 'hold';
-    this.cameraHoldLookAt.copy(focus.lookAt);
-    return this.beginCameraDrive(
+    const completed = await this.beginCameraDrive(
       focus.position.clone(),
       focus.lookAt.clone(),
       CAMERA_LANDMARK_FOV,
       durationSec,
     );
+    if (!completed) return false;
+    this.cameraMode = 'hold';
+    this.cameraHoldLookAt.copy(focus.lookAt);
+    return true;
   }
 
-  /** Return the camera to the default party stand framing. */
-  flyToLobbyHome(durationSec = 1.15): Promise<void> {
+  /**
+   * Return the camera to the default party stand framing.
+   * @returns `true` if the fly completed (or already home).
+   */
+  async flyToLobbyHome(durationSec = 0.5): Promise<boolean> {
+    // Always drive (or snap) back to the stand framing — including when HOME is
+    // pressed while already "home", so any mid-flight pose is corrected.
     if (this.cameraMode === 'followStand' && !this.cameraDrive) {
+      this.cameraMode = 'followStand';
       this.updateCamera(Math.max(1, this.partyMembers.length));
-      return Promise.resolve();
+      return true;
     }
 
     const home = this.getStandCameraPose();
-    return this.beginCameraDrive(
+    const completed = await this.beginCameraDrive(
       home.position,
       home.lookAt,
       CAMERA_HOME_FOV,
       durationSec,
-    ).then(() => {
-      this.cameraMode = 'followStand';
-      this.updateCamera(Math.max(1, this.partyMembers.length));
-    });
-  }
-
-  /** Toggle landmark fly-to vs home — for menu camera tests without leaving the lobby. */
-  toggleLandmarkFly(objectName: string): Promise<void> {
-    if (this.cameraMode === 'hold' || this.cameraDrive) {
-      return this.flyToLobbyHome();
-    }
-    return this.flyToLandmark(objectName);
+    );
+    if (!completed) return false;
+    this.cameraMode = 'followStand';
+    this.updateCamera(Math.max(1, this.partyMembers.length));
+    return true;
   }
 
   /** Re-read default loadout and swap idle pose + equipped primary. */
@@ -568,9 +581,9 @@ export class LobbyScene {
     toLook: THREE.Vector3,
     toFov: number,
     durationSec: number,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (this.cameraDrive) {
-      this.cameraDrive.resolve();
+      this.cameraDrive.resolve(false);
       this.cameraDrive = null;
     }
 
@@ -615,7 +628,7 @@ export class LobbyScene {
       this.camera.fov = drive.toFov;
       this.camera.updateProjectionMatrix();
       this.cameraDrive = null;
-      drive.resolve();
+      drive.resolve(true);
     }
   }
 

@@ -43,6 +43,9 @@ export interface LobbyLandmarkFocusPose {
   readonly lookAt: THREE.Vector3;
 }
 
+/** Which side of the frame the landmark should occupy. */
+export type LandmarkFrameSide = 'left' | 'right';
+
 /** Solid Floor color when the export has no albedo texture. */
 const FLOOR_SOLID_COLOR = 0x35354b;
 
@@ -188,8 +191,12 @@ export class LobbyMap {
   /**
    * Camera pose that frames a named map object (e.g. `tower_control`) for lobby menu fly-tos.
    * Approaches from the +Z lobby side so the move reads as a forward zoom from the stand cam.
+   * `frameSide` biases composition so the landmark sits left- or right-of-center.
    */
-  getLandmarkFocusPose(objectName: string): LobbyLandmarkFocusPose | null {
+  getLandmarkFocusPose(
+    objectName: string,
+    frameSide: LandmarkFrameSide = 'left',
+  ): LobbyLandmarkFocusPose | null {
     if (!this.mapRoot) return null;
     this.mapRoot.updateWorldMatrix(true, true);
 
@@ -197,22 +204,33 @@ export class LobbyMap {
     let target: THREE.Object3D | null = null;
     this.mapRoot.traverse((child) => {
       if (target || !child.visible) return;
-      if (child.name.toLowerCase() === targetName) target = child;
+      const name = child.name.toLowerCase();
+      // Exact match, or authored suffix variants like `3d_printer_1`.
+      if (name === targetName || name.startsWith(`${targetName}_`)) {
+        target = child;
+      }
     });
     if (!target) return null;
 
     const box = new THREE.Box3().setFromObject(target);
     if (box.isEmpty()) return null;
 
-    const lookAt = box.getCenter(new THREE.Vector3());
-    lookAt.y = box.min.y + (box.max.y - box.min.y) * 0.55;
+    const landmark = box.getCenter(new THREE.Vector3());
+    landmark.y = box.min.y + (box.max.y - box.min.y) * 0.55;
     const size = box.getSize(new THREE.Vector3());
     const extent = Math.max(size.x, size.y, size.z, 0.35);
     const dist = Math.max(1.85, extent * 1.7);
+
+    // Aim opposite the desired frame side so the landmark sits left/right of center
+    // with room for the centered UI modal.
+    const side = frameSide === 'left' ? 1 : -1;
+    const lookAt = landmark.clone();
+    lookAt.x += Math.max(0.35, extent * 0.45) * side;
+
     const position = new THREE.Vector3(
-      lookAt.x + 0.55,
-      lookAt.y + extent * 0.1,
-      lookAt.z + dist,
+      lookAt.x + 0.2 * side,
+      landmark.y + extent * 0.1,
+      landmark.z + dist,
     );
 
     return { position, lookAt };

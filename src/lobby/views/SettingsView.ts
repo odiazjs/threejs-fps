@@ -21,6 +21,7 @@ import {
 } from '../../content/controlsHelp';
 
 export class SettingsView {
+  private root: HTMLElement | null = null;
   private masterSlider: HTMLInputElement | null = null;
   private masterValueLabel: HTMLElement | null = null;
   private onMasterInput: ((event: Event) => void) | null = null;
@@ -31,7 +32,9 @@ export class SettingsView {
   private sensitivityValueLabel: HTMLElement | null = null;
   private onSensitivityInput: ((event: Event) => void) | null = null;
 
-  mount(): void {
+  mount(root: HTMLElement = document.getElementById('app-view-settings')!): void {
+    this.unmount();
+    this.root = root;
     this.mountMasterVolume();
     this.mountMusicVolume();
     this.mountMouseSensitivity();
@@ -59,11 +62,16 @@ export class SettingsView {
     this.sensitivitySlider = null;
     this.sensitivityValueLabel = null;
     this.onSensitivityInput = null;
+    this.root = null;
+  }
+
+  private query<T extends Element>(selector: string): T | null {
+    return (this.root?.querySelector(selector) ?? null) as T | null;
   }
 
   private mountMasterVolume(): void {
-    this.masterSlider = document.getElementById('master-volume') as HTMLInputElement | null;
-    this.masterValueLabel = document.getElementById('master-volume-value');
+    this.masterSlider = this.query<HTMLInputElement>('[data-setting="master-volume"]');
+    this.masterValueLabel = this.query<HTMLElement>('[data-setting-value="master-volume"]');
     if (!this.masterSlider || !this.masterValueLabel) return;
 
     const volume = getStoredMasterVolume();
@@ -80,8 +88,8 @@ export class SettingsView {
   }
 
   private mountMusicVolume(): void {
-    this.slider = document.getElementById('lobby-music-volume') as HTMLInputElement | null;
-    this.valueLabel = document.getElementById('lobby-music-volume-value');
+    this.slider = this.query<HTMLInputElement>('[data-setting="lobby-music-volume"]');
+    this.valueLabel = this.query<HTMLElement>('[data-setting-value="lobby-music-volume"]');
     if (!this.slider || !this.valueLabel) return;
 
     const volume = getStoredLobbyMusicVolume();
@@ -99,9 +107,8 @@ export class SettingsView {
   }
 
   private mountMouseSensitivity(): void {
-    this.sensitivitySlider =
-      document.getElementById('mouse-sensitivity') as HTMLInputElement | null;
-    this.sensitivityValueLabel = document.getElementById('mouse-sensitivity-value');
+    this.sensitivitySlider = this.query<HTMLInputElement>('[data-setting="mouse-sensitivity"]');
+    this.sensitivityValueLabel = this.query<HTMLElement>('[data-setting-value="mouse-sensitivity"]');
     if (!this.sensitivitySlider || !this.sensitivityValueLabel) return;
 
     const sensitivity = getStoredMouseSensitivity();
@@ -118,7 +125,7 @@ export class SettingsView {
   }
 
   private renderControlsList(): void {
-    const list = document.getElementById('settings-controls-list');
+    const list = this.query<HTMLElement>('[data-setting="controls-list"]');
     if (!list) return;
 
     list.replaceChildren();

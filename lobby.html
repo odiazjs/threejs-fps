@@ -65,7 +65,7 @@
       <div id="lobby-canvas"></div>
       <div class="lobby-ui">
         <nav id="lobby-menu" class="lobby-nav" aria-label="Lobby menu">
-          <button class="lobby-nav-item is-active" type="button" disabled>HOME</button>
+          <button id="lobby-home-btn" class="lobby-nav-item is-active" type="button">HOME</button>
           <button id="lobby-leaderboard-btn" class="lobby-nav-item" type="button">
             LEADERBOARD
           </button>
@@ -699,7 +699,7 @@
         <div class="settings-option">
           <div class="settings-option-header">
             <label for="master-volume" class="settings-label">Master volume</label>
-            <span id="master-volume-value" class="settings-value">100%</span>
+            <span id="master-volume-value" class="settings-value" data-setting-value="master-volume">100%</span>
           </div>
           <input
             id="master-volume"
@@ -709,12 +709,13 @@
             max="100"
             step="1"
             value="100"
+            data-setting="master-volume"
           />
         </div>
         <div class="settings-option">
           <div class="settings-option-header">
             <label for="lobby-music-volume" class="settings-label">Lobby music volume</label>
-            <span id="lobby-music-volume-value" class="settings-value">14%</span>
+            <span id="lobby-music-volume-value" class="settings-value" data-setting-value="lobby-music-volume">14%</span>
           </div>
           <input
             id="lobby-music-volume"
@@ -724,12 +725,13 @@
             max="100"
             step="1"
             value="14"
+            data-setting="lobby-music-volume"
           />
         </div>
         <div class="settings-option">
           <div class="settings-option-header">
             <label for="mouse-sensitivity" class="settings-label">Mouse sensitivity</label>
-            <span id="mouse-sensitivity-value" class="settings-value">100%</span>
+            <span id="mouse-sensitivity-value" class="settings-value" data-setting-value="mouse-sensitivity">100%</span>
           </div>
           <input
             id="mouse-sensitivity"
@@ -739,13 +741,14 @@
             max="300"
             step="5"
             value="100"
+            data-setting="mouse-sensitivity"
           />
         </div>
         <div class="settings-option">
           <div class="settings-option-header">
             <span class="settings-label">Controls</span>
           </div>
-          <div id="settings-controls-list" class="settings-controls-list"></div>
+          <div id="settings-controls-list" class="settings-controls-list" data-setting="controls-list"></div>
         </div>
       </main>
     </section>
