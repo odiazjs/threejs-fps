@@ -71,7 +71,8 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.plasma_rifle,
   view: {
     hip: { x: 0.15, y: -0.25, z: -0.25 },
-    ads: { x: 0, y: -0.1875, z: -0.175 },
+    // ADS: 5% lower, then 2.5% higher.
+    ads: { x: 0, y: -0.191953, z: -0.175 },
     adsFov: 61,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -146,8 +147,8 @@ export const PISTOL_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.pistol,
   view: {
     hip: { x: 0.12, y: -0.16, z: -0.30 },
-    // ~10% closer to camera than the prior ADS hold (scale offset toward eye).
-    ads: { x: 0.0, y: -0.143, z: -0.225 },
+    // ADS: tuned hold (closer / vertical stack), then 5% lower.
+    ads: { x: 0.0, y: -0.138345, z: -0.21375 },
     adsFov: 70,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -274,7 +275,8 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   projectileSpeed: SNIPER_PROJECTILE_SPEED,
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.sniper_rifle,
   view: {
-    hip: { x: 0.1, y: -0.24, z: -0.44 },
+    // Hip: 10% closer to camera.
+    hip: { x: 0.1, y: -0.24, z: -0.396 },
     // Closer ADS hold so the optic fills more of the view while keeping the lens readable.
     ads: { x: 0, y: -0.15, z: -0.23 },
     // Optic base FOV (ScopeLens tightens further for PiP magnification).

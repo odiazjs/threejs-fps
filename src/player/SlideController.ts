@@ -1,12 +1,12 @@
 /** Timed sprint/land-slide with look-steering and friction. */
 export const SLIDE_DURATION_SEC = 1.2;
-/** Peak horizontal speed at full sprint charge (units/sec) — hard cap (+15%). */
-export const SLIDE_PEAK_SPEED = 9.2 * 1.15;
+/** Peak horizontal speed at full sprint charge (units/sec). */
+export const SLIDE_PEAK_SPEED = 9.2 * 1.15 * 1.15;
 /** Minimum peak when sliding with no sprint charge (e.g. jump-only land). */
-export const SLIDE_PEAK_SPEED_MIN = 4.0 * 1.15;
+export const SLIDE_PEAK_SPEED_MIN = 4.0 * 1.15 * 1.15;
 /** Floor speed the slide eases toward near the end (scales with start peak). */
-export const SLIDE_END_SPEED = 3.2 * 1.15;
-export const SLIDE_END_SPEED_MIN = 2.0 * 1.15;
+export const SLIDE_END_SPEED = 3.2 * 1.15 * 1.15;
+export const SLIDE_END_SPEED_MIN = 2.0 * 1.15 * 1.15;
 /** Shortest / longest slide duration from charge. */
 export const SLIDE_DURATION_MIN_SEC = 0.65;
 /** After landing from air, C can start a slide without sprinting. */

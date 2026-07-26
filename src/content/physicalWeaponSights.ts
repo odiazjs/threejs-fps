@@ -52,7 +52,7 @@ export const PHYSICAL_SIGHT_SCALE_BY_WEAPON: Partial<
   },
   plasma_rifle: {
     default: 1.33,
-    [RETHER_PULSE_SIGHT_ID]: 0.925,
+    [RETHER_PULSE_SIGHT_ID]: 0.672244,
     [PRECISION_CORE_SIGHT_ID]: 1.33,
     [SNIPER_PRECISION_SIGHT_ID]: 1.2,
   },

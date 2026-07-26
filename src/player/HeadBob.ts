@@ -4,17 +4,17 @@ export const WALK_BOB = {
   /** Full up-down cycles per second */
   frequency: 2.2,
   amplitude: 0.045,
-  /** Lateral sway (m) — opposite foot. */
-  lateralAmplitude: 0.012,
+  /** Lateral sway (m) — keep subtle; strong side-to-side reads as motion sickness. */
+  lateralAmplitude: 0.0035,
   /** Tiny roll (rad) with lateral. */
-  rollAmplitude: 0.012,
+  rollAmplitude: 0.0035,
 };
 
 export const SPRINT_BOB = {
   frequency: 3.2,
   amplitude: 0.078,
-  lateralAmplitude: 0.018,
-  rollAmplitude: 0.018,
+  lateralAmplitude: 0.0055,
+  rollAmplitude: 0.0055,
 };
 
 const BLEND_IN_SPEED = 8;
