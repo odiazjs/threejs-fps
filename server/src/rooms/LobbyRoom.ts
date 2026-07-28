@@ -95,6 +95,8 @@ interface PartyMemberRecord {
 
 
 
+const GAME_INVITE_TTL_MS = 45_000;
+
 interface PendingGameInvite {
 
   inviteId: string;
@@ -110,6 +112,8 @@ interface PendingGameInvite {
   guestUsername: string;
 
   guestClient: Client | null;
+
+  expireTimeout?: ReturnType<typeof setTimeout>;
 
 }
 
@@ -231,7 +235,13 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const party = this.getPartyForUser(hostUserId);
+      let party = this.getPartyForUser(hostUserId);
+
+      if (!party) {
+
+        party = this.createSoloParty(client, hostUserId, hostUsername);
+
+      }
 
       if (!party || party.hostUserId !== hostUserId) {
 
@@ -323,11 +333,12 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      if (party.pendingInvites.has(resolvedGuestUserId)) {
+      // Re-invite replaces any pending invite so timed-out / ignored invites unlock.
+      const existingPending = party.pendingInvites.get(resolvedGuestUserId);
 
-        this.sendError(client, 'Friend already has a pending invite');
+      if (existingPending) {
 
-        return;
+        this.cancelInvite(existingPending.inviteId, { silentHost: true });
 
       }
 
@@ -364,6 +375,12 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
         guestClient,
 
       };
+
+      invite.expireTimeout = setTimeout(() => {
+
+        this.cancelInvite(inviteId);
+
+      }, GAME_INVITE_TTL_MS);
 
 
 
@@ -1170,71 +1187,120 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
   private async sendPartySnapshot(client: Client, party: Party, viewerUserId: string): Promise<void> {
 
-    const cosmetics = await readPartyMemberCosmetics(
+    try {
 
-      [...party.members.keys()],
+      const cosmetics = await readPartyMemberCosmetics(
 
-    );
+        [...party.members.keys()],
 
-    const members: PartyMember[] = [...party.members.values()].map((member) => {
+      );
 
-      const look = cosmetics.get(member.userId);
+      const members: PartyMember[] = [...party.members.values()].map((member) => {
 
-      return {
+        const look = cosmetics.get(member.userId);
 
-        userId: member.userId,
+        return {
 
-        username: member.username,
+          userId: member.userId,
 
-        isHost: member.isHost,
+          username: member.username,
 
-        teamId: member.teamId,
+          isHost: member.isHost,
 
-        selectedCharacterId: look?.selectedCharacterId ?? 'basic',
+          teamId: member.teamId,
 
-        selectedOperatorId: look?.selectedOperatorId ?? 'garla',
+          selectedCharacterId: look?.selectedCharacterId ?? 'basic',
 
-        primaryWeaponId: look?.primaryWeaponId ?? 'plasma_rifle',
+          selectedOperatorId: look?.selectedOperatorId ?? 'garla',
+
+          primaryWeaponId: look?.primaryWeaponId ?? 'plasma_rifle',
+
+        };
+
+      });
+
+
+
+      const isHost = party.hostUserId === viewerUserId;
+
+      const pendingInviteUserIds = isHost
+
+        ? [...party.pendingInvites.keys()]
+
+        : [];
+
+
+
+      const payload: PartySnapshotMessage = {
+
+        partyId: party.partyId,
+
+        members,
+
+        isHost,
+
+        viewerUserId,
+
+        pendingInviteUserIds,
+
+        friendlyFire: party.friendlyFire,
 
       };
 
-    });
+      client.send('partySnapshot', payload);
 
+    } catch (error) {
 
+      console.error('[lobby] failed to send party snapshot', error);
 
-    const isHost = party.hostUserId === viewerUserId;
+      // Still unlock invite UI with a minimal solo snapshot.
+      const isHost = party.hostUserId === viewerUserId;
 
-    const pendingInviteUserIds = isHost
+      client.send('partySnapshot', {
 
-      ? [...party.pendingInvites.keys()]
+        partyId: party.partyId,
 
-      : [];
+        members: [...party.members.values()].map((member) => ({
 
+          userId: member.userId,
 
+          username: member.username,
 
-    const payload: PartySnapshotMessage = {
+          isHost: member.isHost,
 
-      partyId: party.partyId,
+          teamId: member.teamId,
 
-      members,
+          selectedCharacterId: 'basic',
 
-      isHost,
+          selectedOperatorId: 'garla',
 
-      viewerUserId,
+          primaryWeaponId: 'plasma_rifle',
 
-      pendingInviteUserIds,
+        })),
 
-      friendlyFire: party.friendlyFire,
+        isHost,
 
-    };
+        viewerUserId,
 
-    client.send('partySnapshot', payload);
+        pendingInviteUserIds: isHost ? [...party.pendingInvites.keys()] : [],
+
+        friendlyFire: party.friendlyFire,
+
+      } satisfies PartySnapshotMessage);
+
+    }
 
   }
 
 
 
-  private cancelInvite(inviteId: string): void {
+  private cancelInvite(
+
+    inviteId: string,
+
+    options?: { silentHost?: boolean },
+
+  ): void {
 
     const invite = this.invitesById.get(inviteId);
 
@@ -1252,7 +1318,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     this.clearInvite(inviteId, hostParty);
 
-    if (hostParty) this.broadcastParty(hostParty);
+    if (hostParty && !options?.silentHost) this.broadcastParty(hostParty);
 
   }
 
@@ -1265,6 +1331,14 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
     if (!invite) return;
 
 
+
+    if (invite.expireTimeout) {
+
+      clearTimeout(invite.expireTimeout);
+
+      invite.expireTimeout = undefined;
+
+    }
 
     this.invitesById.delete(inviteId);
 

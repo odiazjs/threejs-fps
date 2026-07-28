@@ -5,6 +5,8 @@ import {
   applyLookYaw,
 } from './playerAim';
 import { getStoredMouseSensitivity } from '../settings/mouseSensitivity';
+import { MatchPerfStats } from '../debug/MatchPerfStats';
+import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 
 const MOUSE_SENSITIVITY = 0.002;
 
@@ -28,6 +30,8 @@ export class PointerAimControls {
   onUnlock: (() => void) | null = null;
   /** Pointer released without pausing (inventory, tactical map, key 5). */
   onSoftUnlock: (() => void) | null = null;
+  /** Browser rejected requestPointerLock — UI should offer click-to-retry. */
+  onLockError: (() => void) | null = null;
 
   private readonly domElement: HTMLElement;
   /**
@@ -108,11 +112,15 @@ export class PointerAimControls {
     if (this.domElement.ownerDocument.pointerLockElement === this.domElement) {
       this.suppressPauseUntilRelock = false;
       this.isLocked = true;
+      MatchPerfStats.setPointerLocked(true);
+      MatchPlaytestLog.pointerLockChange(true);
       this.onLock?.();
       return;
     }
 
     this.isLocked = false;
+    MatchPerfStats.setPointerLocked(false);
+    MatchPlaytestLog.pointerLockChange(false);
     if (this.suppressPauseUntilRelock) {
       this.onSoftUnlock?.();
       return;
@@ -123,5 +131,8 @@ export class PointerAimControls {
 
   private onPointerlockError(): void {
     console.error('PointerAimControls: Unable to use Pointer Lock API');
+    MatchPerfStats.recordPointerLockError();
+    MatchPlaytestLog.pointerLockError();
+    this.onLockError?.();
   }
 }

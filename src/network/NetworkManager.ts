@@ -730,6 +730,14 @@ export class NetworkManager {
     return this.roomClient.getMatchState();
   }
 
+  getLastPatchAgeMs(): number {
+    return this.roomClient.getLastPatchAgeMs();
+  }
+
+  get isConnected(): boolean {
+    return this.roomClient.connected;
+  }
+
   async disconnect(): Promise<void> {
     await this.roomClient.disconnect();
   }

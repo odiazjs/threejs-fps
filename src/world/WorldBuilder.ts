@@ -9,7 +9,7 @@ import { LightBeams } from './LightBeams';
 import { PlatformLiftParticles } from './PlatformLiftParticles';
 import { FiringRangeMap } from './FiringRangeMap';
 import { TdmMap } from './TdmMap';
-import { createKillhouseSkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
+import { createKillhouseSkyboxTexture, createLobbySkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
 
 export class WorldBuilder {
   private sceneBuilder = new SceneBuilder();
@@ -26,25 +26,37 @@ export class WorldBuilder {
   }
 
   build(): this {
-    const isKillhouse = this.mapDef.id === 'killhouse_small';
+    const isChronoBowl = this.mapDef.id === 'killhouse_small';
     const isFiringRange = this.mapDef.id === 'firing_range';
-    const skybox = isKillhouse
-      ? createKillhouseSkyboxTexture()
+    // Chrono-Bowl shares the lobby peach / lavender dusk sky.
+    const skybox = isChronoBowl
+      ? createLobbySkyboxTexture()
       : isFiringRange
         ? createKillhouseSkyboxTexture()
         : createSkyboxTexture();
-    // AAA atmosphere: visible distance haze without washing mid-range detail.
-    const fogColor = isKillhouse || isFiringRange
-      ? 0xd0a868
-      : this.mapDef.outdoor
-        ? 0x8ec8e8
-        : 0x1a2228;
-    const fogNear = isKillhouse || isFiringRange
-      ? this.mapDef.mapHalf * 1.25
-      : this.mapDef.mapHalf * 0.5;
-    const fogFar = isKillhouse || isFiringRange
-      ? this.mapDef.mapHalf * 4.6
-      : this.mapDef.mapHalf * 2.15;
+
+    let fogColor: number;
+    let fogNear: number;
+    let fogFar: number;
+    if (isChronoBowl) {
+      // Lobby purple haze — readable across the arena without washing mid-range.
+      fogColor = 0xb8a8c8;
+      fogNear = 22;
+      fogFar = 78;
+    } else if (isFiringRange) {
+      fogColor = 0xd0a868;
+      fogNear = this.mapDef.mapHalf * 1.25;
+      fogFar = this.mapDef.mapHalf * 4.6;
+    } else if (this.mapDef.outdoor) {
+      fogColor = 0x8ec8e8;
+      fogNear = this.mapDef.mapHalf * 0.5;
+      fogFar = this.mapDef.mapHalf * 2.15;
+    } else {
+      fogColor = 0x1a2228;
+      fogNear = this.mapDef.mapHalf * 0.5;
+      fogFar = this.mapDef.mapHalf * 2.15;
+    }
+
     this.sceneBuilder
       .build()
       .addBackground(skybox)
@@ -53,6 +65,12 @@ export class WorldBuilder {
   }
 
   withLighting(): this {
+    if (this.mapDef.id === 'killhouse_small') {
+      for (const light of new LightingBuilder().buildChronoBowl()) {
+        this.sceneBuilder.addLight(light);
+      }
+      return this;
+    }
     const { hemi, sun } = new LightingBuilder().build();
     this.sceneBuilder.addLight(hemi).addLight(sun);
     return this;

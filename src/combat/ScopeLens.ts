@@ -9,13 +9,41 @@ const RT_HEIGHT = 720;
  * A scope lens only covers a fraction of the screen. The same FOV that feels
  * "zoomed" fullscreen reads as zoomed-OUT inside that small circle next to the
  * hip FOV view. Tighten further so the glass shows real sniper magnification.
+ *
+ * Higher = less magnification. Prior 0.3795 reduced another 40% (÷0.6).
  */
-/** Higher = less magnification. 0.33 * 1.15 ≈ 15% less zoom. */
-const SCOPE_PIP_FOV_SCALE = 0.3795;
+const SCOPE_PIP_FOV_SCALE = 0.6325;
+/**
+ * Glass stays this FOV ratio vs the already-zoomed main ADS camera
+ * (≈10% more magnification than the outer frame).
+ */
+const SCOPE_VS_MAIN_FOV_RATIO = 0.9;
 /** HUD neon cyan — matches `.crosshair-ads-dot`. */
 const SCOPE_RETICLE_COLOR = 0x2efcff;
 /** Reticle bar thickness in lens-local units (circle radius = 1). */
 const SCOPE_RETICLE_THICKNESS = 0.005;
+
+/**
+ * Fully-ADS optic FOV (degrees) — same math as the scope camera bake.
+ * `mainAdsFov` is the outer-frame ADS FOV when fully scoped.
+ */
+export function getScopeLensZoomFov(adsFov: number, mainAdsFov: number): number {
+  return Math.min(adsFov * SCOPE_PIP_FOV_SCALE, mainAdsFov * SCOPE_VS_MAIN_FOV_RATIO);
+}
+
+/**
+ * Look-speed scale so mouse travel tracks optic magnification:
+ * `userSens * (lensFov / hipFov) * 2`. Tuned ×2 so scoped aim isn't overly sluggish.
+ */
+export function getScopeLensLookSensitivityScale(
+  adsFov: number,
+  mainAdsFov: number,
+  hipFov: number,
+): number {
+  const lensFov = getScopeLensZoomFov(adsFov, mainAdsFov);
+  if (!(hipFov > 0) || !(lensFov > 0)) return 1;
+  return THREE.MathUtils.clamp((lensFov / hipFov) * 2, 0.01, 1);
+}
 
 const _decalPos = new THREE.Vector3();
 const _decalSize = new THREE.Vector3();
@@ -178,13 +206,18 @@ export class ScopeLens {
     if (this.lensMesh.parent !== scene) {
       scene.add(this.lensMesh);
     }
+    // Always sync pose while bound so hipfire/exit-ADS never leaves a stranded disc.
     this.syncLensTransform(mainCamera);
 
+    // Hipfire / ADS blend-out: opaque black plug (covers the glass hole) — no RT bake.
     if (this.adsBlend < ADS_BLEND_SHOW) {
       this.lensMaterial.color.setHex(0x050505);
-      this.lensMaterial.map = null;
-      this.lensMaterial.needsUpdate = true;
+      if (this.lensMaterial.map !== null) {
+        this.lensMaterial.map = null;
+        this.lensMaterial.needsUpdate = true;
+      }
       this.reticleRoot.visible = false;
+      this.lensMesh.visible = true;
       return;
     }
 
@@ -203,10 +236,9 @@ export class ScopeLens {
     this.scopeCamera.quaternion.copy(_camQuat);
     this.scopeCamera.up.copy(mainCamera.up);
     // Extra magnification on the glass vs the already-zoomed main ADS FOV.
-    const zoomFov = Math.min(
-      this.adsFov * SCOPE_PIP_FOV_SCALE,
-      mainCamera.fov * SCOPE_PIP_FOV_SCALE,
-    );
+    // Keep lens ~10% tighter than main (FOV×0.9) without over-tightening when
+    // mainAdsFov is already close to the optic target.
+    const zoomFov = getScopeLensZoomFov(this.adsFov, mainCamera.fov);
     this.scopeCamera.fov = THREE.MathUtils.lerp(mainCamera.fov, zoomFov, this.adsBlend);
     // Same aspect as the main camera so world proportions match the hip view.
     this.scopeCamera.aspect = mainCamera.aspect;

@@ -239,6 +239,19 @@ export class PlayerControls {
       document.addEventListener('contextmenu', this.preventContextMenu);
     };
 
+    this.controls.onLockError = () => {
+      // Never leave the player in a silent !canAct hole — force a visible re-engage.
+      if (this.skipClickToPlayOverlay) return;
+      if (this.inventoryOpen || this.tacticalMapOpen || this.deadBlocked) return;
+      this.isPaused = true;
+      this.blocker.hidden = false;
+      this.blocker.style.display = 'flex';
+      this.setPlayHudVisible(false);
+      this.instructionsTitle.textContent = 'Click to resume';
+      this.leaveButton.hidden = !this.hasLockedOnce;
+      document.removeEventListener('contextmenu', this.preventContextMenu);
+    };
+
     this.controls.onUnlock = () => {
       // Soft-unlock / panel mode must never show the pause overlay.
       if (

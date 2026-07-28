@@ -742,6 +742,15 @@
   gap: 0.25rem;
 }
 
+.armory-loadout-card-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-top: 0.35rem;
+}
+
 .armory-loadout-index {
   display: none;
 }
@@ -758,15 +767,17 @@
 
 .armory-loadout-status {
   flex: 0 0 auto;
-  padding: 0.12rem 0.3rem;
-  border: 1px solid rgba(0, 242, 255, 0.45);
-  border-radius: 2px;
-  background: rgba(0, 242, 255, 0.12);
+  min-width: 70%;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid rgba(0, 242, 255, 0.55);
+  border-radius: 3px;
+  background: rgba(0, 242, 255, 0.14);
   font-family: var(--hud-font);
-  font-size: 0.5rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--hud-cyan);
+  text-align: center;
 }
 
 .armory-loadout-types {
@@ -820,26 +831,30 @@
 
 .armory-loadout-default-btn {
   flex: 0 0 auto;
+  width: 100%;
+  max-width: 11rem;
   margin: 0;
-  padding: 0.12rem 0.28rem;
-  border: 1px solid rgba(0, 242, 255, 0.3);
-  border-radius: 2px;
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.55);
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(0, 242, 255, 0.55);
+  border-radius: 3px;
+  background: rgba(0, 242, 255, 0.14);
+  color: #fff;
   font-family: var(--hud-font);
-  font-size: 0.48rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
   white-space: nowrap;
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.18);
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease, box-shadow 120ms ease;
 }
 
 .armory-loadout-default-btn:hover {
   border-color: var(--hud-cyan);
-  background: rgba(0, 242, 255, 0.12);
+  background: rgba(0, 242, 255, 0.28);
   color: #fff;
+  box-shadow: 0 0 16px rgba(0, 242, 255, 0.35);
 }
 
 .armory-loadout-default-badge {

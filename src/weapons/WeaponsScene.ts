@@ -26,7 +26,6 @@ const SHOWCASE_WEAPON_IDS: WeaponId[] = [
   'bio_smg_1',
   'plasma_shotgun',
   'sniper_rifle',
-  'katana',
 ];
 const SHOWCASE_TARGET_SIZE = 2.75;
 const DEFAULT_CAMERA_Z = 4.2 * 1.25;

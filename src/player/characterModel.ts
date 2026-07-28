@@ -14,6 +14,11 @@ import { getActiveOperatorId } from '../content/activeOperatorCharacter';
 import { resolveFaceIdForCharacter } from '../content/characterFaces';
 import { showcaseIdleFileForMesh } from '../content/characterShowcaseIdle';
 import {
+  acquireCharacterRoot,
+  clearCharacterInstancePool,
+  releaseCharacterRoot,
+} from './characterInstancePool';
+import {
   applyMeshyCharacterMaterial,
   isSharedCharacterMesh,
 } from '../content/meshyCharacterMaterial';
@@ -398,11 +403,24 @@ export interface CharacterTemplate {
 
 export interface CharacterInstance {
   root: THREE.Group;
+  readonly meshFile: string;
+  readonly skinId: string;
+  /** Pose FBX currently driving the mixer (empty when idle/no clip). */
+  readonly modelFile: string;
   update(delta: number): void;
+  /**
+   * Crossfade to another pose clip on the same skinned root.
+   * No-op when `template.modelFile` is already active.
+   */
+  playPose(template: CharacterTemplate, fadeSec?: number): void;
   /** True once a one-shot clip has reached its final frame. */
   readonly isOneShotFinished: boolean;
-  dispose(): void;
+  dispose(opts?: { releaseToPool?: boolean }): void;
 }
+
+/** Locomotion crossfade — short enough to feel snappy, long enough to hide pops. */
+const LOCOMOTION_FADE_SEC = 0.12;
+const ONE_SHOT_FADE_SEC = 0.06;
 
 const templateCache = new Map<string, CharacterTemplate>();
 const loadPromises = new Map<string, Promise<CharacterTemplate>>();
@@ -422,6 +440,7 @@ export function clearCharacterMeshCache(): void {
   characterMeshPromises.clear();
   templateCache.clear();
   loadPromises.clear();
+  clearCharacterInstancePool();
 }
 
 function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
@@ -727,49 +746,105 @@ export function createCharacterInstance(
   template: CharacterTemplate,
   options: CreateCharacterInstanceOptions = {},
 ): CharacterInstance {
-  const root = cloneSkeleton(template.scene) as THREE.Group;
+  const root = acquireCharacterRoot(template);
+  const fromPool = root.userData.__fpsCharPooled === true;
+  root.userData.__fpsCharPooled = true;
 
-  let mixer: THREE.AnimationMixer | null = null;
+  const mixer = new THREE.AnimationMixer(root);
   let oneShotFinished = false;
+  let activeModelFile = '';
+  let activeAction: THREE.AnimationAction | null = null;
+  let finishedHandler: ((event: { action?: THREE.AnimationAction }) => void) | null = null;
 
-  if (template.clip) {
-    mixer = new THREE.AnimationMixer(root);
-    const action = mixer.clipAction(template.clip);
+  const clearFinishedHandler = () => {
+    if (finishedHandler) {
+      mixer.removeEventListener('finished', finishedHandler as never);
+      finishedHandler = null;
+    }
+  };
 
-    if (template.oneShot) {
+  const playPose = (next: CharacterTemplate, fadeSec?: number): void => {
+    if (next.modelFile === activeModelFile && activeAction) return;
+
+    oneShotFinished = false;
+    clearFinishedHandler();
+
+    const fade =
+      fadeSec
+      ?? (next.oneShot ? ONE_SHOT_FADE_SEC : LOCOMOTION_FADE_SEC);
+
+    if (!next.clip) {
+      activeAction?.fadeOut(fade);
+      activeAction = null;
+      activeModelFile = next.modelFile;
+      return;
+    }
+
+    const action = mixer.clipAction(next.clip);
+    action.reset();
+    if (next.oneShot) {
       action.setLoop(THREE.LoopOnce, 1);
       action.clampWhenFinished = true;
       action.zeroSlopeAtStart = true;
       action.zeroSlopeAtEnd = true;
-      mixer.addEventListener('finished', (event) => {
-        if (event.action === action) oneShotFinished = true;
-      });
+      finishedHandler = (event) => {
+        if (event.action === action) {
+          oneShotFinished = true;
+        }
+      };
+      mixer.addEventListener('finished', finishedHandler as never);
     } else {
       action.setLoop(THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
     }
 
+    action.enabled = true;
+    action.setEffectiveWeight(1);
+    action.fadeIn(fade);
     action.play();
-    mixer.update(0);
-  }
 
-  if (options.applyFace !== false) {
+    if (activeAction && activeAction !== action) {
+      activeAction.fadeOut(fade);
+    }
+    activeAction = action;
+    activeModelFile = next.modelFile;
+    mixer.update(0);
+  };
+
+  playPose(template, 0);
+
+  // Face textures already applied on pooled roots — skip re-fetch.
+  if (!fromPool && options.applyFace !== false) {
     const faceId =
       options.faceId ??
       resolveFaceIdForCharacter(options.operatorId ?? getActiveOperatorId());
     void applyCharacterFace(root, faceId);
   }
 
+  const poolMeshFile = template.meshFile;
+  const poolSkinId = template.skinId;
+
   return {
     root,
+    meshFile: poolMeshFile,
+    skinId: poolSkinId,
+    get modelFile() {
+      return activeModelFile;
+    },
     get isOneShotFinished() {
       return oneShotFinished;
     },
+    playPose,
     update(delta: number) {
-      mixer?.update(delta);
+      mixer.update(delta);
     },
-    dispose() {
-      mixer?.stopAllAction();
-      mixer = null;
+    dispose(opts?: { releaseToPool?: boolean }) {
+      clearFinishedHandler();
+      mixer.stopAllAction();
+      if (opts?.releaseToPool) {
+        releaseCharacterRoot(poolMeshFile, poolSkinId, root);
+        return;
+      }
       root.removeFromParent();
     },
   };

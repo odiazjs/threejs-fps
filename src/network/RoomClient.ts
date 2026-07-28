@@ -28,6 +28,7 @@ import {
 } from '../../shared/combat/match';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import type { GameJoinIntent } from '../auth/gameJoin';
+import { MatchPerfStats } from '../debug/MatchPerfStats';
 import type { WeaponId } from '../../shared/content/weaponIds';
 import type { BodyPartId } from '../../shared/combat/bodyParts';
 import type {
@@ -275,6 +276,14 @@ export class RoomClient {
     this.bindKillMessages();
     this.bindDamagedMessages();
     this.bindTeamPingMessages();
+    MatchPerfStats.setConnectionOpen(true);
+    this.room.onLeave(() => {
+      MatchPerfStats.setConnectionOpen(false);
+    });
+    this.room.onError((_code, message) => {
+      console.warn('[RoomClient] room error', message);
+      MatchPerfStats.setConnectionOpen(false);
+    });
   }
 
   private async joinByIdWithRetry(
@@ -560,6 +569,7 @@ export class RoomClient {
 
     const room = this.room;
     this.room = null;
+    MatchPerfStats.setConnectionOpen(false);
     this.boundPlayers.clear();
     this.boundAmmoBoxes.clear();
     this.boundShieldCharges.clear();
@@ -816,6 +826,13 @@ export class RoomClient {
   private syncWorldTime(worldTime: number): void {
     this.syncedWorldTime = worldTime;
     this.worldTimeSyncAt = performance.now();
+    MatchPerfStats.recordPatch();
+  }
+
+  /** Ms since last authoritative world/player patch. `-1` if never synced. */
+  getLastPatchAgeMs(): number {
+    if (this.worldTimeSyncAt <= 0) return -1;
+    return performance.now() - this.worldTimeSyncAt;
   }
 
   private bindAmmoBoxCallbacks(

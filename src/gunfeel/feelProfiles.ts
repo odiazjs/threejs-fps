@@ -66,6 +66,23 @@ export interface KickbackFeel {
   readonly cameraYawJitter: number;
   /** Kick multiplier at full ADS. */
   readonly adsScale: number;
+  /**
+   * 0–1: how strongly pitch springs lead back-travel (graph rule — pitch peaks
+   * first). Higher = wider rotational lead (sniper).
+   */
+  readonly pitchLead: number;
+  /**
+   * 0–1: wrist-flick arc vs linear slide. 1 = full arc around the pivot
+   * (muzzle up / stock down).
+   */
+  readonly curveAmount: number;
+  /** Local pivot Y (m). Negative = below grip. */
+  readonly pivotY: number;
+  /**
+   * Local pivot Z (m). Negative = toward muzzle so the stock dips on pitch-up
+   * (wrist flick). Positive = toward camera/stock.
+   */
+  readonly pivotZ: number;
 }
 
 export interface LookLagFeel {
@@ -189,19 +206,23 @@ const PISTOL_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.45,
   },
   kickback: {
-    // Soft punch — readable feedback without throwing aim.
-    weaponSpring: { stiffness: 1400, dampingRatio: 0.95 },
-    cameraSpring: { stiffness: 1100, dampingRatio: 0.95 },
-    kickBack: 6,
-    kickUp: 0.9,
-    kickPitch: 7,
-    kickYawJitter: 1.6,
-    kickRoll: 2.2,
+    // Graph: fast curved snap — pitch peaks first, springy overshoot, quick settle.
+    weaponSpring: { stiffness: 1550, dampingRatio: 0.58 },
+    cameraSpring: { stiffness: 1200, dampingRatio: 0.9 },
+    kickBack: 8.2,
+    kickUp: 0.4,
+    kickPitch: 14.5,
+    kickYawJitter: 2.2,
+    kickRoll: 3.4,
     maxBack: 0.14,
-    maxPitch: 0.12,
-    cameraPitch: 1.6,
-    cameraYawJitter: 0.4,
-    adsScale: 0.65,
+    maxPitch: 0.16,
+    cameraPitch: 0,
+    cameraYawJitter: 0,
+    adsScale: 0.62,
+    pitchLead: 0.55,
+    curveAmount: 0.95,
+    pivotY: -0.028,
+    pivotZ: -0.07,
   },
   sway: {
     idleAmp: 0.003,
@@ -250,19 +271,23 @@ const AR_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.55,
   },
   kickback: {
-    // ω = 33: fast enough to reset between rounds at 12 rps → visible rhythm.
-    weaponSpring: { stiffness: 1100, dampingRatio: 0.95 },
+    // Springy wrist flick on every round — camera climb stays in RecoilSystem.
+    weaponSpring: { stiffness: 980, dampingRatio: 0.62 },
     cameraSpring: { stiffness: 1000, dampingRatio: 1 },
-    kickBack: 5.2,
-    kickUp: 0.5,
-    kickPitch: 4.0,
-    kickYawJitter: 1.6,
-    kickRoll: 1.8,
-    maxBack: 0.15,
-    maxPitch: 0.13,
-    cameraPitch: 0.9,
-    cameraYawJitter: 0.35,
+    kickBack: 6.8,
+    kickUp: 0.42,
+    kickPitch: 7.8,
+    kickYawJitter: 2.0,
+    kickRoll: 2.4,
+    maxBack: 0.16,
+    maxPitch: 0.14,
+    cameraPitch: 0,
+    cameraYawJitter: 0,
     adsScale: 0.45,
+    pitchLead: 0.48,
+    curveAmount: 0.9,
+    pivotY: -0.035,
+    pivotZ: -0.09,
   },
   sway: {
     idleAmp: 0.0036,
@@ -311,20 +336,23 @@ const LMG_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.4,
   },
   kickback: {
-    // Sustained fire stacks — hard-cap muzzle tip and shove into the shoulder
-    // so the LMG never rotates up into the sky during a mag dump.
-    weaponSpring: { stiffness: 900, dampingRatio: 0.95 },
+    // Heavy barrel — springy shove with capped tip so mag dumps stay readable.
+    weaponSpring: { stiffness: 720, dampingRatio: 0.6 },
     cameraSpring: { stiffness: 800, dampingRatio: 0.95 },
-    kickBack: 7.2,
-    kickUp: 0.55,
-    kickPitch: 3.2,
-    kickYawJitter: 1.8,
-    kickRoll: 2.2,
+    kickBack: 9.0,
+    kickUp: 0.5,
+    kickPitch: 6.2,
+    kickYawJitter: 2.2,
+    kickRoll: 2.8,
     maxBack: 0.24,
-    maxPitch: 0.1,
-    cameraPitch: 1.0,
-    cameraYawJitter: 0.38,
+    maxPitch: 0.12,
+    cameraPitch: 0,
+    cameraYawJitter: 0,
     adsScale: 0.5,
+    pitchLead: 0.42,
+    curveAmount: 0.86,
+    pivotY: -0.04,
+    pivotZ: -0.1,
   },
   sway: {
     idleAmp: 0.0042,
@@ -372,19 +400,23 @@ const BURST_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.5,
   },
   kickback: {
-    // Very stiff spring so each round in the burst reads as its own micro-hit.
-    weaponSpring: { stiffness: 2100, dampingRatio: 0.92 },
+    // Stiff but underdamped — each burst round reads as its own springy flick.
+    weaponSpring: { stiffness: 1800, dampingRatio: 0.58 },
     cameraSpring: { stiffness: 1600, dampingRatio: 1 },
-    kickBack: 4.4,
-    kickUp: 0.45,
-    kickPitch: 3.6,
-    kickYawJitter: 1.2,
-    kickRoll: 1.5,
-    maxBack: 0.13,
-    maxPitch: 0.12,
-    cameraPitch: 1.15,
-    cameraYawJitter: 0.28,
+    kickBack: 5.8,
+    kickUp: 0.38,
+    kickPitch: 7.2,
+    kickYawJitter: 1.6,
+    kickRoll: 2.0,
+    maxBack: 0.14,
+    maxPitch: 0.13,
+    cameraPitch: 0,
+    cameraYawJitter: 0,
     adsScale: 0.45,
+    pitchLead: 0.52,
+    curveAmount: 0.92,
+    pivotY: -0.03,
+    pivotZ: -0.075,
   },
   sway: {
     idleAmp: 0.0034,
@@ -432,19 +464,23 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.3,
   },
   kickback: {
-    // ω ≈ 12.6 → ~0.5s settle: shoulder-bruising, slow to come home.
-    weaponSpring: { stiffness: 160, dampingRatio: 0.9 },
-    cameraSpring: { stiffness: 210, dampingRatio: 0.95 },
-    kickBack: 7.0,
-    kickUp: 0.85,
-    kickPitch: 5.0,
-    kickYawJitter: 2.0,
-    kickRoll: 2.6,
-    maxBack: 0.3,
-    maxPitch: 0.24,
-    cameraPitch: 1.5,
-    cameraYawJitter: 0.6,
-    adsScale: 0.85,
+    // Graph: hard impulse, larger pitch lead, weighty springy return.
+    weaponSpring: { stiffness: 260, dampingRatio: 0.62 },
+    cameraSpring: { stiffness: 380, dampingRatio: 0.9 },
+    kickBack: 11.5,
+    kickUp: 0.65,
+    kickPitch: 17.5,
+    kickYawJitter: 2.6,
+    kickRoll: 3.8,
+    maxBack: 0.22,
+    maxPitch: 0.22,
+    cameraPitch: 0,
+    cameraYawJitter: 0,
+    adsScale: 0.48,
+    pitchLead: 0.65,
+    curveAmount: 0.97,
+    pivotY: -0.04,
+    pivotZ: -0.14,
   },
   sway: {
     idleAmp: 0.0048,
@@ -500,18 +536,22 @@ const SHOTGUN_FEEL: WeaponFeelProfile = {
     smoothingStrength: 0.35,
   },
   kickback: {
-    weaponSpring: { stiffness: 480, dampingRatio: 0.92 },
-    cameraSpring: { stiffness: 520, dampingRatio: 1 },
-    kickBack: 9.0,
-    kickUp: 1.0,
-    kickPitch: 6.0,
-    kickYawJitter: 2.2,
-    kickRoll: 2.8,
-    maxBack: 0.3,
-    maxPitch: 0.22,
-    cameraPitch: 1.7,
-    cameraYawJitter: 0.5,
-    adsScale: 0.7,
+    weaponSpring: { stiffness: 420, dampingRatio: 0.6 },
+    cameraSpring: { stiffness: 520, dampingRatio: 0.95 },
+    kickBack: 11.0,
+    kickUp: 0.65,
+    kickPitch: 11.5,
+    kickYawJitter: 2.6,
+    kickRoll: 3.4,
+    maxBack: 0.26,
+    maxPitch: 0.2,
+    cameraPitch: 0,
+    cameraYawJitter: 0,
+    adsScale: 0.65,
+    pitchLead: 0.55,
+    curveAmount: 0.93,
+    pivotY: -0.038,
+    pivotZ: -0.11,
   },
   sway: {
     idleAmp: 0.0038,
@@ -571,6 +611,10 @@ const MELEE_FEEL: WeaponFeelProfile = {
     cameraPitch: 0,
     cameraYawJitter: 0,
     adsScale: 1,
+    pitchLead: 0,
+    curveAmount: 0,
+    pivotY: 0,
+    pivotZ: 0,
   },
   sway: {
     idleAmp: 0.004,
@@ -641,12 +685,16 @@ const WEAPON_FEEL_OVERRIDES: Partial<Record<WeaponId, FeelOverride>> = {
   // Viscous heavy auto — slower vibration, more shove than the plasma rifle.
   bio_liquid_rifle: {
     kickback: {
-      weaponSpring: { stiffness: 760, dampingRatio: 0.95 },
-      kickBack: 6.2,
-      kickPitch: 4.5,
-      kickRoll: 2.2,
-      maxBack: 0.18,
-      maxPitch: 0.14,
+      weaponSpring: { stiffness: 680, dampingRatio: 0.58 },
+      kickBack: 8.0,
+      kickPitch: 6.8,
+      kickRoll: 2.6,
+      maxBack: 0.2,
+      maxPitch: 0.15,
+      pitchLead: 0.45,
+      curveAmount: 0.88,
+      pivotY: -0.038,
+      pivotZ: -0.1,
     },
     sway: {
       idleAmp: 0.0038,
@@ -674,14 +722,19 @@ const WEAPON_FEEL_OVERRIDES: Partial<Record<WeaponId, FeelOverride>> = {
       smokeDensityScale: 2.0,
     },
   },
-  // Compact SMG — quick crack, light smoke from mag dumps.
+  // Compact SMG — quick springy flick, light smoke from mag dumps.
   bio_smg_1: {
     kickback: {
-      kickBack: 3.4,
-      kickPitch: 2.6,
-      kickRoll: 1.4,
-      maxBack: 0.1,
-      maxPitch: 0.08,
+      weaponSpring: { stiffness: 1400, dampingRatio: 0.55 },
+      kickBack: 5.2,
+      kickPitch: 6.0,
+      kickRoll: 2.0,
+      maxBack: 0.12,
+      maxPitch: 0.11,
+      pitchLead: 0.5,
+      curveAmount: 0.9,
+      pivotY: -0.03,
+      pivotZ: -0.08,
     },
     juice: {
       screenFlash: 0.035,

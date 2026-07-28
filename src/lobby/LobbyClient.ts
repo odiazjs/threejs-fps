@@ -46,6 +46,12 @@ export class LobbyClient {
     this.room = await client.joinOrCreate('lobby', options, LobbyState);
     this.bindMessages();
     this.requestPartySnapshot();
+    // Heal concurrent-join races: friends who registered in the same window
+    // may be missing from the initial presence snapshot.
+    window.setTimeout(() => {
+      if (!this.room) return;
+      this.requestFriendPresenceSnapshot();
+    }, 750);
   }
 
   async reconnect(options: LobbyJoinOptions, url = getServerUrl()): Promise<void> {

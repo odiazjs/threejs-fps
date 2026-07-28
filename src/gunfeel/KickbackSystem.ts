@@ -3,20 +3,15 @@ import { SpringDamper1D } from './gunFeelMath';
 import { getWeaponFeelProfile, type KickbackFeel } from './feelProfiles';
 
 /**
- * Procedural kickback, fully separated from camera recoil (RecoilSystem):
+ * Procedural VIEWMODEL kickback — separate from camera/crosshair recoil
+ * (RecoilSystem). Tuning springs here never moves the aim point.
  *
- * - WEAPON KICK: each shot injects velocity impulses into spring-dampers for
- *   back-travel (+Z in view space — toward the player), vertical shove, and
- *   muzzle-up pitch with side jitter/roll. Hipfire boosts kick-back and
- *   damps muzzle tip so guns shove into the shoulder instead of flipping
- *   skyward. Hooke's law brings the model back; damping ratio = snap vs wobble.
- * - CAMERA KICK: a second, stiffer spring pair drives a sharp rotational
- *   view impulse that settles quickly — the "crack" on top of pattern recoil.
+ * Graph-driven wrist-flick:
+ * - Pitch and back-travel use SEPARATE springs so pitch peaks BEFORE shove.
+ * - Weapon origin follows an ARC around a wrist/hand pivot — not a linear Z slide.
+ * - Muzzle tips up; stock/backside dips down (seesaw around the grip).
  *
- * TRANSFORM HOOKUP: `applyWeaponVisual` writes additively onto the weapon
- * mesh AFTER WeaponPose.apply has set the hip/ADS pose for the frame, and
- * `applyCameraAdditive` adds onto the yaw/pitch recoil rigs AFTER
- * RecoilSystem.applyAim (see Player.applyActiveRecoilAim).
+ * TRANSFORM HOOKUP: `applyWeaponVisual` after WeaponPose only.
  */
 export class KickbackSystem {
   private readonly back: SpringDamper1D;
@@ -34,12 +29,21 @@ export class KickbackSystem {
     this.feel = getWeaponFeelProfile(weaponId).kickback;
     const w = this.feel.weaponSpring;
     const c = this.feel.cameraSpring;
+    const lead = THREE.MathUtils.clamp(this.feel.pitchLead, 0, 1);
 
-    this.back = new SpringDamper1D(w.stiffness, w.dampingRatio);
-    this.up = new SpringDamper1D(w.stiffness, w.dampingRatio);
-    this.pitch = new SpringDamper1D(w.stiffness, w.dampingRatio);
+    // Pitch leads translation: stiffer pitch spring rises/peaks first (graph rule).
+    const pitchStiffness = w.stiffness * (1 + lead * 0.85);
+    const backStiffness = w.stiffness * (1 - lead * 0.28);
+    // Pitch slightly underdamped for the small recovery "springiness" bump;
+    // back a touch more damped so it peaks later and settles cleaner.
+    const pitchDamp = Math.max(0.55, w.dampingRatio * (1 - lead * 0.18));
+    const backDamp = Math.min(1.15, w.dampingRatio * (1 + lead * 0.08));
+
+    this.back = new SpringDamper1D(backStiffness, backDamp);
+    this.up = new SpringDamper1D(backStiffness * 1.05, backDamp);
+    this.pitch = new SpringDamper1D(pitchStiffness, pitchDamp);
     this.yaw = new SpringDamper1D(w.stiffness, w.dampingRatio);
-    this.roll = new SpringDamper1D(w.stiffness, w.dampingRatio);
+    this.roll = new SpringDamper1D(w.stiffness * 0.9, w.dampingRatio);
     this.cameraPitch = new SpringDamper1D(c.stiffness, c.dampingRatio);
     this.cameraYaw = new SpringDamper1D(c.stiffness, c.dampingRatio);
   }
@@ -58,21 +62,19 @@ export class KickbackSystem {
   onShot(adsBlend: number): void {
     const scale = THREE.MathUtils.lerp(1, this.feel.adsScale, adsBlend);
     const rand = () => Math.random() * 2 - 1;
+    const ads = THREE.MathUtils.clamp(adsBlend, 0, 1);
 
-    // Hipfire: shove the gun into the shoulder more than tip the muzzle skyward.
-    // ADS keeps the authored pitch/back balance (adsBlend → 1).
-    const hip = 1 - THREE.MathUtils.clamp(adsBlend, 0, 1);
-    const backScale = 1 + hip * 0.45;
-    const pitchScale = 1 - hip * 0.55;
+    // Hipfire: readable wrist flick. ADS: keep tip, soften shove into optic.
+    const hip = 1 - ads;
+    const backScale = THREE.MathUtils.lerp(1.15, 0.55, ads);
+    const pitchScale = THREE.MathUtils.lerp(0.92, 1.05, ads) * (1 - hip * 0.08);
 
     this.back.impulse(this.feel.kickBack * scale * backScale);
-    this.up.impulse(this.feel.kickUp * scale * (0.8 + Math.random() * 0.4));
+    this.up.impulse(this.feel.kickUp * scale * (0.75 + Math.random() * 0.5));
     this.pitch.impulse(this.feel.kickPitch * scale * pitchScale);
-    this.yaw.impulse(this.feel.kickYawJitter * scale * rand() * pitchScale);
-    this.roll.impulse(this.feel.kickRoll * scale * rand() * (0.7 + 0.3 * (1 - hip)));
-
-    this.cameraPitch.impulse(this.feel.cameraPitch * scale);
-    this.cameraYaw.impulse(this.feel.cameraYawJitter * scale * rand());
+    this.yaw.impulse(this.feel.kickYawJitter * scale * rand() * 0.85);
+    this.roll.impulse(this.feel.kickRoll * scale * rand() * (0.55 + 0.45 * hip));
+    // Camera crack springs intentionally unused — crosshair is RecoilSystem only.
   }
 
   update(delta: number): void {
@@ -94,21 +96,48 @@ export class KickbackSystem {
   }
 
   /**
-   * Additive viewmodel kick. Call after WeaponPose/base pose is applied —
-   * kick displaces the weapon from wherever it currently rests.
-   * View space: -Z is downrange, so back-travel adds +Z (toward the camera).
+   * Additive viewmodel kick after pose.
+   *
+   * Wrist-flick path: rotate around a pivot slightly toward the muzzle so the
+   * stock dips down while the muzzle arcs up — not a straight +Z shove.
    */
-  applyWeaponVisual(weapon: THREE.Object3D): void {
+  applyWeaponVisual(weapon: THREE.Object3D, adsBlend = 0): void {
     const back = Math.min(this.feel.maxBack, Math.max(0, this.back.value));
     const pitch = THREE.MathUtils.clamp(this.pitch.value, -this.feel.maxPitch, this.feel.maxPitch);
+    const curve = THREE.MathUtils.clamp(this.feel.curveAmount, 0, 1);
+    const ads = THREE.MathUtils.clamp(adsBlend, 0, 1);
 
-    weapon.position.z += back;
-    weapon.position.y += this.up.value;
-    // Matches the shipped viewmodel orientation (base yaw -PI/2 + mesh euler
-    // PI): positive X tips the muzzle toward the sky on these meshes.
-    weapon.rotation.x += pitch;
-    weapon.rotation.y += this.yaw.value;
-    weapon.rotation.z += this.roll.value;
+    const { orbitY, orbitZ } = wristFlickOrbit(
+      pitch,
+      this.feel.pivotY,
+      this.feel.pivotZ,
+    );
+
+    // Residual linear back (graph blue channel) blended into the orbital arc.
+    const linearZ = back * (1 - curve * 0.78);
+    const linearY = this.up.value * (1 - curve * 0.5);
+    // Arc: origin rides the wrist pivot — stock dips (orbitY often negative).
+    const curvedZ = orbitZ * curve + back * curve * 0.35;
+    const curvedY = orbitY * curve + this.up.value * curve * 0.25;
+
+    // ADS: keep the flick readable, never tunnel the optic through the camera.
+    const transScale = THREE.MathUtils.lerp(1, 0.22, ads);
+    const pitchScale = THREE.MathUtils.lerp(1, 0.62, ads);
+    const yawRollScale = THREE.MathUtils.lerp(1, 0.55, ads);
+
+    let dz = (linearZ + curvedZ) * transScale;
+    let dy = (linearY + curvedY) * transScale;
+    const minClearanceZ = -0.055;
+    if (weapon.position.z + dz > minClearanceZ) {
+      dz = Math.min(dz, minClearanceZ - weapon.position.z);
+    }
+
+    weapon.position.z += dz;
+    weapon.position.y += dy;
+    // Viewmodel +X tips muzzle toward sky; stock behind the wrist pivot dips.
+    weapon.rotation.x += pitch * pitchScale;
+    weapon.rotation.y += this.yaw.value * yawRollScale;
+    weapon.rotation.z += this.roll.value * yawRollScale;
   }
 
   /** Additive sharp view kick on the recoil rigs (after RecoilSystem.applyAim). */
@@ -121,4 +150,30 @@ export class KickbackSystem {
   getCameraOffset(): { pitch: number; yaw: number } {
     return { pitch: this.cameraPitch.value, yaw: this.cameraYaw.value };
   }
+}
+
+/**
+ * Displacement of the weapon origin when rotating by `pitch` around a local
+ * wrist pivot. Pivot sits slightly toward the muzzle (−Z) and below the grip
+ * so positive pitch arcs the muzzle UP and dips the stock/backside DOWN.
+ */
+function wristFlickOrbit(
+  pitch: number,
+  pivotY: number,
+  pivotZ: number,
+): { orbitY: number; orbitZ: number } {
+  if (Math.abs(pitch) < 1e-8) return { orbitY: 0, orbitZ: 0 };
+
+  // Vector from pivot → weapon origin.
+  const oy = -pivotY;
+  const oz = -pivotZ;
+  const c = Math.cos(pitch);
+  const s = Math.sin(pitch);
+  // Rotate around +X: (y, z) → (y c − z s, y s + z c)
+  const ry = oy * c - oz * s;
+  const rz = oy * s + oz * c;
+  return {
+    orbitY: ry - oy,
+    orbitZ: rz - oz,
+  };
 }

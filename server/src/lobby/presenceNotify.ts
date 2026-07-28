@@ -5,7 +5,6 @@ import { getDb } from '../db/index.js';
 import { friendships } from '../db/schema/friendships.js';
 import {
   buildPresenceUpdate,
-  isUserInLobby,
   notifyLobbyUser,
   setPresenceChangeHandler,
 } from './presence.js';
@@ -44,7 +43,7 @@ async function notifyFriendsOfPresenceChange(changedUserId: string): Promise<voi
   const watchers = await getFriendWatchers(changedUserId);
 
   for (const watcherId of watchers) {
-    if (!isUserInLobby(watcherId)) continue;
+    // Notify any friend who still has a lobby socket (lobby / menus / in-game overlay).
     notifyLobbyUser(watcherId, 'friendPresence', update);
   }
 }

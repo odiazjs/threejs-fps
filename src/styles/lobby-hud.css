@@ -22,7 +22,7 @@
   pointer-events: none;
 }
 
-/* Left sidebar navigation — bracket tabs */
+/* Left sidebar navigation — bracket tabs with a subtle panel behind the items */
 .lobby-nav {
   position: fixed;
   top: 42%;
@@ -34,14 +34,14 @@
   align-items: stretch;
   gap: 0.2rem;
   width: min(22rem, 46vw);
-  padding: 0.85rem 1rem;
-  border: 1px solid rgba(160, 170, 185, 0.22);
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(160, 170, 185, 0.12);
   border-radius: 6px;
-  background: rgba(48, 52, 60, 0.5);
+  background: rgba(8, 12, 18, 0.28);
   box-sizing: border-box;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   pointer-events: auto;
 }
 
@@ -1283,7 +1283,7 @@
 /* Friend toasts */
 .friend-toasts {
   position: fixed;
-  top: 4.5rem;
+  top: 9.5rem;
   right: 1.25rem;
   display: flex;
   flex-direction: column;
@@ -1297,6 +1297,26 @@
   padding: 0.85rem;
   pointer-events: auto;
   font-family: var(--hud-font);
+}
+
+.friend-toast--invite {
+  transform: translateX(110%);
+  opacity: 0;
+}
+
+.friend-toast--invite.is-flying-in {
+  animation: friend-toast-fly-in 0.38s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes friend-toast-fly-in {
+  from {
+    transform: translateX(110%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .friend-toast.panel,

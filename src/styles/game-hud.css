@@ -66,6 +66,48 @@ body.game-page * {
 #leave-game-btn {
   pointer-events: auto;
 }
+
+.connection-stall {
+  position: fixed;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  pointer-events: none;
+  background: transparent;
+}
+
+.connection-stall[hidden] {
+  display: none !important;
+}
+
+.connection-stall-panel {
+  pointer-events: none;
+  min-width: min(22rem, 86vw);
+  padding: 1rem 1.25rem;
+  text-align: center;
+  border: 1px solid rgba(255, 184, 77, 0.45);
+  background: rgba(12, 14, 18, 0.82);
+  backdrop-filter: blur(10px);
+}
+
+.connection-stall-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--hud-amber, #ffb84d);
+}
+
+.connection-stall-body {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
 #crosshair-reference {
   position: fixed;
   top: 50%;
@@ -1031,6 +1073,35 @@ body.game-page * {
   white-space: nowrap;
   z-index: 1000;
   will-change: transform, opacity;
+}
+.teammate-spot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 985;
+  will-change: transform;
+}
+.teammate-spot-arrow {
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 13px solid var(--teammate-spot-color, #6a9fd4);
+  filter:
+    drop-shadow(0 0 5px color-mix(in srgb, var(--teammate-spot-color, #6a9fd4) 85%, transparent))
+    drop-shadow(0 0 12px color-mix(in srgb, var(--teammate-spot-color, #6a9fd4) 40%, transparent));
+  animation: teammate-spot-bob 1.1s ease-in-out infinite;
+}
+@keyframes teammate-spot-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 .team-ping {
   display: flex;

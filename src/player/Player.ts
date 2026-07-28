@@ -54,7 +54,7 @@ import {
   syncPhysicalSightOnWeapon,
   weaponUsesPhysicalSights,
 } from '../content/physicalWeaponSights';
-import { ScopeLens } from '../combat/ScopeLens';
+import { getScopeLensLookSensitivityScale, ScopeLens } from '../combat/ScopeLens';
 import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readWeaponSideVentFlashOffsets, readScreenHoldWorldPosition } from '../combat/aiming';
 import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
@@ -92,13 +92,16 @@ import {
 import { resolveFaceLookParent } from './characterFace';
 import { getRemoteWeaponMount, type RemoteWeaponMount } from './remoteWeaponMount';
 import { RemoteHealthBar } from './RemoteHealthBar';
+import { TeammateSpotMarker } from './TeammateSpotMarker';
 import type { RemotePlayerUiVisibilityState } from './remotePlayerUiVisibility';
+import { MatchPerfStats } from '../debug/MatchPerfStats';
+import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 import { DamageNumberStack } from '../ui/DamageNumberStack';
 import { MeleeHitFx } from '../effects/MeleeHitFx';
 import { ShieldRechargeAuraFx } from '../effects/ShieldRechargeAuraFx';
 import { applyLookPitch, applyLookYaw, applyPlayerAim, readWorldPlayerAim, AIM_PITCH_LIMIT } from './playerAim';
 import type { PointerAimControls } from './PointerAimControls';
-import { WeaponPose } from './WeaponPose';
+import { HIP_FOV, WeaponPose } from './WeaponPose';
 import { WeaponSwaySystem } from '../gunfeel/WeaponSwaySystem';
 import { GunJuice } from '../gunfeel/GunJuice';
 import { KatanaSlashTrailFx, KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
@@ -124,6 +127,7 @@ import {
   SHIELD_DEFAULT_LEVEL,
 } from '../../shared/combat/shield';
 import { EnemyOutlineFx } from '../effects/EnemyOutlineFx';
+import { TeammateOutlineFx } from '../effects/TeammateOutlineFx';
 import { getShieldRechargeState } from '../../shared/combat/shieldRecharge';
 import {
   CROUCH_EYE_DROP,
@@ -231,11 +235,34 @@ export class Player {
   private remoteWeaponMount: RemoteWeaponMount | null = null;
   private remoteKatanaAxisDebug: AxisDebugArrows | null = null;
   private remoteHealthBar: RemoteHealthBar | null = null;
+  private teammateSpotMarker: TeammateSpotMarker | null = null;
   private remoteHeadTopOffset = EYE_HEIGHT + REMOTE_UI_HEAD_CLEARANCE;
   private enemyOutline: EnemyOutlineFx | null = null;
+  private teammateOutline: TeammateOutlineFx | null = null;
   private enemyHighlighted = false;
+  private teammateHighlighted = false;
   /** Model file currently being loaded async — dedupes per-frame sync calls. */
   private remoteModelLoadingFile: string | null = null;
+  /**
+   * Debounce remote locomotion pose changes — walk↔sprint micro-toggles were
+   * thrashing the mixer (and used to clone skinned roots every few frames).
+   */
+  private remotePoseDebounceKey: string | null = null;
+  private remotePoseDebounceUntilMs = 0;
+  private remoteClearanceFrame = 0;
+  /** 0 = near (full), 1 = mid, 2 = far — distance LOD for remotes. */
+  private remoteLodTier = 0;
+  private remoteMixerFrame = 0;
+  private static readonly REMOTE_POSE_DEBOUNCE_MS = 120;
+  private static readonly REMOTE_POSE_IMMEDIATE = new Set<string>([
+    CHARACTER_MODEL_FILES.death,
+    CHARACTER_MODEL_FILES.meleeAttack,
+    CHARACTER_MODEL_FILES.weaponEquip,
+    CHARACTER_MODEL_FILES.sliding,
+    CHARACTER_MODEL_FILES.rifleJump,
+    CHARACTER_MODEL_FILES.pistolJump,
+    CHARACTER_MODEL_FILES.meleeJump,
+  ]);
   private damageNumberStack: DamageNumberStack | null = null;
   private meleeHitFx: MeleeHitFx | null = null;
   private shieldRechargeAuraFx: ShieldRechargeAuraFx | null = null;
@@ -395,6 +422,9 @@ export class Player {
       this.remoteHealthBar = new RemoteHealthBar();
       this.remoteUiRig.add(this.remoteHealthBar.object);
 
+      this.teammateSpotMarker = new TeammateSpotMarker();
+      this.remoteUiRig.add(this.teammateSpotMarker.object);
+
       this.damageNumberStack = new DamageNumberStack();
       this.remoteUiRig.add(this.damageNumberStack.object);
 
@@ -477,13 +507,33 @@ export class Player {
       && this.displayedOperatorId === operatorId
       && this.characterInstance
     ) {
+      this.remotePoseDebounceKey = null;
+      this.remotePoseDebounceUntilMs = 0;
       return;
     }
     if (this.remoteModelLoadingFile === displayKey) return;
 
+    const nowMs = performance.now();
+    const immediate = Player.REMOTE_POSE_IMMEDIATE.has(modelFile);
+    if (!immediate) {
+      if (this.remotePoseDebounceKey !== displayKey) {
+        this.remotePoseDebounceKey = displayKey;
+        this.remotePoseDebounceUntilMs = nowMs + Player.REMOTE_POSE_DEBOUNCE_MS;
+        return;
+      }
+      if (nowMs < this.remotePoseDebounceUntilMs) return;
+    }
+
+    this.remotePoseDebounceKey = null;
+    this.remotePoseDebounceUntilMs = 0;
     this.remoteModelLoadingFile = displayKey;
     void loadGameCharacterTemplate(weaponId, pose, meshFile, skinId)
       .then((template) => {
+        // Drop stale loads if the desired pose moved on while we were loading.
+        const latest = gameModelFileForWeapon(this.targetActiveWeaponId, this.getRemotePose(worldTime));
+        if (template.modelFile !== latest && !Player.REMOTE_POSE_IMMEDIATE.has(template.modelFile)) {
+          return;
+        }
         this.setCharacterModel(template);
         this.applyRemoteAim();
         this.characterInstance?.update(0);
@@ -588,6 +638,34 @@ export class Player {
 
   setCharacterModel(template: CharacterTemplate): void {
     if (!this.pitchPivot || !this.lookRig || !this.loadout || this.camera) return;
+
+    // Same mesh/skin/operator: crossfade clips on the existing skinned root.
+    if (
+      this.characterInstance
+      && this.displayedCharacterMeshFile === template.meshFile
+      && this.displayedCharacterSkinId === template.skinId
+      && this.displayedOperatorId === this.remoteSelectedOperatorId
+    ) {
+      if (this.displayedCharacterModelFile === template.modelFile) return;
+      this.characterInstance.playPose(template);
+      this.displayedCharacterModelFile = template.modelFile;
+      // Weapon mount offsets can differ per pose FBX — refresh without remounting.
+      this.refreshRemoteWeaponMount(template.modelFile);
+      if (this.handRig && this.remoteWeaponMount) {
+        this.handRig.position.copy(this.remoteWeaponMount.handPosition);
+        this.handRig.rotation.copy(this.remoteWeaponMount.handRotation);
+        this.loadout.reattach(
+          this.handRig,
+          this.remoteWeaponMount.weaponRotation,
+          'remote',
+          template.fitScale,
+          this.remoteWeaponMount.weaponPosition,
+        );
+      }
+      MatchPerfStats.recordPoseCrossfade();
+      return;
+    }
+
     if (
       this.displayedCharacterModelFile === template.modelFile
       && this.displayedCharacterMeshFile === template.meshFile
@@ -604,7 +682,14 @@ export class Player {
       this.lookRigFollowsHead = false;
     }
 
-    this.characterInstance?.dispose();
+    // Detach hand mount before pooling the skinned root.
+    this.handRig?.removeFromParent();
+    this.handRig = null;
+    this.spineBone = null;
+
+    this.characterInstance?.dispose({ releaseToPool: true });
+    MatchPerfStats.recordPoseSwap();
+    MatchPlaytestLog.poseRootSwap(template.modelFile);
     this.characterInstance = createCharacterInstance(template, {
       characterId: this.remoteSelectedCharacterId,
       operatorId: this.remoteSelectedOperatorId,
@@ -618,6 +703,7 @@ export class Player {
     this.bindRemoteCharacterRig(template);
     this.refreshRemoteUiTopOffset();
     this.syncEnemyOutline();
+    this.syncTeammateOutline();
   }
 
   private bindRemoteCharacterRig(template: CharacterTemplate): void {
@@ -939,8 +1025,9 @@ export class Player {
   }
 
   /**
-   * Render the sniper scope-lens RT (call before the main scene render).
-   * No-op when the optic isn't bound or ADS is inactive.
+   * Bake the zoomed feed and sync the display circle to the decal / camera.
+   * Call before the main scene render while the optic is bound (including hipfire
+   * so the opaque glass plug keeps tracking the weapon).
    */
   renderScopeLens(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
     if (!this.camera || !this.scopeLens.isBound) return;
@@ -1407,27 +1494,50 @@ export class Player {
 
     const t = 1 - Math.exp(-REMOTE_INTERPOLATION_SPEED * delta);
     this.object.position.lerp(this.targetPosition, t);
-    const aim = aimDirectionFromYawPitch(this.currentYaw, this.currentPitch);
-    const cleared = applyForwardLimbWallClearance(
-      getClientPhysicsWorld(),
-      this.object.position.x,
-      this.object.position.y,
-      this.object.position.z,
-      aim.x,
-      aim.z,
-      this.targetCrouching,
-    );
-    this.object.position.x = cleared.x;
-    this.object.position.z = cleared.z;
+    // Wall-clearance casts are expensive with several remotes — skip more often when far.
+    this.remoteClearanceFrame = (this.remoteClearanceFrame + 1) & 3;
+    const clearanceEvery = this.remoteLodTier <= 0 ? 2 : 4;
+    if (this.remoteClearanceFrame % clearanceEvery === 0) {
+      const aim = aimDirectionFromYawPitch(this.currentYaw, this.currentPitch);
+      const cleared = applyForwardLimbWallClearance(
+        getClientPhysicsWorld(),
+        this.object.position.x,
+        this.object.position.y,
+        this.object.position.z,
+        aim.x,
+        aim.z,
+        this.targetCrouching,
+      );
+      this.object.position.x = cleared.x;
+      this.object.position.z = cleared.z;
+    }
     this.currentYaw = lerpAngle(this.currentYaw, this.targetYaw, t);
     this.currentPitch = THREE.MathUtils.lerp(this.currentPitch, this.targetPitch, t);
     this.applyRemoteAim();
-    this.characterInstance?.update(delta);
+    // Distance LOD: mid/far remotes update the AnimationMixer less often.
+    this.remoteMixerFrame = (this.remoteMixerFrame + 1) % 4;
+    const mixerEvery =
+      this.remoteLodTier <= 0 ? 1 : this.remoteLodTier === 1 ? 2 : 4;
+    if (this.remoteMixerFrame % mixerEvery === 0) {
+      this.characterInstance?.update(delta * mixerEvery);
+    }
     this.applyRemoteSpinePitch();
     // Mark hit capsules stale; they're rebuilt lazily in getBodyHitVolumes()
     // only when a shot/melee query actually needs them.
     this.bodyHitVolumesDirty = true;
     this.syncHitCapsuleDebug();
+  }
+
+  /**
+   * Distance-based remote presentation LOD.
+   * 0 near: full mixer + outline. 1 mid: half-rate mixer. 2 far: 1/4 mixer, no outline.
+   */
+  setRemoteLodTier(tier: 0 | 1 | 2): void {
+    if (this.camera) return;
+    if (this.remoteLodTier === tier) return;
+    this.remoteLodTier = tier;
+    this.syncEnemyOutline();
+    this.syncTeammateOutline();
   }
 
   private syncHitCapsuleDebug(): void {
@@ -1445,19 +1555,29 @@ export class Player {
     this.syncRemoteUiHeight();
     this.remoteHealthBar?.setVisibility(visibility);
     this.remoteHealthBar?.updateLayout(camera);
+    this.syncTeammateSpot(camera);
   }
 
-  /** Enemies get a red silhouette outline plus red nameplate styling. */
+  /** Enemies: red silhouette. Teammates: team-color silhouette + head arrow. */
   setEnemyHighlight(isEnemy: boolean): void {
     if (this.camera) return;
     this.enemyHighlighted = isEnemy;
+    this.teammateHighlighted = !isEnemy;
     this.remoteHealthBar?.setEnemyStyle(isEnemy);
     this.syncEnemyOutline();
+    this.syncTeammateOutline();
+    this.syncTeammateSpot(null);
   }
 
   private syncEnemyOutline(): void {
     const modelRoot = this.characterInstance?.root ?? null;
-    if (!this.enemyHighlighted || !this.isAlive() || !modelRoot) {
+    // Skip expensive OutlinePass selection for far remotes.
+    if (
+      !this.enemyHighlighted
+      || !this.isAlive()
+      || !modelRoot
+      || this.remoteLodTier >= 2
+    ) {
       this.enemyOutline?.detach();
       return;
     }
@@ -1466,10 +1586,38 @@ export class Player {
     this.enemyOutline.attach(modelRoot);
   }
 
-  private syncRemoteUiHeight(): void {
-    if (!this.remoteHealthBar) return;
+  private syncTeammateOutline(): void {
+    const modelRoot = this.characterInstance?.root ?? null;
+    // Keep teammate glow readable farther than enemy outlines (spotting aid).
+    if (
+      !this.teammateHighlighted
+      || !this.isAlive()
+      || !modelRoot
+      || this.remoteLodTier >= 2
+    ) {
+      this.teammateOutline?.detach();
+      return;
+    }
+    this.teammateOutline ??= new TeammateOutlineFx();
+    this.teammateOutline.attach(modelRoot);
+  }
 
-    this.remoteHealthBar.setHeadTopOffset(this.remoteHeadTopOffset);
+  private syncTeammateSpot(camera: THREE.Camera | null): void {
+    const marker = this.teammateSpotMarker;
+    if (!marker) return;
+    const show = this.teammateHighlighted && this.isAlive() && !this.remoteDeathActive;
+    marker.setTeamId(this.teamId);
+    marker.setVisible(show);
+    if (show && camera) {
+      marker.updateLayout(camera);
+    }
+  }
+
+  private syncRemoteUiHeight(): void {
+    if (!this.remoteHealthBar && !this.teammateSpotMarker) return;
+
+    this.remoteHealthBar?.setHeadTopOffset(this.remoteHeadTopOffset);
+    this.teammateSpotMarker?.setHeadTopOffset(this.remoteHeadTopOffset);
     // Sit just above the mesh crown so floats read at head height.
     this.damageNumberStack?.setHeadTopOffset(this.remoteHeadTopOffset + 0.16);
   }
@@ -1527,7 +1675,10 @@ export class Player {
     if (!this.alive || this.remoteDeathActive) return;
 
     const pose = this.getRemotePose(worldTime);
-    this.loadout.setMeshesVisible(!pose.switchingWeapon);
+    // Far LOD: hide weapon meshes (body silhouette stays); also hide during equip anim.
+    this.loadout.setMeshesVisible(
+      this.remoteLodTier < 2 && !pose.switchingWeapon,
+    );
 
     const weaponChanged = this.targetActiveWeaponId !== this.remoteDisplayedWeaponId;
     if (weaponChanged && isWeaponId(this.targetActiveWeaponId)) {
@@ -1796,8 +1947,19 @@ export class Player {
         },
       );
       if (this.aimControls) {
-        const adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;
         const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
+        let adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;
+        // Sniper optic: scale look speed by lensFov/hipFov so aim tracks magnification
+        // (e.g. lens FOV at 50% of hip → 50% of the user's current sensitivity).
+        if (active.config.view.scopeLensAds === true) {
+          const opticAdsFov = active.config.view.adsFov ?? 18;
+          const mainAdsFov = active.config.view.mainAdsFov ?? HIP_FOV;
+          adsLookSensitivity = getScopeLensLookSensitivityScale(
+            opticAdsFov,
+            mainAdsFov,
+            HIP_FOV,
+          );
+        }
         this.aimControls.pointerSpeed = THREE.MathUtils.lerp(1, adsLookSensitivity, adsBlend);
       }
       const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
@@ -1876,7 +2038,7 @@ export class Player {
           // Layer order: pose position (already applied) → pose rotation →
           // spring kickback (additive) → sway/look-lag (additive).
           active.mesh.rotation.copy(weaponRotation);
-          active.feel.applyWeaponVisual(active.mesh);
+          active.feel.applyWeaponVisual(active.mesh, this.weaponPose?.adsBlend ?? 0);
           this.weaponSway?.apply(active.mesh, weaponRotation);
         }
       } else {
@@ -2073,8 +2235,12 @@ export class Player {
   dispose(): void {
     this.remoteHealthBar?.dispose();
     this.remoteHealthBar = null;
+    this.teammateSpotMarker?.dispose();
+    this.teammateSpotMarker = null;
     this.enemyOutline?.detach();
     this.enemyOutline = null;
+    this.teammateOutline?.detach();
+    this.teammateOutline = null;
     this.damageNumberStack?.dispose();
     this.damageNumberStack = null;
     this.meleeHitFx?.dispose();

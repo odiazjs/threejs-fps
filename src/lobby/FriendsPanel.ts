@@ -32,6 +32,8 @@ import { getSelectedGameMode } from './gameModeSelection';
 import { isInviteablePresence } from './friendPresenceUi';
 
 const ACTION_TIMEOUT_MS = 12_000;
+/** Minimum gap between invite sends (re-invite replaces any pending invite). */
+const INVITE_COOLDOWN_MS = 3_000;
 
 interface PartySnapshotWaiter {
   predicate: (snapshot: PartySnapshotMessage) => boolean;
@@ -79,6 +81,8 @@ export class FriendsPanel {
   private onPartySnapshotHandler: ((data: PartySnapshotMessage) => void) | null = null;
   private inviteSendWaiter: InviteSendWaiter | null = null;
   private partySnapshotWaiters: PartySnapshotWaiter[] = [];
+  /** userId → last successful/attempted invite send time (cooldown). */
+  private readonly inviteCooldownUntilByUserId = new Map<string, number>();
 
   constructor(private readonly lobby: LobbyClient) {
     this.list = document.getElementById('friends-list')!;
@@ -155,11 +159,13 @@ export class FriendsPanel {
     });
     this.lobby.onGameInviteDeclined((data) => {
       this.setStatus(`${data.username} declined your invite`);
+      this.refreshListPanel();
     });
     this.lobby.onGameInviteCancelled((data) => {
       this.removeGameInviteToast(data.inviteId);
       this.pendingGameInvites.delete(data.inviteId);
       this.setStatus('Game invite was cancelled');
+      this.refreshListPanel();
     });
     this.lobby.onGameLaunch((data) => {
       this.launchGame(data.roomId, data.mapId, data.teamId);
@@ -199,15 +205,36 @@ export class FriendsPanel {
   syncControls(): void {
     this.syncListTabs();
     this.updatePartyButtons();
+    // Re-render friends so invite buttons aren't stuck disabled from an earlier
+    // frame when the global boot loading overlay was still active.
+    this.refreshListPanel();
+  }
+
+  /**
+   * Invite gating must NOT use the shared LoadingOverlay — boot / page navigations
+   * leave invites greyed out after presence already shows "in lobby".
+   */
+  private isInviteUiBlocked(): boolean {
+    return this.launching || this.inviteSendWaiter !== null;
   }
 
   private applyPresenceSnapshot(updates: FriendPresenceUpdate[]): void {
     for (const entry of updates) {
+      const current = this.presenceByUserId.get(entry.userId);
+      // Concurrent joins: a snapshot started before a friend registered can arrive
+      // after a live `friendPresence` update and wrongly wipe ONLINE → offline.
+      if (
+        entry.presence === 'offline'
+        && current
+        && current !== 'offline'
+      ) {
+        continue;
+      }
       this.presenceByUserId.set(entry.userId, entry.presence);
       const friend = this.friends.find((item) => item.userId === entry.userId);
       if (friend) {
-        friend.online = entry.online;
-        friend.presence = entry.presence;
+        friend.online = entry.online || entry.presence !== 'offline';
+        friend.presence = this.presenceByUserId.get(entry.userId) ?? entry.presence;
       }
     }
     this.refreshListPanel();
@@ -283,11 +310,16 @@ export class FriendsPanel {
   }
 
   private async sendGameInvite(friend: FriendSummary): Promise<void> {
-    if (this.isBusy()) return;
+    if (this.isInviteUiBlocked()) return;
 
-    if (!this.party?.isHost) {
+    // Solo lobby: missing snapshot still means you can host invites.
+    if (this.party && !this.party.isHost) {
       this.setStatus('Only the party host can invite friends');
       return;
+    }
+
+    if (!this.party) {
+      this.lobby.requestPartySnapshot();
     }
 
     if (this.getPartySize() >= MAX_PARTY_SIZE) {
@@ -300,14 +332,30 @@ export class FriendsPanel {
       return;
     }
 
+    const cooldownUntil = this.inviteCooldownUntilByUserId.get(friend.userId) ?? 0;
+    const remainingMs = cooldownUntil - Date.now();
+    if (remainingMs > 0) {
+      this.setStatus(`Wait ${Math.ceil(remainingMs / 1000)}s to re-invite`);
+      return;
+    }
+
+    this.inviteCooldownUntilByUserId.set(friend.userId, Date.now() + INVITE_COOLDOWN_MS);
+    this.refreshListPanel();
+    this.scheduleInviteCooldownRefresh();
+
     const waitForSend = this.beginInviteSendWait();
     this.lobby.sendGameInvite(friend.userId);
 
     try {
       await waitForSend;
       this.setStatus(`Invite sent to ${friend.displayName}`);
-    } catch {
-      // Status is set by rejectInviteSendWait or the lobby error handler.
+    } catch (error) {
+      // Allow immediate retry after hard failures / timeouts.
+      this.inviteCooldownUntilByUserId.delete(friend.userId);
+      this.refreshListPanel();
+      if (error instanceof Error && error.message === 'Invite timed out') {
+        this.setStatus('Invite timed out — you can try again');
+      }
     }
   }
 
@@ -315,6 +363,10 @@ export class FriendsPanel {
     this.resolveInviteSendWait();
     this.refreshListPanel();
     this.setStatus(`Invite sent to ${data.toUsername} — Party ${data.roomId}`);
+  }
+
+  private scheduleInviteCooldownRefresh(): void {
+    window.setTimeout(() => this.refreshListPanel(), INVITE_COOLDOWN_MS + 50);
   }
 
   private async handleLaunchClick(): Promise<void> {
@@ -497,12 +549,18 @@ export class FriendsPanel {
   }
 
   private showGameInviteToast(data: GameInviteMessage): void {
-    if (this.pendingGameInvites.has(data.inviteId)) return;
+    // One invite UI at a time — dismiss prior toast(s) and replay fly-in.
+    this.dismissActiveGameInviteToasts(data.inviteId);
+
+    if (this.pendingGameInvites.has(data.inviteId)) {
+      this.removeGameInviteToast(data.inviteId);
+      this.pendingGameInvites.delete(data.inviteId);
+    }
 
     this.pendingGameInvites.set(data.inviteId, data);
 
     const toast = document.createElement('div');
-    toast.className = 'friend-toast hud-panel';
+    toast.className = 'friend-toast friend-toast--invite hud-panel';
     toast.dataset.inviteId = data.inviteId;
 
     const text = document.createElement('p');
@@ -537,6 +595,20 @@ export class FriendsPanel {
     actions.append(accept, decline);
     toast.append(text, room, actions);
     this.toastRoot.appendChild(toast);
+
+    // Restart CSS fly-in even if a toast node was recycled in the same frame.
+    void toast.offsetWidth;
+    toast.classList.add('is-flying-in');
+  }
+
+  /** Drop other invite toasts; auto-decline superseded invites on the server. */
+  private dismissActiveGameInviteToasts(keepInviteId?: string): void {
+    for (const [inviteId, pending] of [...this.pendingGameInvites]) {
+      if (inviteId === keepInviteId) continue;
+      this.lobby.respondGameInvite(inviteId, pending.fromUsername, false);
+      this.removeGameInviteToast(inviteId);
+      this.pendingGameInvites.delete(inviteId);
+    }
   }
 
   private async respondToGameInvite(
@@ -878,7 +950,7 @@ export class FriendsPanel {
 
   private renderFriends(): void {
     this.list.replaceChildren();
-    const blockInvites = this.isBusy() || this.launching;
+    const blockInvites = this.isInviteUiBlocked();
 
     if (this.friends.length === 0) {
       const empty = document.createElement('li');
@@ -888,7 +960,8 @@ export class FriendsPanel {
       return;
     }
 
-    const isHost = this.party?.isHost ?? false;
+    // Missing party snapshot = solo host (common during concurrent lobby boots).
+    const isHost = this.party == null || this.party.isHost;
     const partyFull = this.getPartySize() >= MAX_PARTY_SIZE;
 
     for (const friend of this.friends) {
@@ -926,39 +999,43 @@ export class FriendsPanel {
 
       const inParty = this.isPartyMember(friend.userId);
       const pending = this.isPendingInvite(friend.userId);
+      const cooldownUntil = this.inviteCooldownUntilByUserId.get(friend.userId) ?? 0;
+      const onCooldown = cooldownUntil > Date.now();
       const canInvite =
         !blockInvites &&
         isHost &&
         !partyFull &&
         isInviteablePresence(presence) &&
         !inParty &&
-        !pending;
+        !onCooldown;
 
       if (inParty) {
         inviteBtn.textContent = 'IN PARTY';
         inviteBtn.disabled = true;
         inviteBtn.title = 'Friend is in your party';
-      } else if (pending) {
-        inviteBtn.textContent = 'PENDING';
-        inviteBtn.disabled = true;
-        inviteBtn.title = 'Waiting for friend to accept';
       } else if (!isHost) {
         inviteBtn.textContent = 'INVITE';
         inviteBtn.disabled = true;
         inviteBtn.title = 'Only the party host can invite';
       } else {
-        inviteBtn.textContent = 'INVITE';
+        inviteBtn.textContent = pending ? 'REINVITE' : 'INVITE';
         inviteBtn.disabled = !canInvite;
         if (!canInvite && blockInvites) {
-          inviteBtn.title = 'Please wait for the current action to finish';
+          inviteBtn.title = this.launching
+            ? 'Match is starting'
+            : 'Invite already sending…';
+        } else if (!canInvite && onCooldown) {
+          inviteBtn.title = 'Please wait a moment before re-inviting';
         } else if (!canInvite && presence === 'game') {
           inviteBtn.title = 'Friend is in a match';
-        } else if (!canInvite && presence === 'menus') {
-          inviteBtn.title = 'Friend is browsing menus';
         } else if (!canInvite && presence === 'offline') {
           inviteBtn.title = 'Friend is offline';
         } else if (!canInvite && partyFull) {
           inviteBtn.title = 'Party is full';
+        } else if (pending) {
+          inviteBtn.title = 'Send again (replaces the pending invite)';
+        } else {
+          inviteBtn.title = 'Invite to party';
         }
         if (canInvite) {
           inviteBtn.addEventListener('click', () => {

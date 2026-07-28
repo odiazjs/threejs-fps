@@ -71,8 +71,8 @@ export const PLASMA_RIFLE_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.plasma_rifle,
   view: {
     hip: { x: 0.15, y: -0.25, z: -0.25 },
-    // ADS: 5% lower, then 2.5% higher.
-    ads: { x: 0, y: -0.191953, z: -0.175 },
+    // ADS: 10% lower, then 5% + 2.5% higher.
+    ads: { x: 0, y: -0.195576, z: -0.175 },
     adsFov: 61,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -147,8 +147,8 @@ export const PISTOL_CONFIG: WeaponConfig = {
   maxHitDistance: WEAPON_MAX_HIT_DISTANCE.pistol,
   view: {
     hip: { x: 0.12, y: -0.16, z: -0.30 },
-    // ADS: tuned hold (closer / vertical stack), then 5% lower.
-    ads: { x: 0.0, y: -0.138345, z: -0.21375 },
+    // ADS: tuned hold, then 10% lower.
+    ads: { x: 0.0, y: -0.15218, z: -0.21375 },
     adsFov: 70,
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
@@ -279,12 +279,12 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
     hip: { x: 0.1, y: -0.24, z: -0.396 },
     // Closer ADS hold so the optic fills more of the view while keeping the lens readable.
     ads: { x: 0, y: -0.15, z: -0.23 },
-    // Optic base FOV (ScopeLens tightens further for PiP magnification).
+    // Optic base FOV (ScopeLens × SCOPE_PIP_FOV_SCALE → ~7.6° lens).
     adsFov: 12,
     // Mild main-view zoom — full adsFov is far too tight for the outer frame.
     mainAdsFov: 52,
     scopeLensAds: true,
-    adsLookSensitivity: 0.5,
+    // Look speed while scoped is derived from lens FOV / hip FOV (see Player).
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },

@@ -10,6 +10,11 @@ import type { RoomClient } from './RoomClient';
 import type { PlayerSnapshot } from './types';
 
 const _listenerPos = new THREE.Vector3();
+const _camPos = new THREE.Vector3();
+
+/** Near / mid / far squared thresholds for remote presentation LOD. */
+const REMOTE_LOD_NEAR_SQ = 28 * 28;
+const REMOTE_LOD_MID_SQ = 55 * 55;
 
 export class RemotePlayers {
   private readonly players = new Map<string, Player>();
@@ -125,16 +130,26 @@ export class RemotePlayers {
     const nowSec = performance.now() / 1000;
     this.uiVisibility.prune(nowSec);
     const footsteps = this.footsteps;
+    camera.updateMatrixWorld(true);
+    camera.getWorldPosition(_camPos);
     if (footsteps) {
       footsteps.updateListener(camera);
-      camera.getWorldPosition(_listenerPos);
+      _listenerPos.copy(_camPos);
     }
 
     for (const [sessionId, player] of this.players) {
+      const feet = player.getFeetPosition();
+      const dx = feet.x - _camPos.x;
+      const dy = feet.y - _camPos.y;
+      const dz = feet.z - _camPos.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
+      const lodTier: 0 | 1 | 2 =
+        distSq <= REMOTE_LOD_NEAR_SQ ? 0 : distSq <= REMOTE_LOD_MID_SQ ? 1 : 2;
+      player.setRemoteLodTier(lodTier);
+
       player.interpolateRemote(delta);
       player.syncRemoteCharacterModel(worldTime);
       player.updateRemoteWeapon(delta, worldTime);
-      const feet = player.getFeetPosition();
       // Training bots are always hostile regardless of team assignment.
       const isTeammate =
         !isTrainingBotSessionId(sessionId) && player.getTeamId() === localTeamId;

@@ -695,11 +695,6 @@ export class ArmoryLoadoutsController {
       >
         <div class="armory-loadout-card-top">
           <span class="armory-loadout-label">LOADOUT ${index + 1}</span>
-          ${
-            loadout.isDefault
-              ? '<span class="armory-loadout-status">DEFAULT</span>'
-              : `<button type="button" class="armory-loadout-default-btn" data-loadout-id="${escapeAttr(loadout.id)}">SET DEFAULT</button>`
-          }
         </div>
         ${
           isSelected
@@ -713,6 +708,13 @@ export class ArmoryLoadoutsController {
             : `<p class="armory-loadout-name-static" title="${escapeAttr(name)}">${escapeHtml(name)}</p>`
         }
         <p class="armory-loadout-types">${escapeHtml(typeLine)}</p>
+        <div class="armory-loadout-card-footer">
+          ${
+            loadout.isDefault
+              ? '<span class="armory-loadout-status">DEFAULT</span>'
+              : `<button type="button" class="armory-loadout-default-btn" data-loadout-id="${escapeAttr(loadout.id)}">SET DEFAULT</button>`
+          }
+        </div>
       </article>
     `;
   }

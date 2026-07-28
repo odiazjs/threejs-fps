@@ -3,6 +3,8 @@ import type { WeaponViewConfig } from '../../shared/content/weaponConfig';
 import { KATANA_SLASH_DURATION_SEC } from '../effects/KatanaSlashTrailFx';
 
 const HIP_FOV = 75;
+export { HIP_FOV };
+
 const DEFAULT_ADS_FOV = 68;
 const HIP_CAMERA_NEAR = 0.01;
 const ADS_CAMERA_NEAR = 0.01;

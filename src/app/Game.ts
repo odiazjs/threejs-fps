@@ -59,6 +59,8 @@ import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
+import { MatchPerfStats } from '../debug/MatchPerfStats';
+import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 import {
   getCountdownDisplayValue,
   getMatchTimeRemaining,
@@ -220,6 +222,11 @@ export class Game {
     secondaryWeaponId: string;
   } | null = null;
   private matchEndHandled = false;
+  private readonly connectionStallEl =
+    document.getElementById('connection-stall');
+  /** Soft-lock guard: no authoritative patches for this long → pause combat. */
+  private static readonly CONNECTION_STALL_MS = 2500;
+  private connectionStallLogged = false;
   private matchEnd30Played = false;
   private matchEnd10Played = false;
   private prevMatchPhase: MatchPhase | null = null;
@@ -440,6 +447,9 @@ export class Game {
     setClientMapDef(this.worldMapId);
     this.player?.setMapCollisionDef(mapDef);
     this.killCam.configureForMap(mapDef);
+    this.renderContext.setMapLook(
+      this.worldMapId === 'killhouse_small' ? 'chrono_bowl' : 'default',
+    );
   }
 
   private updateMatchCountdownTicks(
@@ -1397,12 +1407,32 @@ export class Game {
     const tdmBlocksInput =
       match?.gameMode === 'tdm' && match.phase !== 'playing';
 
+    const patchAgeMs = this.network?.getLastPatchAgeMs() ?? -1;
+    const connectionStalled =
+      Boolean(this.network?.isConnected)
+      && this.playerControls.isPlaying
+      && (
+        !MatchPerfStats.snapshot().connectionOpen
+        || (patchAgeMs >= 0 && patchAgeMs > Game.CONNECTION_STALL_MS)
+      );
+    if (this.connectionStallEl) {
+      this.connectionStallEl.hidden = !connectionStalled;
+    }
+    if (connectionStalled && !this.connectionStallLogged) {
+      this.connectionStallLogged = true;
+      MatchPlaytestLog.connectionStall(patchAgeMs);
+    } else if (!connectionStalled && this.connectionStallLogged) {
+      this.connectionStallLogged = false;
+      MatchPlaytestLog.connectionResume(patchAgeMs);
+    }
+
     // Panels unlock the pointer but must NOT pause the match. Combat input
     // is gated; physics/world/network keep running while isPlaying.
     const panelOpen =
       this.inventoryOpen || this.tacticalMapOverlay.isOpen();
     const canAct =
       !tdmBlocksInput &&
+      !connectionStalled &&
       this.playerControls.isPlaying &&
       this.playerControls.isLocked &&
       this.localCombat.alive &&
@@ -1580,6 +1610,7 @@ export class Game {
     } else {
       this.renderContext.setScopeWorldBlur(0);
     }
+    this.renderContext.setTeammateOutlineTeamId(this.localCombat.teamId);
     this.renderContext.render(this.scene, camera);
     this.performanceHud.update(delta, this.renderContext.renderer);
     this.input.endFrame();

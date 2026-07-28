@@ -4,11 +4,14 @@ import { KickbackSystem } from './KickbackSystem';
 import { RecoilSystem } from './RecoilSystem';
 
 /**
- * Per-weapon-slot feel bundle: camera recoil + procedural kickback.
+ * Per-weapon-slot feel bundle:
+ * - RecoilSystem → pattern climb on the aim rigs (crosshair / recoil control)
+ * - KickbackSystem → spring wrist-flick on the viewmodel mesh only
+ *
+ * These stay independent so visual kick amplitude never fights recoil management.
  *
  * Auto weapons bake pattern recoil into look on stop-fire. Semi / burst /
- * melee recover pattern recoil with Hooke's-law springs (same camera spring
- * as KickbackSystem).
+ * melee recover pattern recoil with Hooke's-law springs.
  */
 export class WeaponFeel {
   readonly recoil: RecoilSystem;
@@ -64,27 +67,25 @@ export class WeaponFeel {
     return this.bakeScratch;
   }
 
-  /** Camera: pattern offset on the recoil rigs (yaw parent / pitch child). */
+  /**
+   * Camera: pattern recoil only on the aim rigs (crosshair / recoil control).
+   * Visual weapon kick stays on the mesh via `applyWeaponVisual` — never mixed in.
+   */
   applyAim(yawRig: THREE.Object3D, pitchRig: THREE.Object3D, basePitch: number): void {
     this.recoil.applyAim(yawRig, pitchRig, basePitch);
-    this.kickback.applyCameraAdditive(yawRig, pitchRig);
   }
 
   /**
-   * Total live camera kick (pattern recoil + crack springs). Used by
-   * getNetworkAim so remotes' spine tracks the same climb the shooter sees.
+   * Live camera aim offset for network spine pitch — pattern recoil only.
+   * Kickback camera springs are intentionally unused so visual mesh kick can
+   * be tuned independently of crosshair climb.
    */
   getCameraAimOffset(): { pitch: number; yaw: number } {
-    const recoil = this.recoil.getOffset();
-    const kick = this.kickback.getCameraOffset();
-    return {
-      pitch: recoil.pitch + kick.pitch,
-      yaw: recoil.yaw + kick.yaw,
-    };
+    return this.recoil.getOffset();
   }
 
-  /** Viewmodel: additive spring kick after the pose is set for the frame. */
-  applyWeaponVisual(weapon: THREE.Object3D): void {
-    this.kickback.applyWeaponVisual(weapon);
+  /** Viewmodel only: spring wrist-flick kick (does not move the crosshair). */
+  applyWeaponVisual(weapon: THREE.Object3D, adsBlend = 0): void {
+    this.kickback.applyWeaponVisual(weapon, adsBlend);
   }
 }

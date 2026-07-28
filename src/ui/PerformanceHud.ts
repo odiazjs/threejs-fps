@@ -1,8 +1,15 @@
 import type { WebGLRenderer } from 'three';
+import {
+  isMatchPerfEnabled,
+  MatchPerfStats,
+} from '../debug/MatchPerfStats';
+import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 
 const FPS_SAMPLE_SEC = 0.5;
 const WORST_WINDOW_SEC = 2;
 const TIME_SAMPLE_SEC = 2;
+const LONG_FRAME_LOG_MS = 50;
+const LONG_FRAME_LOG_COOLDOWN_MS = 1000;
 
 export class PerformanceHud {
   private readonly root: HTMLElement;
@@ -11,6 +18,11 @@ export class PerformanceHud {
   private readonly timeEl: HTMLElement;
   private readonly worstEl: HTMLElement;
   private readonly gpuEl: HTMLElement;
+  private readonly swapEl: HTMLElement | null;
+  private readonly patchEl: HTMLElement | null;
+  private readonly lockEl: HTMLElement | null;
+  private readonly longEl: HTMLElement | null;
+  private readonly diagnosticsEnabled: boolean;
 
   private frameAccumulator = 0;
   private frameCount = 0;
@@ -21,8 +33,10 @@ export class PerformanceHud {
   private simTimeAccum = 0;
   private wallSampleStartMs = 0;
   private timeScale = 1;
+  private lastLongFrameLogMs = 0;
 
   constructor() {
+    this.diagnosticsEnabled = isMatchPerfEnabled();
     this.root = document.createElement('div');
     this.root.id = 'perf-hud';
     this.root.className = 'hud-panel game-perf-hud';
@@ -33,13 +47,33 @@ export class PerformanceHud {
     this.worstEl = this.createRow('WORST', 'game-perf-meta');
     this.gpuEl = this.createRow('GPU', 'game-perf-meta');
 
-    this.root.append(
+    const rows: HTMLElement[] = [
       this.fpsEl.parentElement!,
       this.frameEl.parentElement!,
       this.timeEl.parentElement!,
       this.worstEl.parentElement!,
       this.gpuEl.parentElement!,
-    );
+    ];
+
+    if (this.diagnosticsEnabled) {
+      this.swapEl = this.createRow('SWAPS', 'game-perf-meta');
+      this.patchEl = this.createRow('PATCH', 'game-perf-meta');
+      this.lockEl = this.createRow('LOCK', 'game-perf-meta');
+      this.longEl = this.createRow('LONG', 'game-perf-meta');
+      rows.push(
+        this.swapEl.parentElement!,
+        this.patchEl.parentElement!,
+        this.lockEl.parentElement!,
+        this.longEl.parentElement!,
+      );
+    } else {
+      this.swapEl = null;
+      this.patchEl = null;
+      this.lockEl = null;
+      this.longEl = null;
+    }
+
+    this.root.append(...rows);
     document.body.appendChild(this.root);
   }
 
@@ -59,6 +93,16 @@ export class PerformanceHud {
 
   update(delta: number, renderer?: WebGLRenderer): void {
     const frameMs = delta * 1000;
+    if (this.diagnosticsEnabled) {
+      MatchPerfStats.recordFrame(frameMs);
+      if (frameMs >= LONG_FRAME_LOG_MS) {
+        const now = performance.now();
+        if (now - this.lastLongFrameLogMs >= LONG_FRAME_LOG_COOLDOWN_MS) {
+          this.lastLongFrameLogMs = now;
+          MatchPlaytestLog.longFrame(frameMs);
+        }
+      }
+    }
     this.frameCount += 1;
     this.frameAccumulator += delta;
     this.worstInWindow = Math.max(this.worstInWindow, frameMs);
@@ -107,6 +151,30 @@ export class PerformanceHud {
       this.gpuEl.textContent = `${calls} DRAWS · ${(triangles / 1000).toFixed(0)}K TRIS`;
     } else {
       this.gpuEl.textContent = '—';
+    }
+
+    if (!this.diagnosticsEnabled) return;
+
+    const snap = MatchPerfStats.snapshot();
+    if (this.swapEl) {
+      this.swapEl.textContent =
+        `${snap.poseSwapsPerSec}/S · ${snap.poseCrossfadesPerSec} XF · ${snap.poseClonesPerSec} CLONE`;
+      this.swapEl.classList.toggle('game-perf-value--warn', snap.poseSwapsPerSec > 2);
+    }
+    if (this.patchEl) {
+      const age = snap.lastPatchAgeMs;
+      this.patchEl.textContent = age < 0 ? '—' : `${age.toFixed(0)} MS`;
+      this.patchEl.classList.toggle('game-perf-value--warn', age > 500);
+    }
+    if (this.lockEl) {
+      this.lockEl.textContent = snap.pointerLocked
+        ? 'ON'
+        : `OFF · E${snap.pointerLockErrors}`;
+      this.lockEl.classList.toggle('game-perf-value--warn', !snap.pointerLocked);
+    }
+    if (this.longEl) {
+      this.longEl.textContent = `${snap.longFramesPerSec}/S`;
+      this.longEl.classList.toggle('game-perf-value--warn', snap.longFramesPerSec > 2);
     }
   }
 
