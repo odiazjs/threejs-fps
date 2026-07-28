@@ -276,6 +276,10 @@ export class FpArmsViewModel {
 
   /** Loop sprint clip while sprinting with a weapon (ignored during reload). */
   setSprinting(sprinting: boolean): void {
+    if (sprinting === this.wantSprinting) {
+      this.syncMeshVisibility();
+      return;
+    }
     this.wantSprinting = sprinting;
     this.applyAnimState();
   }

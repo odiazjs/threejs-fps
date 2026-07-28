@@ -64,12 +64,16 @@ import { DEFAULT_OPERATOR_CHARACTER_ID } from '../../shared/content/characters';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 import { getCharacterMeshFile } from '../content/activeCharacterMesh';
 import { EMPTY_WEAPON_SLOT } from '../../shared/loadout/loadoutSlots';
-import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
+import {
+  HorizontalLocomotion,
+  MOVE_SPEED,
+} from './HorizontalLocomotion';
 import {
   LAND_SLIDE_GRACE_SEC,
-  SlideController,
   SPRINT_CHARGE_FULL_SEC,
+  SlideController,
 } from './SlideController';
+import { SPRINT_MULTIPLIER, SprintStamina, type SprintState } from './SprintStamina';
 import { GrenadeThrowKick } from './GrenadeThrowKick';
 import { ExplosionCameraShake } from './ExplosionCameraShake';
 import { HeadBob } from './HeadBob';
@@ -145,7 +149,6 @@ import {
 import { aimDirectionFromYawPitch } from '../../shared/combat/meleeHit';
 /** Gap between the top of the character mesh and the nameplate anchor. */
 const REMOTE_UI_HEAD_CLEARANCE = 0.12;
-const MOVE_SPEED = 3;
 const CROUCH_CAMERA_BLEND_SPEED = 12;
 const REMOTE_INTERPOLATION_SPEED = 12;
 const LOCAL_WEAPON_ROTATION = new THREE.Euler(0, -Math.PI / 2, 0);
@@ -196,6 +199,8 @@ export class Player {
   private mapCollisionDef: MapCollisionDef = getMapDef(DEFAULT_MAP_ID);
   private sprint = new SprintStamina();
   private readonly slide = new SlideController();
+  private readonly horizontal = new HorizontalLocomotion();
+  private wasSlidingLastFrame = false;
   private locomotionSliding = false;
   /** After landing, briefly allow C-slide without sprint. */
   private landSlideGraceSec = 0;
@@ -1339,6 +1344,8 @@ export class Player {
     this.object.position.set(x, y - EYE_HEIGHT, z);
     this.object.rotation.set(0, 0, 0);
     this.physics = { verticalVelocity: 0, grounded: true };
+    this.horizontal.reset();
+    this.wasSlidingLastFrame = false;
     if (resetLook) {
       this.resetLocalView();
     }
@@ -1351,6 +1358,8 @@ export class Player {
     this.grenadeThrowKick.reset();
     this.explosionCameraShake.reset();
     this.headBob.reset();
+    this.horizontal.reset();
+    this.wasSlidingLastFrame = false;
     this.footstepSounds?.reset();
     this.crouchBlend = 0;
     this.locomotionCrouching = false;
@@ -1823,15 +1832,23 @@ export class Player {
         ? this.airborneSlideChargeSec
         : this.sprintChargeSec;
       const charge01 = Math.min(1, chargeSec / SPRINT_CHARGE_FULL_SEC);
-      this.slide.tryStart(this.forward.x, this.forward.z, charge01);
+      this.slide.tryStart(
+        this.forward.x,
+        this.forward.z,
+        charge01,
+        this.horizontal.getSpeed(),
+      );
     }
 
-    // Jump cancels slide and launches — allows immediate resprint after.
+    // Jump cancels slide and launches — hand off residual slide speed.
     const jumpRequested = input.isJustPressed('Space');
     const jumpFromSlide =
       this.slide.isActive() && jumpRequested && this.physics.grounded;
+    let slideJumpHandoff: { x: number; z: number } | null = null;
     if (jumpFromSlide) {
-      this.slide.cancel();
+      const v = this.slide.cancel();
+      slideJumpHandoff = { x: v.x, z: v.z };
+      this.horizontal.setVelocity(v.x, v.z);
     }
 
     const isSliding = this.slide.isActive();
@@ -1916,7 +1933,18 @@ export class Player {
       // Pistol reload skips the arms clip and dips the gun procedurally instead.
       const pistolEquipped = active.config.id === 'pistol';
       const armsReload = !meleeEquipped && !pistolEquipped && ammoState.reloading;
-      const armsSprint = !meleeEquipped && isSprinting && !ammoState.reloading;
+      // Keep sprint/slide arms pose through brief airtime (jump) so we don't
+      // thrash pistol↔rifle mesh swaps and clip crossfades every land.
+      const holdSprintKeys =
+        input.isPressed('ShiftLeft') &&
+        input.isPressed('KeyW') &&
+        !wantsCrouch;
+      const armsSprint =
+        !meleeEquipped &&
+        !ammoState.reloading &&
+        (isSprinting ||
+          isSliding ||
+          (!this.physics.grounded && holdSprintKeys));
       this.fpArmsViewModel?.setReloading(
         armsReload,
         reloadDurationSec,
@@ -2098,11 +2126,9 @@ export class Player {
         : isCrouching && !isSliding
           ? CROUCH_SPEED_MULTIPLIER
           : 1;
-    const speed = MOVE_SPEED * moveMultiplier * delta;
+    const baseSpeed = MOVE_SPEED * moveMultiplier;
 
     this.right.crossVectors(this.forward, this.camera.up).normalize();
-
-    const forwardSpeed = speed * (isSprinting ? SPRINT_MULTIPLIER : 1);
 
     let deltaX = 0;
     let deltaZ = 0;
@@ -2112,24 +2138,52 @@ export class Player {
       const slideMove = this.slide.tick(delta, this.forward.x, this.forward.z);
       deltaX = slideMove.x;
       deltaZ = slideMove.z;
+      const slideVel = this.slide.getVelocity();
+      this.horizontal.setVelocity(slideVel.x, slideVel.z);
+    } else if (slideJumpHandoff) {
+      // Keep slide momentum into the jump — don't ground-brake same frame.
+      deltaX = slideJumpHandoff.x * delta;
+      deltaZ = slideJumpHandoff.z * delta;
     } else {
+      if (this.wasSlidingLastFrame) {
+        const v = this.slide.cancel();
+        this.horizontal.setVelocity(v.x, v.z);
+      }
+
+      // Normalized wish from WASD (no √2 diagonal boost).
+      let wishX = 0;
+      let wishZ = 0;
       if (input.isPressed('KeyW')) {
-        deltaX += this.forward.x * forwardSpeed;
-        deltaZ += this.forward.z * forwardSpeed;
+        wishX += this.forward.x;
+        wishZ += this.forward.z;
       }
       if (input.isPressed('KeyS')) {
-        deltaX -= this.forward.x * speed;
-        deltaZ -= this.forward.z * speed;
+        wishX -= this.forward.x;
+        wishZ -= this.forward.z;
       }
       if (input.isPressed('KeyD')) {
-        deltaX += this.right.x * speed;
-        deltaZ += this.right.z * speed;
+        wishX += this.right.x;
+        wishZ += this.right.z;
       }
       if (input.isPressed('KeyA')) {
-        deltaX -= this.right.x * speed;
-        deltaZ -= this.right.z * speed;
+        wishX -= this.right.x;
+        wishZ -= this.right.z;
       }
+
+      const move = this.horizontal.tick(
+        delta,
+        this.physics.grounded,
+        wishX,
+        wishZ,
+        baseSpeed,
+        SPRINT_MULTIPLIER,
+        isSprinting,
+      );
+      deltaX = move.deltaX;
+      deltaZ = move.deltaZ;
     }
+
+    this.wasSlidingLastFrame = isSliding;
 
     const jump = jumpFromSlide || (!wantsCrouch && !isSliding && jumpRequested);
     const wasGrounded = this.physics.grounded;
@@ -2171,15 +2225,23 @@ export class Player {
           1,
           this.airborneSlideChargeSec / SPRINT_CHARGE_FULL_SEC,
         );
-        this.slide.tryStart(this.forward.x, this.forward.z, charge01);
+        this.slide.tryStart(
+          this.forward.x,
+          this.forward.z,
+          charge01,
+          this.horizontal.getSpeed(),
+        );
         this.locomotionSliding = this.slide.isActive();
+        this.wasSlidingLastFrame = this.locomotionSliding;
       }
     }
 
-    // Don't keep sliding once airborne (jump cancel / fall).
+    // Don't keep sliding once airborne (jump cancel / fall) — keep residual speed.
     if (!this.physics.grounded && this.slide.isActive()) {
-      this.slide.cancel();
+      const v = this.slide.cancel();
+      this.horizontal.setVelocity(v.x, v.z);
       this.locomotionSliding = false;
+      this.wasSlidingLastFrame = false;
     }
 
     this.locomotionCrouching = wantsCrouch && this.physics.grounded;

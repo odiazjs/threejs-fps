@@ -19,6 +19,8 @@ export const SPRINT_BOB = {
 
 const BLEND_IN_SPEED = 8;
 const BLEND_OUT_SPEED = 12;
+/** Smooth walk↔sprint bob params so cadence doesn't hard-swap. */
+const SPRINT_PARAM_BLEND_SPEED = 9;
 
 /**
  * Smooth camera bob on a rig group (Y + light lateral/roll).
@@ -28,21 +30,31 @@ const BLEND_OUT_SPEED = 12;
 export class HeadBob {
   private phase = 0;
   private blend = 0;
+  private sprintMix = 0;
 
   update(delta: number, active: boolean, sprinting: boolean): void {
-    const bob = sprinting ? SPRINT_BOB : WALK_BOB;
     const blendSpeed = active ? BLEND_IN_SPEED : BLEND_OUT_SPEED;
     const targetBlend = active ? 1 : 0;
 
     this.blend += (targetBlend - this.blend) * (1 - Math.exp(-blendSpeed * delta));
+    this.sprintMix +=
+      ((sprinting ? 1 : 0) - this.sprintMix) *
+      (1 - Math.exp(-SPRINT_PARAM_BLEND_SPEED * delta));
+
+    const frequency = THREE.MathUtils.lerp(
+      WALK_BOB.frequency,
+      SPRINT_BOB.frequency,
+      this.sprintMix,
+    );
 
     if (active) {
-      this.phase += delta * bob.frequency;
+      this.phase += delta * frequency;
     }
 
     if (this.blend < 0.001 && !active) {
       this.blend = 0;
       this.phase = 0;
+      this.sprintMix = 0;
     }
   }
 
@@ -55,20 +67,29 @@ export class HeadBob {
     return this.blend;
   }
 
-  apply(rig: THREE.Group, sprinting: boolean): void {
-    const bob = sprinting ? SPRINT_BOB : WALK_BOB;
+  apply(rig: THREE.Group, _sprinting: boolean): void {
+    const m = this.sprintMix;
+    const amplitude = THREE.MathUtils.lerp(WALK_BOB.amplitude, SPRINT_BOB.amplitude, m);
+    const lateral = THREE.MathUtils.lerp(
+      WALK_BOB.lateralAmplitude,
+      SPRINT_BOB.lateralAmplitude,
+      m,
+    );
+    const roll = THREE.MathUtils.lerp(WALK_BOB.rollAmplitude, SPRINT_BOB.rollAmplitude, m);
+
     const wave = Math.sin(this.phase * Math.PI * 2);
     const side = Math.sin(this.phase * Math.PI * 2 + Math.PI * 0.5);
     const b = this.blend;
 
-    rig.position.y = wave * bob.amplitude * b;
-    rig.position.x = side * bob.lateralAmplitude * b;
+    rig.position.y = wave * amplitude * b;
+    rig.position.x = side * lateral * b;
     // Keep Z clean — HeadBob only owns vertical + lateral camera feel.
-    rig.rotation.z = side * bob.rollAmplitude * b;
+    rig.rotation.z = side * roll * b;
   }
 
   reset(): void {
     this.phase = 0;
     this.blend = 0;
+    this.sprintMix = 0;
   }
 }

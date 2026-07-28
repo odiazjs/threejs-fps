@@ -71,6 +71,7 @@ import { loadTdmMapMinimapLayout } from '../content/tdmMapMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
+import { SpeedLinesHud } from '../ui/SpeedLinesHud';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { apiListMyWeapons } from '../auth/weaponsApi';
 import type { WeaponEffectiveStats } from '../../shared/content/weaponUpgrades';
@@ -133,7 +134,7 @@ import { DEFAULT_LOADOUT_CONFIGS, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from 
 import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
-const MAX_FRAME_DELTA_SEC = 0.25;
+const MAX_FRAME_DELTA_SEC = 0.1;
 const EMPTY_ROSTER: never[] = [];
 const NOOP_PICKUP = (): void => {};
 const _grenadeThreatPlayerCenter = new THREE.Vector3();
@@ -160,6 +161,7 @@ export class Game {
   private minimapHud = new MinimapHud();
   private tacticalMapOverlay = new TacticalMapOverlay();
   private damageIndicatorHud = new DamageIndicatorHud();
+  private speedLinesHud = new SpeedLinesHud();
   private grenadeThreatHud = new GrenadeThreatIndicatorHud();
   private inventoryHud = new InventoryHud(
     DEFAULT_LOADOUT_CONFIGS.map((config) => ({
@@ -1292,8 +1294,8 @@ export class Game {
     const rawDeltaSec =
       this.lastFrameMs > 0 ? (now - this.lastFrameMs) / 1000 : 0;
     this.lastFrameMs = now;
-    // Only clamp extreme hitches (tab away). A low cap (e.g. 0.05) makes movement
-    // run in slow motion whenever FPS drops below 20.
+    // Clamp hitches so one long frame doesn't simulate a quarter-second teleport.
+    // Still high enough that ~15 FPS doesn't feel like permanent slow-mo.
     const delta = Math.min(rawDeltaSec, MAX_FRAME_DELTA_SEC);
     this.simElapsedSec += delta;
 
@@ -1482,6 +1484,16 @@ export class Game {
     this.messageHud.update(delta);
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);
+    {
+      const live =
+        this.playerControls.isPlaying &&
+        this.localCombat.alive &&
+        !this.killCam.isActive();
+      const loco = this.player.getLocomotionState();
+      this.speedLinesHud.setVisible(live);
+      this.speedLinesHud.setActive(live && loco.isSprinting, live && loco.isSliding);
+      this.speedLinesHud.update(delta);
+    }
     this.teamPings.update(delta, this.player.object.position);
     this.pingDirectionHud.sync(
       camera ?? null,

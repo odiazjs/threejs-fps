@@ -38,11 +38,25 @@ export class SlideController {
     return this.remainingSec > 0;
   }
 
+  getSpeed(): number {
+    return this.speed;
+  }
+
+  getVelocity(): { x: number; z: number } {
+    return { x: this.dirX * this.speed, z: this.dirZ * this.speed };
+  }
+
   /**
    * Begin a slide along a flat forward vector.
    * `charge01` 0 = minimum (jump-only land), 1 = full current slide force (cap).
+   * `entrySpeed` = current horizontal speed — avoids a hard 6→12 snap from sprint.
    */
-  tryStart(forwardX: number, forwardZ: number, charge01 = 1): boolean {
+  tryStart(
+    forwardX: number,
+    forwardZ: number,
+    charge01 = 1,
+    entrySpeed = 0,
+  ): boolean {
     if (this.remainingSec > 0) return false;
     const len = Math.hypot(forwardX, forwardZ);
     if (len < 1e-4) return false;
@@ -53,14 +67,27 @@ export class SlideController {
     this.peakSpeed = lerp(SLIDE_PEAK_SPEED_MIN, SLIDE_PEAK_SPEED, charge);
     this.endSpeed = lerp(SLIDE_END_SPEED_MIN, SLIDE_END_SPEED, charge);
     this.durationSec = lerp(SLIDE_DURATION_MIN_SEC, SLIDE_DURATION_SEC, charge);
-    this.speed = this.peakSpeed;
+
+    // Ease into the peak from current momentum instead of teleporting to peak.
+    const entry = Math.max(0, entrySpeed);
+    this.speed = Math.min(this.peakSpeed, Math.max(entry, this.peakSpeed * 0.72));
     this.remainingSec = this.durationSec;
     return true;
   }
 
-  cancel(): void {
+  /**
+   * End the slide and return residual velocity for locomotion handoff
+   * (jump-cancel / timer end / airborne cancel).
+   */
+  cancel(): { x: number; z: number; speed: number } {
+    const out = {
+      x: this.dirX * this.speed,
+      z: this.dirZ * this.speed,
+      speed: this.speed,
+    };
     this.remainingSec = 0;
     this.speed = 0;
+    return out;
   }
 
   /**
@@ -102,9 +129,17 @@ export class SlideController {
     this.speed = Math.min(this.speed, timedFloor);
     this.speed = Math.max(this.speed, 0);
 
+    // Ease up toward peak in the first ~15% so entry isn't a hard cliff.
+    if (u < 0.15) {
+      const rise = u / 0.15;
+      const easeIn = rise * rise * (3 - 2 * rise);
+      const entryFloor = this.endSpeed + (this.peakSpeed - this.endSpeed) * easeIn;
+      this.speed = Math.max(this.speed, Math.min(this.peakSpeed, entryFloor));
+    }
+
     const dist = this.speed * delta;
     this.remainingSec = Math.max(0, this.remainingSec - delta);
-    if (this.remainingSec <= 0) this.speed = 0;
+    // Keep speed for handoff after the final tick; Player.cancel/capture clears it.
 
     return { x: this.dirX * dist, z: this.dirZ * dist };
   }

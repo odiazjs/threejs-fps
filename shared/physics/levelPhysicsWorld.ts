@@ -58,8 +58,8 @@ export class LevelPhysicsWorld {
 
     this.controller = this.world.createCharacterController(0.02);
     this.controller.setSlideEnabled(true);
-    this.controller.enableAutostep(0.42, 0.2, true);
-    this.controller.enableSnapToGround(0.45);
+    this.controller.enableAutostep(0.35, 0.18, true);
+    this.controller.enableSnapToGround(0.28);
     this.controller.setMaxSlopeClimbAngle(MAX_SLOPE_RAD);
     this.controller.setMinSlopeSlideAngle((28 * Math.PI) / 180);
 
