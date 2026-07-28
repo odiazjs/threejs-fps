@@ -20,6 +20,8 @@ import type {
 
   GameLaunchMessage,
 
+  GameLaunchParticipant,
+
   RespondGameInviteMessage,
 
   SendGameInviteMessage,
@@ -27,6 +29,9 @@ import type {
   StartGameInviteMessage,
 
 } from '../../../shared/network/gameInvite.js';
+
+import { getPlayerStats } from '../stats/service.js';
+import { getCompetitiveRankCard } from '../progression/service.js';
 
 import {
 
@@ -612,10 +617,12 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      // Friendly fire lives on the party so every member sees the host's choice.
       const friendlyFire = party.friendlyFire || data.friendlyFire === true;
       const mapId = normalizeMapId(data.mapId);
       const gameMode = normalizeGameMode(data.gameMode);
+      const matchDurationSec =
+        typeof data.matchDurationSec === 'number' ? data.matchDurationSec : undefined;
+      const killLimit = typeof data.killLimit === 'number' ? data.killLimit : undefined;
 
       try {
 
@@ -631,6 +638,10 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
           gameMode,
 
+          matchDurationSec,
+
+          killLimit,
+
         });
 
         const roomId = fpsRoom.roomId;
@@ -641,14 +652,40 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
         }
 
-
+        const userIds = launchMembers.map((member) => member.userId);
+        const cosmetics = await readPartyMemberCosmetics(userIds);
+        const participants: GameLaunchParticipant[] = await Promise.all(
+          launchMembers.map(async (member) => {
+            const [stats, rank] = await Promise.all([
+              getPlayerStats(member.userId),
+              getCompetitiveRankCard(member.userId),
+            ]);
+            return {
+              userId: member.userId,
+              username: member.username,
+              teamId: member.teamId,
+              rankLevel: Math.max(1, stats.level || 1),
+              careerKills: Math.max(0, stats.kills || 0),
+              careerDeaths: Math.max(0, stats.deaths || 0),
+              xp: Math.max(0, stats.xp || 0),
+              rankTier: rank.tier,
+              rankDivision: rank.division,
+              rankName: rank.name,
+              selectedOperatorId:
+                cosmetics.get(member.userId)?.selectedOperatorId,
+            };
+          }),
+        );
 
         for (const member of launchMembers) {
           const launch: GameLaunchMessage = {
             roomId,
             mapId,
             gameMode,
+            matchDurationSec,
+            killLimit,
             teamId: member.teamId,
+            participants,
           };
           setPendingGameLaunch(member.userId, launch);
           member.client.send('gameLaunch', launch);

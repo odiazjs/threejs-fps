@@ -28,7 +28,7 @@ import { LoadingOverlay } from '../ui/LoadingOverlay';
 import type { LobbyClient } from './LobbyClient';
 import { launchGameOverlay, onGameOverlayClosed } from './launchGameOverlay';
 import { getSelectedMapId } from './mapSelection';
-import { getSelectedGameMode } from './gameModeSelection';
+import { getSelectedMatchRules } from './gameModeSelection';
 import { isInviteablePresence } from './friendPresenceUi';
 
 const ACTION_TIMEOUT_MS = 12_000;
@@ -168,7 +168,7 @@ export class FriendsPanel {
       this.refreshListPanel();
     });
     this.lobby.onGameLaunch((data) => {
-      this.launchGame(data.roomId, data.mapId, data.teamId);
+      this.launchGame(data);
     });
 
     this.lobby.onPartySnapshot((data) => {
@@ -384,10 +384,13 @@ export class FriendsPanel {
     this.loading.reset();
     this.loading.show('Joining game...');
     this.launchBtn.disabled = true;
+    const rules = getSelectedMatchRules();
     const intent = {
       mode: 'create' as const,
       mapId: getSelectedMapId(),
-      gameMode: getSelectedGameMode(),
+      gameMode: rules.gameMode,
+      matchDurationSec: rules.matchDurationSec,
+      killLimit: rules.killLimit,
     };
     setGameJoinIntent(intent);
 
@@ -416,11 +419,14 @@ export class FriendsPanel {
     this.updateLaunchButton();
     this.loading.show('Starting game...');
     this.startLaunchTimeout();
+    const rules = getSelectedMatchRules();
     this.lobby.startGameInvite(
       this.party.partyId,
       this.friendlyFireCheckbox.checked,
       getSelectedMapId(),
-      getSelectedGameMode(),
+      rules.gameMode,
+      rules.matchDurationSec,
+      rules.killLimit,
     );
   }
 
@@ -441,8 +447,31 @@ export class FriendsPanel {
     }
   }
 
-  private launchGame(roomId: string, mapId?: string, teamId?: number): void {
+  private launchGame(data: {
+    roomId: string;
+    mapId?: string;
+    teamId?: number;
+    gameMode?: string;
+    matchDurationSec?: number;
+    killLimit?: number;
+    participants?: import('../../shared/network/gameInvite').GameLaunchParticipant[];
+  }): void {
     this.clearLaunchTimeout();
+    // Prefetch roster into sessionStorage so the game iframe can paint the
+    // pre-match screen immediately (even before re-fetching the lobby launch).
+    const rules = getSelectedMatchRules();
+    setGameJoinIntent({
+      roomId: data.roomId,
+      mode: 'join',
+      mapId: data.mapId ?? getSelectedMapId(),
+      gameMode: (data.gameMode as typeof rules.gameMode | undefined) ?? rules.gameMode,
+      matchDurationSec: data.matchDurationSec ?? rules.matchDurationSec,
+      killLimit: data.killLimit ?? rules.killLimit,
+      ...(typeof data.teamId === 'number' ? { teamId: data.teamId } : {}),
+      ...(data.participants && data.participants.length > 0
+        ? { participants: data.participants }
+        : {}),
+    });
     // Replace any prior spinner (e.g. "Starting game...") — depth must not stack.
     this.loading.reset();
     this.loading.show('Joining game...');
@@ -455,11 +484,14 @@ export class FriendsPanel {
         this.loading.reset();
         this.updatePartyButtons();
         setGameJoinIntent({
-          roomId,
+          roomId: data.roomId,
           mode: 'join',
-          mapId: mapId ?? getSelectedMapId(),
-          gameMode: getSelectedGameMode(),
-          ...(typeof teamId === 'number' ? { teamId } : {}),
+          mapId: data.mapId ?? getSelectedMapId(),
+          ...getSelectedMatchRules(),
+          ...(typeof data.teamId === 'number' ? { teamId: data.teamId } : {}),
+          ...(data.participants && data.participants.length > 0
+            ? { participants: data.participants }
+            : {}),
         });
         window.location.assign(buildGameUrl('/game.html'));
       })

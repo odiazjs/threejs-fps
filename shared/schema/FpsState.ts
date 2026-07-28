@@ -45,6 +45,22 @@ export class PlayerState extends Schema {
   @type('boolean') sliding = false;
   /** Kills scored in the current TDM match (reset when countdown starts). */
   @type('number') matchKills = 0;
+  /** Career account level (pre-match roster). */
+  @type('number') rankLevel = 1;
+  /** Career lifetime kills (pre-match roster). */
+  @type('number') careerKills = 0;
+  /** Career lifetime deaths (pre-match roster). */
+  @type('number') careerDeaths = 0;
+  /** Career account XP total (pre-match roster). */
+  @type('number') xp = 0;
+  /** Competitive rank tier id for pre-match crest (e.g. gold). */
+  @type('string') rankTier = 'bronze';
+  /** Competitive rank division 1–3. */
+  @type('number') rankDivision = 1;
+  /** Competitive rank display name (e.g. Gold II). */
+  @type('string') rankName = 'Bronze I';
+  /** Client finished local asset/shader prep for this match. */
+  @type('boolean') clientReady = false;
   /** Server world time when the shield dome charge completes (0 when idle). */
   @type('number') shieldDomeChargeEndAt = 0;
   /** Server world time when the shield dome expires (0 when inactive). */
@@ -100,7 +116,9 @@ export class FpsState extends Schema {
   @type('number') matchCountdownEndAt = 0;
   @type('number') matchStartAt = 0;
   @type('number') matchEndAt = 0;
-  @type('number') matchDurationSec = TDM_MATCH_DURATION_SEC;
+  @type('number') matchDurationSec: number = TDM_MATCH_DURATION_SEC;
+  /** First-to-kills target (0 = timed / no kill race). */
+  @type('number') killLimit: number = 0;
   /** -1 = tie or not decided yet. */
   @type('number') winningTeamId = -1;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();

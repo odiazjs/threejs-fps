@@ -133,6 +133,36 @@ async function ensureSeasonPlayerStats(userId: string, seasonId: string) {
     });
 }
 
+/** Lightweight competitive rank for pre-match roster cards. */
+export async function getCompetitiveRankCard(userId: string): Promise<{
+  tier: string;
+  division: number;
+  name: string;
+}> {
+  const season = await getActiveSeason();
+  const ladder = await listRankLadder();
+  if (!season) {
+    const fallback = resolveRank(0, ladder).current;
+    return { tier: fallback.tier, division: fallback.division, name: fallback.name };
+  }
+
+  await ensureSeasonPlayerStats(userId, season.id);
+  const db = getDb();
+  const [row] = await db
+    .select({ rp: seasonPlayerStats.rp })
+    .from(seasonPlayerStats)
+    .where(
+      and(
+        eq(seasonPlayerStats.userId, userId),
+        eq(seasonPlayerStats.seasonId, season.id),
+      ),
+    )
+    .limit(1);
+
+  const current = resolveRank(row?.rp ?? 0, ladder).current;
+  return { tier: current.tier, division: current.division, name: current.name };
+}
+
 export interface AwardMatchPerformanceResult {
   readonly matchId: string;
   readonly newlyAwarded: boolean;

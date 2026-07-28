@@ -49,8 +49,71 @@
       <div class="match-hud-timer">3:00</div>
       <div class="match-hud-scores"></div>
     </div>
+    <div id="pre-match-overlay" hidden>
+      <div class="pre-match-bg" aria-hidden="true"></div>
+      <div class="pre-match-layout">
+        <section class="pre-match-side pre-match-side--blue" aria-label="Blue team">
+          <header class="pre-match-side-header">
+            <span class="pre-match-team-badge" aria-hidden="true"></span>
+            <p class="pre-match-side-label">BLUE TEAM</p>
+          </header>
+          <div id="pre-match-blue-list" class="pre-match-list"></div>
+        </section>
+
+        <div class="pre-match-center">
+          <div class="pre-match-vs" aria-hidden="true"><span>VS.</span></div>
+        </div>
+
+        <section class="pre-match-side pre-match-side--orange" aria-label="Orange team">
+          <header class="pre-match-side-header">
+            <p class="pre-match-side-label">ORANGE TEAM</p>
+            <span class="pre-match-team-badge" aria-hidden="true"></span>
+          </header>
+          <div id="pre-match-orange-list" class="pre-match-list"></div>
+        </section>
+      </div>
+
+      <footer class="pre-match-footer">
+        <div class="pre-match-prep">
+          <p class="pre-match-prep-title">PREPARING MATCH</p>
+          <ul class="pre-match-steps" id="pre-match-steps">
+            <li class="pre-match-step" data-step="assets">
+              <span class="pre-match-step-icon" aria-hidden="true"></span>
+              <span class="pre-match-step-label">LOADING ASSETS</span>
+              <span class="pre-match-step-meta">0%</span>
+            </li>
+            <li class="pre-match-step" data-step="shaders">
+              <span class="pre-match-step-icon" aria-hidden="true"></span>
+              <span class="pre-match-step-label">COMPILING SHADERS</span>
+              <span class="pre-match-step-meta">0%</span>
+            </li>
+            <li class="pre-match-step" data-step="sync">
+              <span class="pre-match-step-icon" aria-hidden="true"></span>
+              <span class="pre-match-step-label">SYNCHRONIZING DATA</span>
+              <span class="pre-match-step-meta">0%</span>
+            </li>
+            <li class="pre-match-step" data-step="finalize">
+              <span class="pre-match-step-icon" aria-hidden="true"></span>
+              <span class="pre-match-step-label">FINALIZING…</span>
+              <span class="pre-match-step-meta"></span>
+            </li>
+          </ul>
+        </div>
+        <p class="pre-match-tip">
+          <span class="pre-match-tip-icon" aria-hidden="true">i</span>
+          Tip: Headshots deal more damage. Aim for the head!
+        </p>
+        <div class="pre-match-progress" aria-hidden="true">
+          <div class="pre-match-progress-fill" id="pre-match-progress-fill"></div>
+        </div>
+        <p class="pre-match-footer-status" id="pre-match-footer-status">
+          &gt;&gt;&gt; PREPARING MATCH… &lt;&lt;&lt;
+        </p>
+      </footer>
+    </div>
     <div id="match-countdown-overlay" hidden>
       <div class="match-countdown-panel hud-panel hud-panel--md">
+        <div class="match-countdown-objective"></div>
         <div class="match-countdown-subtitle hud-subtitle hud-subtitle--center">Match starts in</div>
         <div class="match-countdown-value hud-title hud-title--countdown">5</div>
       </div>

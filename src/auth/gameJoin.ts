@@ -8,8 +8,12 @@ import {
   DEFAULT_GAME_MODE,
   isValidGameMode,
   normalizeGameMode,
+  normalizeKillRaceTarget,
+  normalizeTdmDurationSec,
+  resolveMatchRules,
   type GameMode,
 } from '../../shared/combat/match';
+import type { GameLaunchParticipant } from '../../shared/network/gameInvite';
 import type { FpsJoinCredentials } from './joinCredentials';
 import { fetchPartyGameLaunch } from './fetchPartyGameLaunch';
 
@@ -21,6 +25,40 @@ export interface GameJoinIntent {
   mode: 'create' | 'join';
   mapId?: string;
   gameMode?: GameMode;
+  matchDurationSec?: number;
+  killLimit?: number;
+  /** Prefetched at LAUNCH so the pre-match screen can render immediately. */
+  participants?: GameLaunchParticipant[];
+}
+
+function normalizeParticipants(
+  raw: unknown,
+): GameLaunchParticipant[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const participants: GameLaunchParticipant[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const row = entry as Partial<GameLaunchParticipant>;
+    if (typeof row.username !== 'string' || row.username.length === 0) continue;
+    participants.push({
+      userId: typeof row.userId === 'string' ? row.userId : '',
+      username: row.username,
+      teamId: row.teamId === 1 ? 1 : 0,
+      rankLevel: Math.max(1, Number(row.rankLevel) || 1),
+      careerKills: Math.max(0, Number(row.careerKills) || 0),
+      careerDeaths: Math.max(0, Number(row.careerDeaths) || 0),
+      xp: Math.max(0, Number(row.xp) || 0),
+      ...(typeof row.rankTier === 'string' ? { rankTier: row.rankTier } : {}),
+      ...(typeof row.rankDivision === 'number'
+        ? { rankDivision: row.rankDivision }
+        : {}),
+      ...(typeof row.rankName === 'string' ? { rankName: row.rankName } : {}),
+      ...(typeof row.selectedOperatorId === 'string'
+        ? { selectedOperatorId: row.selectedOperatorId }
+        : {}),
+    });
+  }
+  return participants.length > 0 ? participants : undefined;
 }
 
 function readStoredGameModePreference(): GameMode {
@@ -41,12 +79,42 @@ function readStoredMapPreference(): MapId {
   }
 }
 
+function readStoredDurationPreference(): number {
+  try {
+    return normalizeTdmDurationSec(Number(localStorage.getItem('fps_selected_match_duration_sec')));
+  } catch {
+    return normalizeTdmDurationSec(undefined);
+  }
+}
+
+function readStoredKillTargetPreference(): number {
+  try {
+    return normalizeKillRaceTarget(Number(localStorage.getItem('fps_selected_kill_race_target')));
+  } catch {
+    return normalizeKillRaceTarget(undefined);
+  }
+}
+
 function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | null {
   const mapId = normalizeMapId(raw.mapId ?? readStoredMapPreference());
   const gameMode = normalizeGameMode(raw.gameMode ?? readStoredGameModePreference());
+  const rules = resolveMatchRules(
+    gameMode,
+    raw.matchDurationSec ?? readStoredDurationPreference(),
+    raw.killLimit ?? readStoredKillTargetPreference(),
+  );
+
+  const participants = normalizeParticipants(raw.participants);
 
   if (raw.mode === 'create') {
-    return { mode: 'create', mapId, gameMode };
+    return {
+      mode: 'create',
+      mapId,
+      gameMode,
+      matchDurationSec: rules.matchDurationSec,
+      killLimit: rules.killLimit,
+      ...(participants ? { participants } : {}),
+    };
   }
 
   if (raw.mode === 'join' && typeof raw.roomId === 'string' && raw.roomId.length > 0) {
@@ -55,7 +123,10 @@ function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | nul
       mode: 'join',
       mapId,
       gameMode,
+      matchDurationSec: rules.matchDurationSec,
+      killLimit: rules.killLimit,
       ...(typeof raw.teamId === 'number' ? { teamId: raw.teamId } : {}),
+      ...(participants ? { participants } : {}),
     };
   }
 
@@ -87,7 +158,11 @@ export async function resolveGameJoinIntent(
 ): Promise<GameJoinIntent | null> {
   try {
     const partyLaunch = await fetchPartyGameLaunch(credentials);
-    if (partyLaunch) return partyLaunch;
+    if (partyLaunch) {
+      // Drop any lobby-stashed intent so it can't leak into a later match.
+      sessionStorage.removeItem(STORAGE_KEY);
+      return partyLaunch;
+    }
   } catch (error) {
     console.warn('[GameJoin] requestGameLaunch failed — falling back to quick match', error);
   }

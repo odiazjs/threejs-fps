@@ -24,11 +24,31 @@ export interface GameInviteCancelledMessage {
   inviteId: string;
 }
 
+/** Career card shown on the pre-match roster (filled at LAUNCH). */
+export interface GameLaunchParticipant {
+  userId: string;
+  username: string;
+  teamId: number;
+  rankLevel: number;
+  careerKills: number;
+  careerDeaths: number;
+  /** Career account XP total. */
+  xp: number;
+  /** Competitive rank crest (e.g. gold / 2 / "Gold II"). */
+  rankTier?: string;
+  rankDivision?: number;
+  rankName?: string;
+  selectedOperatorId?: string;
+}
+
 export interface GameLaunchMessage {
   roomId: string;
   teamId?: number;
   mapId?: string;
   gameMode?: string;
+  matchDurationSec?: number;
+  killLimit?: number;
+  participants?: GameLaunchParticipant[];
 }
 
 /** Sent when the client asks for a pending party launch but none exists. */
@@ -57,4 +77,6 @@ export interface StartGameInviteMessage {
   friendlyFire?: boolean;
   mapId?: string;
   gameMode?: string;
+  matchDurationSec?: number;
+  killLimit?: number;
 }

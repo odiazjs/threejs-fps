@@ -9,6 +9,7 @@ import type { GrenadeDetonateRequest, GrenadeThrowRequest } from '../../shared/n
 import type { TeamPingMessage, TeamPingRequest } from '../../shared/network/ping';
 import type { PickupGrenadeMessage } from '../../shared/network/grenadePickup';
 import type { ShieldChargeSpawnMessage } from '../../shared/network/shieldDrop';
+import { MATCH_CLIENT_READY_MESSAGE } from '../../shared/network/matchReady';
 import { PLAYER_MAX_HP } from '../../shared/combat/damage';
 import { getShieldCapacity } from '../../shared/combat/shield';
 import {
@@ -22,6 +23,8 @@ import {
 import { getServerUrl } from '../config/serverUrl';
 import { DEFAULT_MAP_ID, isValidMapId, normalizeMapId, type MapId } from '../../shared/level/maps';
 import {
+  isCompetitiveGameMode,
+  isTimedGameMode,
   normalizeGameMode,
   normalizeMatchPhase,
   TDM_MATCH_DURATION_SEC,
@@ -93,6 +96,14 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     crouching: player.crouching,
     sliding: player.sliding === true,
     matchKills: player.matchKills ?? 0,
+    rankLevel: player.rankLevel ?? 1,
+    careerKills: player.careerKills ?? 0,
+    careerDeaths: player.careerDeaths ?? 0,
+    xp: player.xp ?? 0,
+    rankTier: player.rankTier || 'bronze',
+    rankDivision: player.rankDivision || 1,
+    rankName: player.rankName || 'Bronze I',
+    clientReady: player.clientReady === true,
     shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
     shieldDomeEndAt: player.shieldDomeEndAt,
     shieldDomeCooldownEndAt: player.shieldDomeCooldownEndAt,
@@ -216,12 +227,16 @@ export class RoomClient {
     if (!this.room) return null;
     const state = this.room.state as FpsState;
     const gameMode = normalizeGameMode(state.gameMode);
-    const duration = state.matchDurationSec > 0 ? state.matchDurationSec : TDM_MATCH_DURATION_SEC;
+    const duration = isTimedGameMode(gameMode)
+      ? state.matchDurationSec > 0
+        ? state.matchDurationSec
+        : TDM_MATCH_DURATION_SEC
+      : Math.max(0, state.matchDurationSec ?? 0);
     return {
       gameMode,
       phase: normalizeMatchPhase(state.matchPhase),
       expectedPlayers: state.expectedPlayers ?? 0,
-      teamCount: Math.max(1, state.teamCount || (gameMode === 'tdm' ? 2 : 2)),
+      teamCount: Math.max(1, state.teamCount || (isCompetitiveGameMode(gameMode) ? 2 : 2)),
       teamScores: [
         state.teamScore0 ?? 0,
         state.teamScore1 ?? 0,
@@ -232,6 +247,7 @@ export class RoomClient {
       matchStartAt: state.matchStartAt ?? 0,
       matchEndAt: state.matchEndAt ?? 0,
       matchDurationSec: duration,
+      killLimit: Math.max(0, state.killLimit ?? 0),
       winningTeamId: state.winningTeamId ?? -1,
     };
   }
@@ -263,11 +279,18 @@ export class RoomClient {
     } else {
       // Always create so lobby map/mode selection is applied (joinOrCreate can
       // attach to an existing playground room and ignore create options).
-      this.room = await this.createWithRetry(client, {
+      const createOptions: Record<string, string | number> = {
         ...joinOptions,
         mapId: normalizeMapId(joinIntent?.mapId),
-        gameMode: joinIntent?.gameMode,
-      });
+      };
+      if (joinIntent?.gameMode) createOptions.gameMode = joinIntent.gameMode;
+      if (typeof joinIntent?.matchDurationSec === 'number') {
+        createOptions.matchDurationSec = joinIntent.matchDurationSec;
+      }
+      if (typeof joinIntent?.killLimit === 'number') {
+        createOptions.killLimit = joinIntent.killLimit;
+      }
+      this.room = await this.createWithRetry(client, createOptions);
     }
     this.bindProjectileMessages();
     this.bindWeaponShotMessages();
@@ -541,6 +564,10 @@ export class RoomClient {
       primaryWeaponId,
       secondaryWeaponId,
     });
+  }
+
+  sendMatchClientReady(): void {
+    this.room?.send(MATCH_CLIENT_READY_MESSAGE);
   }
 
   sendEquipMelee(equipped: boolean): void {

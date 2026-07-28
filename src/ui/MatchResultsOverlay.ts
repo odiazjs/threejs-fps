@@ -1,5 +1,10 @@
 import { playStatsIncomingSound } from '../audio/StatsIncomingSound';
 import { TEAM_COLORS, TEAM_NAMES } from '../../shared/combat/teams';
+import {
+  isCompetitiveGameMode,
+  isKillRaceGameMode,
+  teamScoreToKills,
+} from '../../shared/combat/match';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
 import type { MatchSnapshot, PlayerSnapshot } from '../network/types';
 
@@ -39,7 +44,7 @@ export class MatchResultsOverlay {
     localTeamId: number,
     players: Array<PlayerSnapshot & { sessionId: string }>,
   ): void {
-    if (!match || match.gameMode !== 'tdm' || match.phase !== 'ended') {
+    if (!match || !isCompetitiveGameMode(match.gameMode) || match.phase !== 'ended') {
       this.root.hidden = true;
       this.renderedKey = null;
       this.frozenMatchKey = null;
@@ -107,7 +112,10 @@ export class MatchResultsOverlay {
 
       const color = TEAM_COLORS[teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0];
       const name = TEAM_NAMES[teamId % TEAM_NAMES.length] ?? `Team ${teamId + 1}`;
-      const score = match.teamScores[teamId] ?? 0;
+      const rawScore = match.teamScores[teamId] ?? 0;
+      const score = isKillRaceGameMode(match.gameMode)
+        ? teamScoreToKills(rawScore)
+        : rawScore;
 
       const header = document.createElement('div');
       header.className = 'match-results-team-header';

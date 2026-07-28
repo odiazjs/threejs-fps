@@ -14,6 +14,7 @@ export interface MatchSnapshot {
   matchStartAt: number;
   matchEndAt: number;
   matchDurationSec: number;
+  killLimit: number;
   winningTeamId: number;
 }
 
@@ -50,6 +51,14 @@ export interface PlayerSnapshot {
   crouching: boolean;
   sliding: boolean;
   matchKills: number;
+  rankLevel: number;
+  careerKills: number;
+  careerDeaths: number;
+  xp: number;
+  rankTier: string;
+  rankDivision: number;
+  rankName: string;
+  clientReady: boolean;
   shieldDomeChargeEndAt: number;
   shieldDomeEndAt: number;
   shieldDomeCooldownEndAt: number;

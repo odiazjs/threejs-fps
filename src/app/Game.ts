@@ -2,7 +2,15 @@ import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
 import { DEFAULT_MAP_ID, getMapDef, mapHasMinimap, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
-import { normalizeGameMode, type GameMode } from '../../shared/combat/match';
+import {
+  getCountdownDisplayValue,
+  getMatchTimeRemaining,
+  isCompetitiveGameMode,
+  isTimedGameMode,
+  normalizeGameMode,
+  type GameMode,
+  type MatchPhase,
+} from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_PING, PointerInput } from '../input/PointerInput';
@@ -62,16 +70,12 @@ import { WeaponPickupHud } from '../ui/WeaponPickupHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
 import { MatchPerfStats } from '../debug/MatchPerfStats';
 import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
-import {
-  getCountdownDisplayValue,
-  getMatchTimeRemaining,
-  type MatchPhase,
-} from '../../shared/combat/match';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
 import { loadTdmMapMinimapLayout } from '../content/tdmMapMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
+import { PreMatchOverlay } from '../ui/PreMatchOverlay';
 import { SpeedLinesHud } from '../ui/SpeedLinesHud';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { apiListMyWeapons } from '../auth/weaponsApi';
@@ -185,6 +189,7 @@ export class Game {
   private matchHud = new MatchHud();
   private matchCountdownOverlay = new MatchCountdownOverlay();
   private matchResultsOverlay = new MatchResultsOverlay();
+  private preMatchOverlay = new PreMatchOverlay();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
   private grenadePickups!: GrenadePickups;
@@ -281,6 +286,7 @@ export class Game {
     onLoadingMessage?: (message: string) => void,
   ): Promise<void> {
     const initialMapId = normalizeMapId(joinIntent?.mapId ?? getSelectedMapId());
+    const competitive = isCompetitiveGameMode(joinIntent?.gameMode);
     this.worldMapId = initialMapId;
     this.prevMatchPhase = null;
     this.matchEnd30Played = false;
@@ -289,8 +295,29 @@ export class Game {
     this.matchResultSubmittedFor = null;
     this.lastMatchRewards = null;
     this.bindMasterVolume();
+
+    const reportLoad = (
+      message: string,
+      step?: 'assets' | 'shaders' | 'sync' | 'finalize',
+      progress = 0,
+    ): void => {
+      if (competitive) {
+        if (step) this.preMatchOverlay.setLoadStep(step, progress);
+        this.preMatchOverlay.setFooterStatus(message);
+      }
+      onLoadingMessage?.(message);
+    };
+
+    if (competitive) {
+      // main.ts may already have painted the roster; keep/refresh it here.
+      this.preMatchOverlay.show(
+        'Preparing match…',
+        joinIntent?.participants ?? [],
+      );
+    }
+
     // DroneField clones the FBX at world build — must be ready first.
-    onLoadingMessage?.('Loading drone model...');
+    reportLoad('Loading drone model…', 'assets', 10);
     await preloadDroneModel();
     this.initWorld(initialMapId);
     this.environmentSounds.configure(GAME_ENVIRONMENT_AUDIO);
@@ -298,42 +325,75 @@ export class Game {
     this.shieldChargeSounds.setVolume(GAME_SHIELD_CHARGE_AUDIO.volume);
     this.weaponSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
     this.grenadeSounds.configureSpatial(GAME_WEAPON_SPATIAL_AUDIO);
-    onLoadingMessage?.('Loading game assets...');
+
+    // Weapon/character meshes must exist before Player.createLocal / remotes.
+    reportLoad('Loading weapon models…', 'assets', 35);
     await Promise.all([
-      initialMapId === 'firing_range'
-        ? this.worldBuilder!.whenMeshCollisionReady()
-        : Promise.resolve(),
       preloadWeaponMeshes(),
-      preloadGrenadeModel(),
       Player.preloadGameCharacterModels(),
-      this.weaponSounds.preload([
-        ...collectWeaponSoundUrls(PICKABLE_WEAPON_CONFIGS),
-        ...collectWeaponSoundUrls([KATANA_CONFIG]),
-      ]),
-      this.weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),
-      this.weaponSounds.preloadShotEndEcho(GAME_SHOT_END_ECHO_AUDIO),
-      this.environmentSounds.preload(GAME_ENVIRONMENT_AUDIO.src),
-      this.droneProximitySounds.preload(GAME_DRONE_PROXIMITY_AUDIO.src),
-      this.shieldChargeSounds.preload(GAME_SHIELD_CHARGE_AUDIO.src),
-      this.footstepSounds.preload(GAME_FOOTSTEP_AUDIO),
-      this.impactSounds.preload(GAME_ENEMY_HIT_IMPACT_AUDIO),
-      this.impactSounds.preloadKillConfirm(GAME_KILL_CONFIRM_AUDIO),
-      this.impactSounds.preloadShieldBreak(GAME_SHIELD_BREAK_AUDIO),
-      this.impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
-      this.impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
-      this.grenadeSounds.preloadEquip(GAME_GRENADE_EQUIP_AUDIO),
-      this.grenadeSounds.preloadThrow(GAME_GRENADE_THROW_AUDIO),
-      this.grenadeSounds.preloadBounce(GAME_GRENADE_BOUNCE_AUDIO),
-      this.grenadeSounds.preloadExplosion(GAME_GRENADE_EXPLOSION_AUDIO),
-      this.matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
-      this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
-      this.matchSounds.preloadEnd30(MATCH_END_30_SECS_AUDIO),
-      this.matchSounds.preloadEnd10(MATCH_END_10_SECS_AUDIO),
-      this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
-      this.shieldChargePickups.whenReady,
-      this.grenadePickups.whenReady,
-      this.grenadeManager.whenReady,
+      preloadGrenadeModel(),
     ]);
+
+    // Stand up player + network next so the pre-match roster can fill while
+    // audio / remaining assets finish.
+    reportLoad('Loading loadouts…', 'assets', 55);
+    await this.refreshLoadoutSwitcher();
+    this.initPlayer(initialMapId, joinIntent?.gameMode);
+    this.refreshInventoryHud();
+    this.applyActiveMap();
+    this.initResize();
+
+    reportLoad('Joining match lobby…', 'assets', 80);
+    await this.initNetwork(credentials, joinIntent);
+    this.applyActiveMap();
+    if (competitive) {
+      this.preMatchOverlay.update(this.network.getAllPlayers());
+    }
+
+    reportLoad('Loading game assets…', 'assets', 70);
+    const rosterPumpId = competitive
+      ? window.setInterval(() => {
+          this.preMatchOverlay.update(this.network.getAllPlayers());
+        }, 120)
+      : 0;
+    try {
+      await Promise.all([
+        initialMapId === 'firing_range'
+          ? this.worldBuilder!.whenMeshCollisionReady()
+          : Promise.resolve(),
+        this.weaponSounds.preload([
+          ...collectWeaponSoundUrls(PICKABLE_WEAPON_CONFIGS),
+          ...collectWeaponSoundUrls([KATANA_CONFIG]),
+        ]),
+        this.weaponSounds.preloadOutOfAmmo(GAME_OUT_OF_AMMO_AUDIO),
+        this.weaponSounds.preloadShotEndEcho(GAME_SHOT_END_ECHO_AUDIO),
+        this.environmentSounds.preload(GAME_ENVIRONMENT_AUDIO.src),
+        this.droneProximitySounds.preload(GAME_DRONE_PROXIMITY_AUDIO.src),
+        this.shieldChargeSounds.preload(GAME_SHIELD_CHARGE_AUDIO.src),
+        this.footstepSounds.preload(GAME_FOOTSTEP_AUDIO),
+        this.impactSounds.preload(GAME_ENEMY_HIT_IMPACT_AUDIO),
+        this.impactSounds.preloadKillConfirm(GAME_KILL_CONFIRM_AUDIO),
+        this.impactSounds.preloadShieldBreak(GAME_SHIELD_BREAK_AUDIO),
+        this.impactSounds.preloadShieldBreakLocal(GAME_SHIELD_BREAK_LOCAL_AUDIO),
+        this.impactSounds.preloadShieldChargeEnd(GAME_SHIELD_CHARGE_END_AUDIO),
+        this.grenadeSounds.preloadEquip(GAME_GRENADE_EQUIP_AUDIO),
+        this.grenadeSounds.preloadThrow(GAME_GRENADE_THROW_AUDIO),
+        this.grenadeSounds.preloadBounce(GAME_GRENADE_BOUNCE_AUDIO),
+        this.grenadeSounds.preloadExplosion(GAME_GRENADE_EXPLOSION_AUDIO),
+        this.matchSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
+        this.matchSounds.preloadGameStart(MATCH_GAME_START_AUDIO),
+        this.matchSounds.preloadEnd30(MATCH_END_30_SECS_AUDIO),
+        this.matchSounds.preloadEnd10(MATCH_END_10_SECS_AUDIO),
+        this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
+        this.shieldChargePickups.whenReady,
+        this.grenadePickups.whenReady,
+        this.grenadeManager.whenReady,
+      ]);
+    } finally {
+      if (rosterPumpId) window.clearInterval(rosterPumpId);
+    }
+    if (competitive) this.preMatchOverlay.completeLoadStep('assets');
+
     if (initialMapId === 'firing_range') {
       const mapDef = getMapDef('firing_range');
       try {
@@ -383,15 +443,8 @@ export class Game {
       this.minimapHud.setMapActive(false);
       this.tacticalMapOverlay.setMapActive(false);
     }
-    // Game page is a fresh JS context — hydrate equipped sights before FP weapons ADS.
-    onLoadingMessage?.('Loading loadouts...');
-    await this.refreshLoadoutSwitcher();
-    this.initPlayer(initialMapId, joinIntent?.gameMode);
-    // Inventory HUD needs the local player; refresh again now that it exists.
-    this.refreshInventoryHud();
-    this.applyActiveMap();
-    this.initResize();
-    onLoadingMessage?.('Compiling shaders...');
+
+    reportLoad('Compiling shaders…', 'shaders', 20);
     // Park pooled combat resources + a character clone in the scene so the
     // compile pass below builds every program combat will need. Without this
     // the first shot / first hit / first enemy sighting compiles shaders
@@ -400,6 +453,7 @@ export class Game {
     initFxLightPool(this.scene);
     this.projectiles.prewarmGpuResources();
     const characterPrewarm = await buildCharacterShaderPrewarm(this.scene);
+    reportLoad('Compiling shaders…', 'shaders', 60);
     await runShaderPrewarm(
       this.renderContext.renderer,
       this.scene,
@@ -408,10 +462,25 @@ export class Game {
     this.projectiles.finishGpuPrewarm();
     characterPrewarm?.dispose();
     this.impactSounds.primeEnemyHit();
-    await this.initNetwork(credentials, joinIntent);
-    this.applyActiveMap();
+    if (competitive) {
+      this.preMatchOverlay.completeLoadStep('shaders');
+      this.preMatchOverlay.completeLoadStep('sync');
+      this.preMatchOverlay.setLoadStep('finalize', 0);
+      this.network.sendMatchClientReady();
+      this.preMatchOverlay.setFooterStatus('WAITING FOR PLAYERS…');
+      this.preMatchOverlay.update(this.network.getAllPlayers());
+      // Never surface click-to-play under / during the pre-match screen.
+      const blocker = document.getElementById('blocker');
+      if (blocker) {
+        blocker.hidden = true;
+        blocker.style.display = 'none';
+      }
+    }
+
     onConnected?.();
-    this.playerControls.revealEntryOverlay();
+    if (!competitive) {
+      this.playerControls.revealEntryOverlay();
+    }
     this.running = true;
     this.loop();
   }
@@ -597,7 +666,7 @@ export class Game {
     }
     const mode = normalizeGameMode(gameMode);
     const spawn =
-      mode === 'tdm' && mapDef.pickTeamSpawnPoint
+      isCompetitiveGameMode(mode) && mapDef.pickTeamSpawnPoint
         ? mapDef.pickTeamSpawnPoint(0, 0)
         : mapDef.pickSpawnPoint(0);
     this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
@@ -1444,6 +1513,30 @@ export class Game {
 
     const match = resolveMatchSnapshot(this.network?.getMatchState() ?? null);
     const worldTime = this.network?.getWorldTime() ?? 0;
+
+    if (this.preMatchOverlay.isActive()) {
+      this.preMatchOverlay.update(this.network?.getAllPlayers() ?? EMPTY_ROSTER);
+      if (
+        match &&
+        (match.phase === 'countdown' || match.phase === 'playing' || match.phase === 'ended')
+      ) {
+        this.preMatchOverlay.hide();
+        // Countdown uses pointer-events:none so click-to-play can unlock audio.
+        if (!this.playerControls.isPlaying) {
+          this.playerControls.revealEntryOverlay();
+        }
+      }
+    } else {
+      // Keep click-to-play buried while competitive matches are still waiting.
+      if (match && match.phase === 'waiting') {
+        const blocker = document.getElementById('blocker');
+        if (blocker && !blocker.hidden) {
+          blocker.hidden = true;
+          blocker.style.display = 'none';
+        }
+      }
+    }
+
     this.matchCountdownOverlay.update(match, worldTime);
     // Only build the (allocating) full roster snapshot once the match has
     // actually ended — the overlay ignores it otherwise.
@@ -1458,8 +1551,9 @@ export class Game {
     );
 
     const matchPhase = match?.phase ?? null;
+    const competitive = isCompetitiveGameMode(match?.gameMode);
     if (
-      match?.gameMode === 'tdm' &&
+      competitive &&
       matchPhase === 'playing' &&
       this.prevMatchPhase !== 'playing'
     ) {
@@ -1468,7 +1562,7 @@ export class Game {
       this.lastMatchRewards = null;
     }
     if (
-      match?.gameMode === 'tdm' &&
+      competitive &&
       matchPhase === 'ended' &&
       this.prevMatchPhase !== 'ended' &&
       match
@@ -1489,9 +1583,10 @@ export class Game {
     }
     this.prevMatchPhase = matchPhase;
 
+    // End-of-match 30s/10s stingers only apply to timed win-condition modes.
     if (
-      match?.gameMode === 'tdm' &&
-      match.phase === 'playing' &&
+      isTimedGameMode(match?.gameMode) &&
+      match?.phase === 'playing' &&
       (!this.matchEnd30Played || !this.matchEnd10Played)
     ) {
       const remaining = getMatchTimeRemaining(
@@ -1511,7 +1606,7 @@ export class Game {
       }
     }
 
-    if (match?.gameMode === 'tdm' && match.phase === 'ended' && !this.matchEndHandled) {
+    if (competitive && match?.phase === 'ended' && !this.matchEndHandled) {
       this.matchEndHandled = true;
       this.closeInventory();
       this.closeTacticalMap();
@@ -1522,8 +1617,7 @@ export class Game {
       this.matchSounds.playResultsMusic();
     }
 
-    const tdmBlocksInput =
-      match?.gameMode === 'tdm' && match.phase !== 'playing';
+    const tdmBlocksInput = competitive && match?.phase !== 'playing';
 
     const patchAgeMs = this.network?.getLastPatchAgeMs() ?? -1;
     const connectionStalled =

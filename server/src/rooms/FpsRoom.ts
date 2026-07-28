@@ -24,11 +24,14 @@ import {
 import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
 import {
   defaultTdmExpectedPlayers,
+  isCompetitiveGameMode,
   normalizeGameMode,
+  PRE_MATCH_MIN_SEC,
+  resolveMatchRules,
   resolveTdmTeamCount,
   TDM_COUNTDOWN_SEC,
   TDM_KILL_POINTS,
-  TDM_MATCH_DURATION_SEC,
+  teamScoreToKills,
   type GameMode,
 } from '../../../shared/combat/match.js';
 import {
@@ -161,9 +164,13 @@ import { MAX_SHIELD_CHARGES, MAX_GRENADES } from '../../../shared/inventory/inve
 import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupRespawn.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, GrenadePickupState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
-import { incrementDeaths, incrementKills } from '../stats/service.js';
+import { getPlayerStats, incrementDeaths, incrementKills } from '../stats/service.js';
+import { MATCH_CLIENT_READY_MESSAGE } from '../../../shared/network/matchReady.js';
 import { RoomMatchPerfCache } from '../progression/RoomMatchPerfCache.js';
-import { awardMatchPerformanceForUser } from '../progression/service.js';
+import {
+  awardMatchPerformanceForUser,
+  getCompetitiveRankCard,
+} from '../progression/service.js';
 import { buildMatchId } from '../../../shared/content/matchRewards.js';
 import {
   applyCharacterWeaponDamage,
@@ -201,6 +208,8 @@ interface JoinOptions {
   friendlyFire?: boolean;
   mapId?: string;
   gameMode?: string;
+  matchDurationSec?: number;
+  killLimit?: number;
 }
 
 interface LastShotOrigin {
@@ -251,6 +260,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly activeGrenades = new Map<string, ActiveServerGrenade>();
   private grenadeIdCounter = 0;
   private readonly matchPerf = new RoomMatchPerfCache();
+  /** World-time gate: countdown cannot start before this (pre-match min duration). */
+  private preMatchHoldUntil = 0;
 
   async onCreate(options: JoinOptions = {}): Promise<void> {
     await ensureCharacterCatalogLoaded();
@@ -271,9 +282,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     await loadMapPhysicsForServer(this.mapDef);
 
-    if (this.gameMode === 'tdm') {
+    if (isCompetitiveGameMode(this.gameMode)) {
+      const rules = resolveMatchRules(
+        this.gameMode,
+        options.matchDurationSec,
+        options.killLimit,
+      );
       this.state.matchPhase = 'waiting';
-      this.state.matchDurationSec = TDM_MATCH_DURATION_SEC;
+      this.state.matchDurationSec = rules.matchDurationSec;
+      this.state.killLimit = rules.killLimit;
       this.state.expectedPlayers = this.expectedPlayers > 0
         ? this.expectedPlayers
         : defaultTdmExpectedPlayers(mapId);
@@ -329,6 +346,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     // class-field `messages` map was built from an older room process.
     this.onMessage('applyLoadout', (client: Client, data: ApplyLoadoutMessage) => {
       void this.handleApplyLoadout(client, data);
+    });
+    this.onMessage(MATCH_CLIENT_READY_MESSAGE, (client: Client) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || isTrainingBotSessionId(client.sessionId)) return;
+      player.clientReady = true;
     });
   }
 
@@ -573,13 +595,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   private isTdm(): boolean {
-    return this.gameMode === 'tdm';
+    return isCompetitiveGameMode(this.gameMode);
   }
 
   private isMatchCombatAllowed(): boolean {
     if (!this.isTdm()) return true;
     if (this.state.matchPhase !== 'playing') return false;
-    return this.state.worldTime < this.state.matchEndAt;
+    // Timed matches lock combat when the clock expires.
+    if (this.state.matchDurationSec > 0 && this.state.matchEndAt > 0) {
+      return this.state.worldTime < this.state.matchEndAt;
+    }
+    return true;
   }
 
   private getTeamScore(teamId: number): number {
@@ -612,6 +638,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         this.state.teamScore3 += points;
         break;
     }
+
+    if (
+      this.state.killLimit > 0 &&
+      this.state.matchPhase === 'playing' &&
+      teamScoreToKills(this.getTeamScore(teamId)) >= this.state.killLimit
+    ) {
+      this.endMatch();
+    }
   }
 
   private tickMatchState(): void {
@@ -621,11 +655,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
     if (this.state.matchPhase === 'waiting') {
       if (this.countHumanPlayers() >= this.expectedPlayers) {
-        this.assignTdmTeams();
-        this.teleportHumansToTeamSpawns();
-        this.resetMatchKills();
-        this.state.matchPhase = 'countdown';
-        this.state.matchCountdownEndAt = now + TDM_COUNTDOWN_SEC;
+        // Start the minimum pre-match hold once the full lobby is present.
+        if (this.preMatchHoldUntil <= 0) {
+          this.preMatchHoldUntil = now + PRE_MATCH_MIN_SEC;
+        }
+        if (this.allHumansClientReady() && now >= this.preMatchHoldUntil) {
+          this.assignTdmTeams();
+          this.teleportHumansToTeamSpawns();
+          this.resetMatchKills();
+          this.state.matchPhase = 'countdown';
+          this.state.matchCountdownEndAt = now + TDM_COUNTDOWN_SEC;
+        }
       }
       return;
     }
@@ -636,12 +676,18 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         this.teleportHumansToTeamSpawns();
         this.state.matchPhase = 'playing';
         this.state.matchStartAt = now;
-        this.state.matchEndAt = now + this.state.matchDurationSec;
+        this.state.matchEndAt =
+          this.state.matchDurationSec > 0 ? now + this.state.matchDurationSec : 0;
       }
       return;
     }
 
-    if (this.state.matchPhase === 'playing' && now >= this.state.matchEndAt) {
+    if (
+      this.state.matchPhase === 'playing' &&
+      this.state.matchDurationSec > 0 &&
+      this.state.matchEndAt > 0 &&
+      now >= this.state.matchEndAt
+    ) {
       this.endMatch();
     }
   }
@@ -1806,12 +1852,24 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.userIdBySession.set(client.sessionId, userId);
       registerGameUser(userId);
       await this.cacheDefaultLoadoutForSession(client.sessionId, userId);
-      const cosmetics = await readPartyMemberCosmetics([userId]);
+      const [cosmetics, careerStats, rank] = await Promise.all([
+        readPartyMemberCosmetics([userId]),
+        getPlayerStats(userId),
+        getCompetitiveRankCard(userId),
+      ]);
       player.selectedCharacterId =
         cosmetics.get(userId)?.selectedCharacterId ?? DEFAULT_CHARACTER_ITEM_ID;
       player.selectedOperatorId =
         cosmetics.get(userId)?.selectedOperatorId ?? DEFAULT_OPERATOR_CHARACTER_ID;
+      player.rankLevel = Math.max(1, careerStats.level || 1);
+      player.careerKills = Math.max(0, careerStats.kills || 0);
+      player.careerDeaths = Math.max(0, careerStats.deaths || 0);
+      player.xp = Math.max(0, careerStats.xp || 0);
+      player.rankTier = rank.tier;
+      player.rankDivision = rank.division;
+      player.rankName = rank.name;
     }
+    player.clientReady = false;
     const requestedTeam = Number(options.teamId);
     if (this.isTdm()) {
       if (isValidTdmTeamId(requestedTeam, this.state.teamCount)) {
@@ -1856,6 +1914,16 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         this.disconnect();
       }
     }, 60_000);
+  }
+
+  private allHumansClientReady(): boolean {
+    let humans = 0;
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      humans += 1;
+      if (!player.clientReady) return false;
+    }
+    return humans > 0;
   }
 
   private countHumanPlayers(): number {

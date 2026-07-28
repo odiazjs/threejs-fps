@@ -15,7 +15,12 @@ function launchToIntent(data: GameLaunchMessage): GameJoinIntent {
     roomId: data.roomId,
     mapId: normalizeMapId(data.mapId),
     gameMode: normalizeGameMode(data.gameMode),
+    matchDurationSec: data.matchDurationSec,
+    killLimit: data.killLimit,
     ...(typeof data.teamId === 'number' ? { teamId: data.teamId } : {}),
+    ...(Array.isArray(data.participants) && data.participants.length > 0
+      ? { participants: data.participants }
+      : {}),
   };
 }
 

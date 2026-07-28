@@ -1,6 +1,9 @@
 import {
   formatMatchTimer,
   getMatchTimeRemaining,
+  isCompetitiveGameMode,
+  isKillRaceGameMode,
+  teamScoreToKills,
   type MatchPhase,
 } from '../../shared/combat/match';
 import { TEAM_COLORS, TEAM_NAMES } from '../../shared/combat/teams';
@@ -17,6 +20,7 @@ export class MatchHud {
   private readonly lastScores: number[] = [];
   private builtTeamCount = -1;
   private lastTimerText = '';
+  private lastScoreMode: 'points' | 'kills' | null = null;
 
   constructor() {
     this.root = document.getElementById('match-hud')!;
@@ -28,31 +32,40 @@ export class MatchHud {
    * @param hudActive Player is in-game (pointer-locked / not paused).
    */
   update(match: MatchSnapshot | null, worldTime: number, hudActive: boolean): void {
-    if (!hudActive || !match || match.gameMode !== 'tdm' || match.phase === 'ended') {
+    if (!hudActive || !match || !isCompetitiveGameMode(match.gameMode) || match.phase === 'ended') {
       this.root.hidden = true;
       return;
     }
 
-    const remaining = getMatchTimeRemaining(
-      match.phase as MatchPhase,
-      worldTime,
-      match.matchStartAt,
-      match.matchEndAt,
-      match.matchDurationSec,
-    );
-    const timerText = formatMatchTimer(remaining);
+    const killRace = isKillRaceGameMode(match.gameMode);
+    const timerText = killRace
+      ? match.killLimit > 0
+        ? `FIRST TO ${match.killLimit}`
+        : 'FIRST TO KILLS'
+      : formatMatchTimer(
+          getMatchTimeRemaining(
+            match.phase as MatchPhase,
+            worldTime,
+            match.matchStartAt,
+            match.matchEndAt,
+            match.matchDurationSec,
+          ),
+        );
     if (timerText !== this.lastTimerText) {
       this.lastTimerText = timerText;
       this.timerEl.textContent = timerText;
     }
 
     const teamCount = Math.max(1, match.teamCount);
-    if (teamCount !== this.builtTeamCount) {
+    const scoreMode = killRace ? 'kills' : 'points';
+    if (teamCount !== this.builtTeamCount || scoreMode !== this.lastScoreMode) {
       this.rebuildScoreRow(teamCount);
+      this.lastScoreMode = scoreMode;
     }
 
     for (let teamId = 0; teamId < teamCount; teamId++) {
-      const score = match.teamScores[teamId] ?? 0;
+      const raw = match.teamScores[teamId] ?? 0;
+      const score = killRace ? teamScoreToKills(raw) : raw;
       if (score !== this.lastScores[teamId]) {
         this.lastScores[teamId] = score;
         this.scoreEls[teamId]!.textContent = String(score);
@@ -99,6 +112,6 @@ export class MatchHud {
 export function resolveMatchSnapshot(
   server: MatchSnapshot | null | undefined,
 ): MatchSnapshot | null {
-  if (server?.gameMode === 'tdm') return server;
+  if (server && isCompetitiveGameMode(server.gameMode)) return server;
   return null;
 }

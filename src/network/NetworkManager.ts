@@ -36,6 +36,7 @@ import { readProjectileShooterWorldPos } from '../combat/damageIndicatorMath';
 import { buildRemoteProjectileSpawn } from '../combat/remoteProjectileSpawn';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../shared/combat/playerHitbox';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
+import { isCompetitiveGameMode } from '../../shared/combat/match';
 import type {
   ShieldDomeManager,
   ShieldDomePlayerSync,
@@ -522,6 +523,12 @@ export class NetworkManager {
     return true;
   }
 
+  /** Tell the room this client finished local asset/shader prep. */
+  sendMatchClientReady(): void {
+    if (!this.roomClient.connected) return;
+    this.roomClient.sendMatchClientReady();
+  }
+
   onApplyLoadoutResult(
     handler: (data: import('../../shared/network/applyLoadout').ApplyLoadoutResultMessage) => void,
   ): void {
@@ -773,7 +780,7 @@ export class NetworkManager {
     }
 
     const match = this.roomClient.getMatchState();
-    if (match?.gameMode === 'tdm' && match.phase !== 'playing') {
+    if (isCompetitiveGameMode(match?.gameMode) && match?.phase !== 'playing') {
       return;
     }
 
