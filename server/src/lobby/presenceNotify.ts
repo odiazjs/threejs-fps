@@ -8,6 +8,7 @@ import {
   notifyLobbyUser,
   setPresenceChangeHandler,
 } from './presence.js';
+import { refreshPartyForUser } from './partyNotify.js';
 
 async function getFriendIds(userId: string): Promise<string[]> {
   const db = getDb();
@@ -53,5 +54,7 @@ export function initPresenceNotifications(): void {
     void notifyFriendsOfPresenceChange(userId).catch((error) => {
       console.error('[presence] failed to notify friends', error);
     });
+    // Keep party launch-ready state in sync as members return from matches.
+    refreshPartyForUser(userId);
   });
 }

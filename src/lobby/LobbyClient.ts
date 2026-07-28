@@ -33,12 +33,32 @@ interface LobbyJoinOptions {
 
 export class LobbyClient {
   private room: Room | null = null;
+  private connectInFlight: Promise<void> | null = null;
 
   get connected(): boolean {
     return this.room !== null;
   }
 
   async connect(options: LobbyJoinOptions, url = getServerUrl()): Promise<void> {
+    // Serialize connects — parallel reconnects were dissolving parties via
+    // disconnect→onLeave while a brand-new join was already in flight.
+    if (this.connectInFlight) {
+      await this.connectInFlight;
+      if (this.room) return;
+    }
+
+    this.connectInFlight = this.connectExclusive(options, url);
+    try {
+      await this.connectInFlight;
+    } finally {
+      this.connectInFlight = null;
+    }
+  }
+
+  private async connectExclusive(
+    options: LobbyJoinOptions,
+    url: string,
+  ): Promise<void> {
     if (this.room) {
       await this.disconnect();
     }

@@ -70,10 +70,13 @@ function removeGameOverlayIframe(): void {
 }
 
 export function closeGameOverlay(): void {
+  // Idempotent: leave-game can postMessage more than once during teardown.
+  if (!overlay) return;
+
   removeGameOverlayIframe();
   resumeLobbyMusic();
   resumeBackgroundScene?.();
-  for (const handler of closedHandlers) {
+  for (const handler of [...closedHandlers]) {
     handler();
   }
 }

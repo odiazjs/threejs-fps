@@ -117,7 +117,7 @@ async function startLobby(): Promise<void> {
       void lobbyClient.reconnect({ userId: session.userId, username: session.username }).then(() => {
         lobbyClient.setAppView(shellPresenceView(parseShellViewFromUrl()));
         appShell?.syncPresenceAfterGame();
-        friendsPanel?.syncControls();
+        friendsPanel?.syncAfterGameReconnect();
       });
       void maybeShowMatchXpResultsModal({ withLoading: true });
     });

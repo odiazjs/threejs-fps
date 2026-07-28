@@ -1,3 +1,5 @@
+import type { FriendPresenceStatus } from './friendPresence.js';
+
 export const MAX_PARTY_SIZE = 4;
 
 /** Party members pick between the first two sides (Blue / Orange). */
@@ -19,7 +21,12 @@ export interface PartyMember {
   selectedOperatorId: string;
   /** Primary weapon from the player's default loadout. */
   primaryWeaponId: string;
+  /** Live presence for party roster (authoritative from lobby server). */
+  presence?: FriendPresenceStatus;
 }
+
+/** Party is playable in lobby, or suspended while members are in a match. */
+export type PartyStatus = 'active' | 'in_match';
 
 export interface PartySnapshotMessage {
   partyId: string;
@@ -31,6 +38,13 @@ export interface PartySnapshotMessage {
   pendingInviteUserIds: string[];
   /** Host-controlled match option, visible to every member. */
   friendlyFire: boolean;
+  /** Survives match launch so members rejoin the same party on return. */
+  status?: PartyStatus;
+  /**
+   * True when every party member currently has lobby/menus presence.
+   * Host can only launch when this is true.
+   */
+  allMembersInLobby?: boolean;
 }
 
 /** Any member sets their own preferred team side. */

@@ -64,13 +64,29 @@ import { LobbyPlayerState, LobbyState } from '../../../shared/schema/LobbyState.
 import { normalizeMapId } from '../../../shared/level/maps.js';
 import { normalizeGameMode } from '../../../shared/combat/match.js';
 
-import { registerLobbyUser, setLobbyAppView, unregisterUser } from '../lobby/presence.js';
+import {
+  getPublicPresence,
+  isUserInLobby,
+  registerLobbyUser,
+  setLobbyAppView,
+  unregisterUser,
+} from '../lobby/presence.js';
+import type { FriendPresenceStatus } from '../../../shared/network/friendPresence.js';
 
 import { sendFriendPresenceSnapshot } from '../lobby/presenceNotify.js';
 import {
   consumePendingGameLaunch,
   setPendingGameLaunch,
 } from '../lobby/pendingGameLaunches.js';
+import {
+  clearPartyHostMapping,
+  getPartyByHost,
+  getPartyForUser,
+  registerParty,
+  setPartyHostMapping,
+  unregisterParty,
+  type Party,
+} from '../lobby/partyRegistry.js';
 
 
 
@@ -79,22 +95,6 @@ interface JoinOptions {
   userId?: string;
 
   username?: string;
-
-}
-
-
-
-interface PartyMemberRecord {
-
-  userId: string;
-
-  username: string;
-
-  client: Client;
-
-  isHost: boolean;
-
-  teamId: number;
 
 }
 
@@ -119,22 +119,6 @@ interface PendingGameInvite {
   guestClient: Client | null;
 
   expireTimeout?: ReturnType<typeof setTimeout>;
-
-}
-
-
-
-interface Party {
-
-  partyId: string;
-
-  hostUserId: string;
-
-  members: Map<string, PartyMemberRecord>;
-
-  pendingInvites: Map<string, PendingGameInvite>;
-
-  friendlyFire: boolean;
 
 }
 
@@ -192,6 +176,9 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
   maxClients = 64;
 
+  /** Keep the lobby process-wide so parties survive everyone entering a match. */
+  autoDispose = false;
+
   private readonly clientsByUsername = new Map<string, Client>();
 
   private readonly clientsByUserId = new Map<string, Client>();
@@ -200,19 +187,19 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
   private readonly invitesById = new Map<string, PendingGameInvite>();
 
-  private readonly partiesByHostUserId = new Map<string, Party>();
-
-  private readonly partyHostByUserId = new Map<string, string>();
-
 
 
   onCreate(): void {
 
     setRefreshPartyHandler((userId) => {
 
-      const party = this.getPartyForUser(userId);
+      const party = getPartyForUser(userId);
 
-      if (party) this.broadcastParty(party);
+      if (!party) return;
+
+      this.maybeResumePartyAfterMatch(party);
+
+      this.broadcastParty(party);
 
     });
 
@@ -240,7 +227,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      let party = this.getPartyForUser(hostUserId);
+      let party = getPartyForUser(hostUserId);
 
       if (!party) {
 
@@ -251,6 +238,16 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       if (!party || party.hostUserId !== hostUserId) {
 
         this.sendError(client, 'Only the party host can invite friends');
+
+        return;
+
+      }
+
+
+
+      if (party.status === 'in_match') {
+
+        this.sendError(client, 'Wait for the party to return from the match');
 
         return;
 
@@ -349,7 +346,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const guestParty = this.getPartyForUser(resolvedGuestUserId);
+      const guestParty = getPartyForUser(resolvedGuestUserId);
 
       if (guestParty && guestParty.members.size > 1) {
 
@@ -445,11 +442,25 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const hostParty = this.partiesByHostUserId.get(invite.hostUserId);
+      const hostParty = getPartyByHost(invite.hostUserId);
 
       if (!hostParty) {
 
         this.clearInvite(invite.inviteId);
+
+        return;
+
+      }
+
+
+
+      if (hostParty.status === 'in_match') {
+
+        this.sendError(client, 'That party is currently in a match');
+
+        this.clearInvite(invite.inviteId, hostParty);
+
+        this.broadcastParty(hostParty);
 
         return;
 
@@ -493,7 +504,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const guestParty = this.getPartyForUser(responderUserId);
+      const guestParty = getPartyForUser(responderUserId);
 
       if (guestParty && guestParty.members.size > 1) {
 
@@ -525,7 +536,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       });
 
-      this.partyHostByUserId.set(responderUserId, hostParty.hostUserId);
+      setPartyHostMapping(responderUserId, hostParty.hostUserId);
 
 
 
@@ -567,7 +578,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const party = this.partiesByHostUserId.get(hostUserId);
+      const party = getPartyByHost(hostUserId);
 
       if (!party || party.partyId !== partyId) {
 
@@ -589,9 +600,37 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
+      if (party.status === 'in_match') {
+
+        this.sendError(client, 'Party is still in a match');
+
+        return;
+
+      }
+
+
+
       if (party.members.size < 2) {
 
         this.sendError(client, 'Invite at least one friend first');
+
+        return;
+
+      }
+
+
+
+      const missingLobby = [...party.members.values()].filter(
+
+        (member) => !isUserInLobby(member.userId),
+
+      );
+
+      if (missingLobby.length > 0) {
+
+        const names = missingLobby.map((member) => member.username).join(', ');
+
+        this.sendError(client, `Waiting for party members to return to lobby: ${names}`);
 
         return;
 
@@ -607,7 +646,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      if (launchMembers.length < 2) {
+      if (launchMembers.length < party.members.size) {
 
         this.sendError(client, 'A party member left the lobby');
 
@@ -688,12 +727,15 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
             participants,
           };
           setPendingGameLaunch(member.userId, launch);
-          member.client.send('gameLaunch', launch);
+          const liveClient = this.clientsByUserId.get(member.userId) ?? member.client;
+          member.client = liveClient;
+          liveClient.send('gameLaunch', launch);
         }
 
 
 
-        this.dissolveParty(party);
+        // Keep the party roster so everyone re-joins the same party after the match.
+        this.suspendPartyForMatch(party, roomId);
 
       } catch (error) {
 
@@ -713,7 +755,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       if (!userId) return;
 
-      const party = this.getPartyForUser(userId);
+      const party = getPartyForUser(userId);
 
       const member = party?.members.get(userId);
 
@@ -735,7 +777,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       if (!userId) return;
 
-      const party = this.getPartyForUser(userId);
+      const party = getPartyForUser(userId);
 
       if (!party) return;
 
@@ -765,7 +807,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-      const party = this.getPartyForUser(userId);
+      const party = getPartyForUser(userId);
 
       if (!party || party.members.size <= 1) return;
 
@@ -816,7 +858,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       const userId = this.getUserId(client);
       if (!userId) return;
 
-      const party = this.getPartyForUser(userId);
+      const party = getPartyForUser(userId);
       if (party) {
         void this.sendPartySnapshot(client, party, userId);
         return;
@@ -852,24 +894,12 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     const existingByName = this.clientsByUsername.get(key);
 
-    if (existingByName && existingByName.sessionId !== client.sessionId) {
-
-      existingByName.leave(4000);
-
-    }
-
-
-
     const existingById = this.clientsByUserId.get(userId);
 
-    if (existingById && existingById.sessionId !== client.sessionId) {
-
-      existingById.leave(4000);
-
-    }
 
 
-
+    // Register the new session BEFORE kicking duplicates so a synchronous
+    // onLeave from the old socket cannot dissolve the party / wipe presence.
     const player = new LobbyPlayerState();
 
     player.username = username;
@@ -890,6 +920,28 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     this.createSoloParty(client, userId, username);
 
+
+
+    if (existingById && existingById.sessionId !== client.sessionId) {
+
+      existingById.leave(4000);
+
+    }
+
+    if (
+
+      existingByName
+
+      && existingByName.sessionId !== client.sessionId
+
+      && existingByName.sessionId !== existingById?.sessionId
+
+    ) {
+
+      existingByName.leave(4000);
+
+    }
+
   }
 
 
@@ -906,13 +958,21 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-    if (userId) {
+    // A newer lobby socket may already have replaced this session (reconnect /
+    // fetchPartyGameLaunch kick). Never wipe presence or party for a stale leave.
+    const isCurrentSession = Boolean(
 
-      if (this.clientsByUserId.get(userId)?.sessionId === client.sessionId) {
+      userId
 
-        this.clientsByUserId.delete(userId);
+      && this.clientsByUserId.get(userId)?.sessionId === client.sessionId,
 
-      }
+    );
+
+
+
+    if (userId && isCurrentSession) {
+
+      this.clientsByUserId.delete(userId);
 
       unregisterUser(userId);
 
@@ -920,39 +980,40 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-    if (!username) return;
+    if (username) {
 
+      const key = usernameKey(username);
 
+      if (this.clientsByUsername.get(key)?.sessionId === client.sessionId) {
 
-    const key = usernameKey(username);
+        this.clientsByUsername.delete(key);
 
-    if (this.clientsByUsername.get(key)?.sessionId === client.sessionId) {
-
-      this.clientsByUsername.delete(key);
+      }
 
     }
 
 
 
-    if (!userId) return;
+    if (!userId || !isCurrentSession) return;
 
 
 
-    const party = this.getPartyForUser(userId);
+    const party = getPartyForUser(userId);
 
     if (party) {
 
-      if (party.hostUserId === userId && party.members.size > 1) {
+      if (party.members.size <= 1) {
 
-        this.dissolveParty(party, userId);
+        // Solo lobby stub — safe to drop on disconnect.
 
-      } else if (party.members.size > 1) {
-
-        this.removeMemberFromParty(userId, { createSolo: false });
+        this.deleteParty(party);
 
       } else {
 
-        this.deleteParty(party);
+        // Multi-member parties must survive lobby socket churn (match overlay,
+        // fetchPartyGameLaunch kick, reconnect). Only leaveParty dissolves them.
+
+        this.broadcastParty(party);
 
       }
 
@@ -974,17 +1035,21 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       if (invite.guestUserId === userId) {
 
-        const declined: GameInviteDeclinedMessage = {
+        if (username) {
 
-          inviteId: invite.inviteId,
+          const declined: GameInviteDeclinedMessage = {
 
-          username,
+            inviteId: invite.inviteId,
 
-        };
+            username,
 
-        invite.hostClient.send('gameInviteDeclined', declined);
+          };
 
-        const hostParty = this.partiesByHostUserId.get(invite.hostUserId);
+          invite.hostClient.send('gameInviteDeclined', declined);
+
+        }
+
+        const hostParty = getPartyByHost(invite.hostUserId);
 
         this.clearInvite(invite.inviteId, hostParty);
 
@@ -1014,27 +1079,22 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-  private getPartyForUser(userId: string): Party | undefined {
-
-    const hostUserId = this.partyHostByUserId.get(userId);
-
-    if (!hostUserId) return undefined;
-
-    return this.partiesByHostUserId.get(hostUserId);
-
-  }
-
-
-
   private createSoloParty(client: Client, userId: string, username: string): Party {
 
-    const existing = this.getPartyForUser(userId);
+    const existing = getPartyForUser(userId);
 
     if (existing) {
 
-      existing.members.get(userId)!.client = client;
+      const member = existing.members.get(userId);
 
-      void this.sendPartySnapshot(client, existing, userId);
+      if (member) {
+        member.client = client;
+        member.username = username;
+      }
+
+      this.maybeResumePartyAfterMatch(existing);
+
+      this.broadcastParty(existing);
 
       return existing;
 
@@ -1076,13 +1136,13 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
       friendlyFire: false,
 
+      status: 'active',
+
     };
 
 
 
-    this.partiesByHostUserId.set(userId, party);
-
-    this.partyHostByUserId.set(userId, userId);
+    registerParty(party);
 
     void this.sendPartySnapshot(client, party, userId);
 
@@ -1100,7 +1160,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
   ): void {
 
-    const party = this.getPartyForUser(userId);
+    const party = getPartyForUser(userId);
 
     if (!party || !party.members.has(userId)) return;
 
@@ -1110,7 +1170,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     party.members.delete(userId);
 
-    this.partyHostByUserId.delete(userId);
+    clearPartyHostMapping(userId);
 
 
 
@@ -1168,23 +1228,13 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
   private deleteParty(party: Party): void {
 
-    for (const member of party.members.keys()) {
-
-      this.partyHostByUserId.delete(member);
-
-    }
-
-    this.partiesByHostUserId.delete(party.hostUserId);
-
-
-
     for (const invite of party.pendingInvites.values()) {
 
       this.invitesById.delete(invite.inviteId);
 
     }
 
-    party.pendingInvites.clear();
+    unregisterParty(party);
 
   }
 
@@ -1194,9 +1244,83 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
     for (const member of party.members.values()) {
 
-      void this.sendPartySnapshot(member.client, party, member.userId);
+      const liveClient = this.clientsByUserId.get(member.userId);
+
+      if (!liveClient) continue;
+
+      member.client = liveClient;
+
+      void this.sendPartySnapshot(liveClient, party, member.userId);
 
     }
+
+  }
+
+
+
+  private areAllPartyMembersInLobby(party: Party): boolean {
+
+    for (const member of party.members.values()) {
+
+      if (!isUserInLobby(member.userId)) return false;
+
+      // Presence alone isn't enough — they must actually be back on a lobby socket.
+      if (!this.clientsByUserId.has(member.userId)) return false;
+
+    }
+
+    return party.members.size > 0;
+
+  }
+
+
+
+  /** While a match is out, missing/offline members still show as in-game on the roster. */
+  private partyMemberPresence(party: Party, userId: string): FriendPresenceStatus {
+
+    const presence = getPublicPresence(userId);
+
+    if (presence === 'lobby' || presence === 'menus' || presence === 'game') {
+
+      return presence;
+
+    }
+
+    if (party.status === 'in_match') return 'game';
+
+    return 'offline';
+
+  }
+
+
+
+  private maybeResumePartyAfterMatch(party: Party): void {
+
+    if (party.status !== 'in_match') return;
+
+    if (!this.areAllPartyMembersInLobby(party)) return;
+
+    party.status = 'active';
+
+    party.matchRoomId = undefined;
+
+  }
+
+
+
+  private suspendPartyForMatch(party: Party, matchRoomId: string): void {
+
+    for (const invite of [...party.pendingInvites.values()]) {
+
+      this.cancelInvite(invite.inviteId, { silentHost: true });
+
+    }
+
+    party.status = 'in_match';
+
+    party.matchRoomId = matchRoomId;
+
+    this.broadcastParty(party);
 
   }
 
@@ -1252,6 +1376,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
           primaryWeaponId: look?.primaryWeaponId ?? 'plasma_rifle',
 
+          presence: this.partyMemberPresence(party, member.userId),
+
         };
 
       });
@@ -1281,6 +1407,10 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
         pendingInviteUserIds,
 
         friendlyFire: party.friendlyFire,
+
+        status: party.status,
+
+        allMembersInLobby: this.areAllPartyMembersInLobby(party),
 
       };
 
@@ -1313,6 +1443,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
           primaryWeaponId: 'plasma_rifle',
 
+          presence: this.partyMemberPresence(party, member.userId),
+
         })),
 
         isHost,
@@ -1322,6 +1454,10 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
         pendingInviteUserIds: isHost ? [...party.pendingInvites.keys()] : [],
 
         friendlyFire: party.friendlyFire,
+
+        status: party.status,
+
+        allMembersInLobby: this.areAllPartyMembersInLobby(party),
 
       } satisfies PartySnapshotMessage);
 
@@ -1351,7 +1487,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
 
-    const hostParty = this.partiesByHostUserId.get(invite.hostUserId);
+    const hostParty = getPartyByHost(invite.hostUserId);
 
     this.clearInvite(inviteId, hostParty);
 

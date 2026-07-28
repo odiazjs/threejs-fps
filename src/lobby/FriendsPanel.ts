@@ -75,6 +75,7 @@ export class FriendsPanel {
   private friends: FriendSummary[] = [];
   private readonly presenceByUserId = new Map<string, FriendPresenceStatus>();
   private party: PartySnapshotMessage | null = null;
+  private partyLeaveInFlight = false;
   private activeListTab: SocialListTab = 'friends';
   private launching = false;
   private launchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -131,12 +132,12 @@ export class FriendsPanel {
     this.friendsTabBtn.addEventListener('click', () => this.setListTab('friends'));
     this.partyTabBtn.addEventListener('click', () => this.setListTab('party'));
     onGameOverlayClosed(() => {
+      // Presence/party refresh happens in syncAfterGameReconnect() after the
+      // lobby socket is back — requesting here races a null room.
       this.clearLaunchTimeout();
       this.launching = false;
       this.loading.reset();
-      this.refreshPresence();
       this.updatePartyButtons();
-      this.refreshListPanel();
     });
 
     this.lobby.onFriendRequest((data) => this.showRequestToast(data));
@@ -172,8 +173,37 @@ export class FriendsPanel {
     });
 
     this.lobby.onPartySnapshot((data) => {
+      // Defend against reconnect races that briefly emit a fresh solo party
+      // while we still expect the post-match roster. Explicit leave/disband
+      // sets partyLeaveInFlight so those snapshots are accepted.
+      if (
+        !this.partyLeaveInFlight
+        && this.party
+        && this.party.members.length >= 2
+        && data.members.length < 2
+        && this.party.status === 'in_match'
+      ) {
+        console.warn(
+          '[Lobby] ignoring solo party snapshot while multi-member party is in match',
+          { previous: this.party.partyId, next: data.partyId },
+        );
+        this.lobby.requestPartySnapshot();
+        return;
+      }
+
+      this.partyLeaveInFlight = false;
       this.party = data;
+      // Party snapshots carry authoritative presence (including in-game members
+      // who no longer have a lobby friend-presence watch).
+      for (const member of data.members) {
+        if (member.presence) {
+          this.presenceByUserId.set(member.userId, member.presence);
+        }
+      }
       this.resolvePartySnapshotWaiters(data);
+      if (data.members.length >= 2 && this.activeListTab !== 'party') {
+        this.activeListTab = 'party';
+      }
       this.updatePartyButtons();
       this.refreshListPanel();
       this.onPartySnapshotHandler?.(data);
@@ -184,6 +214,7 @@ export class FriendsPanel {
     });
     this.lobby.onFriendPresence((data) => {
       this.applyPresenceUpdate(data);
+      this.updatePartyButtons();
     });
   }
 
@@ -200,6 +231,15 @@ export class FriendsPanel {
   refreshPresence(): void {
     this.lobby.requestFriendPresenceSnapshot();
     this.lobby.requestPartySnapshot();
+  }
+
+  /** Call after lobby reconnect when returning from a match overlay. */
+  syncAfterGameReconnect(): void {
+    this.clearLaunchTimeout();
+    this.launching = false;
+    this.loading.reset();
+    this.refreshPresence();
+    this.syncControls();
   }
 
   syncControls(): void {
@@ -238,6 +278,7 @@ export class FriendsPanel {
       }
     }
     this.refreshListPanel();
+    this.updatePartyButtons();
   }
 
   private async loadFriends(): Promise<void> {
@@ -315,6 +356,11 @@ export class FriendsPanel {
     // Solo lobby: missing snapshot still means you can host invites.
     if (this.party && !this.party.isHost) {
       this.setStatus('Only the party host can invite friends');
+      return;
+    }
+
+    if (this.party?.status === 'in_match') {
+      this.setStatus('Wait for everyone to return from the match');
       return;
     }
 
@@ -408,7 +454,13 @@ export class FriendsPanel {
   }
 
   private async startHostedGame(): Promise<void> {
-    if (!this.party?.isHost || this.getPartySize() < 2 || this.launching || this.isBusy()) {
+    if (
+      !this.party?.isHost
+      || this.getPartySize() < 2
+      || this.launching
+      || this.isBusy()
+      || !this.canHostLaunchParty()
+    ) {
       return;
     }
 
@@ -434,6 +486,7 @@ export class FriendsPanel {
     if (!this.party || this.getPartySize() <= 1 || this.isBusy()) return;
 
     const partyId = this.party.partyId;
+    this.partyLeaveInFlight = true;
     this.lobby.leaveParty(partyId);
 
     try {
@@ -443,6 +496,7 @@ export class FriendsPanel {
       );
       this.setStatus('Left the party');
     } catch (error) {
+      this.partyLeaveInFlight = false;
       this.handleActionError(error instanceof Error ? error.message : 'Could not leave party');
     }
   }
@@ -719,10 +773,14 @@ export class FriendsPanel {
   private updatePartyButtons(): void {
     const partySize = this.getPartySize();
     const isHost = this.party?.isHost ?? false;
-    const canStart = isHost && partySize >= 2 && !this.launching && !this.isBusy();
-    const canLeave = partySize > 1 && !isHost;
+    const canStart = this.canHostLaunchParty() && !this.launching && !this.isBusy();
+    const canLeave = partySize > 1;
     const showPartyControls = partySize >= 2;
     const blockPartyActions = this.launching;
+
+    if (showPartyControls && this.activeListTab !== 'party') {
+      this.activeListTab = 'party';
+    }
 
     const slotEl = document.getElementById('party-slot-count');
     if (slotEl) {
@@ -745,6 +803,7 @@ export class FriendsPanel {
 
     this.leaveBtn.hidden = !canLeave;
     this.leaveBtn.disabled = blockPartyActions || !canLeave;
+    this.leaveBtn.textContent = isHost ? 'DISBAND' : 'LEAVE';
 
     this.syncListTabs();
     this.updateLaunchButton();
@@ -754,7 +813,8 @@ export class FriendsPanel {
     const partySize = this.getPartySize();
     const inParty = this.hasActiveParty();
     const isHost = this.party?.isHost ?? false;
-    const canPartyLaunch = isHost && partySize >= 2 && !this.launching && !this.isBusy();
+    const canPartyLaunch = this.canHostLaunchParty() && !this.launching && !this.isBusy();
+    const waitingForMembers = this.getMembersNotInLobby();
 
     if (inParty) {
       this.launchBtn.textContent = this.launching ? 'STARTING...' : 'LAUNCH';
@@ -766,6 +826,16 @@ export class FriendsPanel {
       } else if (partySize < 2) {
         this.launchBtn.disabled = true;
         this.launchBtn.title = 'Need at least one party member';
+      } else if (waitingForMembers.length > 0) {
+        this.launchBtn.disabled = true;
+        const names = waitingForMembers
+          .map((member) => member.username)
+          .slice(0, 2)
+          .join(', ');
+        this.launchBtn.title = `Waiting for ${names} to return to lobby`;
+      } else if (this.party?.status === 'in_match') {
+        this.launchBtn.disabled = true;
+        this.launchBtn.title = 'Party is still finishing the match';
       } else {
         this.launchBtn.disabled = !canPartyLaunch;
         this.launchBtn.title = canPartyLaunch ? 'Start party match' : '';
@@ -781,6 +851,28 @@ export class FriendsPanel {
 
   private hasActiveParty(): boolean {
     return this.getPartySize() >= 2;
+  }
+
+  /** Host may launch only when every party member is back in lobby/menus. */
+  private canHostLaunchParty(): boolean {
+    if (!this.party?.isHost || this.getPartySize() < 2) return false;
+    if (this.party.status === 'in_match') return false;
+    // Server presence check is authoritative when the snapshot includes it.
+    if (typeof this.party.allMembersInLobby === 'boolean') {
+      return this.party.allMembersInLobby;
+    }
+    return this.getMembersNotInLobby().length === 0;
+  }
+
+  private getMembersNotInLobby(): Array<{ userId: string; username: string }> {
+    if (!this.party) return [];
+    if (this.party.allMembersInLobby === true) return [];
+    const viewerUserId = this.party.viewerUserId;
+    return this.party.members.filter((member) => {
+      if (member.userId === viewerUserId) return false;
+      const presence = this.getMemberPresence(member.userId);
+      return !isInviteablePresence(presence);
+    });
   }
 
   private getMyTeamId(): number {
@@ -841,7 +933,13 @@ export class FriendsPanel {
   }
 
   private getMemberPresence(userId: string): FriendPresenceStatus {
-    return this.presenceByUserId.get(userId) ?? 'offline';
+    const fromSnapshot = this.party?.members.find((member) => member.userId === userId)?.presence;
+    if (fromSnapshot) return fromSnapshot;
+    const live = this.presenceByUserId.get(userId);
+    if (live) return live;
+    // Still waiting on a match return — don't flash offline for party mates.
+    if (this.party?.status === 'in_match') return 'game';
+    return 'offline';
   }
 
   private renderPartyMembers(): void {
@@ -894,7 +992,14 @@ export class FriendsPanel {
 
     const status = document.createElement('span');
     status.className = `friends-presence-status friends-presence-status--${presence}`;
-    status.textContent = member.isHost ? 'host' : this.presenceLabel(presence);
+    // Host still shows role, but presence wins while they're away in a match.
+    if (presence === 'game') {
+      status.textContent = 'in game';
+    } else if (member.isHost) {
+      status.textContent = 'host';
+    } else {
+      status.textContent = this.presenceLabel(presence);
+    }
 
     identity.append(row, status);
 
