@@ -163,6 +163,82 @@
   align-self: start;
 }
 
+.lobby-profile-rank {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(0, 242, 255, 0.12);
+}
+
+.lobby-profile-rank[hidden] {
+  display: none;
+}
+
+.lobby-rank-icon {
+  flex: 0 0 auto;
+  width: 2.6rem;
+  height: 2.6rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(0, 242, 255, 0.25));
+}
+
+.lobby-rank-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.lobby-rank-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lobby-rank-xp {
+  font-size: 0.68rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  color: var(--hud-cyan-soft);
+  line-height: 1.2;
+}
+
+.lobby-rank-stats-btn {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(0, 242, 255, 0.35);
+  border-radius: 2px;
+  background: rgba(0, 242, 255, 0.08);
+  color: var(--hud-cyan);
+  font-family: inherit;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.lobby-rank-stats-btn:hover {
+  background: rgba(0, 242, 255, 0.16);
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.22);
+}
+
 .lobby-stat {
   text-align: right;
 }
@@ -253,6 +329,28 @@
   pointer-events: none;
 }
 
+.lobby-top-right .plasma-minerals-chip {
+  min-width: 10.5rem;
+  padding: 0.75rem 0.95rem;
+  gap: 0.45rem;
+}
+
+.lobby-top-right .plasma-minerals-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+}
+
+.lobby-top-right .plasma-minerals-value {
+  font-size: 1.35rem;
+  letter-spacing: 0.05em;
+}
+
+.lobby-top-right .plasma-minerals-get-more {
+  padding: 0.4rem 0.55rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+}
+
 .plasma-minerals-chip {
   display: flex;
   flex-direction: column;
@@ -298,10 +396,26 @@
     color 0.15s ease;
 }
 
-.plasma-minerals-get-more:hover {
+.plasma-minerals-get-more:hover:not(:disabled) {
   border-color: var(--hud-cyan);
   background: rgba(0, 242, 255, 0.2);
   color: #fff;
+}
+
+.plasma-minerals-get-more:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+  box-shadow: none;
+}
+
+.plasma-minerals-coming-soon {
+  margin-top: -0.1rem;
+  color: #e8c56a;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 10px rgba(232, 197, 106, 0.28);
 }
 
 /* Plasma minerals store modal */
@@ -1756,8 +1870,21 @@ body.leaderboard-page {
   }
 
   .lobby-top-right {
-    width: 7.25rem;
-    max-width: 7.25rem;
+    width: auto;
+    max-width: none;
+  }
+
+  .lobby-top-right .plasma-minerals-chip {
+    min-width: 9rem;
+    padding: 0.65rem 0.8rem;
+  }
+
+  .lobby-top-right .plasma-minerals-label {
+    font-size: 0.62rem;
+  }
+
+  .lobby-top-right .plasma-minerals-value {
+    font-size: 1.15rem;
   }
 
   .plasma-minerals-label {
@@ -1774,5 +1901,365 @@ body.leaderboard-page {
 
   .lobby-stat-label {
     font-size: 0.5rem;
+  }
+}
+
+/* Post-match XP results modal */
+.match-xp-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+  background: rgba(2, 6, 12, 0.62);
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.match-xp-overlay.match-xp-visible {
+  opacity: 1;
+}
+
+/* First-lobby season welcome */
+.season-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 41;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  box-sizing: border-box;
+  opacity: 0;
+  transition: opacity 0.28s ease;
+}
+
+.season-welcome-overlay.season-welcome-visible {
+  opacity: 1;
+}
+
+.season-welcome-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(2, 6, 12, 0.72);
+}
+
+.season-welcome-panel {
+  position: relative;
+  z-index: 1;
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 1.75rem 1.5rem 1.45rem;
+  text-align: center;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: linear-gradient(180deg, rgba(8, 18, 32, 0.96), rgba(4, 10, 18, 0.98));
+  box-shadow: 0 0 40px rgba(0, 242, 255, 0.12);
+}
+
+.season-welcome-eyebrow {
+  margin: 0 0 0.45rem;
+  color: var(--hud-cyan-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.season-welcome-title {
+  margin: 0 0 0.85rem;
+  color: #fff;
+  font-size: clamp(1.45rem, 4vw, 2rem);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 22px var(--hud-cyan-glow);
+}
+
+.season-welcome-body {
+  margin: 0 0 1.25rem;
+  color: rgba(220, 240, 255, 0.82);
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+
+.season-welcome-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  margin: 0 auto 1.35rem;
+  padding: 0.75rem 1rem;
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid rgba(0, 242, 255, 0.25);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.season-welcome-rank-icon {
+  width: 3.6rem;
+  height: 3.6rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(0, 242, 255, 0.25));
+}
+
+.season-welcome-rank-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  text-align: left;
+}
+
+.season-welcome-rank-label {
+  color: var(--hud-cyan-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.season-welcome-rank-name {
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.season-welcome-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.match-xp-panel {
+  width: min(28rem, calc(100vw - 2rem));
+  max-height: min(90dvh, 40rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.15rem 1.2rem 1rem;
+  overflow: hidden;
+  border-radius: 4px;
+  background:
+    linear-gradient(165deg, rgba(10, 22, 34, 0.94), rgba(4, 10, 16, 0.96)),
+    var(--hud-bg);
+  box-shadow:
+    0 0 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.match-xp-eyebrow {
+  margin: 0;
+  color: var(--hud-cyan-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.match-xp-title {
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  letter-spacing: 0.08em;
+}
+
+.match-xp-title[data-result='victory'] {
+  color: var(--hud-green, #5dff9a);
+}
+
+.match-xp-title[data-result='defeat'] {
+  color: #ff6b7a;
+}
+
+.match-xp-title[data-result='draw'] {
+  color: var(--hud-cyan-soft);
+}
+
+.match-xp-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: rgba(0, 242, 255, 0.06);
+}
+
+.match-xp-total-label {
+  color: var(--hud-cyan-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.match-xp-total-value {
+  color: #fff;
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.match-xp-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.45rem;
+}
+
+.match-xp-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(0, 242, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.match-xp-meta-item span {
+  color: rgba(180, 220, 240, 0.65);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.match-xp-meta-item strong {
+  color: #e8f6ff;
+  font-size: 1rem;
+}
+
+.match-xp-meta-item strong.is-gain,
+.match-xp-breakdown strong.is-gain {
+  color: var(--hud-green, #5dff9a);
+}
+
+.match-xp-meta-item strong.is-loss,
+.match-xp-breakdown strong.is-loss {
+  color: #ff8a96;
+}
+
+.match-xp-mvp strong {
+  color: var(--hud-cyan);
+}
+
+.match-xp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+  scrollbar-width: thin;
+}
+
+.match-xp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.match-xp-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.45rem 0.4rem;
+  border: 1px solid rgba(0, 242, 255, 0.1);
+  background: rgba(0, 0, 0, 0.22);
+  text-align: center;
+}
+
+.match-xp-stats span {
+  color: rgba(180, 220, 240, 0.55);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.match-xp-stats strong {
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.match-xp-section-label {
+  margin: 0;
+  color: var(--hud-cyan-dim);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.match-xp-breakdown {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.match-xp-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid rgba(0, 242, 255, 0.08);
+  color: rgba(220, 240, 255, 0.86);
+  font-size: 0.88rem;
+}
+
+.match-xp-note {
+  margin: 0;
+  color: rgba(180, 220, 240, 0.7);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.match-xp-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.2rem;
+}
+
+.match-xp-progress-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgba(180, 220, 240, 0.75);
+  font-size: 0.8rem;
+}
+
+.match-xp-close {
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.match-xp-swipe {
+  opacity: 0;
+  transform: translateX(-18px);
+}
+
+.match-xp-visible .match-xp-swipe {
+  animation: match-xp-swipe-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.match-xp-visible .match-xp-eyebrow { animation-delay: 40ms; }
+.match-xp-visible .match-xp-title { animation-delay: 100ms; }
+.match-xp-visible .match-xp-total { animation-delay: 160ms; }
+.match-xp-visible .match-xp-meta { animation-delay: 220ms; }
+.match-xp-visible .match-xp-body { animation-delay: 280ms; }
+.match-xp-visible .match-xp-close { animation-delay: 360ms; }
+
+@keyframes match-xp-swipe-in {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (max-width: 560px) {
+  .match-xp-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

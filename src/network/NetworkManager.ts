@@ -17,12 +17,15 @@ import type { LocalPickupHandler } from '../world/AmmoPickups';
 import type { AmmoPickups } from '../world/AmmoPickups';
 import type { ShieldChargePickups } from '../world/ShieldChargePickups';
 import type { GrenadePickups } from '../world/GrenadePickups';
+import type { WeaponDrops } from '../world/WeaponDrops';
 import type { GrenadeManager } from '../combat/GrenadeManager';
 import { RemotePlayers } from './RemotePlayers';
 import { RoomClient } from './RoomClient';
 import type { FootstepSoundService } from '../audio/FootstepSoundService';
 import type { ImpactSoundService } from '../audio/ImpactSoundService';
 import type { WeaponSoundService } from '../audio/WeaponSoundService';
+import type { BodyPartId } from '../../shared/combat/bodyParts';
+import { scaleDamageForBodyPart } from '../../shared/combat/playerHitbox';
 import type { LocalCombatState, LocalDamagedHandler, PlayerSnapshot } from './types';
 import type { TeammateHudEntry } from '../ui/TeamHud';
 import type { MinimapBlip } from '../ui/minimapTypes';
@@ -77,6 +80,10 @@ export class NetworkManager {
   private readonly onLocalLoadoutHandlers: Array<(snapshot: PlayerSnapshot) => void> = [];
   private readonly onLocalDamagedHandlers: LocalDamagedHandler[] = [];
   private lastLoadoutKey = '';
+  private onLocalShotFired: (() => void) | null = null;
+  private onLocalShotHit:
+    | ((damage: number, bodyPart: BodyPartId) => void)
+    | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -328,6 +335,10 @@ export class NetworkManager {
         if (weaponId === MELEE_WEAPON_ID) {
           this.remotePlayers.getPlayer(targetId)?.playMeleeHitFx(point);
         }
+        const config = getWeaponConfig(weaponId);
+        const baseDamage = config?.damage ?? 0;
+        const dealt = scaleDamageForBodyPart(baseDamage, bodyPart);
+        this.onLocalShotHit?.(dealt, bodyPart);
         this.roomClient.sendHit(targetId, weaponId, bodyPart);
         onLocalHit?.();
       },
@@ -337,6 +348,7 @@ export class NetworkManager {
       if (!this.roomClient.connected) return;
       const weaponId = player.getActiveWeaponId();
       if (!weaponId) return;
+      this.onLocalShotFired?.();
       const feet = player.object.position;
       this.roomClient.sendShoot({
         x: origin.x,
@@ -546,6 +558,19 @@ export class NetworkManager {
 
   onLocalDamaged(handler: LocalDamagedHandler): void {
     this.onLocalDamagedHandlers.push(handler);
+  }
+
+  /** Optional match-perf hooks (shots / predicted hit damage). */
+  setMatchPerfHandlers(
+    onShotFired: (() => void) | null,
+    onShotHit: ((damage: number, bodyPart: BodyPartId) => void) | null,
+  ): void {
+    this.onLocalShotFired = onShotFired;
+    this.onLocalShotHit = onShotHit;
+  }
+
+  getRoomId(): string | null {
+    return this.roomClient.roomId;
   }
 
   sendTeamPing(x: number, y: number, z: number): void {

@@ -11,6 +11,8 @@
     "compress:glb": "npx --yes @gltf-transform/cli optimize --compress quantize --texture-compress webp --simplify false --join false --flatten false --palette false --prune false --instance false",
     "dev": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite",
     "dev:server": "npm run dev --prefix server",
+    "reset:minerals": "npm run reset:minerals --prefix server",
+    "reset:unlocks": "npm run reset:unlocks --prefix server",
     "install:all": "npm install && npm install --prefix server",
     "build": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite build",
     "build:client": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite build",

@@ -410,6 +410,12 @@
   letter-spacing: 0.04em;
 }
 
+.store-detail-status.is-insufficient {
+  color: #ff8f8f;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
 .store-action-row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(7rem, 0.85fr);

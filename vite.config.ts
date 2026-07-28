@@ -22,6 +22,7 @@ export default defineConfig({
         game: 'game.html',
         weapons: 'weapons.html',
         leaderboard: 'leaderboard.html',
+        ranked: 'ranked.html',
       },
     },
   },

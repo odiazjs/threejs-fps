@@ -176,6 +176,10 @@ export class RoomClient {
     return this.room?.sessionId ?? null;
   }
 
+  get roomId(): string | null {
+    return this.room?.roomId ?? null;
+  }
+
   get connected(): boolean {
     return this.room !== null;
   }

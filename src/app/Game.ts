@@ -12,6 +12,7 @@ import { readCrosshairWorldRay } from '../combat/aiming';
 import { raycastLevelBullets } from '../combat/levelBulletRaycast';
 import { TEAM_PING_MAX_DISTANCE } from '../../shared/network/ping';
 import { ProjectileManager } from '../combat/ProjectileManager';
+import { MatchPerfTracker } from '../combat/MatchPerfTracker';
 import { GrenadeManager } from '../combat/GrenadeManager';
 import { GrenadeArcPreview } from '../combat/GrenadeArcPreview';
 import { computeGrenadeThrowVelocity } from '../../shared/combat/grenadePhysics';
@@ -81,6 +82,11 @@ import type { GameJoinIntent } from '../auth/gameJoin';
 import type { MinimapUpdateState } from '../ui/minimapTypes';
 import type { FpsJoinCredentials } from '../auth/joinCredentials';
 import { getSession } from '../auth/playerSession';
+import { apiSubmitMatchResult } from '../auth/rankApi';
+import { buildMatchId } from '../../shared/content/matchRewards';
+import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
+import { savePendingMatchXp } from '../lobby/pendingMatchRewards';
+import { setPlasmaMineralsDisplay } from '../ui/plasmaMineralsHud';
 import { WorldBuilder } from '../world/WorldBuilder';
 import { buildClientMapPhysics, disposeClientMapPhysics } from '../physics/buildMapPhysics';
 import { AmmoPickups } from '../world/AmmoPickups';
@@ -224,6 +230,16 @@ export class Game {
     secondaryWeaponId: string;
   } | null = null;
   private matchEndHandled = false;
+  private matchPerf = new MatchPerfTracker();
+  private matchResultSubmittedFor: string | null = null;
+  /** Latest post-match awards from API (for future results UI). */
+  private lastMatchRewards: Awaited<ReturnType<typeof apiSubmitMatchResult>> | null =
+    null;
+
+  /** Exposed for upcoming match-results UI; unused until then. */
+  getLastMatchRewards(): Awaited<ReturnType<typeof apiSubmitMatchResult>> | null {
+    return this.lastMatchRewards;
+  }
   private readonly connectionStallEl =
     document.getElementById('connection-stall');
   /** Soft-lock guard: no authoritative patches for this long → pause combat. */
@@ -269,6 +285,9 @@ export class Game {
     this.prevMatchPhase = null;
     this.matchEnd30Played = false;
     this.matchEnd10Played = false;
+    this.matchPerf.endMatch();
+    this.matchResultSubmittedFor = null;
+    this.lastMatchRewards = null;
     this.bindMasterVolume();
     // DroneField clones the FBX at world build — must be ready first.
     onLoadingMessage?.('Loading drone model...');
@@ -741,14 +760,23 @@ export class Game {
         const isSuicide = killerName === victimName;
         if (victimName === session.username && !isSuicide) {
           this.pendingKillerId = killerId;
+          this.matchPerf.recordDeath();
         }
         if (killerName === session.username && !isSuicide) {
           this.messageHud.pushKill(victimName);
           this.impactSounds.playKillConfirm();
+          this.matchPerf.recordKill();
         }
       },
     );
     this.network.onLocalDamaged((damage) => this.handleLocalDamaged(damage));
+    this.network.setMatchPerfHandlers(
+      () => this.matchPerf.recordShotFired(),
+      (dealt, bodyPart) => {
+        this.matchPerf.recordShotHit();
+        this.matchPerf.recordDamageDealt(dealt, bodyPart === 'head');
+      },
+    );
     this.network.onTeamPing((data) => {
       this.teamPings.spawn(data.x, data.y, data.z, data.pingerId);
     });
@@ -996,6 +1024,10 @@ export class Game {
     if (damage.shooterId) {
       this.lastCombatShooterId = damage.shooterId;
     }
+    const taken = (damage.absorbedByShield ?? 0) + (damage.dealtToHealth ?? 0);
+    if (taken > 0) {
+      this.matchPerf.recordDamageTaken(taken);
+    }
     this.player.object.updateMatrixWorld(true);
     const shooterWorldPos = new THREE.Vector3(
       damage.shooterWorldX,
@@ -1024,6 +1056,72 @@ export class Game {
         camera,
         'health',
       );
+    }
+  }
+
+  /** Upload in-memory match perf after TDM ends; server returns XP/RP awards (no UI yet). */
+  private async submitRankedMatchResult(
+    match: NonNullable<ReturnType<typeof resolveMatchSnapshot>>,
+  ): Promise<void> {
+    const network = this.network;
+    if (!network) return;
+    const roomId = network.getRoomId();
+    if (!roomId) return;
+
+    const local = network.getLocalSnapshot();
+    if (local) {
+      this.matchPerf.syncKills(local.matchKills ?? 0);
+    }
+
+    const matchId = buildMatchId(roomId, match.matchStartAt);
+    if (this.matchResultSubmittedFor === matchId) return;
+    this.matchResultSubmittedFor = matchId;
+
+    const localSessionId = network.getSessionId();
+    const roster = network.getAllPlayers();
+    const localKills = local?.matchKills ?? this.matchPerf.snapshot().kills;
+    let topKills = localKills;
+    for (const player of roster) {
+      if (isTrainingBotSessionId(player.sessionId)) continue;
+      topKills = Math.max(topKills, player.matchKills ?? 0);
+    }
+    const wasMvp =
+      localKills > 0 &&
+      localKills >= topKills &&
+      Boolean(localSessionId) &&
+      roster.some(
+        (player) =>
+          player.sessionId === localSessionId && (player.matchKills ?? 0) === topKills,
+      );
+
+    try {
+      const result = await apiSubmitMatchResult({
+        matchId,
+        roomId,
+        mapId: network.getMapId(),
+        mode: match.gameMode,
+        teamId: this.localCombat.teamId,
+        winningTeamId: match.winningTeamId,
+        matchStartAt: match.matchStartAt,
+        matchDurationSec: match.matchDurationSec,
+        performance: this.matchPerf.snapshot(),
+        wasMvp,
+      });
+      this.lastMatchRewards = result;
+      savePendingMatchXp(result);
+      setPlasmaMineralsDisplay(result.plasmaMinerals);
+      console.info('[rank] match rewards', {
+        matchId: result.matchId,
+        newlyAwarded: result.newlyAwarded,
+        xp: result.rewards.totalXp,
+        seasonXp: result.rewards.seasonXp,
+        rpDelta: result.rewards.rpDelta,
+        minerals: result.rewards.mineralsGained,
+        performance: result.performance,
+      });
+    } catch (error) {
+      this.matchResultSubmittedFor = null;
+      console.error('[rank] failed to submit match result', error);
     }
   }
 
@@ -1360,6 +1458,24 @@ export class Game {
     );
 
     const matchPhase = match?.phase ?? null;
+    if (
+      match?.gameMode === 'tdm' &&
+      matchPhase === 'playing' &&
+      this.prevMatchPhase !== 'playing'
+    ) {
+      this.matchPerf.beginMatch();
+      this.matchResultSubmittedFor = null;
+      this.lastMatchRewards = null;
+    }
+    if (
+      match?.gameMode === 'tdm' &&
+      matchPhase === 'ended' &&
+      this.prevMatchPhase !== 'ended' &&
+      match
+    ) {
+      this.matchPerf.endMatch();
+      void this.submitRankedMatchResult(match);
+    }
     if (
       matchPhase &&
       this.prevMatchPhase !== matchPhase &&

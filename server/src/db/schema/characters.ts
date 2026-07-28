@@ -1,4 +1,4 @@
-import { boolean, integer, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { boolean, integer, pgTable, primaryKey, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { users } from './users.js';
 
 /**
@@ -43,3 +43,20 @@ export const userCharacter = pgTable('user_character', {
     .references(() => characters.id, { onDelete: 'restrict' }),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Granted / season-unlocked operators (non-default). */
+export const userOperatorUnlocks = pgTable(
+  'user_operator_unlocks',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    characterId: text('character_id')
+      .notNull()
+      .references(() => characters.id, { onDelete: 'cascade' }),
+    unlockedAt: timestamp('unlocked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.characterId] }),
+  ],
+);

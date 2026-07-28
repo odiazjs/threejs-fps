@@ -2,6 +2,14 @@ import { relations } from 'drizzle-orm';
 import { friendRequests } from './friendRequests.js';
 import { friendships } from './friendships.js';
 import { playerStats } from './playerStats.js';
+import {
+  matchParticipants,
+  matches,
+  seasonPlayerStats,
+  seasonRewards,
+  seasons,
+  userSeasonRewardClaims,
+} from './progression.js';
 import { users } from './users.js';
 import { weaponLoadouts } from './weaponLoadouts.js';
 import { userWeaponUpgrades, weapons } from './weapons.js';
@@ -17,12 +25,70 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   receivedFriendRequests: many(friendRequests, { relationName: 'receivedRequests' }),
   weaponLoadouts: many(weaponLoadouts),
   weaponUpgrades: many(userWeaponUpgrades),
+  seasonStats: many(seasonPlayerStats),
+  matchResults: many(matchParticipants),
+  seasonRewardClaims: many(userSeasonRewardClaims),
 }));
 
 export const playerStatsRelations = relations(playerStats, ({ one }) => ({
   user: one(users, {
     fields: [playerStats.userId],
     references: [users.id],
+  }),
+}));
+
+export const seasonsRelations = relations(seasons, ({ many }) => ({
+  playerStats: many(seasonPlayerStats),
+  matches: many(matches),
+  rewards: many(seasonRewards),
+  claims: many(userSeasonRewardClaims),
+}));
+
+export const seasonPlayerStatsRelations = relations(seasonPlayerStats, ({ one }) => ({
+  user: one(users, {
+    fields: [seasonPlayerStats.userId],
+    references: [users.id],
+  }),
+  season: one(seasons, {
+    fields: [seasonPlayerStats.seasonId],
+    references: [seasons.id],
+  }),
+}));
+
+export const matchesRelations = relations(matches, ({ one, many }) => ({
+  season: one(seasons, {
+    fields: [matches.seasonId],
+    references: [seasons.id],
+  }),
+  participants: many(matchParticipants),
+}));
+
+export const matchParticipantsRelations = relations(matchParticipants, ({ one }) => ({
+  match: one(matches, {
+    fields: [matchParticipants.matchId],
+    references: [matches.id],
+  }),
+  user: one(users, {
+    fields: [matchParticipants.userId],
+    references: [users.id],
+  }),
+}));
+
+export const seasonRewardsRelations = relations(seasonRewards, ({ one }) => ({
+  season: one(seasons, {
+    fields: [seasonRewards.seasonId],
+    references: [seasons.id],
+  }),
+}));
+
+export const userSeasonRewardClaimsRelations = relations(userSeasonRewardClaims, ({ one }) => ({
+  user: one(users, {
+    fields: [userSeasonRewardClaims.userId],
+    references: [users.id],
+  }),
+  season: one(seasons, {
+    fields: [userSeasonRewardClaims.seasonId],
+    references: [seasons.id],
   }),
 }));
 

@@ -1,0 +1,895 @@
+/* Ranked progression screen */
+
+.ranked-page,
+.ranked-page .app-view {
+  font-family: var(--hud-font);
+}
+
+.ranked-page {
+  --rank-bronze: #c47a45;
+  --rank-silver: #b8c4d4;
+  --rank-gold: #f0c14a;
+  --rank-titanium: #3de8e0;
+  --rank-crystal: #b56bff;
+  --rank-magmaster: #ff6b8a;
+}
+
+.ranked-ui {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  padding: 0.75rem 0.9rem 0.85rem;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.ranked-ui > .lobby-top-back-btn {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  pointer-events: auto;
+}
+
+.ranked-status {
+  margin: 0;
+  color: var(--hud-cyan-soft);
+  font-size: 1.188rem;
+  letter-spacing: 0.08em;
+}
+
+.ranked-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 242, 255, 0.35) transparent;
+}
+
+.ranked-layout {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) minmax(16rem, 1.15fr) minmax(13rem, 0.9fr) minmax(14rem, 0.95fr);
+  grid-template-areas:
+    'overview current tiers thresholds'
+    'season season season season'
+    'info info info info';
+  gap: 0.75rem 0.85rem;
+  padding-bottom: 0.5rem;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 0.45s ease,
+    transform 0.45s ease;
+}
+
+.ranked-visible .ranked-layout {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ranked-overview {
+  grid-area: overview;
+}
+.ranked-current {
+  grid-area: current;
+}
+.ranked-tiers {
+  grid-area: tiers;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.ranked-tiers-list {
+  /* Out of flow so tier content doesn't inflate the row; fills panel below eyebrow */
+  position: absolute;
+  left: 0.95rem;
+  right: 0.95rem;
+  top: calc(0.95rem + 1.15rem + 0.75rem);
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 242, 255, 0.35) transparent;
+}
+.ranked-thresholds {
+  grid-area: thresholds;
+}
+.ranked-season {
+  grid-area: season;
+  min-width: 0;
+  overflow: hidden;
+}
+.ranked-info-row {
+  grid-area: info;
+}
+
+.ranked-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.95rem 0.95rem 1rem;
+  background: linear-gradient(180deg, rgba(8, 18, 32, 0.92), rgba(4, 10, 18, 0.96));
+  border: 1px solid var(--hud-cyan-border);
+  border-radius: 2px;
+  box-shadow:
+    0 0 24px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.ranked-eyebrow {
+  margin: 0;
+  color: var(--hud-cyan-dim);
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.ranked-overview-header {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.ranked-avatar {
+  flex: 0 0 auto;
+  width: 4.2rem;
+  height: 4.2rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 242, 255, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.ranked-current-mini-icon {
+  width: 3.1rem;
+  height: 3.1rem;
+  object-fit: contain;
+}
+
+.ranked-username {
+  margin: 0.1rem 0 0;
+  font-size: 1.688rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ranked-level-label {
+  margin: 0.15rem 0 0.45rem;
+  color: var(--hud-cyan-soft);
+  font-size: 1.062rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.ranked-current-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.55rem 0.2rem 0.25rem;
+  border: 1px solid rgba(240, 193, 74, 0.45);
+  background: rgba(240, 193, 74, 0.08);
+  color: var(--rank-gold);
+  font-size: 0.975rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.ranked-current-chip img {
+  width: 1.35rem;
+  height: 1.35rem;
+  object-fit: contain;
+}
+
+.ranked-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.ranked-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(0, 242, 255, 0.18);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.ranked-stat-label {
+  color: rgba(180, 220, 240, 0.55);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ranked-stat-value {
+  color: #fff;
+  font-size: 1.438rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Progress bars */
+.ranked-bar-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ranked-bar-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--hud-cyan-soft);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.ranked-bar {
+  position: relative;
+  height: 0.55rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.ranked-bar-fill {
+  height: 100%;
+  width: var(--bar-pct, 0%);
+  max-width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, rgba(0, 180, 200, 0.85), var(--hud-cyan));
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.35);
+}
+
+.ranked-bar-fill--rp {
+  background: linear-gradient(90deg, rgba(200, 150, 40, 0.9), var(--rank-gold));
+  box-shadow: 0 0 12px rgba(240, 193, 74, 0.35);
+}
+
+.ranked-visible .ranked-bar-fill {
+  animation: ranked-bar-grow 1.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.ranked-visible .ranked-bar-fill--rp {
+  animation-delay: 0.12s;
+}
+
+@keyframes ranked-bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* Current rank hero */
+.ranked-current {
+  align-items: center;
+  text-align: center;
+}
+
+.ranked-current .ranked-eyebrow,
+.ranked-current .ranked-bar-block,
+.ranked-current .ranked-next-line,
+.ranked-current .ranked-rewards-btn {
+  width: 100%;
+}
+
+.ranked-current-badge {
+  width: min(11rem, 55%);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  margin: 0.25rem 0 0.15rem;
+  filter: drop-shadow(0 0 18px rgba(240, 193, 74, 0.28));
+}
+
+.ranked-current-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ranked-current-name {
+  margin: 0;
+  font-size: clamp(1.75rem, 3vw, 2.375rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.ranked-next-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 0.55rem;
+  margin: 0;
+  color: rgba(200, 230, 245, 0.75);
+  font-size: 0.975rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.ranked-next-line strong {
+  color: #fff;
+}
+
+.ranked-rewards-btn {
+  margin-top: 0.15rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid rgba(0, 242, 255, 0.45);
+  background: linear-gradient(180deg, rgba(0, 242, 255, 0.16), rgba(0, 80, 100, 0.2));
+  color: #e8ffff;
+  font: inherit;
+  font-size: 1.062rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ranked-rewards-btn:hover {
+  border-color: var(--hud-cyan);
+  background: linear-gradient(180deg, rgba(0, 242, 255, 0.28), rgba(0, 100, 120, 0.28));
+  box-shadow: 0 0 16px rgba(0, 242, 255, 0.2);
+}
+
+/* Tier gallery */
+.ranked-tier-row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.ranked-tier-name {
+  font-size: 1.025rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.ranked-tier-badges {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.ranked-tier-badge {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 0.2rem;
+  border: 1px solid rgba(0, 242, 255, 0.16);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.ranked-tier-badge img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ranked-tier-badge.is-current {
+  border-color: var(--hud-cyan);
+  box-shadow:
+    0 0 0 1px rgba(0, 242, 255, 0.35),
+    0 0 14px rgba(0, 242, 255, 0.25);
+}
+
+/* Thresholds list */
+.ranked-thresholds {
+  min-height: 0;
+}
+
+.ranked-thresholds-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  color: var(--hud-cyan-dim);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.ranked-thresholds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-height: 0;
+  max-height: 28rem;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.ranked-threshold-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.28rem 0.35rem;
+  border-bottom: 1px solid rgba(0, 242, 255, 0.08);
+}
+
+.ranked-threshold-rank {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  font-size: 1.025rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.ranked-threshold-rank img {
+  width: 1.55rem;
+  height: 1.55rem;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.ranked-threshold-rp {
+  font-size: 1.025rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--hud-cyan-soft);
+}
+
+.ranked-threshold-row.is-current {
+  background: rgba(0, 242, 255, 0.08);
+  border-color: rgba(0, 242, 255, 0.28);
+}
+
+.ranked-threshold-row.is-current .ranked-threshold-rank,
+.ranked-threshold-row.is-current .ranked-threshold-rp {
+  color: var(--rank-gold);
+}
+
+/* Season track */
+.ranked-season-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.ranked-season-title {
+  margin: 0.2rem 0 0;
+  font-size: 1.438rem;
+  letter-spacing: 0.08em;
+}
+
+.ranked-season-meta {
+  display: flex;
+  gap: 0.85rem;
+  color: rgba(180, 220, 240, 0.65);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+.ranked-season-track {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.55rem;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 242, 255, 0.35) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ranked-season-node {
+  display: flex;
+  flex: 0 0 7rem;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 7rem;
+  min-width: 7rem;
+}
+
+.ranked-season-node.has-preview {
+  flex-basis: 7.5rem;
+  width: 7.5rem;
+  min-width: 7.5rem;
+}
+
+.ranked-season-node-level {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin: 0 auto;
+  border: 1px solid rgba(0, 242, 255, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.ranked-season-node.is-done .ranked-season-node-level {
+  border-color: var(--hud-green);
+  color: var(--hud-green);
+}
+
+.ranked-season-node.is-current .ranked-season-node-level {
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.35);
+}
+
+.ranked-season-node.is-locked .ranked-season-node-level {
+  opacity: 0.55;
+}
+
+.ranked-season-mark {
+  display: block;
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.ranked-season-mark--done {
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translate(-1px, -1px);
+  width: 0.4rem;
+  height: 0.7rem;
+}
+
+.ranked-season-mark--lock {
+  border: 2px solid currentColor;
+  border-radius: 2px 2px 1px 1px;
+  position: relative;
+}
+
+.ranked-season-mark--lock::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.35rem;
+  width: 0.45rem;
+  height: 0.35rem;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 0.35rem 0.35rem 0 0;
+  transform: translateX(-50%);
+}
+
+.ranked-season-node-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 3.4rem;
+  padding: 0.45rem 0.4rem;
+  border: 1px solid rgba(0, 242, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+
+.ranked-season-node.has-preview .ranked-season-node-card {
+  min-height: 6.4rem;
+  min-width: 4.6rem;
+  padding: 0.5rem 0.4rem 0.45rem;
+}
+
+.ranked-season-node-preview {
+  width: 2.75rem;
+  height: 2.75rem;
+  object-fit: cover;
+  border-radius: 0.2rem;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: rgba(0, 0, 0, 0.45);
+  image-rendering: auto;
+}
+
+.ranked-season-node.is-locked .ranked-season-node-preview {
+  filter: grayscale(0.55) brightness(0.72);
+}
+
+.ranked-season-node.is-locked .ranked-season-node-card {
+  opacity: 0.55;
+}
+
+.ranked-season-node.is-current .ranked-season-node-card {
+  border-color: var(--hud-cyan);
+}
+
+.ranked-season-node-label {
+  color: rgba(220, 240, 255, 0.88);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+}
+
+.ranked-season-preview-btn {
+  display: block;
+  width: 100%;
+  margin: 0.05rem auto 0;
+  padding: 0.28rem 0.35rem;
+  border: 1px solid rgba(0, 242, 255, 0.45);
+  background: rgba(0, 242, 255, 0.08);
+  color: var(--hud-cyan-soft);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ranked-season-preview-btn:hover {
+  background: rgba(0, 242, 255, 0.16);
+  box-shadow: 0 0 12px rgba(0, 242, 255, 0.22);
+}
+
+.ranked-season-redeem-btn {
+  display: block;
+  width: 100%;
+  margin: 0.2rem auto 0;
+  padding: 0.3rem 0.35rem;
+  border: 1px solid rgba(80, 220, 140, 0.5);
+  background: rgba(40, 160, 100, 0.16);
+  color: #9dffc4;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ranked-season-redeem-btn:hover:not(:disabled) {
+  background: rgba(40, 160, 100, 0.28);
+  box-shadow: 0 0 12px rgba(80, 220, 140, 0.22);
+}
+
+.ranked-season-redeem-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ranked-season-redeem-btn.is-claimed {
+  border-color: rgba(0, 242, 255, 0.28);
+  background: rgba(0, 242, 255, 0.08);
+  color: rgba(180, 220, 235, 0.75);
+  opacity: 0.85;
+}
+
+/* Season reward 3D preview modal */
+.ranked-reward-preview-modal {
+  z-index: 45;
+  display: grid;
+  place-items: center;
+}
+
+.ranked-reward-preview-modal[hidden] {
+  display: none !important;
+}
+
+.ranked-reward-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.78);
+}
+
+.ranked-reward-preview-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(51rem, calc(100vw - 2rem));
+  padding: 1.35rem 1.25rem 1.25rem;
+  text-align: center;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: linear-gradient(180deg, rgba(8, 18, 32, 0.96), rgba(4, 10, 18, 0.98));
+  box-shadow: 0 0 40px rgba(0, 242, 255, 0.12);
+}
+
+.ranked-reward-preview-eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--hud-cyan-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+}
+
+.ranked-reward-preview-title {
+  margin: 0 0 0.25rem;
+  color: #fff;
+  font-size: clamp(1.35rem, 3.5vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 22px var(--hud-cyan-glow);
+}
+
+.ranked-reward-preview-level {
+  margin: 0 0 0.85rem;
+  color: rgba(190, 220, 235, 0.72);
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+}
+
+.ranked-reward-preview-canvas {
+  width: 100%;
+  height: min(33rem, 72vh);
+  margin: 0 0 0.85rem;
+  border: 1px solid rgba(0, 242, 255, 0.22);
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.ranked-reward-preview-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.ranked-reward-preview-hint {
+  margin: 0 0 1rem;
+  color: rgba(220, 240, 255, 0.72);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.ranked-season--pulse {
+  animation: ranked-season-pulse 0.85s ease;
+}
+
+@keyframes ranked-season-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow:
+      0 0 24px rgba(0, 0, 0, 0.4),
+      0 0 22px rgba(0, 242, 255, 0.28);
+  }
+}
+
+/* Info cards */
+.ranked-info-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.ranked-info-card {
+  padding: 0.85rem 0.9rem;
+  background: linear-gradient(180deg, rgba(8, 18, 32, 0.88), rgba(4, 10, 18, 0.94));
+  border: 1px solid rgba(0, 242, 255, 0.22);
+}
+
+.ranked-info-card h4 {
+  margin: 0 0 0.35rem;
+  color: var(--hud-cyan-soft);
+  font-size: 1.062rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.ranked-info-card p {
+  margin: 0;
+  color: rgba(190, 220, 235, 0.72);
+  font-size: 0.975rem;
+  line-height: 1.35;
+}
+
+/* Tier text accents */
+.ranked-tier-text-bronze,
+.ranked-tier-bronze .ranked-tier-name {
+  color: var(--rank-bronze);
+}
+.ranked-tier-text-silver,
+.ranked-tier-silver .ranked-tier-name {
+  color: var(--rank-silver);
+}
+.ranked-tier-text-gold,
+.ranked-tier-gold .ranked-tier-name {
+  color: var(--rank-gold);
+}
+.ranked-tier-text-titanium,
+.ranked-tier-titanium .ranked-tier-name {
+  color: var(--rank-titanium);
+}
+.ranked-tier-text-crystal,
+.ranked-tier-crystal .ranked-tier-name {
+  color: var(--rank-crystal);
+}
+.ranked-tier-text-magmaster,
+.ranked-tier-magmaster .ranked-tier-name {
+  color: var(--rank-magmaster);
+}
+
+.ranked-tier-bronze .ranked-threshold-rp,
+.ranked-threshold-row.ranked-tier-bronze:not(.is-current) .ranked-threshold-rp {
+  color: var(--rank-bronze);
+}
+.ranked-tier-silver .ranked-threshold-rp,
+.ranked-threshold-row.ranked-tier-silver:not(.is-current) .ranked-threshold-rp {
+  color: var(--rank-silver);
+}
+.ranked-tier-gold .ranked-threshold-rp,
+.ranked-threshold-row.ranked-tier-gold:not(.is-current) .ranked-threshold-rp {
+  color: var(--rank-gold);
+}
+.ranked-tier-titanium .ranked-threshold-rp,
+.ranked-threshold-row.ranked-tier-titanium:not(.is-current) .ranked-threshold-rp {
+  color: var(--rank-titanium);
+}
+.ranked-tier-crystal .ranked-threshold-rp,
+.ranked-threshold-row.ranked-tier-crystal:not(.is-current) .ranked-threshold-rp {
+  color: var(--rank-crystal);
+}
+.ranked-tier-magmaster .ranked-threshold-rp,
+.ranked-threshold-row.ranked-tier-magmaster:not(.is-current) .ranked-threshold-rp {
+  color: var(--rank-magmaster);
+}
+
+@media (max-width: 1200px) {
+  .ranked-layout {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      'overview current'
+      'tiers thresholds'
+      'season season'
+      'info info';
+  }
+
+  .ranked-info-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .ranked-ui {
+    padding: 0.55rem 0.55rem 0.7rem;
+  }
+
+  .ranked-layout {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'overview'
+      'current'
+      'tiers'
+      'thresholds'
+      'season'
+      'info';
+  }
+
+  .ranked-info-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ranked-thresholds-list {
+    max-height: 16rem;
+  }
+
+  .ranked-tiers {
+    min-height: 16rem;
+  }
+}

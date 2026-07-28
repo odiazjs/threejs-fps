@@ -4,9 +4,10 @@ import type {
   CharacterState,
   SelectCharacterResponse,
 } from '../../../shared/api/characters.js';
+import { isSeasonGatedOperator } from '../../../shared/content/seasonRewards.js';
 import type { AuthContext } from '../auth/middleware.js';
 import { getDb } from '../db/index.js';
-import { characters } from '../db/schema/characters.js';
+import { characters, userOperatorUnlocks } from '../db/schema/characters.js';
 import { users } from '../db/schema/users.js';
 import { refreshPartyForUser } from '../lobby/partyNotify.js';
 import { characterExistsInDb, ensureCharacterCatalogLoaded } from './catalogCache.js';
@@ -33,7 +34,13 @@ function toState(
     defaultUnlocked: boolean;
   },
   selectedId: string,
+  unlockedIds: ReadonlySet<string>,
 ): CharacterState {
+  const unlocked =
+    row.defaultUnlocked ||
+    unlockedIds.has(row.id) ||
+    !isSeasonGatedOperator(row.id);
+
   return {
     id: row.id,
     name: row.name,
@@ -49,8 +56,7 @@ function toState(
       description: row.perkDescription || row.perkLabel,
     },
     cost: row.cost,
-    // Unlock purchase comes later — catalog is fully selectable for now.
-    unlocked: true,
+    unlocked,
     selected: row.id === selectedId,
   };
 }
@@ -60,7 +66,7 @@ export async function listCharacters(auth: AuthContext): Promise<CharactersRespo
   await ensureCharacterCatalogLoaded();
   await ensureUserCharacter(auth.sub);
 
-  const [selectedCharacterId, catalog, userRow] = await Promise.all([
+  const [selectedCharacterId, catalog, userRow, unlockRows] = await Promise.all([
     readSelectedOperatorId(auth.sub),
     db
       .select({
@@ -86,14 +92,19 @@ export async function listCharacters(auth: AuthContext): Promise<CharactersRespo
       .from(users)
       .where(eq(users.id, auth.sub))
       .limit(1),
+    db
+      .select({ characterId: userOperatorUnlocks.characterId })
+      .from(userOperatorUnlocks)
+      .where(eq(userOperatorUnlocks.userId, auth.sub)),
   ]);
 
   const selectedSkinId = userRow[0]?.selectedCharacterId ?? 'basic';
+  const unlockedIds = new Set(unlockRows.map((row) => row.characterId));
 
   return {
     selectedCharacterId,
     selectedSkinId,
-    characters: catalog.map((row) => toState(row, selectedCharacterId)),
+    characters: catalog.map((row) => toState(row, selectedCharacterId, unlockedIds)),
   };
 }
 
@@ -105,15 +116,20 @@ export async function selectCharacter(
     throw new Error('Unknown character');
   }
 
+  const listed = await listCharacters(auth);
+  const entry = listed.characters.find((c) => c.id === characterId);
+  if (!entry?.unlocked) {
+    throw new Error('Character is locked');
+  }
+
   const selectedCharacterId = await setSelectedOperatorId(auth.sub, characterId);
   refreshPartyForUser(auth.sub);
-  const listed = await listCharacters(auth);
 
   return {
     selectedCharacterId,
-    characters: listed.characters.map((entry) => ({
-      ...entry,
-      selected: entry.id === selectedCharacterId,
+    characters: listed.characters.map((c) => ({
+      ...c,
+      selected: c.id === selectedCharacterId,
     })),
   };
 }

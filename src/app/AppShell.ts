@@ -8,6 +8,7 @@ import { LobbyLeaderboardOverlay } from '../lobby/LobbyLeaderboardOverlay';
 import { LobbySettingsOverlay } from '../lobby/LobbySettingsOverlay';
 import { LeaderboardView } from '../lobby/views/LeaderboardView';
 import { refreshLobbyProfileStats } from '../lobby/lobbyProfileStats';
+import { RankedView } from '../lobby/views/RankedView';
 import { SettingsView } from '../lobby/views/SettingsView';
 import { consumeCharacterMeshReload } from '../content/activeCharacterMesh';
 import { consumeOperatorReload } from '../content/activeOperatorCharacter';
@@ -21,7 +22,8 @@ export type ShellView =
   | 'leaderboard'
   | 'settings'
   | 'store'
-  | 'characters';
+  | 'characters'
+  | 'ranked';
 
 const PAGE_CLASS_BY_VIEW: Record<ShellView, string> = {
   lobby: 'lobby-page',
@@ -30,6 +32,7 @@ const PAGE_CLASS_BY_VIEW: Record<ShellView, string> = {
   settings: 'settings-page',
   store: 'store-page',
   characters: 'characters-page',
+  ranked: 'ranked-page',
 };
 
 const TITLE_BY_VIEW: Record<ShellView, string> = {
@@ -39,6 +42,7 @@ const TITLE_BY_VIEW: Record<ShellView, string> = {
   settings: 'Three.js FPS — Settings',
   store: 'Three.js FPS — Store',
   characters: 'Three.js FPS — Characters',
+  ranked: 'Three.js FPS — Ranked',
 };
 
 const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
@@ -47,6 +51,7 @@ const LOADING_MESSAGE_BY_VIEW: Partial<Record<ShellView, string>> = {
   // opaque loading veil that would hide the camera move.
   store: 'Loading store...',
   characters: 'Loading characters...',
+  ranked: 'Loading ranked...',
 };
 
 /** Views that keep rendering the lobby WebGL scene underneath. */
@@ -62,6 +67,7 @@ export function parseShellViewFromUrl(): ShellView {
     || view === 'settings'
     || view === 'store'
     || view === 'characters'
+    || view === 'ranked'
   ) {
     return view;
   }
@@ -77,6 +83,7 @@ export class AppShell {
   private readonly settingsView = new SettingsView();
   private readonly storeView = new StoreView();
   private readonly charactersView = new CharactersView();
+  private readonly rankedView = new RankedView();
   private readonly loading = LoadingOverlay.shared();
   private navigating = false;
   private lobbyLandmarkBusy = false;
@@ -98,6 +105,9 @@ export class AppShell {
   bindNavigation(): void {
     document.getElementById('lobby-home-btn')!.addEventListener('click', () => {
       void this.goLobbyHome();
+    });
+    document.getElementById('lobby-profile-ranked-btn')!.addEventListener('click', () => {
+      void this.showView('ranked');
     });
     document.getElementById('lobby-weapons-btn')!.addEventListener('click', () => {
       void this.showView('weapons');
@@ -121,6 +131,9 @@ export class AppShell {
       void this.showView('lobby');
     });
     document.getElementById('store-back-btn')!.addEventListener('click', () => {
+      void this.showView('lobby');
+    });
+    document.getElementById('ranked-back-btn')!.addEventListener('click', () => {
       void this.showView('lobby');
     });
     document.getElementById('leaderboard-back-btn')!.addEventListener('click', () => {
@@ -235,6 +248,7 @@ export class AppShell {
     this.settingsView.unmount();
     this.storeView.unmount();
     this.charactersView.unmount();
+    this.rankedView.unmount();
     this.lobbyScene.dispose();
     void this.lobbyClient.disconnect();
   }
@@ -269,6 +283,7 @@ export class AppShell {
       'settings-page',
       'store-page',
       'characters-page',
+      'ranked-page',
     );
     document.body.classList.add(PAGE_CLASS_BY_VIEW[view]);
   }
@@ -293,6 +308,8 @@ export class AppShell {
       this.storeView.unmount();
     } else if (view === 'characters') {
       this.charactersView.unmount();
+    } else if (view === 'ranked') {
+      this.rankedView.unmount();
     } else {
       this.settingsView.unmount();
     }
@@ -336,6 +353,8 @@ export class AppShell {
         await this.weaponsView.mount();
       } else if (view === 'store') {
         await this.storeView.mount();
+      } else if (view === 'ranked') {
+        await this.rankedView.mount();
       } else {
         await this.charactersView.mount();
       }

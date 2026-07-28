@@ -53,6 +53,7 @@
     <link rel="stylesheet" href="/src/styles/armory-hud.css" />
     <link rel="stylesheet" href="/src/styles/store-hud.css" />
     <link rel="stylesheet" href="/src/styles/characters-hud.css" />
+    <link rel="stylesheet" href="/src/styles/ranked-hud.css" />
     <link rel="stylesheet" href="/src/styles/mobile.css" />
     <link rel="stylesheet" href="/src/styles/snackbar.css" />
   </head>
@@ -96,6 +97,27 @@
               <span class="lobby-stat-label">K/D</span>
               <span class="lobby-stat-value" id="stat-kd">0.00</span>
             </div>
+          </div>
+          <div class="lobby-profile-rank" id="lobby-profile-rank" hidden>
+            <img
+              id="lobby-rank-icon"
+              class="lobby-rank-icon"
+              src=""
+              alt=""
+              width="42"
+              height="42"
+            />
+            <div class="lobby-rank-text">
+              <span class="lobby-rank-name" id="lobby-rank-name">—</span>
+              <span class="lobby-rank-xp" id="lobby-rank-xp">0 / 0 XP</span>
+            </div>
+            <button
+              id="lobby-profile-ranked-btn"
+              class="lobby-rank-stats-btn"
+              type="button"
+            >
+              RANKED STATS
+            </button>
           </div>
           <div class="lobby-profile-footer">
             <div class="lobby-profile-accent" aria-hidden="true"></div>
@@ -141,7 +163,10 @@
           <aside class="plasma-minerals-chip hud-panel" aria-label="Plasma minerals">
             <span class="plasma-minerals-label">PLASMA MINERALS</span>
             <span class="plasma-minerals-value" data-plasma-minerals>—</span>
-            <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>GET MORE</button>
+            <button type="button" class="plasma-minerals-get-more" data-plasma-get-more disabled aria-disabled="true">
+              GET MORE
+            </button>
+            <span class="plasma-minerals-coming-soon">Coming soon!</span>
           </aside>
           <aside class="lobby-perf hud-panel">
             <div class="lobby-perf-row">
@@ -502,7 +527,10 @@
             <aside class="plasma-minerals-chip plasma-minerals-chip--armory" aria-label="Plasma minerals">
               <span class="plasma-minerals-label">PLASMA MINERALS</span>
               <span class="plasma-minerals-value" data-plasma-minerals>—</span>
-              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>GET MORE</button>
+              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more disabled aria-disabled="true">
+                GET MORE
+              </button>
+              <span class="plasma-minerals-coming-soon">Coming soon!</span>
             </aside>
           </header>
 
@@ -546,6 +574,68 @@
         <p id="leaderboard-status" class="leaderboard-status leaderboard-swipe">Loading...</p>
         <div id="leaderboard-list" class="leaderboard-list"></div>
       </main>
+    </section>
+
+    <section id="app-view-ranked" class="app-view" data-view="ranked" hidden>
+      <div class="ranked-ui">
+        <button id="ranked-back-btn" class="lobby-top-back-btn" type="button">
+          BACK TO LOBBY
+        </button>
+        <p id="ranked-status" class="ranked-status">Loading...</p>
+        <div id="ranked-content" class="ranked-content"></div>
+      </div>
+
+      <div
+        id="ranked-reward-preview-modal"
+        class="ranked-reward-preview-modal hud-overlay-scrim"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ranked-reward-preview-title"
+      >
+        <div class="ranked-reward-preview-backdrop" data-ranked-preview-close></div>
+        <div class="ranked-reward-preview-panel hud-panel">
+          <p class="ranked-reward-preview-eyebrow">SEASON REWARD</p>
+          <h2 id="ranked-reward-preview-title" class="ranked-reward-preview-title">ITEM PREVIEW</h2>
+          <p id="ranked-reward-preview-level" class="ranked-reward-preview-level"></p>
+          <div id="ranked-reward-preview-canvas" class="ranked-reward-preview-canvas" aria-hidden="true"></div>
+          <p class="ranked-reward-preview-hint">Progress the season track to unlock this reward.</p>
+          <button
+            type="button"
+            class="armory-btn armory-btn--primary"
+            id="ranked-reward-preview-close"
+            data-ranked-preview-close
+          >
+            CLOSE
+          </button>
+        </div>
+      </div>
+
+      <div
+        id="ranked-reward-congrats-modal"
+        class="store-dialog-modal hud-overlay-scrim"
+        hidden
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ranked-reward-congrats-title"
+      >
+        <div class="store-dialog-backdrop" data-ranked-congrats-close aria-hidden="true"></div>
+        <div class="store-dialog-panel hud-panel" role="document">
+          <p class="store-dialog-eyebrow">SEASON REWARD</p>
+          <h2 id="ranked-reward-congrats-title" class="store-dialog-title">CONGRATULATIONS</h2>
+          <p class="store-dialog-body" id="ranked-reward-congrats-body">
+            You have received <span id="ranked-reward-congrats-name">this reward</span>.
+          </p>
+          <button
+            type="button"
+            class="armory-btn armory-btn--primary"
+            id="ranked-reward-congrats-close"
+            data-ranked-congrats-close
+          >
+            CONTINUE
+          </button>
+        </div>
+      </div>
     </section>
 
     <section id="app-view-characters" class="app-view" data-view="characters" hidden>
@@ -623,7 +713,10 @@
             <aside class="plasma-minerals-chip plasma-minerals-chip--armory" aria-label="Plasma minerals">
               <span class="plasma-minerals-label">PLASMA MINERALS</span>
               <span class="plasma-minerals-value" data-plasma-minerals>—</span>
-              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>GET MORE</button>
+              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more disabled aria-disabled="true">
+                GET MORE
+              </button>
+              <span class="plasma-minerals-coming-soon">Coming soon!</span>
             </aside>
           </header>
           <div

@@ -3,6 +3,8 @@ export interface PlayerStatsSummary {
   deaths: number;
   matchesPlayed: number;
   wins: number;
+  xp: number;
+  level: number;
 }
 
 export interface MeResponse {

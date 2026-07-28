@@ -7,6 +7,8 @@ export interface PlayerStatsRow {
   deaths: number;
   matchesPlayed: number;
   wins: number;
+  xp: number;
+  level: number;
 }
 
 const EMPTY_STATS: PlayerStatsRow = {
@@ -14,6 +16,8 @@ const EMPTY_STATS: PlayerStatsRow = {
   deaths: 0,
   matchesPlayed: 0,
   wins: 0,
+  xp: 0,
+  level: 1,
 };
 
 export async function getPlayerStats(userId: string): Promise<PlayerStatsRow> {
@@ -24,6 +28,8 @@ export async function getPlayerStats(userId: string): Promise<PlayerStatsRow> {
       deaths: playerStats.deaths,
       matchesPlayed: playerStats.matchesPlayed,
       wins: playerStats.wins,
+      xp: playerStats.xp,
+      level: playerStats.level,
     })
     .from(playerStats)
     .where(eq(playerStats.userId, userId))

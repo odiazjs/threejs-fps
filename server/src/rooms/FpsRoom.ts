@@ -162,6 +162,9 @@ import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupResp
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
 import { AmmoBoxState, FpsState, GrenadePickupState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { incrementDeaths, incrementKills } from '../stats/service.js';
+import { RoomMatchPerfCache } from '../progression/RoomMatchPerfCache.js';
+import { awardMatchPerformanceForUser } from '../progression/service.js';
+import { buildMatchId } from '../../../shared/content/matchRewards.js';
 import {
   applyCharacterWeaponDamage,
   DEFAULT_OPERATOR_CHARACTER_ID,
@@ -247,6 +250,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private readonly grenadeRespawnAt = new Map<number, number>();
   private readonly activeGrenades = new Map<string, ActiveServerGrenade>();
   private grenadeIdCounter = 0;
+  private readonly matchPerf = new RoomMatchPerfCache();
 
   async onCreate(options: JoinOptions = {}): Promise<void> {
     await ensureCharacterCatalogLoaded();
@@ -455,6 +459,12 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       target.shieldPoints = result.shieldPoints;
       target.hp = result.hp;
 
+      const applied = result.absorbedByShield + result.dealtToHealth;
+      if (applied > 0 && !isSelfDamage) {
+        this.matchPerf.recordDamageDealt(grenade.throwerId, applied, false);
+        this.matchPerf.recordDamageTaken(targetId, applied);
+      }
+
       if (result.absorbedByShield > 0 || result.dealtToHealth > 0) {
         const victimClient = this.clients.find((c) => c.sessionId === targetId);
         if (victimClient) {
@@ -491,11 +501,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       if (!isSelfDamage) {
         thrower.matchKills += 1;
+        this.matchPerf.recordKill(grenade.throwerId);
 
         if (this.isTdm() && isValidTdmTeamId(thrower.teamId, this.state.teamCount)) {
           this.addTeamScore(thrower.teamId, TDM_KILL_POINTS);
         }
       }
+      this.matchPerf.recordDeath(targetId);
 
       this.persistKillStats(grenade.throwerId, targetId);
 
@@ -638,6 +650,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     for (const player of this.state.players.values()) {
       player.matchKills = 0;
     }
+    this.matchPerf.reset();
   }
 
   private assignTdmTeams(): void {
@@ -806,6 +819,52 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
 
     this.state.winningTeamId = tied ? -1 : winningTeam;
+    void this.awardRankedMatchResults().catch((error) => {
+      console.error('[rank] failed to award match results', error);
+    });
+  }
+
+  /** Persist XP/RP for every authenticated human from in-room performance cache. */
+  private async awardRankedMatchResults(): Promise<void> {
+    if (!this.isTdm()) return;
+    const roomId = this.roomId;
+    const matchId = buildMatchId(roomId, this.state.matchStartAt);
+    const winningTeamId = this.state.winningTeamId;
+
+    let topKills = 0;
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      topKills = Math.max(topKills, player.matchKills);
+    }
+
+    const tasks: Promise<unknown>[] = [];
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      const userId = this.userIdBySession.get(sessionId);
+      if (!userId) continue;
+
+      // Prefer room kill counter (authoritative) over cache if they diverge.
+      const perf = this.matchPerf.snapshot(sessionId);
+      const kills = Math.max(perf.kills, player.matchKills);
+      const wasMvp = kills > 0 && kills >= topKills;
+
+      tasks.push(
+        awardMatchPerformanceForUser(userId, {
+          matchId,
+          roomId,
+          mapId: this.state.mapId,
+          mode: this.gameMode,
+          teamId: player.teamId,
+          winningTeamId,
+          matchStartAt: this.state.matchStartAt,
+          matchDurationSec: this.state.matchDurationSec,
+          performance: { ...perf, kills },
+          wasMvp,
+        }),
+      );
+    }
+
+    await Promise.all(tasks);
   }
 
   private tickReloads(): void {
@@ -1332,6 +1391,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       // Shotgun shells send one shoot message per pellet; only the primary pellet
       // should start / play the weaponShot SFX.
       const isPrimaryPellet = (data.pelletIndex ?? 0) === 0;
+      this.matchPerf.recordShotFired(client.sessionId);
       if (weaponId && isWeaponId(weaponId) && isPrimaryPellet) {
         if (WEAPON_FIRE_MODE[weaponId] === 'auto') {
           if (!this.autoFiringSessions.has(client.sessionId)) {
@@ -1649,6 +1709,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       target.shieldPoints = result.shieldPoints;
       target.hp = result.hp;
 
+      const applied = result.absorbedByShield + result.dealtToHealth;
+      if (applied > 0) {
+        this.matchPerf.recordShotHit(client.sessionId);
+        this.matchPerf.recordDamageDealt(
+          client.sessionId,
+          applied,
+          bodyPart === 'head',
+        );
+        this.matchPerf.recordDamageTaken(data.targetId, applied);
+      }
+
       if (result.absorbedByShield > 0 || result.dealtToHealth > 0) {
         const victimClient = this.clients.find((c) => c.sessionId === data.targetId);
         if (!victimClient) return;
@@ -1701,6 +1772,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       };
       this.broadcast('kill', killFeed);
       shooter.matchKills += 1;
+      this.matchPerf.recordKill(client.sessionId);
+      this.matchPerf.recordDeath(data.targetId);
 
       if (this.isTdm() && isValidTdmTeamId(shooter.teamId, this.state.teamCount)) {
         this.addTeamScore(shooter.teamId, TDM_KILL_POINTS);

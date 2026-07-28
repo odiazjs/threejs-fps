@@ -58,6 +58,7 @@ function storeCardGlyph(itemId: string): string {
 export class StoreView {
   private items: StoreItemState[] = [];
   private selectedId: string | null = null;
+  private plasmaMinerals = 0;
   private busy = false;
   private confirmMode: ConfirmMode = 'purchase';
   private scene: StorePreviewScene | null = null;
@@ -251,6 +252,7 @@ export class StoreView {
   private async reload(): Promise<void> {
     const data = await apiListStoreItems();
     this.items = data.items;
+    this.plasmaMinerals = data.plasmaMinerals;
     setActiveCharacterId(data.selectedCharacterId);
     this.selectedId =
       this.items.find((item) => item.selected)?.id ??
@@ -317,8 +319,14 @@ export class StoreView {
       if (this.detailType) this.detailType.textContent = 'ITEM PREVIEW';
       if (this.detailDesc) this.detailDesc.textContent = 'Select an item from the catalog.';
       if (this.detailPrice) this.detailPrice.textContent = '—';
-      if (this.detailStatus) this.detailStatus.textContent = '';
-      if (this.purchaseBtn) this.purchaseBtn.disabled = true;
+      if (this.detailStatus) {
+        this.detailStatus.classList.remove('is-insufficient');
+        this.detailStatus.textContent = '';
+      }
+      if (this.purchaseBtn) {
+        this.purchaseBtn.disabled = true;
+        this.purchaseBtn.classList.remove('is-insufficient', 'is-owned');
+      }
       if (this.sellBtn) {
         this.sellBtn.hidden = true;
         this.sellBtn.disabled = true;
@@ -350,18 +358,29 @@ export class StoreView {
 
     const canEquip =
       item.unlocked && isEquipableCharacterType(item.type) && !item.selected;
+    const canAfford = this.plasmaMinerals >= item.cost;
 
     if (item.unlocked) {
       this.purchaseBtn.disabled = true;
       this.purchaseBtn.classList.add('is-owned');
+      this.purchaseBtn.classList.remove('is-insufficient');
+      this.detailStatus.classList.remove('is-insufficient');
       this.detailStatus.textContent = item.selected
         ? 'Currently equipped'
         : isEquipableCharacterType(item.type)
           ? 'Unlocked — ready to equip'
           : 'Unlocked';
+    } else if (!canAfford) {
+      this.purchaseBtn.disabled = true;
+      this.purchaseBtn.classList.remove('is-owned');
+      this.purchaseBtn.classList.add('is-insufficient');
+      this.detailStatus.classList.add('is-insufficient');
+      this.detailStatus.textContent = 'NOT ENOUGH PLASMA MINERALS';
     } else {
       this.purchaseBtn.disabled = this.busy;
       this.purchaseBtn.classList.remove('is-owned');
+      this.purchaseBtn.classList.remove('is-insufficient');
+      this.detailStatus.classList.remove('is-insufficient');
       this.detailStatus.textContent = 'Locked — purchase with plasma minerals';
     }
 
@@ -374,6 +393,7 @@ export class StoreView {
         : '—';
       this.actionRow?.classList.toggle('has-sell', showSell);
       if (showSell && item.unlocked) {
+        this.detailStatus.classList.remove('is-insufficient');
         this.detailStatus.textContent = item.selected
           ? `Equipped — sell back for ${formatPlasmaMinerals(item.sellRefund)} plasma`
           : `Owned — sell back for ${formatPlasmaMinerals(item.sellRefund)} plasma`;
@@ -390,6 +410,17 @@ export class StoreView {
 
     if (mode === 'purchase') {
       if (item.unlocked) return;
+      if (this.plasmaMinerals < item.cost) {
+        if (this.detailStatus) {
+          this.detailStatus.classList.add('is-insufficient');
+          this.detailStatus.textContent = 'NOT ENOUGH PLASMA MINERALS';
+        }
+        if (this.purchaseBtn) {
+          this.purchaseBtn.disabled = true;
+          this.purchaseBtn.classList.add('is-insufficient');
+        }
+        return;
+      }
       this.confirmMode = 'purchase';
       if (this.confirmEyebrow) this.confirmEyebrow.textContent = 'CONFIRM PURCHASE';
       if (this.confirmTitle) this.confirmTitle.textContent = 'UNLOCK ITEM?';
@@ -427,19 +458,33 @@ export class StoreView {
   private async executePurchase(): Promise<void> {
     const item = this.currentItem();
     if (!item || item.unlocked || this.busy) return;
+    if (this.plasmaMinerals < item.cost) {
+      if (this.detailStatus) {
+        this.detailStatus.classList.add('is-insufficient');
+        this.detailStatus.textContent = 'NOT ENOUGH PLASMA MINERALS';
+      }
+      this.syncActionButtons(item);
+      return;
+    }
 
     this.busy = true;
     this.syncActionButtons(item);
     try {
       const result = await apiPurchaseStoreItem(item.id);
       this.items = result.items;
+      this.plasmaMinerals = result.plasmaMinerals;
       this.showCongrats(item.name);
       this.renderGrid();
       await this.renderDetail();
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Purchase failed';
       if (this.detailStatus) {
-        this.detailStatus.textContent =
-          error instanceof Error ? error.message : 'Purchase failed';
+        const insufficient = /not enough plasma/i.test(message);
+        this.detailStatus.classList.toggle('is-insufficient', insufficient);
+        this.detailStatus.textContent = insufficient
+          ? 'NOT ENOUGH PLASMA MINERALS'
+          : message;
       }
     } finally {
       this.busy = false;
@@ -457,15 +502,18 @@ export class StoreView {
     try {
       const result = await apiSellStoreItem(item.id);
       this.items = result.items;
+      this.plasmaMinerals = result.plasmaMinerals;
       setActiveCharacterId(result.selectedCharacterId);
       clearCharacterMeshCache();
       if (this.detailStatus) {
+        this.detailStatus.classList.remove('is-insufficient');
         this.detailStatus.textContent = `Sold back — refunded ${formatPlasmaMinerals(result.refund)} plasma`;
       }
       this.renderGrid();
       await this.renderDetail();
     } catch (error) {
       if (this.detailStatus) {
+        this.detailStatus.classList.remove('is-insufficient');
         this.detailStatus.textContent =
           error instanceof Error ? error.message : 'Sell back failed';
       }

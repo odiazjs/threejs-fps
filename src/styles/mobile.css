@@ -17,6 +17,7 @@ html {
 .weapons-page,
 .store-page,
 .characters-page,
+.ranked-page,
 .leaderboard-page,
 .settings-page,
 .auth-page,
@@ -28,6 +29,7 @@ html {
 .weapons-page button,
 .store-page button,
 .characters-page button,
+.ranked-page button,
 .leaderboard-page button,
 .settings-page button,
 .auth-page button,
@@ -39,7 +41,8 @@ html {
 @media (max-width: 900px) {
   .armory-ui,
   .store-ui,
-  .characters-ui {
+  .characters-ui,
+  .ranked-ui {
     padding-top: max(0.65rem, var(--safe-top));
     padding-right: max(0.75rem, var(--safe-right));
     padding-bottom: max(25px, var(--safe-bottom));
@@ -144,6 +147,7 @@ html {
   .store-purchase-btn,
   .store-equip-btn,
   .store-sell-btn,
+  .ranked-rewards-btn,
   .armory-btn,
   .armory-category-tab,
   .friends-tab,

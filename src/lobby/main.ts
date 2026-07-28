@@ -27,6 +27,8 @@ import { initLobbyMapSelector } from './mapSelection';
 import { initLobbyGameModeSelector } from './gameModeSelection';
 import { initLobbyPanelCollapse } from './lobbyPanelCollapse';
 import { onGameOverlayClosed, setGameOverlayBackgroundHooks } from './launchGameOverlay';
+import { maybeShowMatchXpResultsModal } from './showMatchXpResults';
+import { maybeShowSeasonWelcomeModal } from './seasonWelcome';
 import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
@@ -41,6 +43,8 @@ function shellPresenceView(view: ReturnType<typeof parseShellViewFromUrl>): AppP
 async function startLobby(): Promise<void> {
   let appShell: AppShell | null = null;
   let friendsPanel: FriendsPanel | null = null;
+  let welcomeUserId: string | null = null;
+  let showSeasonWelcome = false;
   const initialView = parseShellViewFromUrl();
 
   try {
@@ -109,12 +113,19 @@ async function startLobby(): Promise<void> {
     onGameOverlayClosed(() => {
       loading.reset();
       joinBtn.disabled = false;
+      void refreshLobbyProfileStats();
       void lobbyClient.reconnect({ userId: session.userId, username: session.username }).then(() => {
         lobbyClient.setAppView(shellPresenceView(parseShellViewFromUrl()));
         appShell?.syncPresenceAfterGame();
         friendsPanel?.syncControls();
       });
+      void maybeShowMatchXpResultsModal({ withLoading: true });
     });
+
+    // Cold boot / refresh after closing the tab on the match-end screen.
+    const showedMatchXp = await maybeShowMatchXpResultsModal();
+    welcomeUserId = session.userId;
+    showSeasonWelcome = !showedMatchXp && initialView === 'lobby';
 
     window.addEventListener('pagehide', () => {
       appShell?.teardown();
@@ -129,6 +140,16 @@ async function startLobby(): Promise<void> {
   } finally {
     loading.hide();
     friendsPanel?.syncControls();
+  }
+
+  if (showSeasonWelcome && welcomeUserId && appShell) {
+    const shell = appShell;
+    void maybeShowSeasonWelcomeModal({
+      userId: welcomeUserId,
+      onViewSeason: () => {
+        void shell.showView('ranked');
+      },
+    });
   }
 }
 

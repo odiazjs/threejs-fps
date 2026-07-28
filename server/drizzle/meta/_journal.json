@@ -337,6 +337,48 @@
       "when": 1784110000000,
       "tag": "0047_sniper_precision_sight",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1784650000000,
+      "tag": "0048_rank_progression",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1784660000000,
+      "tag": "0049_rank_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1784670000000,
+      "tag": "0050_match_minerals",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1784680000000,
+      "tag": "0051_reset_plasma_minerals",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1784690000000,
+      "tag": "0052_season_01_rewards",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1784710000000,
+      "tag": "0053_season_01_plasma_credits",
+      "breakpoints": true
     }
   ]
 }

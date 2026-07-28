@@ -9,6 +9,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed-weapons": "tsx src/db/seed/runUpsertWeapons.ts",
+    "reset:minerals": "tsx src/db/resetPlasmaMinerals.ts",
+    "reset:unlocks": "tsx src/db/resetStoreCharacterUnlocks.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },

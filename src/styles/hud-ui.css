@@ -37,6 +37,7 @@ textarea,
 .settings-page,
 .store-page,
 .characters-page,
+.ranked-page,
 .game-page,
 .auth-page {
   font-family: var(--hud-font);
@@ -49,7 +50,8 @@ textarea,
 .leaderboard-page,
 .settings-page,
 .store-page,
-.characters-page {
+.characters-page,
+.ranked-page {
   min-height: 100vh;
   background:
     radial-gradient(ellipse 80% 50% at 50% 100%, rgba(0, 120, 140, 0.12), transparent 55%),
@@ -62,7 +64,8 @@ textarea,
 .leaderboard-page,
 .settings-page,
 .store-page,
-.characters-page {
+.characters-page,
+.ranked-page {
   height: 100dvh;
   max-height: 100dvh;
   overflow: hidden;

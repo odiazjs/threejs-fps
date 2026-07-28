@@ -39,7 +39,8 @@ export class PlasmaMineralsStoreModal {
     this.root.addEventListener('click', this.onRootClick);
     document.addEventListener('keydown', this.onKeyDown);
 
-    for (const btn of document.querySelectorAll('[data-plasma-get-more]')) {
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-plasma-get-more]')) {
+      if (btn.disabled) continue;
       btn.addEventListener('click', (event) => {
         event.preventDefault();
         this.open();
