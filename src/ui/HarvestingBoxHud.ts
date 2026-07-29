@@ -1,8 +1,9 @@
 import {
   holdSecForHarvestingBoxMode,
+  type HarvestingBoxHoldMode,
 } from '../../shared/level/harvestingBoxSpawns';
 
-export type HarvestingBoxHoldMode = 'pickup' | 'drop' | 'install';
+export type { HarvestingBoxHoldMode };
 
 export interface HarvestingBoxHoldTarget {
   index: number;
@@ -10,7 +11,7 @@ export interface HarvestingBoxHoldTarget {
 }
 
 /**
- * Hold-F progress for harvesting crates (3s pickup/drop, 10s install).
+ * Hold-F progress for harvesting crates (1.5s drop/loose pickup, 3s base pickup, 10s install).
  */
 export class HarvestingBoxHud {
   private readonly promptRoot: HTMLElement | null;
@@ -110,7 +111,7 @@ export class HarvestingBoxHud {
       this.promptRoot.hidden = true;
       return;
     }
-    if (target.mode === 'pickup') {
+    if (target.mode === 'pickup' || target.mode === 'pickup_base') {
       this.promptText.textContent = 'Hold F - Pick up Harvesting Box';
     } else if (target.mode === 'drop') {
       this.promptText.textContent = 'Hold F - Drop Harvesting Box';
@@ -121,7 +122,7 @@ export class HarvestingBoxHud {
   }
 
   private progressLabel(mode: HarvestingBoxHoldMode): string {
-    if (mode === 'pickup') return 'Picking up box';
+    if (mode === 'pickup' || mode === 'pickup_base') return 'Picking up box';
     if (mode === 'drop') return 'Dropping box';
     return 'Installing box';
   }

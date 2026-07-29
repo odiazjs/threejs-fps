@@ -169,5 +169,6 @@ export type KillFeedHandler = (
   killerId: string,
   killerName: string,
   victimName: string,
+  extras?: { respawnDelaySec?: number; mineralsGranted?: number },
 ) => void;
 export type LocalDamagedHandler = (damage: PlayerDamagedMessage) => void;

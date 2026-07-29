@@ -78,10 +78,21 @@ import { PerformanceHud } from '../ui/PerformanceHud';
 import { CraftingStations } from '../world/CraftingStations';
 import { HarvestingBoxes } from '../world/HarvestingBoxes';
 import { getCraftingStationSpawns } from '../../shared/level/craftingStationSpawns';
-import { getHarvestingBoxSpawns } from '../../shared/level/harvestingBoxSpawns';
+import {
+  getHarvestingBoxSpawns,
+  isHarvestingBoxAtTeamBase,
+} from '../../shared/level/harvestingBoxSpawns';
 import { HarvestingBoxHud } from '../ui/HarvestingBoxHud';
+import type { HarvestingBoxHoldMode } from '../ui/HarvestingBoxHud';
 import { isPickableWeaponId } from '../../shared/content/weaponIds';
-import type { CraftItemId } from '../../shared/content/craftingCatalog';
+import {
+  PLASMA_HARVEST_KILL_MINERALS,
+  type CraftItemId,
+} from '../../shared/content/craftingCatalog';
+import {
+  PLASMA_HARVEST_RESPAWN_BASE_SEC,
+  plasmaHarvestRespawnDelaySec,
+} from '../../shared/combat/damage';
 import { MatchPerfStats } from '../debug/MatchPerfStats';
 import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
@@ -184,11 +195,13 @@ export class Game {
   };
   private readonly onHarvestingBoxHoldComplete = (target: {
     index: number;
-    mode: 'pickup' | 'drop' | 'install';
+    mode: HarvestingBoxHoldMode;
   }): void => {
     if (!this.network) return;
     const feet = this.player.getFeetPosition();
-    this.network.sendInteractHarvestingBox(target.index, target.mode, feet.x, feet.z);
+    const action =
+      target.mode === 'pickup_base' ? 'pickup' : target.mode;
+    this.network.sendInteractHarvestingBox(target.index, action, feet.x, feet.z);
   };
   private staminaHud = new StaminaHud();
   private ammoHud = new AmmoHud();
@@ -298,6 +311,8 @@ export class Game {
   private lastCountdownTickSec: number | null = null;
   private gameStartSoundPlayed = false;
   private pendingKillerId: string | null = null;
+  /** Respawn countdown length from last kill feed (Plasma Harvest). */
+  private pendingRespawnDelaySec = PLASMA_HARVEST_RESPAWN_BASE_SEC;
   private lastCombatShooterId: string | null = null;
   private readonly activeGrenadesScratch: ActiveGrenadeSnapshot[] = [];
   private readonly nearbyGrenadeThreatsScratch: NearbyGrenadeThreat[] = [];
@@ -1101,19 +1116,35 @@ export class Game {
         }
       },
       (state) => this.handleLocalCombatChange(state),
-      (killerId, killerName, victimName) => {
+      (killerId, killerName, victimName, extras) => {
         this.killFeedHud.addKill(killerName, victimName);
         const session = getSession();
         if (!session) return;
         const isSuicide = killerName === victimName;
-        if (victimName === session.username && !isSuicide) {
-          this.pendingKillerId = killerId;
+        if (victimName === session.username) {
+          if (!isSuicide) {
+            this.pendingKillerId = killerId;
+          }
           this.matchPerf.recordDeath();
+          const deaths = this.matchPerf.snapshot().deaths;
+          this.pendingRespawnDelaySec =
+            typeof extras?.respawnDelaySec === 'number' && extras.respawnDelaySec > 0
+              ? extras.respawnDelaySec
+              : plasmaHarvestRespawnDelaySec(deaths);
         }
         if (killerName === session.username && !isSuicide) {
           this.messageHud.pushKill(victimName);
           this.impactSounds.playKillConfirm();
           this.matchPerf.recordKill();
+          const minerals =
+            typeof extras?.mineralsGranted === 'number'
+              ? extras.mineralsGranted
+              : isPlasmaHarvestGameMode(this.matchGameMode)
+                ? PLASMA_HARVEST_KILL_MINERALS
+                : 0;
+          if (minerals > 0) {
+            this.messageHud.push(`+${minerals} minerals`);
+          }
         }
       },
     );
@@ -1207,7 +1238,9 @@ export class Game {
     this.network.onCraftItemGranted((data) => {
       if (typeof data.ammoClips === 'number' && data.ammoClips > 0) {
         for (let i = 0; i < data.ammoClips; i++) {
-          this.player.addReserveClip();
+          if (!this.player.addReserveClipToBestGun()) {
+            this.player.addReserveClip();
+          }
         }
       }
       if (data.weaponId) {
@@ -1273,19 +1306,27 @@ export class Game {
     this.network.applyLocalSpawn(this.player);
 
     try {
-      const { weapons } = await apiListMyWeapons();
       const statsById = new Map<string, WeaponEffectiveStats>();
-      for (const weapon of weapons) {
-        statsById.set(weapon.id, weapon.effectiveStats);
-      }
-      // Fill any missing pickables with catalog stock so recoil camera scale is always set.
-      for (const config of PICKABLE_WEAPON_CONFIGS) {
-        if (!statsById.has(config.id)) {
+      if (isPlasmaHarvestGameMode(this.matchGameMode)) {
+        // Plasma Harvest always uses catalog base stats (ignore Armory upgrades).
+        for (const config of PICKABLE_WEAPON_CONFIGS) {
           statsById.set(config.id, shippedEffectiveStats(config.id));
         }
-      }
-      if (!statsById.has(KATANA_CONFIG.id)) {
         statsById.set(KATANA_CONFIG.id, shippedEffectiveStats(KATANA_CONFIG.id));
+      } else {
+        const { weapons } = await apiListMyWeapons();
+        for (const weapon of weapons) {
+          statsById.set(weapon.id, weapon.effectiveStats);
+        }
+        // Fill any missing pickables with catalog stock so recoil camera scale is always set.
+        for (const config of PICKABLE_WEAPON_CONFIGS) {
+          if (!statsById.has(config.id)) {
+            statsById.set(config.id, shippedEffectiveStats(config.id));
+          }
+        }
+        if (!statsById.has(KATANA_CONFIG.id)) {
+          statsById.set(KATANA_CONFIG.id, shippedEffectiveStats(KATANA_CONFIG.id));
+        }
       }
       this.player.applyWeaponEffectiveStats(statsById);
       this.projectiles.setWeaponMaxHitDistanceResolver((weaponId) => {
@@ -1345,7 +1386,10 @@ export class Game {
       this.killCam.activate(killerId);
       this.pendingKillerId = null;
       if (isPlasmaHarvestGameMode(this.matchGameMode)) {
-        this.respawnCountdownHud.begin(this.network?.getWorldTime() ?? 0);
+        this.respawnCountdownHud.begin(
+          this.network?.getWorldTime() ?? 0,
+          this.pendingRespawnDelaySec,
+        );
       }
     }
 
@@ -2338,7 +2382,7 @@ export class Game {
 
         let harvestingHoldTarget: {
           index: number;
-          mode: 'pickup' | 'drop' | 'install';
+          mode: HarvestingBoxHoldMode;
         } | null = null;
         if (carryingIndex >= 0) {
           const carried = this.harvestingBoxes.getBox(carryingIndex);
@@ -2360,7 +2404,15 @@ export class Game {
         } else if (isPlasmaHarvestGameMode(this.matchGameMode)) {
           const nearBox = this.harvestingBoxes.findGroundInteractable(feet.x, feet.z);
           if (nearBox) {
-            harvestingHoldTarget = { index: nearBox.index, mode: 'pickup' };
+            const atBase = isHarvestingBoxAtTeamBase(
+              nearBox.spawnX,
+              nearBox.spawnZ,
+              this.harvestingBoxes.getBoxes(),
+            );
+            harvestingHoldTarget = {
+              index: nearBox.index,
+              mode: atBase ? 'pickup_base' : 'pickup',
+            };
           }
         }
 

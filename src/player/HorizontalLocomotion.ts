@@ -5,6 +5,8 @@
  */
 
 export const MOVE_SPEED = 3;
+/** Walk/sprint boost when melee is out or no gun is equipped. */
+export const UNEQUIPPED_MOVE_SPEED_MULTIPLIER = 1.15;
 
 /** Ground accelerate toward wish (1/sec) — high = snappy, low = ice. */
 const GROUND_ACCEL = 48;

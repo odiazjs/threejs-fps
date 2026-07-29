@@ -773,7 +773,10 @@ export class RoomClient {
   private bindKillMessages(): void {
     this.room?.onMessage('kill', (data: KillFeedMessage) => {
       this.onKillFeedHandlers.forEach((handler) =>
-        handler(data.killerId, data.killerName, data.victimName),
+        handler(data.killerId, data.killerName, data.victimName, {
+          respawnDelaySec: data.respawnDelaySec,
+          mineralsGranted: data.mineralsGranted,
+        }),
       );
     });
   }

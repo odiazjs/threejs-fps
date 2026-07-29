@@ -103,6 +103,7 @@ export class NetworkManager {
       killerId: string,
       killerName: string,
       victimName: string,
+      extras?: { respawnDelaySec?: number; mineralsGranted?: number },
     ) => void,
   ) {
     this.remotePlayers = new RemotePlayers(scene, this.roomClient, this.remoteUiVisibility);
@@ -238,8 +239,8 @@ export class NetworkManager {
       }
       this.onLocalShieldPickup();
     });
-    this.roomClient.onKillFeed((killerId, killerName, victimName) => {
-      this.onKillFeed(killerId, killerName, victimName);
+    this.roomClient.onKillFeed((killerId, killerName, victimName, extras) => {
+      this.onKillFeed(killerId, killerName, victimName, extras);
     });
     this.roomClient.onLocalDamaged((damage) => {
       if (damage.shooterId) {

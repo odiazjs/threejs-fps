@@ -67,6 +67,7 @@ import { EMPTY_WEAPON_SLOT } from '../../shared/loadout/loadoutSlots';
 import {
   HorizontalLocomotion,
   MOVE_SPEED,
+  UNEQUIPPED_MOVE_SPEED_MULTIPLIER,
 } from './HorizontalLocomotion';
 import {
   LAND_SLIDE_GRACE_SEC,
@@ -1101,6 +1102,11 @@ export class Player {
 
   addReserveClip(): void {
     this.loadout?.addReserveToActive();
+  }
+
+  /** Craft / grant ammo to a gun magazine size (skips melee). */
+  addReserveClipToBestGun(): boolean {
+    return this.loadout?.addReserveClipToBestGun() ?? false;
   }
 
   /** Plasma Harvest craft: equip with magazine only (no 300 reserve). */
@@ -2182,11 +2188,16 @@ export class Player {
     }
     this.stabilizeCameraPitch();
 
+    const lightMovement =
+      meleeEquipped ||
+      this.throwableEquipped ||
+      !active ||
+      !isPickableWeaponId(active.config.id);
     const moveMultiplier =
-      active && meleeEquipped && isSprinting
-        ? (active.config.moveSpeedMultiplier ?? KATANA_CONFIG.moveSpeedMultiplier ?? 1)
-        : isCrouching && !isSliding
-          ? CROUCH_SPEED_MULTIPLIER
+      isCrouching && !isSliding
+        ? CROUCH_SPEED_MULTIPLIER
+        : lightMovement
+          ? UNEQUIPPED_MOVE_SPEED_MULTIPLIER
           : 1;
     const baseSpeed = MOVE_SPEED * moveMultiplier;
 

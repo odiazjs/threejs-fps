@@ -17,16 +17,20 @@ export interface HarvestingBoxSpawn {
   readonly installZ: number;
 }
 
-/** Hold F duration to pick up or drop a harvesting box. */
-export const HARVESTING_BOX_HOLD_SEC = 3;
+/** Hold F duration to drop a box or pick up a loose (mid-field) drop. */
+export const HARVESTING_BOX_HOLD_SEC = 1.5;
+/** Hold F duration to pick up a box sitting at a team base (own or opponent). */
+export const HARVESTING_BOX_BASE_PICKUP_SEC = 3;
 /** Hold F duration to install an enemy box at your own base. */
 export const HARVESTING_BOX_INSTALL_SEC = 10;
+/** Distance from a box home marker to treat a ground box as "at base". */
+export const HARVESTING_BOX_AT_BASE_DISTANCE = 1.75;
 /** Max distance from box / carrier feet / install spot to interact. */
 export const HARVESTING_BOX_INTERACT_DISTANCE = 2.75;
 /** Fallback install offset toward midfield when no authored install marker. */
 export const HARVESTING_BOX_INSTALL_FORWARD_M = 1;
 /**
- * Authored empties sit slightly above the pad ó nudge feet down so crates
+ * Authored empties sit slightly above the pad ù nudge feet down so crates
  * rest flush on the base platform.
  */
 export const HARVESTING_BOX_SURFACE_Y_NUDGE = -0.22;
@@ -81,10 +85,29 @@ export function harvestingBoxTeamFromName(name: string): number | null {
   return null;
 }
 
-export function holdSecForHarvestingBoxMode(
-  mode: 'pickup' | 'drop' | 'install',
-): number {
-  return mode === 'install' ? HARVESTING_BOX_INSTALL_SEC : HARVESTING_BOX_HOLD_SEC;
+export type HarvestingBoxHoldMode = 'pickup' | 'pickup_base' | 'drop' | 'install';
+
+export function holdSecForHarvestingBoxMode(mode: HarvestingBoxHoldMode): number {
+  if (mode === 'install') return HARVESTING_BOX_INSTALL_SEC;
+  if (mode === 'pickup_base') return HARVESTING_BOX_BASE_PICKUP_SEC;
+  return HARVESTING_BOX_HOLD_SEC;
+}
+
+/** True when a ground box pose is still at any team's home pad. */
+export function isHarvestingBoxAtTeamBase(
+  spawnX: number,
+  spawnZ: number,
+  homes: readonly { readonly homeX: number; readonly homeZ: number }[],
+): boolean {
+  for (const home of homes) {
+    if (
+      Math.hypot(spawnX - home.homeX, spawnZ - home.homeZ) <=
+      HARVESTING_BOX_AT_BASE_DISTANCE
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

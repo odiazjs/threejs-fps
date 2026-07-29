@@ -423,6 +423,27 @@ export class WeaponLoadout {
     this.getActive()?.ammo.addReserveClip();
   }
 
+  /**
+   * Add one full magazine to reserve on a gun (never melee).
+   * Prefers the active pickable weapon, else the first filled loadout slot.
+   */
+  addReserveClipToBestGun(): boolean {
+    if (!this.meleeEquipped) {
+      const active = this.getActive();
+      if (active && isPickableWeaponId(active.config.id)) {
+        active.ammo.addReserveClip();
+        return true;
+      }
+    }
+    for (let i = 0; i < LOADOUT_SIZE; i++) {
+      const slot = this.getSlot(i);
+      if (!slot || !isPickableWeaponId(slot.config.id)) continue;
+      slot.ammo.addReserveClip();
+      return true;
+    }
+    return false;
+  }
+
   /** Crafted weapons start with one full mag and empty reserve. */
   setActiveMagazineOnly(): void {
     this.getActive()?.ammo.setMagazineOnly();

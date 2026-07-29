@@ -1,5 +1,3 @@
-import { PLASMA_HARVEST_RESPAWN_DELAY_SEC } from '../../shared/combat/damage';
-
 /**
  * Centered "Respawning in X seconds..." prompt while waiting for Plasma Harvest
  * server respawn.
@@ -8,6 +6,7 @@ export class RespawnCountdownHud {
   private readonly root: HTMLElement;
   private readonly valueEl: HTMLElement;
   private deathAtWorldTime = -1;
+  private delaySec = 10;
   private lastShownSec = -1;
 
   constructor() {
@@ -19,7 +18,7 @@ export class RespawnCountdownHud {
       const text = document.createElement('p');
       text.className = 'respawn-countdown-text';
       text.innerHTML =
-        'Respawning in <span class="respawn-countdown-value">5</span> seconds...';
+        'Respawning in <span class="respawn-countdown-value">10</span> seconds...';
       root.appendChild(text);
       document.body.appendChild(root);
     }
@@ -28,8 +27,9 @@ export class RespawnCountdownHud {
   }
 
   /** Call when the local player transitions from alive ? dead. */
-  begin(worldTime: number): void {
+  begin(worldTime: number, delaySec: number): void {
     this.deathAtWorldTime = worldTime;
+    this.delaySec = Math.max(1, delaySec);
     this.lastShownSec = -1;
     this.root.hidden = false;
     this.update(worldTime);
@@ -48,10 +48,7 @@ export class RespawnCountdownHud {
       return;
     }
 
-    const remaining = Math.max(
-      0,
-      this.deathAtWorldTime + PLASMA_HARVEST_RESPAWN_DELAY_SEC - worldTime,
-    );
+    const remaining = Math.max(0, this.deathAtWorldTime + this.delaySec - worldTime);
     const whole = Math.max(1, Math.ceil(remaining));
     if (remaining <= 0) {
       // Keep showing "1" until the server marks us alive.

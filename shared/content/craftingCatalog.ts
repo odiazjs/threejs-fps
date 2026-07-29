@@ -2,6 +2,8 @@ import { isPickableWeaponId, type WeaponId } from './weaponIds.js';
 
 /** In-match Plasma Harvest currency — not store / account minerals. */
 export const MATCH_PLASMA_MINERALS_START = 100;
+/** Minerals granted to the killer on a player kill in Plasma Harvest. */
+export const PLASMA_HARVEST_KILL_MINERALS = 50;
 
 export const CRAFT_HOLD_SEC = 3;
 /** Max distance from the station's front interact point (meters). */

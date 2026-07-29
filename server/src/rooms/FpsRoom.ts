@@ -19,7 +19,7 @@ import { getMapDef, type MapCollisionDef } from '../../../shared/level/maps.js';
 import type { SpawnPickContext } from '../../../shared/level/spawnPick.js';
 import {
   PLAYER_MAX_HP,
-  PLASMA_HARVEST_RESPAWN_DELAY_SEC,
+  plasmaHarvestRespawnDelaySec,
   RESPAWN_DELAY_SEC,
 } from '../../../shared/combat/damage.js';
 import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
@@ -157,6 +157,7 @@ import {
   CRAFTING_STATION_INTERACT_DISTANCE,
   getCraftItem,
   MATCH_PLASMA_MINERALS_START,
+  PLASMA_HARVEST_KILL_MINERALS,
 } from '../../../shared/content/craftingCatalog.js';
 import {
   CRAFTING_STATION_FRONT_OFFSET,
@@ -576,22 +577,26 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.cancelShieldDome(target);
       this.dropHarvestingBoxForSession(targetId);
 
-      const killFeed: KillFeedMessage = {
-        killerId: grenade.throwerId,
-        killerName: thrower.username,
-        victimName: target.username,
-      };
-      this.broadcast('kill', killFeed);
-
+      let mineralsGranted = 0;
       if (!isSelfDamage) {
         thrower.matchKills += 1;
         this.matchPerf.recordKill(grenade.throwerId);
+        mineralsGranted = this.grantPlasmaHarvestKillMinerals(thrower);
 
         if (this.isTdm() && isValidTdmTeamId(thrower.teamId, this.state.teamCount)) {
           this.addTeamScore(thrower.teamId, TDM_KILL_POINTS);
         }
       }
       this.matchPerf.recordDeath(targetId);
+
+      const killFeed: KillFeedMessage = {
+        killerId: grenade.throwerId,
+        killerName: thrower.username,
+        victimName: target.username,
+        respawnDelaySec: this.getRespawnDelaySec(targetId),
+        mineralsGranted,
+      };
+      this.broadcast('kill', killFeed);
 
       this.persistKillStats(grenade.throwerId, targetId);
 
@@ -1041,9 +1046,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.installingHarvestingBox = false;
       player.matchPlasmaMinerals = MATCH_PLASMA_MINERALS_START;
       this.applySpawnConsumables(player);
+      this.initPlayerLoadout(player, sessionId);
       this.resetPlayerWeaponTiming(player);
     }
     this.teleportHumansToTeamSpawns();
+  }
+
+  /** Grant Plasma Harvest kill minerals to the killer (no-op outside harvest / on suicide). */
+  private grantPlasmaHarvestKillMinerals(killer: PlayerState): number {
+    if (!isPlasmaHarvestGameMode(this.gameMode)) return 0;
+    killer.matchPlasmaMinerals += PLASMA_HARVEST_KILL_MINERALS;
+    return PLASMA_HARVEST_KILL_MINERALS;
   }
 
   /** Grenades / shield charges granted on join or respawn. */
@@ -1058,14 +1071,13 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
   }
 
-  private getRespawnDelaySec(): number {
-    return isPlasmaHarvestGameMode(this.gameMode)
-      ? PLASMA_HARVEST_RESPAWN_DELAY_SEC
-      : RESPAWN_DELAY_SEC;
+  private getRespawnDelaySec(sessionId: string): number {
+    if (!isPlasmaHarvestGameMode(this.gameMode)) return RESPAWN_DELAY_SEC;
+    return plasmaHarvestRespawnDelaySec(this.matchPerf.snapshot(sessionId).deaths);
   }
 
   private scheduleRespawn(sessionId: string): void {
-    const delayMs = this.getRespawnDelaySec() * 1000;
+    const delayMs = this.getRespawnDelaySec(sessionId) * 1000;
     this.clock.setTimeout(() => {
       if (this.isTdm() && this.state.matchPhase !== 'playing') return;
       this.respawnPlayer(sessionId);
@@ -2129,19 +2141,23 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.cancelShieldDome(target);
       this.dropHarvestingBoxForSession(data.targetId);
 
-      const killFeed: KillFeedMessage = {
-        killerId: client.sessionId,
-        killerName: shooter.username,
-        victimName: target.username,
-      };
-      this.broadcast('kill', killFeed);
       shooter.matchKills += 1;
       this.matchPerf.recordKill(client.sessionId);
+      const mineralsGranted = this.grantPlasmaHarvestKillMinerals(shooter);
       this.matchPerf.recordDeath(data.targetId);
 
       if (this.isTdm() && isValidTdmTeamId(shooter.teamId, this.state.teamCount)) {
         this.addTeamScore(shooter.teamId, TDM_KILL_POINTS);
       }
+
+      const killFeed: KillFeedMessage = {
+        killerId: client.sessionId,
+        killerName: shooter.username,
+        victimName: target.username,
+        respawnDelaySec: this.getRespawnDelaySec(data.targetId),
+        mineralsGranted,
+      };
+      this.broadcast('kill', killFeed);
 
       this.persistKillStats(client.sessionId, data.targetId);
 
@@ -2684,6 +2700,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     sessionId: string,
     weaponId: string,
   ): WeaponEffectiveStats | undefined {
+    // Plasma Harvest always uses catalog base stats (ignore Armory upgrades).
+    if (isPlasmaHarvestGameMode(this.gameMode)) return undefined;
     return this.weaponStatsBySession.get(sessionId)?.get(weaponId);
   }
 

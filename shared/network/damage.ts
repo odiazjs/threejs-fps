@@ -21,4 +21,8 @@ export interface KillFeedMessage {
   killerId: string;
   killerName: string;
   victimName: string;
+  /** Victim respawn wait (Plasma Harvest scaling). */
+  respawnDelaySec?: number;
+  /** Minerals granted to the killer (Plasma Harvest). */
+  mineralsGranted?: number;
 }
