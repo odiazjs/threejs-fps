@@ -7,6 +7,7 @@ import {
   GRENADE_VISUAL_MODEL,
 } from '../../shared/throwables/grenadeModelConfig';
 import { keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils';
+import { optimizeObjectTextures } from './textureQuality';
 
 const ASSET_BASE = '/3d/';
 
@@ -15,6 +16,7 @@ const pickupStackPromises = new Map<number, Promise<THREE.Group>>();
 
 function prepareGrenadeModel(model: THREE.Group): THREE.Group {
   keepSingleFbxLodMesh(model, GRENADE_VISUAL_LOD);
+  optimizeObjectTextures(model);
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;

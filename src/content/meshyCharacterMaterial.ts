@@ -4,6 +4,7 @@ import {
   SHARED_CHARACTER_MESH_FILE,
 } from '../../shared/content/characterMesh';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
+import { configureColorTexture } from './textureQuality';
 
 const textureLoader = new THREE.TextureLoader();
 const textureCache = new Map<string, THREE.Texture>();
@@ -20,9 +21,7 @@ function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         textureCache.set(url, texture);
         textureLoads.delete(url);
         resolve(texture);

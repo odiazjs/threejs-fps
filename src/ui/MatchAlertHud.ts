@@ -1,10 +1,13 @@
+const ALERT_LIFETIME_SEC = 4;
+
 /**
- * Stackable top-right match alerts (Plasma Harvest objective warnings).
- * Persistent alerts stay on-screen while their text remains in the active set.
+ * Top-right match alerts (Plasma Harvest objective warnings).
+ * One alert at a time; auto-dismisses after {@link ALERT_LIFETIME_SEC}s.
  */
 export class MatchAlertHud {
   private readonly root: HTMLElement | null;
-  private persistent: string[] = [];
+  private text = '';
+  private remaining = 0;
   private visible = false;
 
   constructor() {
@@ -14,42 +17,58 @@ export class MatchAlertHud {
   setVisible(visible: boolean): void {
     this.visible = visible;
     if (!visible) {
-      this.persistent = [];
+      this.text = '';
+      this.remaining = 0;
     }
     this.render();
   }
 
   /**
-   * Replace the active alert stack. Pass [] to clear.
-   * Order is preserved (first = top).
+   * Show a single alert (replaces any current one) for 4 seconds.
+   * Empty / no-op when text is blank.
    */
-  setPersistent(texts: readonly string[]): void {
-    const next = texts.filter((t) => t.length > 0);
-    const same =
-      next.length === this.persistent.length &&
-      next.every((text, i) => text === this.persistent[i]);
-    if (same) return;
-    this.persistent = next;
+  push(text: string): void {
+    const next = text.trim();
+    if (!next) return;
+    this.text = next;
+    this.remaining = ALERT_LIFETIME_SEC;
     this.render();
   }
 
-  update(_delta: number): void {
-    // Persistent alerts; no expiry tick.
+  /**
+   * @deprecated Prefer {@link push}. Kept so callers can clear via [].
+   */
+  setPersistent(texts: readonly string[]): void {
+    if (texts.length === 0) {
+      this.text = '';
+      this.remaining = 0;
+      this.render();
+      return;
+    }
+    this.push(texts[0]!);
+  }
+
+  update(delta: number): void {
+    if (!this.text || this.remaining <= 0) return;
+    this.remaining -= delta;
+    if (this.remaining <= 0) {
+      this.text = '';
+      this.remaining = 0;
+      this.render();
+    }
   }
 
   private render(): void {
     if (!this.root) return;
     this.root.replaceChildren();
-    if (!this.visible || this.persistent.length === 0) {
+    if (!this.visible || !this.text) {
       this.root.hidden = true;
       return;
     }
     this.root.hidden = false;
-    for (const text of this.persistent) {
-      const el = document.createElement('div');
-      el.className = 'match-alert-toast';
-      el.textContent = text;
-      this.root.appendChild(el);
-    }
+    const el = document.createElement('div');
+    el.className = 'match-alert-toast';
+    el.textContent = this.text;
+    this.root.appendChild(el);
   }
 }

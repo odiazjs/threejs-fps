@@ -1,4 +1,4 @@
-const MESSAGE_LIFETIME_SEC = 5;
+const MESSAGE_LIFETIME_SEC = 4;
 
 interface HudMessage {
   id: number;
@@ -9,7 +9,7 @@ interface HudMessage {
 
 export class MessageHud {
   private readonly root: HTMLElement;
-  private messages: HudMessage[] = [];
+  private message: HudMessage | null = null;
   private nextId = 0;
 
   constructor() {
@@ -17,54 +17,51 @@ export class MessageHud {
   }
 
   push(text: string): void {
-    this.messages.push({
+    // One toast at a time — replace any active notification.
+    this.message = {
       id: this.nextId++,
       text,
       remaining: MESSAGE_LIFETIME_SEC,
-    });
+    };
     this.render();
   }
 
   pushKill(victimName: string): void {
-    this.messages.push({
+    this.message = {
       id: this.nextId++,
       text: 'You killed ',
       victimName,
       remaining: MESSAGE_LIFETIME_SEC,
-    });
+    };
     this.render();
   }
 
   update(delta: number): void {
-    const before = this.messages.length;
-    this.messages = this.messages.filter((message) => {
-      message.remaining -= delta;
-      return message.remaining > 0;
-    });
-
-    if (this.messages.length !== before) {
+    if (!this.message) return;
+    this.message.remaining -= delta;
+    if (this.message.remaining <= 0) {
+      this.message = null;
       this.render();
     }
   }
 
   private render(): void {
     this.root.replaceChildren();
+    if (!this.message) return;
 
-    for (const message of this.messages) {
-      const el = document.createElement('div');
-      el.className = 'message-toast';
+    const el = document.createElement('div');
+    el.className = 'message-toast';
 
-      if (message.victimName) {
-        el.append(message.text);
-        const name = document.createElement('span');
-        name.className = 'message-toast-victim';
-        name.textContent = message.victimName;
-        el.append(name);
-      } else {
-        el.textContent = message.text;
-      }
-
-      this.root.appendChild(el);
+    if (this.message.victimName) {
+      el.append(this.message.text);
+      const name = document.createElement('span');
+      name.className = 'message-toast-victim';
+      name.textContent = this.message.victimName;
+      el.append(name);
+    } else {
+      el.textContent = this.message.text;
     }
+
+    this.root.appendChild(el);
   }
 }

@@ -107,6 +107,7 @@ export class LobbyClient {
     gameMode: string,
     matchDurationSec?: number,
     killLimit?: number,
+    roundsToWin?: number,
   ): void {
     this.room?.send('startGameInvite', {
       partyId,
@@ -115,6 +116,7 @@ export class LobbyClient {
       gameMode,
       matchDurationSec,
       killLimit,
+      roundsToWin,
     });
   }
 

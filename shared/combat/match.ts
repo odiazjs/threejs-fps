@@ -3,7 +3,12 @@ import { MAP_OPTIONS, normalizeMapId } from '../level/maps.js';
 
 export type GameMode = 'playground' | 'tdm' | 'tdm_kills' | 'plasma_harvest';
 
-export type MatchPhase = 'waiting' | 'countdown' | 'playing' | 'ended';
+export type MatchPhase =
+  | 'waiting'
+  | 'countdown'
+  | 'playing'
+  | 'round_end'
+  | 'ended';
 
 export type MatchWinCondition = 'none' | 'time' | 'kills' | 'install';
 
@@ -48,6 +53,13 @@ export const DEFAULT_TDM_DURATION_SEC: TdmDurationSec = 180;
 export const KILL_RACE_TARGET_OPTIONS = [10, 15, 20] as const;
 export type KillRaceTarget = (typeof KILL_RACE_TARGET_OPTIONS)[number];
 export const DEFAULT_KILL_RACE_TARGET: KillRaceTarget = 15;
+
+/** Plasma Harvest series: first to N round wins (best-of 2N-1). */
+export const HARVEST_ROUNDS_TO_WIN_OPTIONS = [3, 4] as const;
+export type HarvestRoundsToWin = (typeof HARVEST_ROUNDS_TO_WIN_OPTIONS)[number];
+export const DEFAULT_HARVEST_ROUNDS_TO_WIN: HarvestRoundsToWin = 3;
+/** Showcase / ROUND WON hold before next countdown or match results. */
+export const HARVEST_ROUND_END_SEC = 5;
 
 export const TDM_COUNTDOWN_SEC = 10;
 /** Minimum time the pre-match roster screen stays up before countdown. */
@@ -155,25 +167,50 @@ export function normalizeKillRaceTarget(value: number | null | undefined): KillR
   return isValidKillRaceTarget(value) ? value : DEFAULT_KILL_RACE_TARGET;
 }
 
-/** Resolve create-room duration / kill-limit from mode + lobby picks. */
+export function isValidHarvestRoundsToWin(
+  value: number | null | undefined,
+): value is HarvestRoundsToWin {
+  return (
+    typeof value === 'number' &&
+    (HARVEST_ROUNDS_TO_WIN_OPTIONS as readonly number[]).includes(value)
+  );
+}
+
+export function normalizeHarvestRoundsToWin(
+  value: number | null | undefined,
+): HarvestRoundsToWin {
+  return isValidHarvestRoundsToWin(value) ? value : DEFAULT_HARVEST_ROUNDS_TO_WIN;
+}
+
+/** Resolve create-room rules from mode + lobby picks. */
 export function resolveMatchRules(
   mode: GameMode,
   durationSec?: number | null,
   killTarget?: number | null,
-): { matchDurationSec: number; killLimit: number } {
+  roundsToWin?: number | null,
+): { matchDurationSec: number; killLimit: number; roundsToWin: number } {
   if (mode === 'tdm') {
     return {
       matchDurationSec: normalizeTdmDurationSec(durationSec),
       killLimit: 0,
+      roundsToWin: 0,
     };
   }
   if (mode === 'tdm_kills') {
     return {
       matchDurationSec: 0,
       killLimit: normalizeKillRaceTarget(killTarget),
+      roundsToWin: 0,
     };
   }
-  return { matchDurationSec: 0, killLimit: 0 };
+  if (mode === 'plasma_harvest') {
+    return {
+      matchDurationSec: 0,
+      killLimit: 0,
+      roundsToWin: normalizeHarvestRoundsToWin(roundsToWin),
+    };
+  }
+  return { matchDurationSec: 0, killLimit: 0, roundsToWin: 0 };
 }
 
 /** Big-text objective shown during the pre-match countdown. */
@@ -181,6 +218,7 @@ export function getMatchObjectiveBanner(
   mode: GameMode | string | null | undefined,
   matchDurationSec: number,
   killLimit: number,
+  roundsToWin = 0,
 ): string {
   if (mode === 'tdm_kills') {
     const target = killLimit > 0 ? killLimit : DEFAULT_KILL_RACE_TARGET;
@@ -192,7 +230,9 @@ export function getMatchObjectiveBanner(
     return `Get as many kills as possible in ${mins} min${mins === 1 ? '' : 's'}`;
   }
   if (mode === 'plasma_harvest') {
-    return 'Steal the enemy harvesting box and install it at your base';
+    const target =
+      roundsToWin > 0 ? roundsToWin : DEFAULT_HARVEST_ROUNDS_TO_WIN;
+    return `First to ${target} installs wins the match`;
   }
   return '';
 }
@@ -204,6 +244,12 @@ export function formatDurationOptionLabel(durationSec: number): string {
 
 export function formatKillTargetOptionLabel(kills: number): string {
   return `${kills} KILLS`;
+}
+
+/** Lobby label for Harvest series length (e.g. 3 → "3 OF 5"). */
+export function formatHarvestRoundsOptionLabel(roundsToWin: number): string {
+  const bestOf = Math.max(1, roundsToWin * 2 - 1);
+  return `${roundsToWin} OF ${bestOf}`;
 }
 
 /** Humans required before a competitive match leaves the lobby. */
@@ -227,7 +273,12 @@ export function formatMatchTimer(secondsRemaining: number): string {
 }
 
 export function normalizeMatchPhase(value: string | null | undefined): MatchPhase {
-  if (value === 'countdown' || value === 'playing' || value === 'ended') {
+  if (
+    value === 'countdown' ||
+    value === 'playing' ||
+    value === 'round_end' ||
+    value === 'ended'
+  ) {
     return value;
   }
   return 'waiting';

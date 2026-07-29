@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { configureColorTexture, optimizeObjectTextures } from '../content/textureQuality';
 
 const ASSET_BASE = '/3d/';
 export const LOBBY_MAP_MODEL = 'lobby_map.glb';
@@ -72,8 +73,7 @@ function toMeshyEmissiveMaterial(
 ): THREE.MeshPhongMaterial {
   const emissiveMap = pickEmissiveTexture(source);
   if (emissiveMap) {
-    emissiveMap.colorSpace = THREE.SRGBColorSpace;
-    emissiveMap.needsUpdate = true;
+    configureColorTexture(emissiveMap);
   }
 
   const solid = options.solidEmissive;
@@ -320,6 +320,7 @@ export class LobbyMap {
       );
       const mapRoot = gltf.scene;
       prepareLobbyMapRoot(mapRoot);
+      optimizeObjectTextures(mapRoot);
       this.mapRoot = mapRoot;
       this.group.add(mapRoot);
       this.loaded = true;

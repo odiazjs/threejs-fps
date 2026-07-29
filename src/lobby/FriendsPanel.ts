@@ -437,6 +437,7 @@ export class FriendsPanel {
       gameMode: rules.gameMode,
       matchDurationSec: rules.matchDurationSec,
       killLimit: rules.killLimit,
+      roundsToWin: rules.roundsToWin,
     };
     setGameJoinIntent(intent);
 
@@ -479,6 +480,7 @@ export class FriendsPanel {
       rules.gameMode,
       rules.matchDurationSec,
       rules.killLimit,
+      rules.roundsToWin,
     );
   }
 
@@ -508,6 +510,7 @@ export class FriendsPanel {
     gameMode?: string;
     matchDurationSec?: number;
     killLimit?: number;
+    roundsToWin?: number;
     participants?: import('../../shared/network/gameInvite').GameLaunchParticipant[];
   }): void {
     this.clearLaunchTimeout();
@@ -521,6 +524,7 @@ export class FriendsPanel {
       gameMode: (data.gameMode as typeof rules.gameMode | undefined) ?? rules.gameMode,
       matchDurationSec: data.matchDurationSec ?? rules.matchDurationSec,
       killLimit: data.killLimit ?? rules.killLimit,
+      roundsToWin: data.roundsToWin ?? rules.roundsToWin,
       ...(typeof data.teamId === 'number' ? { teamId: data.teamId } : {}),
       ...(data.participants && data.participants.length > 0
         ? { participants: data.participants }

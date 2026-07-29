@@ -7,6 +7,7 @@ import {
   TDM_MAP_WIDTH,
 } from '../../shared/level/tdmMapConfig';
 import { prepareTdmMapRoot } from '../../shared/level/tdmMapMeshPrep';
+import { optimizeObjectTextures } from '../content/textureQuality';
 
 const ASSET_BASE = '/3d/';
 const FLOOR_COLOR = 0x6a7078;
@@ -73,6 +74,7 @@ export class TdmMap {
       mapRoot.name = 'tdm_map';
       prepareTdmMapRoot(mapRoot);
       applyFloorMaterial(mapRoot);
+      optimizeObjectTextures(mapRoot);
       this.group.add(mapRoot);
       this.loaded = true;
       console.info(`[TdmMap] Loaded ${TDM_MAP_MODEL}`);

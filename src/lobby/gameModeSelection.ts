@@ -1,24 +1,30 @@
 import {
   DEFAULT_GAME_MODE,
+  DEFAULT_HARVEST_ROUNDS_TO_WIN,
   DEFAULT_KILL_RACE_TARGET,
   DEFAULT_TDM_DURATION_SEC,
   formatDurationOptionLabel,
+  formatHarvestRoundsOptionLabel,
   formatKillTargetOptionLabel,
   GAME_MODE_OPTIONS,
+  HARVEST_ROUNDS_TO_WIN_OPTIONS,
   isCompetitiveGameMode,
   isKillRaceGameMode,
   isPlasmaHarvestGameMode,
   isTimedGameMode,
   isValidGameMode,
+  isValidHarvestRoundsToWin,
   isValidKillRaceTarget,
   isValidTdmDurationSec,
   KILL_RACE_TARGET_OPTIONS,
+  normalizeHarvestRoundsToWin,
   normalizeKillRaceTarget,
   normalizeTdmDurationSec,
   PLASMA_HARVEST_MAP_ID,
   resolveMatchRules,
   TDM_DURATION_OPTIONS_SEC,
   type GameMode,
+  type HarvestRoundsToWin,
   type KillRaceTarget,
   type TdmDurationSec,
 } from '../../shared/combat/match';
@@ -26,6 +32,7 @@ import {
 const MODE_STORAGE_KEY = 'fps_selected_game_mode';
 const DURATION_STORAGE_KEY = 'fps_selected_match_duration_sec';
 const KILL_TARGET_STORAGE_KEY = 'fps_selected_kill_race_target';
+const ROUNDS_STORAGE_KEY = 'fps_selected_harvest_rounds_to_win';
 const MAP_STORAGE_KEY = 'fps_selected_map_id';
 
 const MODE_INITIALS: Record<GameMode, string> = {
@@ -86,11 +93,29 @@ export function setSelectedKillRaceTarget(target: KillRaceTarget): void {
   }
 }
 
+export function getSelectedHarvestRoundsToWin(): HarvestRoundsToWin {
+  try {
+    const raw = Number(localStorage.getItem(ROUNDS_STORAGE_KEY));
+    return isValidHarvestRoundsToWin(raw) ? raw : DEFAULT_HARVEST_ROUNDS_TO_WIN;
+  } catch {
+    return DEFAULT_HARVEST_ROUNDS_TO_WIN;
+  }
+}
+
+export function setSelectedHarvestRoundsToWin(roundsToWin: HarvestRoundsToWin): void {
+  try {
+    localStorage.setItem(ROUNDS_STORAGE_KEY, String(roundsToWin));
+  } catch {
+    // ignore
+  }
+}
+
 /** Lobby → room create options for the currently selected mode. */
 export function getSelectedMatchRules(): {
   gameMode: GameMode;
   matchDurationSec: number;
   killLimit: number;
+  roundsToWin: number;
 } {
   const gameMode = getSelectedGameMode();
   return {
@@ -99,6 +124,7 @@ export function getSelectedMatchRules(): {
       gameMode,
       getSelectedMatchDurationSec(),
       getSelectedKillRaceTarget(),
+      getSelectedHarvestRoundsToWin(),
     ),
   };
 }
@@ -159,16 +185,38 @@ function renderKillTargetOptions(track: HTMLElement, selected: KillRaceTarget): 
   syncOptionButtons(track, String(selected));
 }
 
+function renderHarvestRoundsOptions(
+  track: HTMLElement,
+  selected: HarvestRoundsToWin,
+): void {
+  track.replaceChildren();
+  for (const rounds of HARVEST_ROUNDS_TO_WIN_OPTIONS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'lobby-mode-option-btn';
+    btn.dataset.value = String(rounds);
+    btn.textContent = formatHarvestRoundsOptionLabel(rounds);
+    btn.addEventListener('click', () => {
+      setSelectedHarvestRoundsToWin(rounds);
+      syncOptionButtons(track, String(rounds));
+    });
+    track.appendChild(btn);
+  }
+  syncOptionButtons(track, String(selected));
+}
+
 function syncModeOptionsUi(mode: GameMode): void {
   const root = document.getElementById('lobby-mode-options');
   const durationGroup = document.getElementById('lobby-mode-duration');
   const killsGroup = document.getElementById('lobby-mode-kills');
-  if (!root || !durationGroup || !killsGroup) return;
+  const roundsGroup = document.getElementById('lobby-mode-rounds');
+  if (!root || !durationGroup || !killsGroup || !roundsGroup) return;
 
   const showOptions = isCompetitiveGameMode(mode);
   root.hidden = !showOptions;
   durationGroup.hidden = !isTimedGameMode(mode);
   killsGroup.hidden = !isKillRaceGameMode(mode);
+  roundsGroup.hidden = !isPlasmaHarvestGameMode(mode);
 }
 
 export function initLobbyGameModeSelector(): void {
@@ -177,6 +225,7 @@ export function initLobbyGameModeSelector(): void {
   const nextBtn = document.getElementById('lobby-mode-next');
   const durationTrack = document.getElementById('lobby-mode-duration-track');
   const killsTrack = document.getElementById('lobby-mode-kills-track');
+  const roundsTrack = document.getElementById('lobby-mode-rounds-track');
   if (!track) return;
 
   track.replaceChildren();
@@ -231,6 +280,12 @@ export function initLobbyGameModeSelector(): void {
   }
   if (killsTrack) {
     renderKillTargetOptions(killsTrack, normalizeKillRaceTarget(getSelectedKillRaceTarget()));
+  }
+  if (roundsTrack) {
+    renderHarvestRoundsOptions(
+      roundsTrack,
+      normalizeHarvestRoundsToWin(getSelectedHarvestRoundsToWin()),
+    );
   }
   syncModeOptionsUi(selectedId);
 

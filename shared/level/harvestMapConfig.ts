@@ -55,3 +55,45 @@ export function isHarvestMapHarvestingBoxName(name: string | undefined): boolean
   if (typeof name !== 'string') return false;
   return /^harvesting_box_(orange|blue)$/i.test(name.trim());
 }
+
+/**
+ * Team base placement markers in harvest_map.glb.
+ * Accepts `team_blue_base` / `team_orange_base` (preferred) and legacy
+ * `team_base_blue` / `team_base_orange`.
+ */
+export function isHarvestMapTeamBaseName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  const n = name.trim();
+  return (
+    /^team_(blue|orange)_base$/i.test(n) || /^team_base_(blue|orange)$/i.test(n)
+  );
+}
+
+export function harvestTeamBaseTeamId(name: string | undefined): 0 | 1 | null {
+  if (!isHarvestMapTeamBaseName(name)) return null;
+  return /blue/i.test(name!) ? 0 : 1;
+}
+
+/** Child of a team base: where that team's harvesting box spawns. */
+export function isHarvestMapOwnBoxSpawnName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  return /^base_own_box_spawn(_\d+)?$/i.test(name.trim());
+}
+
+/**
+ * Child of a team base: where an opponent's harvesting box is installed
+ * to score.
+ */
+export function isHarvestMapInstallBoxPosName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  return /^base_install_box_pos(_\d+)?$/i.test(name.trim());
+}
+
+/** Default world height for empty team-base markers (drives FBX uniform scale). */
+export const HARVEST_TEAM_BASE_DEFAULT_HEIGHT = 5;
+
+/** Center hill wall mesh replaced at runtime by Meshy FBX. */
+export function isHarvestMapHillWallName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  return /^hill_wall$/i.test(name.trim());
+}

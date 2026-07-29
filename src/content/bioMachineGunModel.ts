@@ -6,6 +6,7 @@ import {
   FBX_WEAPON_ASSET_BASE,
   prepareFbxWeaponMesh,
 } from './fbxWeaponMesh';
+import { configureColorTexture, configureDataTexture } from './textureQuality';
 
 const BIO_MACHINE_GUN_MODEL_FILE = 'meshy_lmg_bottom.fbx';
 const BIO_MACHINE_GUN_ALBEDO_URL = '/images/weapons/meshy_lmg_texture.png';
@@ -35,9 +36,11 @@ function loadTexture(url: string, colorSpace: THREE.ColorSpace): Promise<THREE.T
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = colorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        if (colorSpace === THREE.SRGBColorSpace) {
+          configureColorTexture(texture);
+        } else {
+          configureDataTexture(texture);
+        }
         resolve(texture);
       },
       undefined,

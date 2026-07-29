@@ -19,13 +19,21 @@ export interface MinimapLayout {
   }>;
 }
 
-export type MinimapBlipKind = 'self' | 'teammate' | 'enemy' | 'ping';
+export type MinimapBlipKind =
+  | 'self'
+  | 'teammate'
+  | 'enemy'
+  | 'ping'
+  | 'teamBase'
+  | 'harvestBox';
 
 export interface MinimapBlip {
   x: number;
   z: number;
   kind: MinimapBlipKind;
   yaw?: number;
+  /** Used by `teamBase` / `harvestBox` for team coloring. */
+  teamId?: number;
 }
 
 export interface MinimapUpdateState {

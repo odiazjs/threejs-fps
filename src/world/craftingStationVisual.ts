@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { FBX_WEAPON_ASSET_BASE } from '../content/fbxWeaponMesh';
+import { configureColorTexture } from '../content/textureQuality';
 import { CRAFTING_STATION_HEIGHT } from '../../shared/level/craftingStationSpawns';
 
 const STATION_FBX = 'game_modes/crafting_station.fbx';
@@ -21,9 +22,7 @@ function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         resolve(texture);
       },
       undefined,

@@ -6,6 +6,7 @@ import {
   FBX_WEAPON_ASSET_BASE,
   prepareFbxWeaponMesh,
 } from './fbxWeaponMesh';
+import { configureColorTexture } from './textureQuality';
 
 const SNIPER_MODEL_FILE = 'weapons/sniper_1/sniper_1.fbx';
 const SNIPER_EMISSIVE_MAP_URL = '/3d/weapons/sniper_1/sniper_1_texture.png';
@@ -39,9 +40,7 @@ function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         resolve(texture);
       },
       undefined,

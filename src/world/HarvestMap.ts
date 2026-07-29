@@ -5,14 +5,20 @@ import {
   HARVEST_MAP_DEPTH,
   HARVEST_MAP_MODEL,
   HARVEST_MAP_WIDTH,
+  isHarvestMapTeamBaseName,
 } from '../../shared/level/harvestMapConfig';
 import {
   extractHarvestMapCraftingStationSpawns,
   extractHarvestMapHarvestingBoxSpawns,
+  extractHarvestMapTeamBaseAnchors,
+  extractHarvestMapHillWallAnchors,
   prepareHarvestMapRoot,
 } from '../../shared/level/harvestMapMeshPrep';
 import type { CraftingStationSpawn } from '../../shared/level/craftingStationSpawns';
 import type { HarvestingBoxSpawn } from '../../shared/level/harvestingBoxSpawns';
+import { configureColorTexture, optimizeObjectTextures } from '../content/textureQuality';
+import { createTeamBaseMesh } from './teamBaseVisual';
+import { createHillWallMesh } from './hillWallVisual';
 
 const ASSET_BASE = '/3d/';
 /** Fallback when Floor has no texture (matches authored solid). */
@@ -48,8 +54,7 @@ function toMeshyEmissiveMaterial(
 ): THREE.MeshPhongMaterial {
   const emissiveMap = pickEmissiveTexture(source);
   if (emissiveMap) {
-    emissiveMap.colorSpace = THREE.SRGBColorSpace;
-    emissiveMap.needsUpdate = true;
+    configureColorTexture(emissiveMap);
   }
 
   const solid = options.solidEmissive;
@@ -151,11 +156,13 @@ export class HarvestMap {
       const mapRoot = gltf.scene;
       mapRoot.name = 'harvest_map';
       prepareHarvestMapRoot(mapRoot);
-      // Markers stay in the graph after hide ó read foot poses for runtime FBX spawns.
       this.craftingStationSpawns = extractHarvestMapCraftingStationSpawns(mapRoot);
       this.harvestingBoxSpawns = extractHarvestMapHarvestingBoxSpawns(mapRoot);
       applyHarvestMaterials(mapRoot);
+      optimizeObjectTextures(mapRoot);
       this.group.add(mapRoot);
+      await this.spawnTeamBaseFbxs(mapRoot);
+      await this.replaceHillWallFbx(mapRoot);
       this.loaded = true;
       console.info(
         `[HarvestMap] Loaded ${HARVEST_MAP_MODEL} (${this.craftingStationSpawns.length} craft markers, ${this.harvestingBoxSpawns.length} box markers)`,
@@ -166,6 +173,90 @@ export class HarvestMap {
         error,
       );
       this.group.add(createFallbackFloor());
+    }
+  }
+
+  /** Place Meshy team-base FBXs on `team_blue_base` / `team_orange_base` markers. */
+  private async spawnTeamBaseFbxs(mapRoot: THREE.Object3D): Promise<void> {
+    let hasMarkers = false;
+    mapRoot.traverse((child) => {
+      if (isHarvestMapTeamBaseName(child.name)) hasMarkers = true;
+    });
+    if (!hasMarkers) {
+      console.warn(
+        '[HarvestMap] No team_blue_base / team_orange_base markers ó using fallback poses',
+      );
+    }
+
+    const anchors = extractHarvestMapTeamBaseAnchors(mapRoot);
+    for (const anchor of anchors) {
+      try {
+        const mesh = await createTeamBaseMesh(anchor.teamId, anchor.size.y);
+        const root = new THREE.Group();
+        root.name =
+          anchor.teamId === 0 ? 'teamBaseBlueFbx' : 'teamBaseOrangeFbx';
+        root.add(mesh);
+
+        // Feet of normalized mesh are at local y=0 ó sit on marker ground.
+        root.position.set(anchor.position.x, anchor.groundY, anchor.position.z);
+        root.quaternion.copy(anchor.quaternion);
+        root.updateMatrixWorld(true);
+
+        const placed = new THREE.Box3().setFromObject(root);
+        if (Number.isFinite(placed.min.y)) {
+          root.position.y -= placed.min.y - anchor.groundY;
+        }
+
+        this.group.add(root);
+        console.info(
+          `[HarvestMap] Placed team ${anchor.teamId === 0 ? 'blue' : 'orange'} base FBX ` +
+            `(h=${anchor.size.y.toFixed(2)} at ${anchor.position.x.toFixed(1)},${anchor.position.z.toFixed(1)})`,
+        );
+      } catch (error) {
+        console.warn(
+          `[HarvestMap] Failed to load team base FBX (team ${anchor.teamId})`,
+          error,
+        );
+      }
+    }
+  }
+
+  /**
+   * Replace authored `hill_wall` with Meshy FBX at the same world center,
+   * quaternion, and matched uniform scale.
+   */
+  private async replaceHillWallFbx(mapRoot: THREE.Object3D): Promise<void> {
+    const anchors = extractHarvestMapHillWallAnchors(mapRoot);
+    if (anchors.length === 0) {
+      console.warn('[HarvestMap] No hill_wall object found ù skip FBX replace');
+      return;
+    }
+
+    for (let i = 0; i < anchors.length; i++) {
+      const anchor = anchors[i]!;
+      try {
+        const mesh = await createHillWallMesh(anchor.size);
+        const root = new THREE.Group();
+        root.name = anchors.length === 1 ? 'hillWallFbx' : `hillWallFbx_${i}`;
+        root.add(mesh);
+        root.position.copy(anchor.position);
+        root.quaternion.copy(anchor.quaternion);
+        root.updateMatrixWorld(true);
+
+        const placed = new THREE.Box3().setFromObject(root);
+        if (!placed.isEmpty()) {
+          const center = placed.getCenter(new THREE.Vector3());
+          root.position.add(anchor.position.clone().sub(center));
+        }
+
+        this.group.add(root);
+        console.info(
+          `[HarvestMap] Replaced hill_wall with FBX ` +
+            `(size ${anchor.size.x.toFixed(1)}x${anchor.size.y.toFixed(1)}x${anchor.size.z.toFixed(1)})`,
+        );
+      } catch (error) {
+        console.warn('[HarvestMap] Failed to load hill_wall.fbx', error);
+      }
     }
   }
 }

@@ -11,6 +11,7 @@ import {
   fbxWeaponAssetUrl,
   FBX_WEAPON_ASSET_BASE,
 } from './fbxWeaponMesh';
+import { configureColorTexture } from './textureQuality';
 
 export const SIGHT_MOUNT_NAME = 'sight_mount';
 export const PHYSICAL_SIGHT_OBJECT_NAME = 'physicalSight';
@@ -161,9 +162,7 @@ function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         textureCache.set(url, texture);
         resolve(texture);
       },

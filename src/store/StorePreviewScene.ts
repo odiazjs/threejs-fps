@@ -10,6 +10,7 @@ import {
   applyMeshyCharacterMaterial,
   isSharedCharacterMesh,
 } from '../content/meshyCharacterMaterial';
+import { bindTextureQualityRenderer } from '../content/textureQuality';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 import { applyCharacterFace } from '../player/characterFace';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
@@ -127,6 +128,7 @@ export class StorePreviewScene {
     this.camera.position.set(DEFAULT_CAMERA_X, DEFAULT_CAMERA_Y, DEFAULT_CAMERA_Z);
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    bindTextureQualityRenderer(this.renderer);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(1, 1, false);
     this.renderer.setClearColor(0x000000, 0);

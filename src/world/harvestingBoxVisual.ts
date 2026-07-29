@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { FBX_WEAPON_ASSET_BASE } from '../content/fbxWeaponMesh';
+import { configureColorTexture } from '../content/textureQuality';
 
 const BOX_FBX = 'game_modes/harvesting_box.fbx';
 const BOX_TEXTURE = '/3d/game_modes/harvesting_box_texture.png';
@@ -15,9 +16,7 @@ function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         resolve(texture);
       },
       undefined,

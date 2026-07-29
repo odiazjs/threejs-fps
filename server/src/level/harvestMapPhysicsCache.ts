@@ -37,7 +37,7 @@ async function buildHarvestMapPhysicsWorld(): Promise<LevelPhysicsWorld> {
 
   if (!existsSync(collisionPath)) {
     throw new Error(
-      `[ServerPhysics] Missing ${HARVEST_MAP_COLLISION_BAKE} ù run \`npm run bake:harvest-map\` and redeploy`,
+      `[ServerPhysics] Missing ${HARVEST_MAP_COLLISION_BAKE} ? run \`npm run bake:harvest-map\` and redeploy`,
     );
   }
 
@@ -65,13 +65,13 @@ async function buildHarvestMapPhysicsWorld(): Promise<LevelPhysicsWorld> {
       );
     } catch (error) {
       console.warn(
-        '[ServerPhysics] Failed to parse Harvest bake metadata ù using default spawns',
+        '[ServerPhysics] Failed to parse Harvest bake metadata ? using default spawns',
         error,
       );
     }
   } else {
     console.warn(
-      `[ServerPhysics] Missing ${HARVEST_MAP_METADATA_BAKE} ù using default Harvest spawns`,
+      `[ServerPhysics] Missing ${HARVEST_MAP_METADATA_BAKE} ? using default Harvest spawns`,
     );
   }
 
@@ -80,7 +80,10 @@ async function buildHarvestMapPhysicsWorld(): Promise<LevelPhysicsWorld> {
   }
 
   console.info(
-    `[ServerPhysics] Built Harvest trimesh collision (${Math.round(indices.length / 3)} tris)`,
+    `[ServerPhysics] Built Harvest trimesh collision (${Math.round(indices.length / 3)} tris)`
+      + (stationColliders.length > 0
+        ? `, ${stationColliders.length} craft stations`
+        : ''),
   );
 
   return world;

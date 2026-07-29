@@ -4,6 +4,10 @@ import type {
   MinimapLayout,
   MinimapUpdateState,
 } from './minimapTypes';
+import {
+  HARVEST_TEAM_VIVID_COLORS,
+  TEAM_COLORS,
+} from '../../shared/combat/teams';
 
 export interface MinimapRenderStyle {
   canvasSize: number;
@@ -35,12 +39,21 @@ export const TACTICAL_MAP_RENDER_STYLE: MinimapRenderStyle = {
   wedgeLength: 28,
 };
 
-const BLIP_COLORS: Record<MinimapBlip['kind'], string> = {
+const BLIP_COLORS: Record<'self' | 'teammate' | 'enemy' | 'ping', string> = {
   self: '#5ce8ff',
   teammate: '#6aa8ff',
   enemy: '#ff7a62',
   ping: '#00f2ff',
 };
+
+function teamBlipColor(teamId: number | undefined): string {
+  const id = typeof teamId === 'number' ? teamId : 0;
+  return (
+    HARVEST_TEAM_VIVID_COLORS[id % HARVEST_TEAM_VIVID_COLORS.length] ??
+    TEAM_COLORS[id % TEAM_COLORS.length] ??
+    TEAM_COLORS[0]!
+  );
+}
 
 export class MinimapRenderer {
   private readonly staticCanvas: HTMLCanvasElement;
@@ -149,6 +162,17 @@ export class MinimapRenderer {
     bounds: MinimapBounds,
   ): void {
     const point = this.worldToCanvas(blip.x, blip.z, bounds);
+
+    if (blip.kind === 'teamBase') {
+      this.drawTeamBaseMarker(ctx, point.x, point.y, teamBlipColor(blip.teamId));
+      return;
+    }
+
+    if (blip.kind === 'harvestBox') {
+      this.drawHarvestBoxMarker(ctx, point.x, point.y, teamBlipColor(blip.teamId));
+      return;
+    }
+
     const color = BLIP_COLORS[blip.kind];
 
     if (blip.kind === 'ping') {
@@ -168,6 +192,53 @@ export class MinimapRenderer {
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.lineWidth = 1;
     ctx.stroke();
+  }
+
+  /** Squared pad marker for a team base. */
+  private drawTeamBaseMarker(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    color: string,
+  ): void {
+    const size = this.style.blipRadiusOther * 2.15;
+    const half = size * 0.5;
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.PI / 4);
+    ctx.shadowColor = withAlpha(color, 0.85);
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = withAlpha(color, 0.92);
+    ctx.fillRect(-half, -half, size, size);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.lineWidth = 1.25;
+    ctx.strokeRect(-half + 0.5, -half + 0.5, size - 1, size - 1);
+    ctx.restore();
+  }
+
+  /** Small crate square for the team's harvesting box. */
+  private drawHarvestBoxMarker(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    color: string,
+  ): void {
+    const size = this.style.blipRadiusOther * 1.55;
+    const half = size * 0.5;
+
+    ctx.shadowColor = withAlpha(color, 0.9);
+    ctx.shadowBlur = 7;
+    ctx.fillStyle = color;
+    ctx.fillRect(x - half, y - half, size, size);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 1.25;
+    ctx.strokeRect(x - half + 0.5, y - half + 0.5, size - 1, size - 1);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - half - 0.5, y - half - 0.5, size + 1, size + 1);
   }
 
   /** Downward-pointing neon triangle for team pings. */

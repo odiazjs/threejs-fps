@@ -31,6 +31,7 @@ import {
   resolveMapForGameMode,
   resolveMatchRules,
   resolveTdmTeamCount,
+  HARVEST_ROUND_END_SEC,
   TDM_COUNTDOWN_SEC,
   TDM_KILL_POINTS,
   teamScoreToKills,
@@ -164,6 +165,7 @@ import {
   getHarvestingBoxSpawns,
   HARVESTING_BOX_INTERACT_DISTANCE,
   harvestingBoxInstallSpot,
+  harvestingBoxSurfaceY,
 } from '../../../shared/level/harvestingBoxSpawns.js';
 import {
   HARVESTING_BOX_INTERACT_MESSAGE,
@@ -240,6 +242,7 @@ interface JoinOptions {
   gameMode?: string;
   matchDurationSec?: number;
   killLimit?: number;
+  roundsToWin?: number;
 }
 
 interface LastShotOrigin {
@@ -317,10 +320,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         this.gameMode,
         options.matchDurationSec,
         options.killLimit,
+        options.roundsToWin,
       );
       this.state.matchPhase = 'waiting';
       this.state.matchDurationSec = rules.matchDurationSec;
       this.state.killLimit = rules.killLimit;
+      this.state.roundsToWin = rules.roundsToWin;
+      this.state.currentRound = 1;
+      this.state.roundEndAt = 0;
+      this.state.lastRoundWinnerTeamId = -1;
       this.state.expectedPlayers = this.expectedPlayers > 0
         ? this.expectedPlayers
         : defaultTdmExpectedPlayers(mapId);
@@ -361,11 +369,14 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       box.index = spawn.index;
       box.teamId = spawn.teamId;
       box.x = spawn.x;
-      box.y = spawn.y;
+      box.y = harvestingBoxSurfaceY(spawn.y);
       box.z = spawn.z;
       box.homeX = spawn.x;
-      box.homeY = spawn.y;
+      box.homeY = harvestingBoxSurfaceY(spawn.y);
       box.homeZ = spawn.z;
+      box.installX = spawn.installX;
+      box.installY = harvestingBoxSurfaceY(spawn.installY);
+      box.installZ = spawn.installZ;
       box.carriedBySessionId = '';
       this.state.harvestingBoxes.push(box);
     }
@@ -387,6 +398,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.tickTrainingBots(deltaSec);
       this.tickMatchState();
       this.tickWorldPickupRespawns();
+      this.tickCarriedHarvestingBoxes();
       this.tickGrenades();
     });
 
@@ -630,6 +642,20 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
   }
 
+  /** Keep carried crate xz on the carrier so teammates' minimaps stay synced. */
+  private tickCarriedHarvestingBoxes(): void {
+    if (!isPlasmaHarvestGameMode(this.gameMode)) return;
+    for (const box of this.state.harvestingBoxes) {
+      const carrierId = box.carriedBySessionId;
+      if (!carrierId) continue;
+      const carrier = this.state.players.get(carrierId);
+      if (!carrier) continue;
+      box.x = carrier.x;
+      box.z = carrier.z;
+      box.y = this.playerFeetY(carrier);
+    }
+  }
+
   private scheduleAmmoRespawn(index: number): void {
     this.ammoRespawnAt.set(index, this.state.worldTime + WORLD_PICKUP_RESPAWN_SEC);
   }
@@ -715,6 +741,17 @@ export class FpsRoom extends Room<{ state: FpsState }> {
           this.assignTdmTeams();
           this.teleportHumansToTeamSpawns();
           this.resetMatchKills();
+          if (isPlasmaHarvestGameMode(this.gameMode)) {
+            this.state.teamScore0 = 0;
+            this.state.teamScore1 = 0;
+            this.state.teamScore2 = 0;
+            this.state.teamScore3 = 0;
+            this.state.currentRound = 1;
+            this.state.lastRoundWinnerTeamId = -1;
+            this.state.roundEndAt = 0;
+            this.resetHarvestingBoxesToHomes();
+            this.clearAllHarvestCarriers();
+          }
           this.state.matchPhase = 'countdown';
           this.state.matchCountdownEndAt = now + TDM_COUNTDOWN_SEC;
         }
@@ -730,6 +767,24 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         this.state.matchStartAt = now;
         this.state.matchEndAt =
           this.state.matchDurationSec > 0 ? now + this.state.matchDurationSec : 0;
+      }
+      return;
+    }
+
+    if (this.state.matchPhase === 'round_end') {
+      if (now >= this.state.roundEndAt) {
+        const winner = this.state.lastRoundWinnerTeamId;
+        const wins = winner >= 0 ? this.getTeamScore(winner) : 0;
+        if (
+          isPlasmaHarvestGameMode(this.gameMode) &&
+          winner >= 0 &&
+          this.state.roundsToWin > 0 &&
+          wins >= this.state.roundsToWin
+        ) {
+          this.endMatchWithWinner(winner);
+          return;
+        }
+        this.startNextHarvestRound();
       }
       return;
     }
@@ -922,14 +977,85 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     });
   }
 
-  /** End match with an explicit winner (Plasma Harvest install). */
+  /** End match with an explicit winner (Plasma Harvest series clinch). */
   private endMatchWithWinner(teamId: number): void {
     if (this.state.matchPhase === 'ended') return;
     this.state.matchPhase = 'ended';
     this.state.winningTeamId = teamId;
+    this.state.roundEndAt = 0;
     void this.awardRankedMatchResults().catch((error) => {
       console.error('[rank] failed to award match results', error);
     });
+  }
+
+  /** Award a Plasma Harvest round and enter the showcase / ROUND WON phase. */
+  private beginHarvestRoundWin(teamId: number): void {
+    if (!isPlasmaHarvestGameMode(this.gameMode)) return;
+    if (this.state.matchPhase !== 'playing') return;
+
+    switch (teamId) {
+      case 0:
+        this.state.teamScore0 += 1;
+        break;
+      case 1:
+        this.state.teamScore1 += 1;
+        break;
+      case 2:
+        this.state.teamScore2 += 1;
+        break;
+      case 3:
+        this.state.teamScore3 += 1;
+        break;
+      default:
+        return;
+    }
+
+    this.state.lastRoundWinnerTeamId = teamId;
+    this.state.matchPhase = 'round_end';
+    this.state.roundEndAt = this.state.worldTime + HARVEST_ROUND_END_SEC;
+  }
+
+  private resetHarvestingBoxesToHomes(): void {
+    for (const box of this.state.harvestingBoxes) {
+      box.carriedBySessionId = '';
+      box.x = box.homeX;
+      box.y = box.homeY;
+      box.z = box.homeZ;
+    }
+  }
+
+  private clearAllHarvestCarriers(): void {
+    for (const player of this.state.players.values()) {
+      player.carryingHarvestingBoxIndex = -1;
+      player.installingHarvestingBox = false;
+    }
+  }
+
+  private prepareHumansForHarvestRound(): void {
+    for (const [sessionId, player] of this.state.players.entries()) {
+      if (isTrainingBotSessionId(sessionId)) continue;
+      player.hp = PLAYER_MAX_HP;
+      const shield = resetPlayerShield();
+      player.shieldLevel = shield.shieldLevel;
+      player.shieldPoints = shield.shieldPoints;
+      player.alive = true;
+      player.carryingHarvestingBoxIndex = -1;
+      player.installingHarvestingBox = false;
+      this.resetPlayerWeaponTiming(player);
+    }
+    this.teleportHumansToTeamSpawns();
+  }
+
+  private startNextHarvestRound(): void {
+    if (!isPlasmaHarvestGameMode(this.gameMode)) return;
+    this.resetHarvestingBoxesToHomes();
+    this.clearAllHarvestCarriers();
+    this.prepareHumansForHarvestRound();
+    this.state.currentRound = Math.max(1, this.state.currentRound) + 1;
+    this.state.lastRoundWinnerTeamId = -1;
+    this.state.roundEndAt = 0;
+    this.state.matchPhase = 'countdown';
+    this.state.matchCountdownEndAt = this.state.worldTime + TDM_COUNTDOWN_SEC;
   }
 
   /** Persist XP/RP for every authenticated human from in-room performance cache. */
@@ -2347,17 +2473,21 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       let ownHomeX = 0;
       let ownHomeZ = 0;
+      let ownInstallY = 0;
+      let ownInstall: { x: number; z: number } | null = null;
       let foundOwn = false;
       for (const other of this.state.harvestingBoxes) {
         if (other.teamId !== player.teamId) continue;
         ownHomeX = other.homeX;
         ownHomeZ = other.homeZ;
+        ownInstallY = other.installY;
+        ownInstall = { x: other.installX, z: other.installZ };
         foundOwn = true;
         break;
       }
       if (!foundOwn) return;
 
-      const spot = harvestingBoxInstallSpot(ownHomeX, ownHomeZ);
+      const spot = harvestingBoxInstallSpot(ownHomeX, ownHomeZ, ownInstall);
       const spotDist = Math.hypot(player.x - spot.x, player.z - spot.z);
       if (spotDist > HARVESTING_BOX_INTERACT_DISTANCE + 0.35) return;
 
@@ -2365,9 +2495,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.carryingHarvestingBoxIndex = -1;
       player.installingHarvestingBox = false;
       box.x = spot.x;
-      box.y = this.playerFeetY(player);
+      box.y = Number.isFinite(ownInstallY) && ownInstallY > 1e-3
+        ? ownInstallY
+        : harvestingBoxSurfaceY(this.playerFeetY(player));
       box.z = spot.z;
-      this.endMatchWithWinner(player.teamId);
+      this.beginHarvestRoundWin(player.teamId);
     }
   }
 

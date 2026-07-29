@@ -7,6 +7,7 @@ import {
   DEFAULT_GAME_MODE,
   isValidGameMode,
   normalizeGameMode,
+  normalizeHarvestRoundsToWin,
   normalizeKillRaceTarget,
   normalizeTdmDurationSec,
   resolveMapForGameMode,
@@ -27,6 +28,7 @@ export interface GameJoinIntent {
   gameMode?: GameMode;
   matchDurationSec?: number;
   killLimit?: number;
+  roundsToWin?: number;
   /** Prefetched at LAUNCH so the pre-match screen can render immediately. */
   participants?: GameLaunchParticipant[];
 }
@@ -95,6 +97,16 @@ function readStoredKillTargetPreference(): number {
   }
 }
 
+function readStoredHarvestRoundsPreference(): number {
+  try {
+    return normalizeHarvestRoundsToWin(
+      Number(localStorage.getItem('fps_selected_harvest_rounds_to_win')),
+    );
+  } catch {
+    return normalizeHarvestRoundsToWin(undefined);
+  }
+}
+
 function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | null {
   const gameMode = normalizeGameMode(raw.gameMode ?? readStoredGameModePreference());
   const mapId = resolveMapForGameMode(
@@ -105,6 +117,7 @@ function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | nul
     gameMode,
     raw.matchDurationSec ?? readStoredDurationPreference(),
     raw.killLimit ?? readStoredKillTargetPreference(),
+    raw.roundsToWin ?? readStoredHarvestRoundsPreference(),
   );
 
   const participants = normalizeParticipants(raw.participants);
@@ -116,6 +129,7 @@ function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | nul
       gameMode,
       matchDurationSec: rules.matchDurationSec,
       killLimit: rules.killLimit,
+      roundsToWin: rules.roundsToWin,
       ...(participants ? { participants } : {}),
     };
   }
@@ -128,6 +142,7 @@ function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | nul
       gameMode,
       matchDurationSec: rules.matchDurationSec,
       killLimit: rules.killLimit,
+      roundsToWin: rules.roundsToWin,
       ...(typeof raw.teamId === 'number' ? { teamId: raw.teamId } : {}),
       ...(participants ? { participants } : {}),
     };

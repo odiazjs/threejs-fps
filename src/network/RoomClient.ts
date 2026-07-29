@@ -175,6 +175,9 @@ function toHarvestingBoxSnapshot(box: HarvestingBoxState): HarvestingBoxSnapshot
     homeX: box.homeX ?? box.x,
     homeY: box.homeY ?? box.y,
     homeZ: box.homeZ ?? box.z,
+    installX: box.installX ?? box.homeX ?? box.x,
+    installY: box.installY ?? box.homeY ?? box.y,
+    installZ: box.installZ ?? box.homeZ ?? box.z,
     carriedBySessionId: box.carriedBySessionId || '',
   };
 }
@@ -280,6 +283,10 @@ export class RoomClient {
       matchEndAt: state.matchEndAt ?? 0,
       matchDurationSec: duration,
       killLimit: Math.max(0, state.killLimit ?? 0),
+      roundsToWin: Math.max(0, state.roundsToWin ?? 0),
+      currentRound: Math.max(1, state.currentRound ?? 1),
+      roundEndAt: state.roundEndAt ?? 0,
+      lastRoundWinnerTeamId: state.lastRoundWinnerTeamId ?? -1,
       winningTeamId: state.winningTeamId ?? -1,
     };
   }
@@ -321,6 +328,9 @@ export class RoomClient {
       }
       if (typeof joinIntent?.killLimit === 'number') {
         createOptions.killLimit = joinIntent.killLimit;
+      }
+      if (typeof joinIntent?.roundsToWin === 'number') {
+        createOptions.roundsToWin = joinIntent.roundsToWin;
       }
       this.room = await this.createWithRetry(client, createOptions);
     }

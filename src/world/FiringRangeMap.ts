@@ -9,6 +9,7 @@ import {
 import {
   prepareFiringRangeMapRoot,
 } from '../../shared/level/firingRangeMeshPrep';
+import { optimizeObjectTextures } from '../content/textureQuality';
 
 const ASSET_BASE = '/3d/';
 
@@ -56,6 +57,7 @@ export class FiringRangeMap {
       const mapRoot = gltf.scene;
       mapRoot.name = 'firing_range_map';
       prepareFiringRangeMapRoot(mapRoot);
+      optimizeObjectTextures(mapRoot);
       this.group.add(mapRoot);
       this.loaded = true;
       console.info(`[FiringRange] Loaded ${FIRING_RANGE_MODEL}`);

@@ -662,6 +662,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
       const matchDurationSec =
         typeof data.matchDurationSec === 'number' ? data.matchDurationSec : undefined;
       const killLimit = typeof data.killLimit === 'number' ? data.killLimit : undefined;
+      const roundsToWin =
+        typeof data.roundsToWin === 'number' ? data.roundsToWin : undefined;
 
       try {
 
@@ -680,6 +682,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
           matchDurationSec,
 
           killLimit,
+
+          roundsToWin,
 
         });
 
@@ -723,6 +727,7 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
             gameMode,
             matchDurationSec,
             killLimit,
+            roundsToWin,
             teamId: member.teamId,
             participants,
           };

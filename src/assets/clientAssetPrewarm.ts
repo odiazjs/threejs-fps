@@ -4,6 +4,7 @@ import { ImpactSoundService } from '../audio/ImpactSoundService';
 import { GrenadeSoundService } from '../audio/GrenadeSoundService';
 import { LoopingSoundService } from '../audio/LoopingSoundService';
 import { MatchSoundService } from '../audio/MatchSoundService';
+import { HarvestObjectiveSoundService } from '../audio/HarvestObjectiveSoundService';
 import { WeaponSoundService, collectWeaponSoundUrls } from '../audio/WeaponSoundService';
 import {
   GAME_DRONE_PROXIMITY_AUDIO,
@@ -23,6 +24,9 @@ import {
   GAME_SHIELD_CHARGE_END_AUDIO,
   GAME_WEAPON_SPATIAL_AUDIO,
   LOBBY_MUSIC_AUDIO,
+  HARVEST_OPP_HAS_BOX_AUDIO,
+  HARVEST_OPP_INSTALLING_BOX_AUDIO,
+  HARVEST_YOU_GOT_BOX_AUDIO,
   MATCH_COUNTDOWN_TICK_AUDIO,
   MATCH_END_10_SECS_AUDIO,
   MATCH_END_30_SECS_AUDIO,
@@ -61,6 +65,7 @@ async function preloadAllGameAudio(): Promise<void> {
   const footstepSounds = new FootstepSoundService();
   const impactSounds = new ImpactSoundService();
   const matchSounds = new MatchSoundService();
+  const harvestObjectiveSounds = new HarvestObjectiveSoundService();
 
   await Promise.all([
     weaponSounds.preload([
@@ -87,6 +92,10 @@ async function preloadAllGameAudio(): Promise<void> {
     matchSounds.preloadEnd30(MATCH_END_30_SECS_AUDIO),
     matchSounds.preloadEnd10(MATCH_END_10_SECS_AUDIO),
     matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
+    harvestObjectiveSounds.preloadHasBox(HARVEST_OPP_HAS_BOX_AUDIO),
+    harvestObjectiveSounds.preloadInstalling(HARVEST_OPP_INSTALLING_BOX_AUDIO),
+    harvestObjectiveSounds.preloadYouGotBox(HARVEST_YOU_GOT_BOX_AUDIO),
+    harvestObjectiveSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
     initUiSounds(),
     fetchAudioBuffer(LOBBY_MUSIC_AUDIO.src),
     fetchAudioBuffer(UI_HOVER_AUDIO.src),

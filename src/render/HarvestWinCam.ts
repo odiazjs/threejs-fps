@@ -7,7 +7,7 @@ const START_DISTANCE = 7;
 const START_HEIGHT = 3.2;
 const END_DISTANCE = 18;
 const END_HEIGHT = 11;
-const LOOK_HEIGHT = 0.55;
+const LOOK_HEIGHT = 0.4;
 const ORBIT_YAW = Math.PI * 0.35;
 
 /**

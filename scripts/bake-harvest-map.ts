@@ -19,16 +19,35 @@ import {
 } from '../shared/level/levelMeshCollisionUtils.js';
 import { installThreeNodePolyfills } from '../server/src/level/buildFiringRangeCollision.js';
 import { buildHarvestMapCollisionScene } from '../server/src/level/buildHarvestMapCollision.js';
+import { buildTeamBaseCollisionRoots } from '../server/src/level/buildTeamBaseCollision.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceDir = join(repoRoot, '3d');
 const publicDir = join(repoRoot, 'public/3d');
 
 /**
- * Vertex-clustering cell size (meters). Source is ~920k tris ó clustering
+ * Vertex-clustering cell size (meters). Source is ~920k tris ù clustering
  * keeps a playable silhouette for GitHub-friendly collision binaries.
  */
 const CLUSTER_CELL = Number(process.env.HARVEST_BAKE_CELL ?? '0.3');
+/** Finer cell for team-base FBX hulls (gameplay props players walk around). */
+const TEAM_BASE_CLUSTER_CELL = Number(process.env.HARVEST_TEAM_BASE_BAKE_CELL ?? '0.15');
+
+function concatCollisionBakes(
+  a: { positions: Float32Array; indices: Uint32Array },
+  b: { positions: Float32Array; indices: Uint32Array },
+): { positions: Float32Array; indices: Uint32Array } {
+  const positions = new Float32Array(a.positions.length + b.positions.length);
+  positions.set(a.positions, 0);
+  positions.set(b.positions, a.positions.length);
+  const vertexOffset = a.positions.length / 3;
+  const indices = new Uint32Array(a.indices.length + b.indices.length);
+  indices.set(a.indices, 0);
+  for (let i = 0; i < b.indices.length; i++) {
+    indices[a.indices.length + i] = (b.indices[i] as number) + vertexOffset;
+  }
+  return { positions, indices };
+}
 
 function round(value: number, decimals: number): number {
   const factor = 10 ** decimals;
@@ -163,11 +182,31 @@ async function main(): Promise<void> {
 
   const merged = buildMergedLevelCollisionGeometry(meshes);
   const sourceTris = Math.round((merged.index?.count ?? 0) / 3);
-  const { positions, indices, skippedNanTris } = decimateByClustering(
+  const mapBake = decimateByClustering(
     merged.attributes.position.array,
     merged.index!.array,
     CLUSTER_CELL,
   );
+
+  const teamBaseRoots = buildTeamBaseCollisionRoots(publicDir);
+  const teamBaseMeshes = collectLevelCollisionMeshes(teamBaseRoots);
+  let teamBaseTris = 0;
+  let teamBaseBake = {
+    positions: new Float32Array(0),
+    indices: new Uint32Array(0),
+    skippedNanTris: 0,
+  };
+  if (teamBaseMeshes.length > 0) {
+    const teamMerged = buildMergedLevelCollisionGeometry(teamBaseMeshes);
+    teamBaseTris = Math.round((teamMerged.index?.count ?? 0) / 3);
+    teamBaseBake = decimateByClustering(
+      teamMerged.attributes.position.array,
+      teamMerged.index!.array,
+      TEAM_BASE_CLUSTER_CELL,
+    );
+  }
+
+  const { positions, indices } = concatCollisionBakes(mapBake, teamBaseBake);
 
   const spawns = extractHarvestMapSpawnPoints(root).map((point) => ({
     x: round(point.x, 2),
@@ -186,7 +225,7 @@ async function main(): Promise<void> {
     maxY: -Infinity,
     maxZ: -Infinity,
   };
-  for (const mesh of meshes) {
+  for (const mesh of [...meshes, ...teamBaseMeshes]) {
     const box = meshWorldAabb(mesh);
     if (!box) continue;
     structuralBoxes.push(box);
@@ -227,7 +266,16 @@ async function main(): Promise<void> {
   );
   console.info(
     `[bake:harvest-map] Collision: ${meshes.length} meshes, ${sourceTris} -> `
-      + `${Math.round(indices.length / 3)} tris (cell ${CLUSTER_CELL}m, ${skippedNanTris} NaN tris skipped)`,
+      + `${Math.round(mapBake.indices.length / 3)} tris (cell ${CLUSTER_CELL}m, ${mapBake.skippedNanTris} NaN tris skipped)`,
+  );
+  if (teamBaseMeshes.length > 0) {
+    console.info(
+      `[bake:harvest-map] Team bases: ${teamBaseMeshes.length} meshes, ${teamBaseTris} -> `
+        + `${Math.round(teamBaseBake.indices.length / 3)} tris (cell ${TEAM_BASE_CLUSTER_CELL}m)`,
+    );
+  }
+  console.info(
+    `[bake:harvest-map] Combined trimesh: ${Math.round(indices.length / 3)} tris`,
   );
   console.info(
     `[bake:harvest-map] Bounds: `

@@ -6,6 +6,7 @@ import {
   FBX_WEAPON_ASSET_BASE,
   prepareFbxWeaponMesh,
 } from './fbxWeaponMesh';
+import { configureColorTexture } from './textureQuality';
 
 const PISTOL_MODEL_FILE = 'weapons/pistol/bio_liquid_pistol_1.fbx';
 const PISTOL_EMISSIVE_MAP_URL = '/3d/weapons/pistol/bio_liquid_pistol_1_texture.png';
@@ -40,9 +41,7 @@ function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
     textureLoader.load(
       url,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         resolve(texture);
       },
       undefined,

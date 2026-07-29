@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { optimizeObjectTextures } from './textureQuality';
 
 const ASSET_BASE = '/3d/';
 const DRONE_MODEL_FILE = 'dron.fbx';
@@ -11,6 +12,7 @@ let droneTemplate: THREE.Group | null = null;
 let droneLoadPromise: Promise<THREE.Group> | null = null;
 
 function prepareDroneModel(fbx: THREE.Group): THREE.Group {
+  optimizeObjectTextures(fbx);
   fbx.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
     child.castShadow = true;

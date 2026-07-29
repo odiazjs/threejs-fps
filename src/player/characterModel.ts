@@ -13,6 +13,7 @@ import {
 import { getActiveOperatorId } from '../content/activeOperatorCharacter';
 import { resolveFaceIdForCharacter } from '../content/characterFaces';
 import { showcaseIdleFileForMesh } from '../content/characterShowcaseIdle';
+import { optimizeObjectTextures } from '../content/textureQuality';
 import {
   acquireCharacterRoot,
   clearCharacterInstancePool,
@@ -357,6 +358,7 @@ export function computeTopOffsetAboveFeet(
 }
 
 function prepareModel(model: THREE.Group): { scene: THREE.Group; fitScale: number } {
+  optimizeObjectTextures(model);
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;

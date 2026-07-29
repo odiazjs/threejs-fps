@@ -151,6 +151,24 @@ export const MATCH_COUNTDOWN_TICK_AUDIO: GlobalAudioConfig = {
   volume: 0.45,
 };
 
+/** Plasma Harvest: opponent picked up a harvesting box. */
+export const HARVEST_OPP_HAS_BOX_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/opp_has_harvesting_box_announce.wav',
+  volume: 0.7,
+};
+
+/** Plasma Harvest: opponent started installing at their base. */
+export const HARVEST_OPP_INSTALLING_BOX_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/opp_installing_harvesting_box_announce.wav',
+  volume: 0.7,
+};
+
+/** Plasma Harvest: local player picked up the enemy harvesting box. */
+export const HARVEST_YOU_GOT_BOX_AUDIO: GlobalAudioConfig = {
+  src: '/sounds/you_got_harvesting_box_install_it_announce.wav',
+  volume: 0.7,
+};
+
 /** Plays once when the TDM countdown hits zero / match starts. */
 export const MATCH_GAME_START_AUDIO: GlobalAudioConfig = {
   src: '/sounds/game_start_1.wav',

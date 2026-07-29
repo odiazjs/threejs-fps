@@ -48,6 +48,7 @@ export interface GameLaunchMessage {
   gameMode?: string;
   matchDurationSec?: number;
   killLimit?: number;
+  roundsToWin?: number;
   participants?: GameLaunchParticipant[];
 }
 
@@ -79,4 +80,5 @@ export interface StartGameInviteMessage {
   gameMode?: string;
   matchDurationSec?: number;
   killLimit?: number;
+  roundsToWin?: number;
 }

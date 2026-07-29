@@ -7,6 +7,7 @@ import {
 } from '../../shared/level/killhouseSmallColliders.js';
 import { markLodCollisionMesh, markLodCollisionShell } from '../../shared/level/collisionMeshPrep.js';
 import { keepLowestPolyFbxLodMesh, keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils.js';
+import { optimizeObjectTextures } from '../content/textureQuality';
 
 const WALL_ASSET_BASE = '/3d/';
 const BASIC_WALL_MODEL = 'bio_wall_basic.fbx';
@@ -124,7 +125,9 @@ export function loadKillhouseWallTemplate(
     const loader = new FBXLoader();
     loader.setResourcePath(WALL_ASSET_BASE);
     const fbx = await loader.loadAsync(`${WALL_ASSET_BASE}${encodeURIComponent(modelFile)}`);
-    return prepareWallProp(fbx as THREE.Group, scale, lodMode, options);
+    const prepared = prepareWallProp(fbx as THREE.Group, scale, lodMode, options);
+    optimizeObjectTextures(prepared);
+    return prepared;
   })();
 
   templateCache.set(cacheKey, loadPromise);

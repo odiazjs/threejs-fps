@@ -11,15 +11,26 @@ import {
 } from '../effects/EnemyOutlineFx';
 import { TeammateOutlineFx } from '../effects/TeammateOutlineFx';
 import { HarvestingBoxOutlineFx } from '../effects/HarvestingBoxOutlineFx';
-import { TEAM_COLORS } from '../../shared/combat/teams';
+import {
+  HARVEST_TEAM_VIVID_COLORS,
+  TEAM_COLORS,
+} from '../../shared/combat/teams';
 import { updateLineResolution } from '../visuals/edgeLines';
 import { AtmospherePass } from './AtmospherePass';
 import { ScopeWorldBlurPass } from './ScopeWorldBlurPass';
+import { bindTextureQualityRenderer } from '../content/textureQuality';
 
 export type MapLookPreset = 'default' | 'chrono_bowl';
 
 function teamColorToHex(teamId: number): number {
   const css = TEAM_COLORS[teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0]!;
+  return Number.parseInt(css.slice(1), 16);
+}
+
+function harvestVividColorToHex(teamId: number): number {
+  const css =
+    HARVEST_TEAM_VIVID_COLORS[teamId % HARVEST_TEAM_VIVID_COLORS.length] ??
+    HARVEST_TEAM_VIVID_COLORS[0]!;
   return Number.parseInt(css.slice(1), 16);
 }
 
@@ -47,12 +58,11 @@ function configureHarvestBoxOutlinePass(
   visibleColor: number,
   resolution: THREE.Vector2,
 ): void {
-  // Keep strength/pulse high for noticeability, but keep glow low so the blur
-  // does not bleed around occluders (looks like through-mesh x-ray).
-  pass.edgeStrength = 8;
-  pass.edgeThickness = 2.5;
-  pass.edgeGlow = 0.15;
-  pass.pulsePeriod = 1.6;
+  // Saturated edge + stronger pulse; keep glow modest so it doesn't x-ray.
+  pass.edgeStrength = 12;
+  pass.edgeThickness = 3.1;
+  pass.edgeGlow = 0.35;
+  pass.pulsePeriod = 1.4;
   pass.visibleEdgeColor.setHex(visibleColor);
   // Additive black = invisible; occluded silhouette must not draw.
   pass.hiddenEdgeColor.setRGB(0, 0, 0);
@@ -90,6 +100,7 @@ export class RenderContext {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.toneMappingExposure = 1;
+    bindTextureQualityRenderer(this.renderer);
     this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
@@ -180,7 +191,7 @@ export class RenderContext {
     );
     configureHarvestBoxOutlinePass(
       this.harvestBoxBlueOutlinePass,
-      teamColorToHex(0),
+      harvestVividColorToHex(0),
       this.resolution,
     );
     this.composer.addPass(this.harvestBoxBlueOutlinePass);
@@ -192,7 +203,7 @@ export class RenderContext {
     );
     configureHarvestBoxOutlinePass(
       this.harvestBoxOrangeOutlinePass,
-      teamColorToHex(1),
+      harvestVividColorToHex(1),
       this.resolution,
     );
     this.composer.addPass(this.harvestBoxOrangeOutlinePass);

@@ -3,6 +3,7 @@ import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { DEFAULT_FACE_ID, getFaceDef } from '../content/characterFaces';
+import { optimizeObjectTextures } from '../content/textureQuality';
 
 const FACE_ATTACH_NAME = 'characterFaceAttach';
 const BONE_COLLAPSE_SCALE = 1e-3;
@@ -115,6 +116,7 @@ async function loadFaceSource(modelFile: string): Promise<THREE.Group> {
 }
 
 function prepareFaceModel(source: THREE.Group): THREE.Group {
+  optimizeObjectTextures(source);
   source.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;

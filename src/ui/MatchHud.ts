@@ -7,33 +7,75 @@ import {
   teamScoreToKills,
   type MatchPhase,
 } from '../../shared/combat/match';
-import { TEAM_COLORS, TEAM_NAMES } from '../../shared/combat/teams';
+import {
+  HARVEST_TEAM_VIVID_COLORS,
+  TEAM_BADGE_ICON_SRC,
+  TEAM_COLORS,
+  TEAM_NAMES,
+} from '../../shared/combat/teams';
 import type { MatchSnapshot } from '../network/types';
 
 export class MatchHud {
   private readonly root: HTMLElement;
   private readonly timerEl: HTMLElement;
   private readonly scoresEl: HTMLElement;
+  private readonly localTeamEl: HTMLElement;
+  private readonly localTeamImg: HTMLImageElement;
 
   // Persistent DOM + last-rendered values so the per-frame update only
   // mutates text nodes when something actually changed (GC/layout friendly).
   private readonly scoreEls: HTMLElement[] = [];
+  private readonly scoreEntries: HTMLElement[] = [];
   private readonly lastScores: number[] = [];
   private builtTeamCount = -1;
   private lastTimerText = '';
-  private lastScoreMode: 'points' | 'kills' | null = null;
+  private lastScoreMode: 'points' | 'kills' | 'rounds' | null = null;
+  private lastLocalTeamId = -1;
 
   constructor() {
     this.root = document.getElementById('match-hud')!;
     this.timerEl = this.root.querySelector('.match-hud-timer')!;
     this.scoresEl = this.root.querySelector('.match-hud-scores')!;
+    let localTeamEl = this.root.querySelector(
+      '.match-hud-local-team',
+    ) as HTMLElement | null;
+    if (!localTeamEl) {
+      localTeamEl = document.createElement('div');
+      localTeamEl.className = 'match-hud-local-team';
+      localTeamEl.hidden = true;
+      this.root.appendChild(localTeamEl);
+    }
+    this.localTeamEl = localTeamEl;
+    let localTeamImg = this.localTeamEl.querySelector(
+      '.match-hud-local-team-badge',
+    ) as HTMLImageElement | null;
+    if (!localTeamImg) {
+      localTeamImg = document.createElement('img');
+      localTeamImg.className = 'match-hud-local-team-badge';
+      localTeamImg.alt = '';
+      localTeamImg.draggable = false;
+      this.localTeamEl.replaceChildren(localTeamImg);
+    }
+    this.localTeamImg = localTeamImg;
   }
 
   /**
    * @param hudActive Player is in-game (pointer-locked / not paused).
+   * @param localTeamId Local player's team for the "your team" badge.
    */
-  update(match: MatchSnapshot | null, worldTime: number, hudActive: boolean): void {
-    if (!hudActive || !match || !isCompetitiveGameMode(match.gameMode) || match.phase === 'ended') {
+  update(
+    match: MatchSnapshot | null,
+    worldTime: number,
+    hudActive: boolean,
+    localTeamId = -1,
+  ): void {
+    if (
+      !hudActive ||
+      !match ||
+      !isCompetitiveGameMode(match.gameMode) ||
+      match.phase === 'ended' ||
+      match.phase === 'round_end'
+    ) {
       this.root.hidden = true;
       return;
     }
@@ -41,7 +83,7 @@ export class MatchHud {
     const killRace = isKillRaceGameMode(match.gameMode);
     const plasmaHarvest = isPlasmaHarvestGameMode(match.gameMode);
     const timerText = plasmaHarvest
-      ? 'INSTALL ENEMY BOX'
+      ? `ROUND ${Math.max(1, match.currentRound)}`
       : killRace
         ? match.killLimit > 0
           ? `FIRST TO ${match.killLimit}`
@@ -61,27 +103,83 @@ export class MatchHud {
     }
 
     const teamCount = Math.max(1, match.teamCount);
-    const scoreMode = killRace ? 'kills' : 'points';
+    const scoreMode = plasmaHarvest ? 'rounds' : killRace ? 'kills' : 'points';
     if (teamCount !== this.builtTeamCount || scoreMode !== this.lastScoreMode) {
       this.rebuildScoreRow(teamCount);
       this.lastScoreMode = scoreMode;
+      this.lastLocalTeamId = -1;
     }
 
     for (let teamId = 0; teamId < teamCount; teamId++) {
       const raw = match.teamScores[teamId] ?? 0;
-      const score = plasmaHarvest ? 0 : killRace ? teamScoreToKills(raw) : raw;
+      const score = killRace ? teamScoreToKills(raw) : raw;
       if (score !== this.lastScores[teamId]) {
         this.lastScores[teamId] = score;
-        this.scoreEls[teamId]!.textContent = plasmaHarvest ? '—' : String(score);
+        this.scoreEls[teamId]!.textContent = String(score);
       }
+    }
+
+    if (localTeamId !== this.lastLocalTeamId) {
+      this.lastLocalTeamId = localTeamId;
+      this.updateLocalTeamBadge(localTeamId, teamCount);
     }
 
     this.root.hidden = false;
   }
 
+  private updateLocalTeamBadge(localTeamId: number, teamCount: number): void {
+    const valid =
+      Number.isInteger(localTeamId) &&
+      localTeamId >= 0 &&
+      localTeamId < teamCount;
+    if (!valid) {
+      this.localTeamEl.hidden = true;
+      this.localTeamImg.removeAttribute('src');
+      this.localTeamEl.classList.remove(
+        'match-hud-local-team-blue',
+        'match-hud-local-team-orange',
+      );
+      for (const entry of this.scoreEntries) {
+        entry.classList.remove('match-hud-score-local');
+      }
+      return;
+    }
+
+    const vivid =
+      HARVEST_TEAM_VIVID_COLORS[
+        localTeamId % HARVEST_TEAM_VIVID_COLORS.length
+      ] ?? HARVEST_TEAM_VIVID_COLORS[0]!;
+    const badgeSrc =
+      TEAM_BADGE_ICON_SRC[localTeamId % TEAM_BADGE_ICON_SRC.length] ??
+      TEAM_BADGE_ICON_SRC[0]!;
+    const name =
+      TEAM_NAMES[localTeamId % TEAM_NAMES.length] ?? `Team ${localTeamId + 1}`;
+
+    this.localTeamEl.hidden = false;
+    this.localTeamEl.style.setProperty('--match-team-glow', vivid);
+    this.localTeamEl.classList.toggle(
+      'match-hud-local-team-blue',
+      localTeamId === 0,
+    );
+    this.localTeamEl.classList.toggle(
+      'match-hud-local-team-orange',
+      localTeamId === 1,
+    );
+    this.localTeamImg.src = badgeSrc;
+    this.localTeamImg.alt = `${name} team`;
+
+    for (let i = 0; i < this.scoreEntries.length; i++) {
+      this.scoreEntries[i]!.classList.toggle(
+        'match-hud-score-local',
+        i === localTeamId,
+      );
+    }
+  }
+
   private rebuildScoreRow(teamCount: number): void {
     this.builtTeamCount = teamCount;
     this.scoreEls.length = 0;
+    this.scoreEntries.length = 0;
     this.lastScores.length = 0;
     this.scoresEl.replaceChildren();
 
@@ -91,8 +189,10 @@ export class MatchHud {
 
       const teamEl = document.createElement('span');
       teamEl.className = 'match-hud-team';
-      teamEl.style.color = TEAM_COLORS[teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0]!;
-      teamEl.textContent = TEAM_NAMES[teamId % TEAM_NAMES.length] ?? `Team ${teamId + 1}`;
+      teamEl.style.color =
+        TEAM_COLORS[teamId % TEAM_COLORS.length] ?? TEAM_COLORS[0]!;
+      teamEl.textContent =
+        TEAM_NAMES[teamId % TEAM_NAMES.length] ?? `Team ${teamId + 1}`;
       entry.appendChild(teamEl);
 
       const pointsEl = document.createElement('span');
@@ -100,6 +200,7 @@ export class MatchHud {
       entry.appendChild(pointsEl);
 
       this.scoresEl.appendChild(entry);
+      this.scoreEntries.push(entry);
       this.scoreEls.push(pointsEl);
       this.lastScores.push(-1);
 

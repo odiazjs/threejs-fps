@@ -11,6 +11,10 @@ export interface HarvestingBoxSpawn {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  /** Authored `base_install_box_pos` for this team's base (opponent plants here). */
+  readonly installX: number;
+  readonly installY: number;
+  readonly installZ: number;
 }
 
 /** Hold F duration to pick up or drop a harvesting box. */
@@ -19,17 +23,46 @@ export const HARVESTING_BOX_HOLD_SEC = 3;
 export const HARVESTING_BOX_INSTALL_SEC = 10;
 /** Max distance from box / carrier feet / install spot to interact. */
 export const HARVESTING_BOX_INTERACT_DISTANCE = 1;
-/** Install zone is this far toward midfield from the team's box home. */
+/** Fallback install offset toward midfield when no authored install marker. */
 export const HARVESTING_BOX_INSTALL_FORWARD_M = 1;
+/**
+ * Authored empties sit slightly above the pad — nudge feet down so crates
+ * rest flush on the base platform.
+ */
+export const HARVESTING_BOX_SURFACE_Y_NUDGE = -0.22;
+
+/** Apply surface nudge to an authored marker / install Y. */
+export function harvestingBoxSurfaceY(authoredY: number): number {
+  if (!Number.isFinite(authoredY)) return 0;
+  return authoredY + HARVESTING_BOX_SURFACE_Y_NUDGE;
+}
 
 /**
- * Authored `harvesting_box_orange` / `harvesting_box_blue` markers
- * (world coords after {@link HARVEST_MAP_SCALE}). Prefer GLB extraction on client;
- * Y is the marker feet height (not forced to 0).
+ * Server / fallback poses from `base_own_box_spawn` + `base_install_box_pos`
+ * under `team_*_base` (world coords after {@link HARVEST_MAP_SCALE}).
+ * Prefer GLB extraction on the client.
  */
 const HARVEST_BOXES: readonly HarvestingBoxSpawn[] = [
-  { index: 0, teamId: 1, x: 17.02, y: 0, z: 19.16 }, // orange / north
-  { index: 1, teamId: 0, x: -16.42, y: 0, z: -20.33 }, // blue / south
+  {
+    index: 0,
+    teamId: 1,
+    x: 17.773757,
+    y: 1.467864,
+    z: 19.218005,
+    installX: 16.478728,
+    installY: 1.467864,
+    installZ: 19.218005,
+  }, // orange
+  {
+    index: 1,
+    teamId: 0,
+    x: -16.664131,
+    y: 1.467864,
+    z: -19.41884,
+    installX: -15.369102,
+    installY: 1.467864,
+    installZ: -19.41884,
+  }, // blue
 ];
 
 export function getHarvestingBoxSpawns(
@@ -55,13 +88,21 @@ export function holdSecForHarvestingBoxMode(
 }
 
 /**
- * Install spot for a team's own base: 1m toward map center from that team's
- * harvesting-box home. Steal the enemy crate and plant it here to win.
+ * Install spot for a team's base. Prefers authored `base_install_box_pos`;
+ * otherwise 1m toward map center from the team's box home.
  */
 export function harvestingBoxInstallSpot(
   ownBaseHomeX: number,
   ownBaseHomeZ: number,
+  authored?: { readonly x: number; readonly z: number } | null,
 ): { x: number; z: number } {
+  if (
+    authored &&
+    Number.isFinite(authored.x) &&
+    Number.isFinite(authored.z)
+  ) {
+    return { x: authored.x, z: authored.z };
+  }
   const dx = -ownBaseHomeX;
   const dz = -ownBaseHomeZ;
   const len = Math.hypot(dx, dz);

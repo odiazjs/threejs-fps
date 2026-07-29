@@ -6,6 +6,7 @@ import {
   SHIELD_CHARGE_VISUAL_MODEL,
 } from '../../shared/level/shieldChargeConfig';
 import { keepSingleFbxLodMesh } from '../../shared/visuals/fbxLodUtils';
+import { optimizeObjectTextures } from '../content/textureQuality';
 
 const ASSET_BASE = '/3d/';
 
@@ -13,6 +14,7 @@ let templatePromise: Promise<THREE.Group> | null = null;
 
 function prepareShieldChargeModel(model: THREE.Group): THREE.Group {
   keepSingleFbxLodMesh(model, SHIELD_CHARGE_VISUAL_LOD);
+  optimizeObjectTextures(model);
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;

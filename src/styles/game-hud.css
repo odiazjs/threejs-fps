@@ -1366,6 +1366,64 @@ body.game-page * {
   color: rgba(255, 255, 255, 0.35);
   font-weight: 600;
 }
+.match-hud-score-local .match-hud-team {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+.match-hud-local-team {
+  --match-team-glow: #00aeff;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 4.6rem;
+  height: 4.6rem;
+  margin-top: 0.15rem;
+  border: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 50% 45%,
+      color-mix(in srgb, var(--match-team-glow) 72%, #fff 10%) 0%,
+      color-mix(in srgb, var(--match-team-glow) 45%, transparent) 42%,
+      transparent 72%
+    ),
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--match-team-glow) 35%, transparent) 0%,
+      transparent 70%
+    );
+  box-shadow:
+    0 0 18px color-mix(in srgb, var(--match-team-glow) 75%, transparent),
+    0 0 36px color-mix(in srgb, var(--match-team-glow) 45%, transparent),
+    0 0 54px color-mix(in srgb, var(--match-team-glow) 28%, transparent);
+  animation: match-hud-team-badge-pulse 1.8s ease-in-out infinite;
+}
+.match-hud-local-team[hidden] {
+  display: none !important;
+}
+.match-hud-local-team-badge {
+  width: 3.35rem;
+  height: 3.35rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--match-team-glow) 80%, transparent));
+  user-select: none;
+  pointer-events: none;
+}
+@keyframes match-hud-team-badge-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 16px color-mix(in srgb, var(--match-team-glow) 70%, transparent),
+      0 0 32px color-mix(in srgb, var(--match-team-glow) 40%, transparent),
+      0 0 48px color-mix(in srgb, var(--match-team-glow) 22%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 22px color-mix(in srgb, var(--match-team-glow) 90%, transparent),
+      0 0 42px color-mix(in srgb, var(--match-team-glow) 55%, transparent),
+      0 0 64px color-mix(in srgb, var(--match-team-glow) 32%, transparent);
+  }
+}
 #pre-match-overlay {
   --pre-blue: #00aeef;
   --pre-orange: #ff6a1a;
@@ -1760,7 +1818,8 @@ body.game-page * {
 }
 
 #match-countdown-overlay,
-#match-results-overlay {
+#match-results-overlay,
+#harvest-round-overlay {
   position: fixed;
   inset: 0;
   display: flex;
@@ -1771,12 +1830,71 @@ body.game-page * {
   pointer-events: auto;
 }
 /* Let click-to-play reach the blocker so audio can unlock during countdown. */
-#match-countdown-overlay {
+#match-countdown-overlay,
+#harvest-round-overlay {
   pointer-events: none;
 }
 #match-countdown-overlay[hidden],
-#match-results-overlay[hidden] {
+#match-results-overlay[hidden],
+#harvest-round-overlay[hidden] {
   display: none !important;
+}
+.harvest-round-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.85rem;
+  text-align: center;
+}
+.harvest-round-title {
+  margin: 0;
+}
+.harvest-round-title[data-result='won'] {
+  color: #7dffb0;
+  text-shadow: 0 0 18px rgba(80, 255, 160, 0.45);
+}
+.harvest-round-title[data-result='lost'] {
+  color: #ff8b8b;
+  text-shadow: 0 0 18px rgba(255, 100, 100, 0.4);
+}
+.harvest-round-scores {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.1rem;
+  margin-top: 0.2rem;
+}
+.harvest-round-score-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.harvest-round-score-badge {
+  width: 2.4rem;
+  height: 2.4rem;
+  object-fit: contain;
+  filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.55));
+  user-select: none;
+  pointer-events: none;
+}
+.harvest-round-score-points {
+  font-family: var(--hud-font);
+  font-size: clamp(1.6rem, 4vw, 2.35rem);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.65);
+}
+.harvest-round-score-entry.is-winner .harvest-round-score-badge {
+  filter:
+    drop-shadow(0 0 8px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 0.35));
+}
+.harvest-round-score-sep {
+  color: rgba(255, 255, 255, 0.35);
+  font-family: var(--hud-font);
+  font-size: 1.35rem;
+  font-weight: 700;
 }
 .match-countdown-panel {
   display: flex;

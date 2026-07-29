@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { configureColorTexture } from '../content/textureQuality';
 
 export const DIGITAL_SIGHT_OBJECT_NAME = 'digitalSight';
 export const DIGITAL_SIGHT_SOCKET_NAME = 'digital_sight';
@@ -49,9 +50,7 @@ export function preloadDigitalSightTexture(textureUrl: string): Promise<THREE.Te
     textureLoader.load(
       textureUrl,
       (texture) => {
-        texture.colorSpace = THREE.SRGBColorSpace;
-        texture.anisotropy = 4;
-        texture.needsUpdate = true;
+        configureColorTexture(texture);
         textureCache.set(textureUrl, texture);
         textureLoads.delete(textureUrl);
         resolve(texture);

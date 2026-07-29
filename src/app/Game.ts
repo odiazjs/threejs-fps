@@ -17,6 +17,7 @@ import {
 } from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
 import { getSelectedGameMode } from '../lobby/gameModeSelection';
+import { getTeamBaseSpawns } from '../../shared/level/teamBaseSpawns';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_PING, PointerInput } from '../input/PointerInput';
 import { TeamPingIndicators } from '../ui/TeamPingIndicators';
@@ -79,7 +80,6 @@ import { HarvestingBoxes } from '../world/HarvestingBoxes';
 import { getCraftingStationSpawns } from '../../shared/level/craftingStationSpawns';
 import { getHarvestingBoxSpawns } from '../../shared/level/harvestingBoxSpawns';
 import { HarvestingBoxHud } from '../ui/HarvestingBoxHud';
-import { MatchAlertHud } from '../ui/MatchAlertHud';
 import { isPickableWeaponId } from '../../shared/content/weaponIds';
 import type { CraftItemId } from '../../shared/content/craftingCatalog';
 import { MatchPerfStats } from '../debug/MatchPerfStats';
@@ -89,6 +89,7 @@ import { loadTdmMapMinimapLayout } from '../content/tdmMapMinimap';
 import { loadHarvestMapMinimapLayout } from '../content/harvestMapMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
+import { HarvestRoundOverlay } from '../ui/HarvestRoundOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
 import { PreMatchOverlay } from '../ui/PreMatchOverlay';
 import { SpeedLinesHud } from '../ui/SpeedLinesHud';
@@ -149,12 +150,16 @@ import {
   GAME_SHIELD_CHARGE_AUDIO,
   GAME_SHIELD_CHARGE_END_AUDIO,
   GAME_WEAPON_SPATIAL_AUDIO,
+  HARVEST_OPP_HAS_BOX_AUDIO,
+  HARVEST_OPP_INSTALLING_BOX_AUDIO,
+  HARVEST_YOU_GOT_BOX_AUDIO,
   MATCH_COUNTDOWN_TICK_AUDIO,
   MATCH_END_10_SECS_AUDIO,
   MATCH_END_30_SECS_AUDIO,
   MATCH_GAME_START_AUDIO,
   MATCH_RESULTS_MUSIC_AUDIO,
 } from '../content/audioConfig';
+import { HarvestObjectiveSoundService } from '../audio/HarvestObjectiveSoundService';
 import { DEFAULT_LOADOUT_CONFIGS, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
@@ -211,14 +216,16 @@ export class Game {
   private craftingStations!: CraftingStations;
   private harvestingBoxes!: HarvestingBoxes;
   private harvestingBoxHud = new HarvestingBoxHud();
-  private matchAlertHud = new MatchAlertHud();
   private prevOpponentHasHarvestBox = false;
   private prevOpponentInstallingHarvestBox = false;
+  private prevLocalCarryingEnemyHarvestBox = false;
+  private readonly harvestObjectiveSounds = new HarvestObjectiveSoundService();
   private craftingOpen = false;
   private matchGameMode: GameMode = 'playground';
   private performanceHud = new PerformanceHud();
   private matchHud = new MatchHud();
   private matchCountdownOverlay = new MatchCountdownOverlay();
+  private harvestRoundOverlay = new HarvestRoundOverlay();
   private matchResultsOverlay = new MatchResultsOverlay();
   private preMatchOverlay = new PreMatchOverlay();
   private messageHud = new MessageHud();
@@ -429,6 +436,10 @@ export class Game {
         this.matchSounds.preloadEnd30(MATCH_END_30_SECS_AUDIO),
         this.matchSounds.preloadEnd10(MATCH_END_10_SECS_AUDIO),
         this.matchSounds.preloadResultsMusic(MATCH_RESULTS_MUSIC_AUDIO),
+        this.harvestObjectiveSounds.preloadHasBox(HARVEST_OPP_HAS_BOX_AUDIO),
+        this.harvestObjectiveSounds.preloadInstalling(HARVEST_OPP_INSTALLING_BOX_AUDIO),
+        this.harvestObjectiveSounds.preloadYouGotBox(HARVEST_YOU_GOT_BOX_AUDIO),
+        this.harvestObjectiveSounds.preloadTick(MATCH_COUNTDOWN_TICK_AUDIO),
         this.shieldChargePickups.whenReady,
         this.grenadePickups.whenReady,
         this.grenadeManager.whenReady,
@@ -569,6 +580,7 @@ export class Game {
     this.droneProximitySounds.stop();
     this.shieldChargeSounds.stop();
     this.matchSounds.stopResultsMusic();
+    this.harvestObjectiveSounds.stopAll();
     this.playerControls.setLeaveEnabled(false);
     this.playerControls.controls.unlock();
 
@@ -666,26 +678,28 @@ export class Game {
     if (winningTeamId < 0) return null;
 
     const spot = this.harvestingBoxes.getInstallSpotForTeam(winningTeamId);
-    // Prefer the stolen (enemy) box sitting on the ground after install.
+    const installY =
+      this.harvestingBoxes.getInstallSurfaceYForTeam(winningTeamId) ?? 0;
+
+    // Prefer the stolen (enemy) box nearest the winner's install pad.
+    let best: { x: number; y: number; z: number; dist: number } | null = null;
     for (const box of this.harvestingBoxes.getBoxes()) {
       if (box.teamId === winningTeamId) continue;
       if (box.carriedBySessionId) continue;
       const pos = new THREE.Vector3();
       box.group.getWorldPosition(pos);
-      if (!spot || Math.hypot(pos.x - spot.x, pos.z - spot.z) < 4) {
-        return { x: pos.x, y: pos.y, z: pos.z };
+      const dist = spot
+        ? Math.hypot(pos.x - spot.x, pos.z - spot.z)
+        : 0;
+      if (spot && dist > 8) continue;
+      if (!best || dist < best.dist) {
+        best = { x: pos.x, y: pos.y, z: pos.z, dist };
       }
     }
+    if (best) return { x: best.x, y: best.y, z: best.z };
 
     if (!spot) return null;
-    const ownHome = this.harvestingBoxes
-      .getBoxes()
-      .find((box) => box.teamId === winningTeamId);
-    return {
-      x: spot.x,
-      y: ownHome?.homeY ?? 0,
-      z: spot.z,
-    };
+    return { x: spot.x, y: installY, z: spot.z };
   }
 
   private beginHarvestWinCinematic(winningTeamId: number): void {
@@ -708,8 +722,12 @@ export class Game {
     this.harvestWinCinematicPending = false;
     this.harvestWinCinematicDone = true;
     this.harvestWinCam.deactivate();
-    this.matchSounds.unlock();
-    this.matchSounds.playResultsMusic();
+    const match = this.network?.getMatchState();
+    // Only sting results music after the series ends — not between rounds.
+    if (match?.phase === 'ended') {
+      this.matchSounds.unlock();
+      this.matchSounds.playResultsMusic();
+    }
   }
 
   private initWorld(mapId: MapId): void {
@@ -815,7 +833,7 @@ export class Game {
     }
   }
 
-  private syncHarvestingBoxes(): void {
+  private syncHarvestingBoxes(delta = 0): void {
     if (!this.network || !isPlasmaHarvestGameMode(this.matchGameMode)) return;
     const states = this.network.getHarvestingBoxSnapshots();
     this.harvestingBoxes.applyServerState(states);
@@ -827,21 +845,27 @@ export class Game {
       localCamera: camera,
       getRemoteHand: (sessionId) =>
         this.network.getRemotePlayer(sessionId)?.getRemoteHandRig() ?? null,
+      delta,
     });
   }
 
   private updateHarvestingBoxAlerts(): void {
     if (!this.network || !isPlasmaHarvestGameMode(this.matchGameMode)) {
-      this.matchAlertHud.setPersistent([]);
+      if (this.prevOpponentInstallingHarvestBox) {
+        this.harvestObjectiveSounds.stopInstalling();
+      }
       this.prevOpponentHasHarvestBox = false;
       this.prevOpponentInstallingHarvestBox = false;
+      this.prevLocalCarryingEnemyHarvestBox = false;
       return;
     }
-    // PlayerControls gates MatchAlertHud visibility with the play HUD.
     if (!this.playerControls.isPlaying || !this.localCombat.alive) {
-      this.matchAlertHud.setPersistent([]);
+      if (this.prevOpponentInstallingHarvestBox) {
+        this.harvestObjectiveSounds.stopInstalling();
+      }
       this.prevOpponentHasHarvestBox = false;
       this.prevOpponentInstallingHarvestBox = false;
+      this.prevLocalCarryingEnemyHarvestBox = false;
       return;
     }
 
@@ -849,10 +873,17 @@ export class Game {
     const localTeam = this.localCombat.teamId;
     let opponentHasBox = false;
     let opponentInstalling = false;
+    let localCarryingEnemyBox = false;
 
     for (const box of this.harvestingBoxes.getBoxes()) {
       const carrierId = box.carriedBySessionId;
-      if (!carrierId || carrierId === localId) continue;
+      if (!carrierId) continue;
+
+      if (carrierId === localId) {
+        if (box.teamId !== localTeam) localCarryingEnemyBox = true;
+        continue;
+      }
+
       const carrier = this.network.getPlayerSnapshot(carrierId);
       if (!carrier || carrier.teamId === localTeam) continue;
       opponentHasBox = true;
@@ -861,28 +892,30 @@ export class Game {
       }
     }
 
-    const alerts: string[] = [];
-    if (opponentInstalling) {
-      alerts.push('OPPONENT INSTALLING HARVESTING BOX');
+    if (
+      localCarryingEnemyBox &&
+      !this.prevLocalCarryingEnemyHarvestBox
+    ) {
+      this.harvestObjectiveSounds.playYouGotBox();
     }
-    if (opponentHasBox) {
-      alerts.push('OPPONENT HAS HARVESTING BOX');
-    }
-    this.matchAlertHud.setPersistent(alerts);
 
-    // Center toasts on rising edges so the warning is hard to miss.
     if (opponentInstalling && !this.prevOpponentInstallingHarvestBox) {
-      this.messageHud.push('Opponent installing harvesting box');
-    } else if (
+      this.harvestObjectiveSounds.playOpponentInstalling();
+    } else if (!opponentInstalling && this.prevOpponentInstallingHarvestBox) {
+      this.harvestObjectiveSounds.stopInstalling();
+    }
+
+    if (
       opponentHasBox &&
       !this.prevOpponentHasHarvestBox &&
       !opponentInstalling
     ) {
-      this.messageHud.push('Opponent has harvesting box');
+      this.harvestObjectiveSounds.playOpponentHasBox();
     }
 
     this.prevOpponentHasHarvestBox = opponentHasBox;
     this.prevOpponentInstallingHarvestBox = opponentInstalling;
+    this.prevLocalCarryingEnemyHarvestBox = localCarryingEnemyBox;
   }
 
   private initPlayer(mapId: MapId, gameMode?: GameMode): void {
@@ -918,7 +951,6 @@ export class Game {
     this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
     this.playerControls.setShieldPickupHud(this.shieldPickupHud);
     this.playerControls.setHarvestingBoxHud(this.harvestingBoxHud);
-    this.playerControls.setMatchAlertHud(this.matchAlertHud);
     this.harvestingBoxHud.setOnInstallHoldChange((holding) => {
       this.network?.sendHarvestingBoxInstallHold(holding);
     });
@@ -1634,12 +1666,77 @@ export class Game {
     for (const ping of this.teamPings.getMinimapPings()) {
       blips.push({ x: ping.x, z: ping.z, kind: 'ping' });
     }
+    this.appendHarvestMinimapBlips(blips);
     return {
       x: playerPos.x,
       z: playerPos.z,
       yaw,
       blips,
     };
+  }
+
+  /** Team bases + own-team harvesting box (synced for teammates). */
+  private appendHarvestMinimapBlips(
+    blips: import('../ui/minimapTypes').MinimapBlip[],
+  ): void {
+    if (
+      this.worldMapId !== 'harvest' ||
+      !isPlasmaHarvestGameMode(this.matchGameMode)
+    ) {
+      return;
+    }
+
+    for (const base of getTeamBaseSpawns()) {
+      blips.push({
+        x: base.x,
+        z: base.z,
+        kind: 'teamBase',
+        teamId: base.teamId,
+      });
+    }
+
+    const localTeam = this.localCombat.teamId;
+    const localId = this.network?.getSessionId() ?? null;
+    for (const box of this.harvestingBoxes.getBoxes()) {
+      if (box.teamId !== localTeam) continue;
+      const pos = this.resolveHarvestBoxMinimapPos(box, localId);
+      blips.push({
+        x: pos.x,
+        z: pos.z,
+        kind: 'harvestBox',
+        teamId: box.teamId,
+      });
+    }
+  }
+
+  private resolveHarvestBoxMinimapPos(
+    box: { spawnX: number; spawnZ: number; carriedBySessionId: string },
+    localId: string | null,
+  ): { x: number; z: number } {
+    const carrierId = box.carriedBySessionId;
+    if (!carrierId || !this.network) {
+      return { x: box.spawnX, z: box.spawnZ };
+    }
+
+    if (localId && carrierId === localId) {
+      return {
+        x: this.player.object.position.x,
+        z: this.player.object.position.z,
+      };
+    }
+
+    const remote = this.network.getRemotePlayer(carrierId);
+    if (remote) {
+      const feet = remote.getFeetPosition();
+      return { x: feet.x, z: feet.z };
+    }
+
+    const snap = this.network.getPlayerSnapshot(carrierId);
+    if (snap) {
+      return { x: snap.x, z: snap.z };
+    }
+
+    return { x: box.spawnX, z: box.spawnZ };
   }
 
   /** Middle mouse — mark the aimed spot for same-team members. */
@@ -1900,6 +1997,7 @@ export class Game {
     }
 
     this.matchCountdownOverlay.update(match, worldTime);
+    this.harvestRoundOverlay.update(match, this.localCombat.teamId);
     // Only build the (allocating) full roster snapshot once the match has
     // actually ended — the overlay ignores it otherwise.
     const harvestResultsReady =
@@ -1918,6 +2016,7 @@ export class Game {
       match,
       worldTime,
       this.playerControls.isPlaying || this.inventoryOpen,
+      this.localCombat.teamId,
     );
 
     const matchPhase = match?.phase ?? null;
@@ -1927,12 +2026,31 @@ export class Game {
       matchPhase === 'playing' &&
       this.prevMatchPhase !== 'playing'
     ) {
-      this.matchPerf.beginMatch();
-      this.matchResultSubmittedFor = null;
-      this.lastMatchRewards = null;
+      // Harvest series: only open match perf on round 1 (TDM currentRound stays 1).
+      if ((match?.currentRound ?? 1) <= 1) {
+        this.matchPerf.beginMatch();
+        this.matchResultSubmittedFor = null;
+        this.lastMatchRewards = null;
+      }
       this.harvestWinCinematicPending = false;
       this.harvestWinCinematicDone = false;
       this.harvestWinCam.deactivate();
+    }
+    if (
+      competitive &&
+      matchPhase === 'round_end' &&
+      this.prevMatchPhase !== 'round_end' &&
+      match &&
+      isPlasmaHarvestGameMode(match.gameMode)
+    ) {
+      this.matchSounds.unlock();
+      this.matchSounds.playGameStart();
+      this.harvestObjectiveSounds.stopAll();
+      this.beginHarvestWinCinematic(
+        match.lastRoundWinnerTeamId >= 0
+          ? match.lastRoundWinnerTeamId
+          : match.winningTeamId,
+      );
     }
     if (
       competitive &&
@@ -1942,12 +2060,33 @@ export class Game {
     ) {
       this.matchPerf.endMatch();
       void this.submitRankedMatchResult(match);
-      if (isPlasmaHarvestGameMode(match.gameMode) && match.winningTeamId >= 0) {
-        this.beginHarvestWinCinematic(match.winningTeamId);
+      if (isPlasmaHarvestGameMode(match.gameMode)) {
+        if (this.prevMatchPhase === 'round_end') {
+          // Win cam already ran for the clinching round.
+          if (!this.harvestWinCinematicPending) {
+            this.harvestWinCinematicDone = true;
+          }
+        } else if (match.winningTeamId >= 0) {
+          this.matchSounds.unlock();
+          this.matchSounds.playGameStart();
+          this.harvestObjectiveSounds.stopAll();
+          this.beginHarvestWinCinematic(match.winningTeamId);
+        } else {
+          this.harvestWinCinematicDone = true;
+          this.harvestWinCinematicPending = false;
+        }
       } else {
         this.harvestWinCinematicDone = true;
         this.harvestWinCinematicPending = false;
       }
+    }
+    if (
+      matchPhase === 'countdown' &&
+      this.prevMatchPhase === 'round_end'
+    ) {
+      this.harvestWinCam.deactivate();
+      this.harvestWinCinematicPending = false;
+      this.harvestWinCinematicDone = false;
     }
     if (
       matchPhase &&
@@ -2086,7 +2225,6 @@ export class Game {
     );
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
-    this.matchAlertHud.update(delta);
     this.updateHarvestingBoxAlerts();
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);
@@ -2124,7 +2262,7 @@ export class Game {
         );
       }
 
-      this.syncHarvestingBoxes();
+      this.syncHarvestingBoxes(delta);
 
       this.staminaHud.update(this.player.getSprintState());
       const ammo = this.player.getAmmoState();

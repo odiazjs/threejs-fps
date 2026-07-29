@@ -119,10 +119,14 @@ export class HarvestingBoxState extends Schema {
   @type('number') x = 0;
   @type('number') y = 0;
   @type('number') z = 0;
-  /** Immutable home marker (install proximity). */
+  /** Immutable home marker (own-box spawn). */
   @type('number') homeX = 0;
   @type('number') homeY = 0;
   @type('number') homeZ = 0;
+  /** Authored install marker on this team's base (opponent plants here). */
+  @type('number') installX = 0;
+  @type('number') installY = 0;
+  @type('number') installZ = 0;
   /** Session id of carrier, or empty when on the ground. */
   @type('string') carriedBySessionId = '';
 }
@@ -145,6 +149,14 @@ export class FpsState extends Schema {
   @type('number') matchDurationSec: number = TDM_MATCH_DURATION_SEC;
   /** First-to-kills target (0 = timed / no kill race). */
   @type('number') killLimit: number = 0;
+  /** Plasma Harvest: first team to this many round wins ends the match (0 = N/A). */
+  @type('number') roundsToWin: number = 0;
+  /** Plasma Harvest: 1-based round index while the series is active. */
+  @type('number') currentRound: number = 1;
+  /** World-time when `round_end` showcase finishes. */
+  @type('number') roundEndAt: number = 0;
+  /** Team that just won the round (-1 when idle). */
+  @type('number') lastRoundWinnerTeamId: number = -1;
   /** -1 = tie or not decided yet. */
   @type('number') winningTeamId = -1;
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();

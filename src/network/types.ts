@@ -15,6 +15,10 @@ export interface MatchSnapshot {
   matchEndAt: number;
   matchDurationSec: number;
   killLimit: number;
+  roundsToWin: number;
+  currentRound: number;
+  roundEndAt: number;
+  lastRoundWinnerTeamId: number;
   winningTeamId: number;
 }
 
@@ -112,6 +116,9 @@ export interface HarvestingBoxSnapshot {
   homeX: number;
   homeY: number;
   homeZ: number;
+  installX: number;
+  installY: number;
+  installZ: number;
   carriedBySessionId: string;
 }
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { optimizeObjectTextures } from './textureQuality';
 
 export const FBX_WEAPON_ASSET_BASE = '/3d/';
 
@@ -23,6 +24,7 @@ export function fbxWeaponAssetUrl(file: string): string {
 }
 
 export function prepareFbxWeaponMesh(model: THREE.Group, config: FbxWeaponMeshConfig): THREE.Group {
+  optimizeObjectTextures(model);
   model.traverse((child) => {
     if (child instanceof THREE.Mesh) {
       child.castShadow = true;

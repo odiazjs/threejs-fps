@@ -17,6 +17,7 @@ function launchToIntent(data: GameLaunchMessage): GameJoinIntent {
     gameMode,
     matchDurationSec: data.matchDurationSec,
     killLimit: data.killLimit,
+    roundsToWin: data.roundsToWin,
     ...(typeof data.teamId === 'number' ? { teamId: data.teamId } : {}),
     ...(Array.isArray(data.participants) && data.participants.length > 0
       ? { participants: data.participants }
