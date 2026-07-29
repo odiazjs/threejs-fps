@@ -92,6 +92,7 @@ import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { HarvestRoundOverlay } from '../ui/HarvestRoundOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
 import { PreMatchOverlay } from '../ui/PreMatchOverlay';
+import { RespawnCountdownHud } from '../ui/RespawnCountdownHud';
 import { SpeedLinesHud } from '../ui/SpeedLinesHud';
 import { getWeaponConfig } from '../content/weaponConfig';
 import { apiListMyWeapons } from '../auth/weaponsApi';
@@ -228,6 +229,7 @@ export class Game {
   private harvestRoundOverlay = new HarvestRoundOverlay();
   private matchResultsOverlay = new MatchResultsOverlay();
   private preMatchOverlay = new PreMatchOverlay();
+  private respawnCountdownHud = new RespawnCountdownHud();
   private messageHud = new MessageHud();
   private ammoPickups!: AmmoPickups;
   private grenadePickups!: GrenadePickups;
@@ -1342,9 +1344,13 @@ export class Game {
       const killerId = this.pendingKillerId ?? this.lastCombatShooterId;
       this.killCam.activate(killerId);
       this.pendingKillerId = null;
+      if (isPlasmaHarvestGameMode(this.matchGameMode)) {
+        this.respawnCountdownHud.begin(this.network?.getWorldTime() ?? 0);
+      }
     }
 
     if (state.alive && !this.wasAlive) {
+      this.respawnCountdownHud.clear();
       this.killCam.deactivate();
       this.lastCombatShooterId = null;
       this.network.applyLocalSpawn(this.player);
@@ -2237,6 +2243,11 @@ export class Game {
     );
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
+    if (!this.localCombat.alive && isPlasmaHarvestGameMode(this.matchGameMode)) {
+      this.respawnCountdownHud.update(worldTime);
+    } else if (this.localCombat.alive) {
+      this.respawnCountdownHud.clear();
+    }
     this.updateHarvestingBoxAlerts();
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);

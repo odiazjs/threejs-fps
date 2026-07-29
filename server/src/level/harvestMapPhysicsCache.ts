@@ -15,6 +15,7 @@ import {
   buildCraftingStationColliders,
   getCraftingStationSpawns,
 } from '../../../shared/level/craftingStationSpawns.js';
+import { buildHarvestHillColliders } from '../../../shared/level/harvestHillColliders.js';
 import { LevelPhysicsWorld } from '../../../shared/physics/levelPhysicsWorld.js';
 import { initRapier } from '../../../shared/physics/rapierInit.js';
 
@@ -54,6 +55,12 @@ async function buildHarvestMapPhysicsWorld(): Promise<LevelPhysicsWorld> {
   );
   if (stationColliders.length > 0) {
     world.loadOrientedBoxes(stationColliders);
+  }
+
+  // Tall crest barriers on perimeter hill_wall* + center mountain.
+  const hillColliders = buildHarvestHillColliders();
+  if (hillColliders.length > 0) {
+    world.loadOrientedBoxes(hillColliders);
   }
 
   if (existsSync(metaPath)) {

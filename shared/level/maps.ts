@@ -210,7 +210,8 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     getGrenadePositions: () => HARVEST_MAP_GRENADE_POSITIONS,
     grenadePickupRespawnSec: 10,
     grenadePickupGrant: 1,
-    respawnGrenadeCount: 1,
+    /** Plasma Harvest starts / respawns with no throwable / shield charges. */
+    respawnGrenadeCount: 0,
     spawnTrainingBots: false,
   },
 };

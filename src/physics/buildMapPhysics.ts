@@ -18,6 +18,7 @@ import {
   buildCraftingStationColliders,
   getCraftingStationSpawns,
 } from '../../shared/level/craftingStationSpawns';
+import { buildHarvestHillColliders } from '../../shared/level/harvestHillColliders';
 import { loadFiringRangeGroundCollider } from '../../shared/level/firingRangeGroundCollider';
 import { loadFiringRangeCrateColliders } from '../../shared/level/loadFiringRangeCrateColliders';
 import {
@@ -107,11 +108,18 @@ export async function buildClientMapPhysics(
     if (stationColliders.length > 0) {
       clientPhysics.loadOrientedBoxes(stationColliders);
     }
+    const hillColliders = buildHarvestHillColliders();
+    if (hillColliders.length > 0) {
+      clientPhysics.loadOrientedBoxes(hillColliders);
+    }
 
     console.info(
       `[ClientPhysics] Loaded ${map.label} baked trimesh (${Math.round(indices.length / 3)} tris)`
         + (stationColliders.length > 0
           ? `, ${stationColliders.length} craft stations`
+          : '')
+        + (hillColliders.length > 0
+          ? `, ${hillColliders.length} hill barriers`
           : ''),
     );
 

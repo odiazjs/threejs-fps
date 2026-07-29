@@ -972,6 +972,36 @@ body.game-page * {
   pointer-events: none;
   z-index: 6;
 }
+#respawn-countdown-hud {
+  position: fixed;
+  top: 68%;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 7;
+}
+#respawn-countdown-hud[hidden] {
+  display: none !important;
+}
+.respawn-countdown-text {
+  margin: 0;
+  padding: 0.65rem 1.15rem;
+  border: 1px solid var(--hud-cyan-border);
+  border-radius: 4px;
+  background: rgba(6, 12, 18, 0.88);
+  color: #fff;
+  font-family: var(--hud-font);
+  font-size: clamp(0.95rem, 2.2vw, 1.2rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-shadow: 0 0 12px var(--hud-cyan-glow);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+.respawn-countdown-value {
+  color: #7dffb0;
+  font-weight: 800;
+}
 #match-alert-hud {
   position: fixed;
   top: 12.5rem;
@@ -1532,9 +1562,7 @@ body.game-page * {
   background:
     radial-gradient(ellipse 55% 70% at 18% 45%, rgba(0, 120, 180, 0.22), transparent 60%),
     radial-gradient(ellipse 55% 70% at 82% 45%, rgba(180, 70, 20, 0.2), transparent 60%),
-    linear-gradient(180deg, rgba(8, 14, 22, 0.62), rgba(4, 6, 10, 0.72)),
-    url('/images/lobby_bg.png') center / cover no-repeat;
-  filter: saturate(0.95) brightness(0.78);
+    linear-gradient(180deg, #0a1018, #04060a);
   pointer-events: none;
 }
 .pre-match-layout {

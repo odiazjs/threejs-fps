@@ -19,6 +19,7 @@ import { getMapDef, type MapCollisionDef } from '../../../shared/level/maps.js';
 import type { SpawnPickContext } from '../../../shared/level/spawnPick.js';
 import {
   PLAYER_MAX_HP,
+  PLASMA_HARVEST_RESPAWN_DELAY_SEC,
   RESPAWN_DELAY_SEC,
 } from '../../../shared/combat/damage.js';
 import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
@@ -594,10 +595,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       this.persistKillStats(grenade.throwerId, targetId);
 
-      this.clock.setTimeout(() => {
-        if (this.isTdm() && this.state.matchPhase === 'ended') return;
-        this.respawnPlayer(targetId);
-      }, RESPAWN_DELAY_SEC * 1000);
+      this.scheduleRespawn(targetId);
     }
   }
 
@@ -1042,9 +1040,36 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.carryingHarvestingBoxIndex = -1;
       player.installingHarvestingBox = false;
       player.matchPlasmaMinerals = MATCH_PLASMA_MINERALS_START;
+      this.applySpawnConsumables(player);
       this.resetPlayerWeaponTiming(player);
     }
     this.teleportHumansToTeamSpawns();
+  }
+
+  /** Grenades / shield charges granted on join or respawn. */
+  private applySpawnConsumables(player: PlayerState): void {
+    if (isPlasmaHarvestGameMode(this.gameMode)) {
+      player.grenadeCount = 0;
+      player.shieldCharges = 0;
+      return;
+    }
+    if (this.mapDef.respawnGrenadeCount !== undefined) {
+      player.grenadeCount = this.mapDef.respawnGrenadeCount;
+    }
+  }
+
+  private getRespawnDelaySec(): number {
+    return isPlasmaHarvestGameMode(this.gameMode)
+      ? PLASMA_HARVEST_RESPAWN_DELAY_SEC
+      : RESPAWN_DELAY_SEC;
+  }
+
+  private scheduleRespawn(sessionId: string): void {
+    const delayMs = this.getRespawnDelaySec() * 1000;
+    this.clock.setTimeout(() => {
+      if (this.isTdm() && this.state.matchPhase !== 'playing') return;
+      this.respawnPlayer(sessionId);
+    }, delayMs);
   }
 
   private startNextHarvestRound(): void {
@@ -2120,11 +2145,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
       this.persistKillStats(client.sessionId, data.targetId);
 
-      const targetId = data.targetId;
-      this.clock.setTimeout(() => {
-        if (this.isTdm() && this.state.matchPhase === 'ended') return;
-        this.respawnPlayer(targetId);
-      }, RESPAWN_DELAY_SEC * 1000);
+      this.scheduleRespawn(data.targetId);
     },
 
     [HARVESTING_BOX_INTERACT_MESSAGE]: (
@@ -2206,6 +2227,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
     this.initPlayerLoadout(player, client.sessionId);
+    this.applySpawnConsumables(player);
     this.state.players.set(client.sessionId, player);
   }
 
@@ -2557,9 +2579,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.dropHarvestingBoxForSession(sessionId);
     this.initPlayerLoadout(player, sessionId);
     this.resetPlayerWeaponTiming(player);
-    if (this.mapDef.respawnGrenadeCount !== undefined) {
-      player.grenadeCount = this.mapDef.respawnGrenadeCount;
-    }
+    this.applySpawnConsumables(player);
   }
 
   private async handleApplyLoadout(
