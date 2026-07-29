@@ -361,6 +361,10 @@ export class Game {
       this.preMatchOverlay.show(
         'Preparing match…',
         joinIntent?.participants ?? [],
+        {
+          gameMode: joinIntent?.gameMode,
+          roundsToWin: joinIntent?.roundsToWin,
+        },
       );
     }
 
@@ -846,6 +850,7 @@ export class Game {
       getRemoteHand: (sessionId) =>
         this.network.getRemotePlayer(sessionId)?.getRemoteHandRig() ?? null,
       delta,
+      viewCamera: camera,
     });
   }
 
@@ -1975,6 +1980,12 @@ export class Game {
 
     if (this.preMatchOverlay.isActive()) {
       this.preMatchOverlay.update(this.network?.getAllPlayers() ?? EMPTY_ROSTER);
+      if (match) {
+        this.preMatchOverlay.setMatchInfo({
+          gameMode: match.gameMode,
+          roundsToWin: match.roundsToWin,
+        });
+      }
       if (
         match &&
         (match.phase === 'countdown' || match.phase === 'playing' || match.phase === 'ended')

@@ -1,3 +1,12 @@
+import {
+  formatHarvestRoundsOptionLabel,
+  GAME_MODE_OPTIONS,
+  isPlasmaHarvestGameMode,
+  isTimedGameMode,
+  normalizeGameMode,
+  normalizeHarvestRoundsToWin,
+  type GameMode,
+} from '../../shared/combat/match';
 import { getKdRatio } from '../auth/playerSession';
 import { rankIconUrl } from '../content/rankIcons';
 import { isTrainingBotSessionId } from '../../shared/combat/trainingBots';
@@ -21,6 +30,11 @@ export interface PreMatchPlayer {
   clientReady: boolean;
 }
 
+export interface PreMatchShowOptions {
+  gameMode?: GameMode | string | null;
+  roundsToWin?: number | null;
+}
+
 const STEP_ORDER: PreMatchLoadStep[] = ['assets', 'shaders', 'sync', 'finalize'];
 
 const TIPS = [
@@ -28,6 +42,12 @@ const TIPS = [
   'Tip: Use cover — peek, shoot, then reposition.',
   'Tip: Shield charges refill mid-fight. Grab them early.',
 ];
+
+function gameModeLabel(mode: GameMode): string {
+  return (
+    GAME_MODE_OPTIONS.find((option) => option.id === mode)?.label ?? mode
+  );
+}
 
 /**
  * Full-screen Blue vs Orange roster shown while the match loads assets/shaders
@@ -41,6 +61,9 @@ export class PreMatchOverlay {
   private readonly progressFill: HTMLElement;
   private readonly footerStatus: HTMLElement;
   private readonly tipEl: HTMLElement;
+  private readonly modeTitleEl: HTMLElement;
+  private readonly roundsEl: HTMLElement;
+  private readonly tutorialEl: HTMLImageElement;
   private lastRenderKey = '';
   private active = false;
   private seededRoster: PreMatchPlayer[] = [];
@@ -55,16 +78,23 @@ export class PreMatchOverlay {
     this.progressFill = this.root.querySelector('#pre-match-progress-fill')!;
     this.footerStatus = this.root.querySelector('#pre-match-footer-status')!;
     this.tipEl = this.root.querySelector('.pre-match-tip')!;
+    this.modeTitleEl = this.root.querySelector('.pre-match-mode-title')!;
+    this.roundsEl = this.root.querySelector('.pre-match-rounds')!;
+    this.tutorialEl = this.root.querySelector(
+      '.pre-match-tutorial',
+    ) as HTMLImageElement;
   }
 
   show(
     _status = 'PREPARING MATCH…',
     participants: GameLaunchParticipant[] = [],
+    options: PreMatchShowOptions = {},
   ): void {
     this.active = true;
     this.seededRoster = participants.map((participant, index) =>
       this.fromParticipant(participant, index),
     );
+    this.applyMatchInfo(options);
     const tipIcon = this.tipEl.querySelector('.pre-match-tip-icon');
     this.tipEl.replaceChildren();
     if (tipIcon) this.tipEl.appendChild(tipIcon);
@@ -76,6 +106,40 @@ export class PreMatchOverlay {
     this.root.hidden = false;
     this.renderPlayers(this.seededRoster);
     this.hideClickToPlayBlocker();
+  }
+
+  /** Update mode / rounds labels when network match state arrives. */
+  setMatchInfo(options: PreMatchShowOptions): void {
+    if (!this.active) return;
+    this.applyMatchInfo(options);
+  }
+
+  private applyMatchInfo(options: PreMatchShowOptions): void {
+    const mode = normalizeGameMode(options.gameMode);
+    this.modeTitleEl.textContent = `GAME MODE: ${gameModeLabel(mode)}`;
+
+    const harvest = isPlasmaHarvestGameMode(mode);
+    if (harvest) {
+      const rounds = normalizeHarvestRoundsToWin(options.roundsToWin);
+      this.roundsEl.textContent = `ROUNDS: ${formatHarvestRoundsOptionLabel(rounds)}`;
+      this.roundsEl.hidden = false;
+    } else {
+      this.roundsEl.hidden = true;
+    }
+
+    const tutorialSrc = harvest
+      ? '/images/plasma_harvest_tutorial.png'
+      : isTimedGameMode(mode)
+        ? '/images/tdm_tutorial.png'
+        : null;
+
+    if (tutorialSrc) {
+      this.tutorialEl.src = tutorialSrc;
+      this.tutorialEl.alt = `${gameModeLabel(mode)} tutorial`;
+      this.tutorialEl.hidden = false;
+    } else {
+      this.tutorialEl.hidden = true;
+    }
   }
 
   hide(): void {

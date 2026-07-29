@@ -96,7 +96,10 @@ async function startGame(): Promise<void> {
       // Paint the pre-match screen before any Game boot work so click-to-play
       // never flashes and the roster is already filled.
       const preMatch = new PreMatchOverlay();
-      preMatch.show('Preparing match…', participants);
+      preMatch.show('Preparing match…', participants, {
+        gameMode: joinIntent?.gameMode,
+        roundsToWin: joinIntent?.roundsToWin,
+      });
     }
 
     const game = new Game();

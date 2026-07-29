@@ -22,7 +22,7 @@ export const HARVESTING_BOX_HOLD_SEC = 3;
 /** Hold F duration to install an enemy box at your own base. */
 export const HARVESTING_BOX_INSTALL_SEC = 10;
 /** Max distance from box / carrier feet / install spot to interact. */
-export const HARVESTING_BOX_INTERACT_DISTANCE = 1;
+export const HARVESTING_BOX_INTERACT_DISTANCE = 2.75;
 /** Fallback install offset toward midfield when no authored install marker. */
 export const HARVESTING_BOX_INSTALL_FORWARD_M = 1;
 /**

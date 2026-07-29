@@ -12,6 +12,10 @@ import {
   pulseHarvestingBoxArrow,
   setHarvestingBoxArrowVisible,
 } from './harvestingBoxMarker';
+import {
+  createHarvestInstallHologram,
+  type HarvestInstallHologram,
+} from './harvestInstallHologram';
 import { resolvePickupPlacementY } from './pickupSurface';
 
 export interface HarvestingBoxInstance {
@@ -47,6 +51,7 @@ export const REMOTE_CARRY_SCALE = 82.5;
 export class HarvestingBoxes {
   readonly group = new THREE.Group();
   private boxes: HarvestingBoxInstance[] = [];
+  private installHolograms: HarvestInstallHologram[] = [];
   private ready = false;
   private elapsed = 0;
 
@@ -77,9 +82,10 @@ export class HarvestingBoxes {
       const arrow = createHarvestingBoxTeamArrow(spawn.teamId);
       root.add(arrow);
       this.group.add(root);
-      // Outline the crate mesh only  keep the team arrow depth-tested.
+      // Outline the crate mesh only — keep the team arrow depth-tested.
       HarvestingBoxOutlineFx.attach(mesh, spawn.teamId);
 
+      const installY = harvestingBoxSurfaceY(spawn.installY);
       instances.push({
         index: spawn.index,
         teamId: spawn.teamId,
@@ -89,13 +95,26 @@ export class HarvestingBoxes {
         homeY: placeY,
         homeZ: spawn.z,
         installX: spawn.installX,
-        installY: harvestingBoxSurfaceY(spawn.installY),
+        installY,
         installZ: spawn.installZ,
         spawnX: spawn.x,
         spawnY: placeY,
         spawnZ: spawn.z,
         carriedBySessionId: '',
       });
+
+      const spot = harvestingBoxInstallSpot(spawn.x, spawn.z, {
+        x: spawn.installX,
+        z: spawn.installZ,
+      });
+      const hologram = createHarvestInstallHologram(
+        spawn.teamId,
+        spot.x,
+        resolvePickupPlacementY(spot.x, spot.z, installY),
+        spot.z,
+      );
+      this.group.add(hologram.object);
+      this.installHolograms.push(hologram);
     }
 
     this.boxes = instances;
@@ -218,9 +237,15 @@ export class HarvestingBoxes {
     localCamera: THREE.Object3D | null;
     getRemoteHand: (sessionId: string) => THREE.Object3D | null;
     delta?: number;
+    /** Used to yaw install holograms toward the viewer. */
+    viewCamera?: THREE.Camera | null;
   }): void {
     const { localSessionId, localCamera, getRemoteHand } = options;
     this.elapsed += options.delta ?? 0;
+
+    for (const holo of this.installHolograms) {
+      holo.update(this.elapsed, options.viewCamera ?? null);
+    }
 
     for (const box of this.boxes) {
       const carrier = box.carriedBySessionId;
@@ -303,6 +328,10 @@ export class HarvestingBoxes {
       }
       box.arrow.geometry.dispose();
     }
+    for (const holo of this.installHolograms) {
+      holo.dispose();
+    }
+    this.installHolograms = [];
     HarvestingBoxOutlineFx.clear();
     while (this.group.children.length > 0) {
       this.group.remove(this.group.children[0]!);

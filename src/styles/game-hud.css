@@ -1441,6 +1441,52 @@ body.game-page * {
 #pre-match-overlay[hidden] {
   display: none !important;
 }
+.pre-match-mode-header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.25rem;
+  padding: clamp(0.55rem, 1.4vw, 1rem) 1rem 0;
+  margin: 0;
+  text-align: center;
+  pointer-events: none;
+}
+.pre-match-mode-title {
+  margin: 0;
+  font-size: clamp(1.05rem, 2.4vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 0 18px rgba(0, 242, 255, 0.35);
+}
+.pre-match-rounds {
+  margin: 0;
+  font-size: clamp(0.78rem, 1.6vw, 1rem);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #7dffb0;
+  text-shadow: 0 0 12px rgba(80, 255, 160, 0.35);
+}
+.pre-match-rounds[hidden],
+.pre-match-tutorial[hidden] {
+  display: none !important;
+}
+.pre-match-tutorial {
+  display: block;
+  width: min(56rem, 88vw);
+  max-height: min(52vh, 32rem);
+  margin: 0.25rem 0 0;
+  padding: 0;
+  object-fit: contain;
+  vertical-align: bottom;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.55));
+  user-select: none;
+}
 .pre-match-bg {
   position: absolute;
   inset: 0;
@@ -1459,16 +1505,16 @@ body.game-page * {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(11rem, 16rem) minmax(0, 1fr);
   min-height: 0;
+  align-items: start;
   gap: 0.5rem;
-  padding: clamp(0.85rem, 2vw, 1.6rem) clamp(0.85rem, 2.4vw, 2rem) 0.35rem;
+  padding: 0.35rem clamp(0.85rem, 2.4vw, 2rem) 0.35rem;
 }
 .pre-match-side {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  /* Team title + first participant share this vertical start. */
-  padding-top: clamp(16vh, 24vh, 30vh);
+  padding-top: 0;
 }
 .pre-match-side-header {
   display: flex;
@@ -1638,8 +1684,9 @@ body.game-page * {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 0.5rem 0.25rem;
+  /* Sit beside the first participant row (side header + gap), not above it. */
+  justify-content: flex-start;
+  padding: calc(2.4rem + 0.65rem) 0.25rem 0.5rem;
 }
 .pre-match-vs {
   display: grid;
@@ -1792,11 +1839,12 @@ body.game-page * {
     overflow: auto;
   }
   .pre-match-side {
-    padding-top: 1rem;
+    padding-top: 0.5rem;
   }
   .pre-match-center {
     order: -1;
-    padding-bottom: 0.5rem;
+    padding: 0.35rem 0.25rem 0.5rem;
+    justify-content: center;
   }
   .pre-match-side--orange .pre-match-side-header,
   .pre-match-side--blue .pre-match-side-header {

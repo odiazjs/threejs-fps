@@ -1041,6 +1041,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       player.alive = true;
       player.carryingHarvestingBoxIndex = -1;
       player.installingHarvestingBox = false;
+      player.matchPlasmaMinerals = MATCH_PLASMA_MINERALS_START;
       this.resetPlayerWeaponTiming(player);
     }
     this.teleportHumansToTeamSpawns();
