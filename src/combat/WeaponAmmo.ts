@@ -64,6 +64,13 @@ export class WeaponAmmo {
     this.clearReloadState();
   }
 
+  /** Full magazine only — no reserve (Plasma Harvest craft). */
+  setMagazineOnly(): void {
+    this.clip = this.config.clipSize;
+    this.reserveRounds = 0;
+    this.clearReloadState();
+  }
+
   private roundsToFillClip(): number {
     return this.config.clipSize - this.clip;
   }

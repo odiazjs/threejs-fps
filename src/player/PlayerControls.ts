@@ -12,6 +12,8 @@ import type { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import type { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import type { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import type { WeaponPickupHud } from '../ui/WeaponPickupHud';
+import type { HarvestingBoxHud } from '../ui/HarvestingBoxHud';
+import type { MatchAlertHud } from '../ui/MatchAlertHud';
 import type { TeamHud } from '../ui/TeamHud';
 import type { MinimapHud } from '../ui/MinimapHud';
 
@@ -37,6 +39,8 @@ export class PlayerControls {
   private shieldDomeHud: ShieldDomeHud | null = null;
   private weaponPickupHud: WeaponPickupHud | null = null;
   private shieldPickupHud: ShieldPickupHud | null = null;
+  private harvestingBoxHud: HarvestingBoxHud | null = null;
+  private matchAlertHud: MatchAlertHud | null = null;
   private teamHud: TeamHud | null = null;
   private minimapHud: MinimapHud | null = null;
   private crosshairHud: CrosshairHud | null = null;
@@ -46,6 +50,7 @@ export class PlayerControls {
   private isPaused = false;
   private inventoryOpen = false;
   private tacticalMapOpen = false;
+  private craftingOpen = false;
   private deadBlocked = false;
   private readonly skipClickToPlayOverlay: boolean;
 
@@ -111,6 +116,14 @@ export class PlayerControls {
     this.shieldPickupHud = hud;
   }
 
+  setHarvestingBoxHud(hud: HarvestingBoxHud): void {
+    this.harvestingBoxHud = hud;
+  }
+
+  setMatchAlertHud(hud: MatchAlertHud): void {
+    this.matchAlertHud = hud;
+  }
+
   setTeamHud(hud: TeamHud): void {
     this.teamHud = hud;
   }
@@ -130,6 +143,10 @@ export class PlayerControls {
 
   setInventoryOpen(open: boolean): void {
     this.inventoryOpen = open;
+  }
+
+  setCraftingOpen(open: boolean): void {
+    this.craftingOpen = open;
   }
 
   setTacticalMapOpen(open: boolean): void {
@@ -172,7 +189,7 @@ export class PlayerControls {
     // click re-locks via the body click handler.
     window.setTimeout(() => {
       if (this.isPaused || this.deadBlocked) return;
-      if (this.inventoryOpen || this.tacticalMapOpen) return;
+      if (this.inventoryOpen || this.tacticalMapOpen || this.craftingOpen) return;
       if (this.skipClickToPlayOverlay) return;
       if (!this.controls.isLocked) this.controls.lock();
     }, 250);
@@ -214,7 +231,14 @@ export class PlayerControls {
 
     document.body.addEventListener('click', (event) => {
       if (this.skipClickToPlayOverlay) return;
-      if (this.inventoryOpen || this.tacticalMapOpen || this.deadBlocked) return;
+      if (
+        this.inventoryOpen ||
+        this.tacticalMapOpen ||
+        this.craftingOpen ||
+        this.deadBlocked
+      ) {
+        return;
+      }
       if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
       if (event.target === this.leaveButton) return;
       this.onEngage?.();
@@ -242,7 +266,14 @@ export class PlayerControls {
     this.controls.onLockError = () => {
       // Never leave the player in a silent !canAct hole — force a visible re-engage.
       if (this.skipClickToPlayOverlay) return;
-      if (this.inventoryOpen || this.tacticalMapOpen || this.deadBlocked) return;
+      if (
+        this.inventoryOpen ||
+        this.tacticalMapOpen ||
+        this.craftingOpen ||
+        this.deadBlocked
+      ) {
+        return;
+      }
       this.isPaused = true;
       this.blocker.hidden = false;
       this.blocker.style.display = 'flex';
@@ -257,6 +288,7 @@ export class PlayerControls {
       if (
         this.inventoryOpen ||
         this.tacticalMapOpen ||
+        this.craftingOpen ||
         this.controls.isSoftUnlocked
       ) {
         this.isPaused = false;
@@ -305,6 +337,8 @@ export class PlayerControls {
     this.shieldDomeHud?.setVisible(visible);
     this.weaponPickupHud?.setVisible(visible);
     this.shieldPickupHud?.setVisible(visible);
+    this.harvestingBoxHud?.setVisible(visible);
+    this.matchAlertHud?.setVisible(visible);
     this.killFeedHud?.setVisible(visible);
     this.damageIndicatorHud?.setVisible(visible);
     this.grenadeThreatIndicatorHud?.setVisible(visible);

@@ -8,10 +8,16 @@ import {
   type BakedLevelCollisionData,
 } from '../../shared/level/levelMeshCollisionUtils';
 import { TDM_MAP_COLLISION_BAKE } from '../../shared/level/tdmMapConfig';
+import { HARVEST_MAP_COLLISION_BAKE } from '../../shared/level/harvestMapConfig';
 import { LevelPhysicsWorld } from '../../shared/physics/levelPhysicsWorld';
 import { initRapier } from '../../shared/physics/rapierInit';
 import { setMapPhysics } from '../../shared/level/mapMeshMovement';
 import { loadTdmMapGroundCollider } from '../../shared/level/tdmMapGroundCollider';
+import { loadHarvestMapGroundCollider } from '../../shared/level/harvestMapGroundCollider';
+import {
+  buildCraftingStationColliders,
+  getCraftingStationSpawns,
+} from '../../shared/level/craftingStationSpawns';
 import { loadFiringRangeGroundCollider } from '../../shared/level/firingRangeGroundCollider';
 import { loadFiringRangeCrateColliders } from '../../shared/level/loadFiringRangeCrateColliders';
 import {
@@ -54,6 +60,16 @@ async function fetchTdmMapCollisionBake(): Promise<BakedLevelCollisionData> {
   return parseLevelCollisionBake(await response.arrayBuffer());
 }
 
+async function fetchHarvestMapCollisionBake(): Promise<BakedLevelCollisionData> {
+  const response = await fetch(`/3d/${HARVEST_MAP_COLLISION_BAKE}`);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${HARVEST_MAP_COLLISION_BAKE} (${response.status})`,
+    );
+  }
+  return parseLevelCollisionBake(await response.arrayBuffer());
+}
+
 export async function buildClientMapPhysics(
   map: MapCollisionDef,
   collisionRoots?: readonly THREE.Object3D[],
@@ -81,6 +97,30 @@ export async function buildClientMapPhysics(
       debugGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
       attachPhysicsColliderDebug(scene, createTrimeshColliderDebugMesh(debugGeometry));
     }
+  } else if (map.usesMeshCollision && map.id === 'harvest') {
+    const { positions, indices } = await fetchHarvestMapCollisionBake();
+    clientPhysics.loadTrimesh(positions, indices);
+    loadHarvestMapGroundCollider(clientPhysics);
+    const stationColliders = buildCraftingStationColliders(
+      getCraftingStationSpawns('harvest', 'plasma_harvest'),
+    );
+    if (stationColliders.length > 0) {
+      clientPhysics.loadOrientedBoxes(stationColliders);
+    }
+
+    console.info(
+      `[ClientPhysics] Loaded ${map.label} baked trimesh (${Math.round(indices.length / 3)} tris)`
+        + (stationColliders.length > 0
+          ? `, ${stationColliders.length} craft stations`
+          : ''),
+    );
+
+    if (isPhysicsColliderDebugEnabled() && scene) {
+      const debugGeometry = new THREE.BufferGeometry();
+      debugGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      debugGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      attachPhysicsColliderDebug(scene, createTrimeshColliderDebugMesh(debugGeometry));
+    }
   } else if (map.usesMeshCollision && collisionRoots?.length) {
     const meshes = collectLevelCollisionMeshes(collisionRoots);
     const geometry = buildMergedLevelCollisionGeometry(meshes);
@@ -90,6 +130,8 @@ export async function buildClientMapPhysics(
 
     if (map.id === 'killhouse_small') {
       loadTdmMapGroundCollider(clientPhysics);
+    } else if (map.id === 'harvest') {
+      loadHarvestMapGroundCollider(clientPhysics);
     } else if (map.id === 'firing_range') {
       loadFiringRangeGroundCollider(clientPhysics);
       const crateCount = loadFiringRangeCrateColliders(clientPhysics);

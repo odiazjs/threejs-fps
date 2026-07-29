@@ -4,17 +4,17 @@ import { LobbyState } from '../../shared/schema/LobbyState';
 import { getServerUrl } from '../config/serverUrl';
 import type { FpsJoinCredentials } from './joinCredentials';
 import type { GameJoinIntent } from './gameJoin';
-import { normalizeGameMode } from '../../shared/combat/match';
-import { normalizeMapId } from '../../shared/level/maps';
+import { normalizeGameMode, resolveMapForGameMode } from '../../shared/combat/match';
 
 const LOBBY_LAUNCH_TIMEOUT_MS = 4_000;
 
 function launchToIntent(data: GameLaunchMessage): GameJoinIntent {
+  const gameMode = normalizeGameMode(data.gameMode);
   return {
     mode: 'join',
     roomId: data.roomId,
-    mapId: normalizeMapId(data.mapId),
-    gameMode: normalizeGameMode(data.gameMode),
+    mapId: resolveMapForGameMode(gameMode, data.mapId),
+    gameMode,
     matchDurationSec: data.matchDurationSec,
     killLimit: data.killLimit,
     ...(typeof data.teamId === 'number' ? { teamId: data.teamId } : {}),

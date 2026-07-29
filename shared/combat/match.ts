@@ -1,12 +1,16 @@
 import type { MapId } from '../level/maps.js';
+import { MAP_OPTIONS, normalizeMapId } from '../level/maps.js';
 
-export type GameMode = 'playground' | 'tdm' | 'tdm_kills';
+export type GameMode = 'playground' | 'tdm' | 'tdm_kills' | 'plasma_harvest';
 
 export type MatchPhase = 'waiting' | 'countdown' | 'playing' | 'ended';
 
-export type MatchWinCondition = 'none' | 'time' | 'kills';
+export type MatchWinCondition = 'none' | 'time' | 'kills' | 'install';
 
 export const DEFAULT_GAME_MODE: GameMode = 'playground';
+
+/** Plasma Harvest always runs on the Harvest arena. */
+export const PLASMA_HARVEST_MAP_ID = 'harvest' as const satisfies MapId;
 
 export const GAME_MODE_OPTIONS = [
   {
@@ -26,6 +30,12 @@ export const GAME_MODE_OPTIONS = [
     label: 'First to Kills',
     description: 'Team race — first side to hit the kill target wins',
     winCondition: 'kills' as const,
+  },
+  {
+    id: 'plasma_harvest' as const,
+    label: 'Plasma Harvest',
+    description: 'Steal the enemy harvesting box and install it at your base',
+    winCondition: 'install' as const,
   },
 ] as const;
 
@@ -48,17 +58,24 @@ export const TDM_KILL_POINTS = 50;
 export const MAX_TDM_TEAMS = 4;
 
 export function isValidGameMode(value: string | null | undefined): value is GameMode {
-  return value === 'playground' || value === 'tdm' || value === 'tdm_kills';
+  return (
+    value === 'playground' ||
+    value === 'tdm' ||
+    value === 'tdm_kills' ||
+    value === 'plasma_harvest'
+  );
 }
 
 export function normalizeGameMode(value: string | null | undefined): GameMode {
-  if (value === 'tdm' || value === 'tdm_kills') return value;
+  if (value === 'tdm' || value === 'tdm_kills' || value === 'plasma_harvest') {
+    return value;
+  }
   return 'playground';
 }
 
 /** Modes that use match phases, teams, scores, and results. */
 export function isCompetitiveGameMode(mode: GameMode | string | null | undefined): boolean {
-  return mode === 'tdm' || mode === 'tdm_kills';
+  return mode === 'tdm' || mode === 'tdm_kills' || mode === 'plasma_harvest';
 }
 
 export function isTimedGameMode(mode: GameMode | string | null | undefined): boolean {
@@ -69,11 +86,50 @@ export function isKillRaceGameMode(mode: GameMode | string | null | undefined): 
   return mode === 'tdm_kills';
 }
 
+export function isPlasmaHarvestGameMode(
+  mode: GameMode | string | null | undefined,
+): boolean {
+  return mode === 'plasma_harvest';
+}
+
+/** Force / clamp map selection for modes that require a specific arena. */
+export function resolveMapForGameMode(
+  gameMode: GameMode | string | null | undefined,
+  mapId?: string | null,
+): MapId {
+  if (isPlasmaHarvestGameMode(gameMode)) return PLASMA_HARVEST_MAP_ID;
+  return normalizeMapId(mapId);
+}
+
+export function getAllowedMapIdsForGameMode(
+  gameMode: GameMode | string | null | undefined,
+): readonly MapId[] {
+  if (isPlasmaHarvestGameMode(gameMode)) return [PLASMA_HARVEST_MAP_ID];
+  return MAP_OPTIONS.map((option) => option.id);
+}
+
+/** Melee-only join/respawn (no gun slots) — Plasma Harvest + firing range sandbox. */
+export function usesEmptyStartingLoadout(
+  gameMode: GameMode | string | null | undefined,
+  mapEmptyStartingLoadout?: boolean,
+): boolean {
+  if (isPlasmaHarvestGameMode(gameMode)) return true;
+  return mapEmptyStartingLoadout === true;
+}
+
+/** Armory mid-match loadout switching (Tab right panel). */
+export function allowsMidMatchLoadoutSwitch(
+  gameMode: GameMode | string | null | undefined,
+): boolean {
+  return !isPlasmaHarvestGameMode(gameMode);
+}
+
 export function getGameModeWinCondition(
   mode: GameMode | string | null | undefined,
 ): MatchWinCondition {
   if (mode === 'tdm') return 'time';
   if (mode === 'tdm_kills') return 'kills';
+  if (mode === 'plasma_harvest') return 'install';
   return 'none';
 }
 
@@ -128,12 +184,15 @@ export function getMatchObjectiveBanner(
 ): string {
   if (mode === 'tdm_kills') {
     const target = killLimit > 0 ? killLimit : DEFAULT_KILL_RACE_TARGET;
-    return `First to ${target} kills wins!`;
+    return `First to ${target} kills wins`;
   }
   if (mode === 'tdm') {
     const duration = matchDurationSec > 0 ? matchDurationSec : DEFAULT_TDM_DURATION_SEC;
     const mins = Math.max(1, Math.round(duration / 60));
-    return `Get as many kills as possible in ${mins} min${mins === 1 ? '' : 's'}!`;
+    return `Get as many kills as possible in ${mins} min${mins === 1 ? '' : 's'}`;
+  }
+  if (mode === 'plasma_harvest') {
+    return 'Steal the enemy harvesting box and install it at your base';
   }
   return '';
 }
@@ -179,7 +238,7 @@ export function getCountdownDisplayValue(
   countdownEndAt: number,
 ): string | null {
   const remaining = countdownEndAt - worldTime;
-  if (remaining <= 0) return 'GO!';
+  if (remaining <= 0) return 'GO';
   const whole = Math.ceil(remaining);
   if (whole > TDM_COUNTDOWN_SEC) return null;
   return String(whole);

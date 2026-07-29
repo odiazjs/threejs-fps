@@ -7,6 +7,7 @@ import {
   GAME_MODE_OPTIONS,
   isCompetitiveGameMode,
   isKillRaceGameMode,
+  isPlasmaHarvestGameMode,
   isTimedGameMode,
   isValidGameMode,
   isValidKillRaceTarget,
@@ -14,6 +15,7 @@ import {
   KILL_RACE_TARGET_OPTIONS,
   normalizeKillRaceTarget,
   normalizeTdmDurationSec,
+  PLASMA_HARVEST_MAP_ID,
   resolveMatchRules,
   TDM_DURATION_OPTIONS_SEC,
   type GameMode,
@@ -24,11 +26,13 @@ import {
 const MODE_STORAGE_KEY = 'fps_selected_game_mode';
 const DURATION_STORAGE_KEY = 'fps_selected_match_duration_sec';
 const KILL_TARGET_STORAGE_KEY = 'fps_selected_kill_race_target';
+const MAP_STORAGE_KEY = 'fps_selected_map_id';
 
 const MODE_INITIALS: Record<GameMode, string> = {
   tdm: 'TDM',
   tdm_kills: 'FTK',
   playground: 'TP',
+  plasma_harvest: 'PH',
 };
 
 export function getSelectedGameMode(): GameMode {
@@ -203,6 +207,17 @@ export function initLobbyGameModeSelector(): void {
     card.addEventListener('click', () => {
       selectedId = option.id;
       setSelectedGameMode(option.id);
+      if (isPlasmaHarvestGameMode(option.id)) {
+        try {
+          localStorage.setItem(MAP_STORAGE_KEY, PLASMA_HARVEST_MAP_ID);
+        } catch {
+          // ignore
+        }
+      }
+      // Refresh map cards so Plasma Harvest locks to Harvest.
+      window.dispatchEvent(new CustomEvent('fps-game-mode-changed', {
+        detail: { gameMode: option.id },
+      }));
       syncSelectedCards(track, selectedId);
       syncModeOptionsUi(selectedId);
     });

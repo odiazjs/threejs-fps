@@ -1,3 +1,6 @@
+/** Public URL for the plasma minerals currency icon. */
+export const PLASMA_MINERALS_ICON_SRC = '/images/ui/plasma_minerals_icon.png';
+
 /** Formats and paints plasma mineral balance into all HUD slots. */
 export function formatPlasmaMinerals(amount: number): string {
   return Math.max(0, Math.floor(amount)).toLocaleString('en-US');

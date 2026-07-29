@@ -11,6 +11,7 @@ import { getActiveOperatorId } from '../../content/activeOperatorCharacter';
 import { formatKd, formatRp, formatWinRate, rankIconUrl } from '../../content/rankIcons';
 import { StorePreviewScene } from '../../store/StorePreviewScene';
 import { LoadingOverlay } from '../../ui/LoadingOverlay';
+import { PLASMA_MINERALS_ICON_SRC } from '../../ui/plasmaMineralsHud';
 
 const TIER_ORDER: RankTierId[] = [
   'bronze',
@@ -93,6 +94,52 @@ function rewardReceiveDescription(reward: SeasonRewardSnapshot): string {
   return reward.rewardLabel;
 }
 
+/** Split currency labels into amount + type for the track card layout. */
+function seasonRewardCardLabels(reward: SeasonRewardSnapshot | undefined, level: number): {
+  primary: string;
+  secondary: string | null;
+} {
+  if (!reward) {
+    return { primary: `Level ${level}`, secondary: null };
+  }
+  if (reward.rewardType === 'credits') {
+    const amount =
+      reward.rewardAmount != null
+        ? formatRp(reward.rewardAmount)
+        : reward.rewardLabel.replace(/\s*credits?\s*$/i, '').trim() || reward.rewardLabel;
+    return { primary: amount, secondary: 'CREDITS' };
+  }
+  if (reward.rewardType === 'minerals') {
+    const amount =
+      reward.rewardAmount != null
+        ? formatRp(reward.rewardAmount)
+        : reward.rewardLabel
+            .replace(/\s*plasma\s*minerals?\s*$/i, '')
+            .replace(/\s*minerals?\s*$/i, '')
+            .trim() || reward.rewardLabel;
+    return { primary: amount, secondary: 'PLASMA MINERALS' };
+  }
+  return { primary: reward.rewardLabel, secondary: null };
+}
+
+function seasonTrackProgressPct(
+  trackLevels: readonly number[],
+  seasonLevel: number,
+  xpIntoLevel: number,
+  xpForNextLevel: number,
+): number {
+  if (trackLevels.length <= 1) return 100;
+  let i = trackLevels.indexOf(seasonLevel);
+  if (i < 0) {
+    i = trackLevels.reduce(
+      (acc, level, idx) => (level <= seasonLevel ? idx : acc),
+      0,
+    );
+  }
+  const into = xpForNextLevel > 0 ? Math.min(1, xpIntoLevel / xpForNextLevel) : 1;
+  return Math.min(100, ((i + into) / (trackLevels.length - 1)) * 100);
+}
+
 export class RankedView {
   private root: HTMLElement | null = null;
   private onRewardsClick: (() => void) | null = null;
@@ -128,7 +175,7 @@ export class RankedView {
         requestAnimationFrame(() => {
           this.root?.classList.add('ranked-visible');
           document
-            .querySelector('.ranked-season-node.is-current')
+            .querySelector('.ranked-season-step.is-current')
             ?.scrollIntoView({ inline: 'center', block: 'nearest' });
         });
       });
@@ -516,7 +563,20 @@ export class RankedView {
               <span>${formatWinRate(career.winRate)} career WR</span>
             </div>
           </header>
-          <div class="ranked-season-track" role="list">
+          <div class="ranked-season-rail" role="list">
+            <div
+              class="ranked-season-rail-inner"
+              style="--season-progress: ${seasonTrackProgressPct(
+                trackLevels,
+                seasonStats.seasonLevel,
+                seasonStats.seasonXpIntoLevel,
+                seasonStats.seasonXpForNextLevel,
+              )}%"
+            >
+            <div class="ranked-season-progress-line" aria-hidden="true">
+              <div class="ranked-season-progress-line-track"></div>
+              <div class="ranked-season-progress-line-fill"></div>
+            </div>
             ${trackLevels
               .map((level) => {
                 const reward = rewardByLevel.get(level);
@@ -524,14 +584,21 @@ export class RankedView {
                 const current = level === seasonStats.seasonLevel;
                 const locked = level > seasonStats.seasonLevel;
                 const state = current ? 'is-current' : done ? 'is-done' : 'is-locked';
-                const label = reward?.rewardLabel ?? `Level ${level}`;
+                const labels = seasonRewardCardLabels(reward, level);
+                const alt = labels.secondary
+                  ? `${labels.primary} ${labels.secondary}`
+                  : labels.primary;
                 const previewUrl = reward?.previewImageUrl?.trim() || null;
+                const isPlasmaCurrency =
+                  reward?.rewardType === 'credits' || reward?.rewardType === 'minerals';
                 const canPreview = reward ? isSeasonRewardModelPreviewable(reward) : false;
                 const canRedeem = Boolean(reward?.unlocked && !reward.claimed);
                 const claimed = Boolean(reward?.claimed);
-                const preview = previewUrl
-                  ? `<img class="ranked-season-node-preview" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(label)}" />`
-                  : '';
+                const preview = isPlasmaCurrency
+                  ? `<img class="ranked-season-step-preview ranked-season-step-preview--plasma" src="${PLASMA_MINERALS_ICON_SRC}" alt="${escapeHtml(alt)}" />`
+                  : previewUrl
+                    ? `<img class="ranked-season-step-preview" src="${escapeHtml(previewUrl)}" alt="${escapeHtml(alt)}" />`
+                    : `<span class="ranked-season-step-icon" aria-hidden="true"></span>`;
                 const previewBtn = canPreview
                   ? `<button type="button" class="ranked-season-preview-btn" data-season-preview-level="${level}">PREVIEW ITEM</button>`
                   : '';
@@ -540,25 +607,41 @@ export class RankedView {
                     ? `<button type="button" class="ranked-season-redeem-btn is-claimed" disabled>REDEEMED</button>`
                     : `<button type="button" class="ranked-season-redeem-btn" data-season-redeem-level="${level}" ${canRedeem ? '' : 'disabled'}>REDEEM</button>`
                   : '';
-                const mark = done
-                  ? '<span class="ranked-season-mark ranked-season-mark--done" aria-hidden="true"></span>'
-                  : locked
-                    ? '<span class="ranked-season-mark ranked-season-mark--lock" aria-hidden="true"></span>'
-                    : `<span class="ranked-season-mark-num">${level}</span>`;
+                const lockBadge = locked
+                  ? '<span class="ranked-season-step-lock" aria-hidden="true"></span>'
+                  : '';
+                const statusMark = done
+                  ? '<span class="ranked-season-step-check" aria-hidden="true"></span>'
+                  : '<span class="ranked-season-step-status-slot" aria-hidden="true"></span>';
                 return `
-                  <div class="ranked-season-node ${state}${previewUrl || canPreview ? ' has-preview' : ''}" role="listitem">
-                    <div class="ranked-season-node-level">${mark}</div>
-                    <div class="ranked-season-node-card">
+                  <div class="ranked-season-step ${state}${previewUrl || canPreview ? ' has-preview' : ''}" role="listitem">
+                    <span class="ranked-season-step-num">${level}</span>
+                    <span class="ranked-season-step-node" aria-hidden="true"></span>
+                    <div class="ranked-season-step-card">
+                      ${lockBadge}
                       ${preview}
-                      <span class="ranked-season-node-label">${escapeHtml(label)}</span>
+                      <span class="ranked-season-step-label">
+                        <span class="ranked-season-step-label-primary">${escapeHtml(labels.primary)}</span>
+                        ${
+                          labels.secondary
+                            ? `<span class="ranked-season-step-label-secondary">${escapeHtml(labels.secondary)}</span>`
+                            : ''
+                        }
+                      </span>
                     </div>
+                    ${statusMark}
                     ${previewBtn}
                     ${redeemBtn}
                   </div>
                 `;
               })
               .join('')}
+            </div>
           </div>
+          <p class="ranked-season-footer">
+            <span class="ranked-season-footer-icon" aria-hidden="true">i</span>
+            Play matches, earn XP and complete challenges to unlock rewards!
+          </p>
         </section>
 
         <section class="ranked-info-row" aria-label="Ranked info">

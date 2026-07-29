@@ -844,7 +844,7 @@ export class FriendsPanel {
     }
 
     this.launchBtn.classList.remove('is-party-launch');
-    this.launchBtn.textContent = 'LAUNCH QUICK MATCH';
+    this.launchBtn.textContent = 'START GAME';
     this.launchBtn.disabled = this.isBusy() || this.launching;
     this.launchBtn.title = '';
   }

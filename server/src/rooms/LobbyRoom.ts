@@ -62,7 +62,7 @@ import type { SetAppViewMessage } from '../../../shared/network/appView.js';
 import { LobbyPlayerState, LobbyState } from '../../../shared/schema/LobbyState.js';
 
 import { normalizeMapId } from '../../../shared/level/maps.js';
-import { normalizeGameMode } from '../../../shared/combat/match.js';
+import { normalizeGameMode, resolveMapForGameMode } from '../../../shared/combat/match.js';
 
 import {
   getPublicPresence,
@@ -657,8 +657,8 @@ export class LobbyRoom extends Room<{ state: LobbyState }> {
 
 
       const friendlyFire = party.friendlyFire || data.friendlyFire === true;
-      const mapId = normalizeMapId(data.mapId);
       const gameMode = normalizeGameMode(data.gameMode);
+      const mapId = resolveMapForGameMode(gameMode, data.mapId);
       const matchDurationSec =
         typeof data.matchDurationSec === 'number' ? data.matchDurationSec : undefined;
       const killLimit = typeof data.killLimit === 'number' ? data.killLimit : undefined;

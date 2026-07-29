@@ -2,11 +2,18 @@ import { getMapDef, type MapCollisionDef } from '../../../shared/level/maps.js';
 import { LevelPhysicsWorld } from '../../../shared/physics/levelPhysicsWorld.js';
 import { setMapPhysics } from '../../../shared/level/mapMeshMovement.js';
 import { getOrBuildTdmMapPhysicsWorld } from './tdmMapPhysicsCache.js';
+import { getOrBuildHarvestMapPhysicsWorld } from './harvestMapPhysicsCache.js';
 import { getOrBuildFiringRangePhysicsWorld } from './firingRangePhysicsCache.js';
 
 export async function loadMapPhysicsForServer(map: MapCollisionDef): Promise<void> {
   if (map.id === 'killhouse_small') {
     const world = await getOrBuildTdmMapPhysicsWorld();
+    setMapPhysics(world);
+    return;
+  }
+
+  if (map.id === 'harvest') {
+    const world = await getOrBuildHarvestMapPhysicsWorld();
     setMapPhysics(world);
     return;
   }

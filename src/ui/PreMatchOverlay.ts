@@ -24,7 +24,7 @@ export interface PreMatchPlayer {
 const STEP_ORDER: PreMatchLoadStep[] = ['assets', 'shaders', 'sync', 'finalize'];
 
 const TIPS = [
-  'Tip: Headshots deal more damage. Aim for the head!',
+  'Tip: Headshots deal more damage. Aim for the head',
   'Tip: Use cover — peek, shoot, then reposition.',
   'Tip: Shield charges refill mid-fight. Grab them early.',
 ];

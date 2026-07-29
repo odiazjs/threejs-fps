@@ -50,6 +50,12 @@ export class LoadoutSwitcherHud {
     this.onPendingTimeout = handler;
   }
 
+  setPanelVisible(visible: boolean): void {
+    const panel = document.getElementById('loadout-switcher-panel');
+    if (!panel) return;
+    panel.hidden = !visible;
+  }
+
   setLoadouts(loadouts: readonly WeaponLoadoutSummary[]): void {
     this.loadouts = [...loadouts];
     this.loadoutById = new Map(loadouts.map((entry) => [entry.id, entry]));

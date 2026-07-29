@@ -33,6 +33,8 @@ export interface PlayerSnapshot {
   shieldPoints: number;
   shieldCharges: number;
   grenadeCount: number;
+  /** In-match craft currency (not account store minerals). */
+  matchPlasmaMinerals: number;
   shieldRecharging: boolean;
   shieldRechargeEndAt: number;
   alive: boolean;
@@ -59,6 +61,9 @@ export interface PlayerSnapshot {
   rankDivision: number;
   rankName: string;
   clientReady: boolean;
+  /** Index into harvesting boxes while carrying (-1 = none). */
+  carryingHarvestingBoxIndex: number;
+  installingHarvestingBox: boolean;
   shieldDomeChargeEndAt: number;
   shieldDomeEndAt: number;
   shieldDomeCooldownEndAt: number;
@@ -98,6 +103,18 @@ export interface WeaponDropSnapshot {
   collected: boolean;
 }
 
+export interface HarvestingBoxSnapshot {
+  index: number;
+  teamId: number;
+  x: number;
+  y: number;
+  z: number;
+  homeX: number;
+  homeY: number;
+  homeZ: number;
+  carriedBySessionId: string;
+}
+
 export interface LocalCombatState {
   hp: number;
   maxHp: number;
@@ -106,6 +123,7 @@ export interface LocalCombatState {
   shieldCapacity: number;
   shieldCharges: number;
   grenadeCount: number;
+  matchPlasmaMinerals: number;
   shieldRecharging: boolean;
   shieldRechargeEndAt: number;
   alive: boolean;
@@ -132,6 +150,10 @@ export type GrenadeThrownHandler = (data: import('../../shared/network/grenade')
 export type GrenadeExplosionHandler = (data: import('../../shared/network/grenade').GrenadeExplosionBroadcast) => void;
 export type ShieldChargeDropGrantedHandler = (data: { index: number }) => void;
 export type WeaponDropChangeHandler = (index: number, drop: WeaponDropSnapshot) => void;
+export type HarvestingBoxChangeHandler = (
+  index: number,
+  box: HarvestingBoxSnapshot,
+) => void;
 export type WeaponPickupGrantedHandler = (data: {
   index: number;
   weaponId: string;

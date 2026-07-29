@@ -1,9 +1,8 @@
-import { COLUMN_POSITIONS, MAP_HALF } from '../level/kiloSectorColliders.js';
+const MAP_HALF = 60;
+const MAP_MARGIN = 14;
+const DRONE_SEED = 0x0d20e;
 
 export const DRONE_COUNT = 10;
-const MAP_MARGIN = 14;
-const COLUMN_CLEARANCE = 12;
-const DRONE_SEED = 0x0d20e;
 
 /** Global patrol speed multiplier — keep orbits calm with the FBX drone. */
 export const DRONE_MOVEMENT_SCALE = 0.7;
@@ -71,11 +70,6 @@ export function generateDroneConfigs(): DroneConfig[] {
   while (configs.length < DRONE_COUNT) {
     const anchorX = (rand() * 2 - 1) * inner;
     const anchorZ = (rand() * 2 - 1) * inner;
-
-    const nearColumn = COLUMN_POSITIONS.some((column) => {
-      return Math.hypot(anchorX - column.x, anchorZ - column.z) < COLUMN_CLEARANCE;
-    });
-    if (nearColumn) continue;
 
     configs.push({
       anchorX,

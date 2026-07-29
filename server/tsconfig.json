@@ -12,5 +12,5 @@
     "useDefineForClassFields": false
   },
   "include": ["src/**/*", "../shared/**/*"],
-  "exclude": ["../shared/level/kiloSectorLayout.ts", "../shared/level/killhouse_small.ts", "../shared/level/firingRange.ts"]
+  "exclude": ["../shared/level/killhouse_small.ts", "../shared/level/firingRange.ts"]
 }

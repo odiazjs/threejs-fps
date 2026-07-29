@@ -37,6 +37,11 @@ async function main(): Promise<void> {
     console.warn('[physics] Chrono-Bowl collision warm-up failed (will retry on first match)', error);
   });
 
+  const { warmHarvestMapPhysics } = await import('./level/harvestMapPhysicsCache.js');
+  void warmHarvestMapPhysics().catch((error) => {
+    console.warn('[physics] Harvest collision warm-up failed (will retry on first match)', error);
+  });
+
   const { warmFiringRangePhysics } = await import('./level/firingRangePhysicsCache.js');
   void warmFiringRangePhysics().catch((error) => {
     console.warn('[physics] Firing Range collision warm-up failed (will retry on first match)', error);

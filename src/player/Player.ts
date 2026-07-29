@@ -306,6 +306,8 @@ export class Player {
   private targetWeaponSwitchEndAt = 0;
   private targetMeleeAttackEndAt = 0;
   private targetActiveWeaponId: WeaponId = LOADOUT_WEAPON_IDS[0];
+  /** Synced from server — blocks combat and drives pistol loco / carry VFX. */
+  private carryingHarvestingBoxIndex = -1;
   private targetSprinting = false;
   private targetWalking = false;
   private targetWalkingBackward = false;
@@ -498,7 +500,7 @@ export class Player {
       return;
     }
 
-    const weaponId = this.targetActiveWeaponId;
+    const weaponId = this.getRemoteAnimWeaponId();
     const pose = this.getRemotePose(worldTime);
     const modelFile = gameModelFileForWeapon(weaponId, pose);
     const skinId = this.remoteSelectedCharacterId;
@@ -535,7 +537,10 @@ export class Player {
     void loadGameCharacterTemplate(weaponId, pose, meshFile, skinId)
       .then((template) => {
         // Drop stale loads if the desired pose moved on while we were loading.
-        const latest = gameModelFileForWeapon(this.targetActiveWeaponId, this.getRemotePose(worldTime));
+        const latest = gameModelFileForWeapon(
+          this.getRemoteAnimWeaponId(),
+          this.getRemotePose(worldTime),
+        );
         if (template.modelFile !== latest && !Player.REMOTE_POSE_IMMEDIATE.has(template.modelFile)) {
           return;
         }
@@ -601,6 +606,11 @@ export class Player {
     this.characterInstance?.update(0);
   }
 
+  private getRemoteAnimWeaponId(): WeaponId {
+    if (this.carryingHarvestingBoxIndex >= 0) return 'pistol';
+    return this.targetActiveWeaponId;
+  }
+
   private getRemotePose(worldTime: number): RemoteCharacterPose {
     const activeReloadSec = this.loadout?.getActive()?.config.reloadSec;
     const { reloading } = getReloadState(
@@ -632,12 +642,17 @@ export class Player {
       jumping: this.targetJumping,
       crouching: this.targetCrouching,
       sliding: this.targetSliding,
-      reloading,
-      switchingWeapon: weaponSwitch.active && !this.weaponSwitchAnimConsumed,
+      reloading: this.carryingHarvestingBoxIndex >= 0 ? false : reloading,
+      switchingWeapon:
+        this.carryingHarvestingBoxIndex >= 0
+          ? false
+          : weaponSwitch.active && !this.weaponSwitchAnimConsumed,
       meleeAttacking:
-        meleeAttack.active &&
-        this.targetActiveWeaponId === MELEE_WEAPON_ID &&
-        !this.meleeAttackAnimConsumed,
+        this.carryingHarvestingBoxIndex >= 0
+          ? false
+          : meleeAttack.active &&
+            this.targetActiveWeaponId === MELEE_WEAPON_ID &&
+            !this.meleeAttackAnimConsumed,
     };
   }
 
@@ -1016,7 +1031,7 @@ export class Player {
         weaponSlot1: EMPTY_WEAPON_SLOT,
         weaponSlot2: EMPTY_WEAPON_SLOT,
       },
-      EMPTY_WEAPON_SLOT,
+      MELEE_WEAPON_ID,
     );
     this.stopWeaponAutoFire();
   }
@@ -1086,6 +1101,11 @@ export class Player {
 
   addReserveClip(): void {
     this.loadout?.addReserveToActive();
+  }
+
+  /** Plasma Harvest craft: equip with magazine only (no 300 reserve). */
+  applyCraftedWeaponAmmo(weaponId: WeaponId): void {
+    this.loadout?.setSlotMagazineOnly(weaponId);
   }
 
   refillAmmo(): void {
@@ -1229,6 +1249,39 @@ export class Player {
 
   getFeetPosition(): THREE.Vector3 {
     return this.object.position;
+  }
+
+  isCarryingHarvestingBox(): boolean {
+    return this.carryingHarvestingBoxIndex >= 0;
+  }
+
+  getCarryingHarvestingBoxIndex(): number {
+    return this.carryingHarvestingBoxIndex;
+  }
+
+  setCarryingHarvestingBoxIndex(index: number): void {
+    const next = Number.isFinite(index) ? Math.floor(index) : -1;
+    if (this.carryingHarvestingBoxIndex === next) return;
+    this.carryingHarvestingBoxIndex = next;
+    if (next >= 0) {
+      this.unequipThrowable({ discardCook: true });
+      this.stopWeaponAutoFire();
+      this.loadout?.getActive()?.ammo.cancelReload();
+      this.stopReloadAudio();
+      this.onReloadStopNetwork?.();
+      if (this.camera) {
+        this.loadout?.setMeshesVisible(false);
+        this.syncFpArmsVisibility();
+      }
+    } else if (this.camera) {
+      this.loadout?.setMeshesVisible(!this.throwableEquipped);
+      this.syncFpArmsVisibility();
+    }
+  }
+
+  /** Remote character right-hand mount used to parent carried crates. */
+  getRemoteHandRig(): THREE.Object3D | null {
+    return this.handRig;
   }
 
   getAimYaw(): number {
@@ -1422,6 +1475,7 @@ export class Player {
     this.targetSliding = snapshot.sliding === true;
     this.targetShieldRecharging = snapshot.shieldRecharging;
     this.targetShieldRechargeEndAt = snapshot.shieldRechargeEndAt;
+    this.setCarryingHarvestingBoxIndex(snapshot.carryingHarvestingBoxIndex ?? -1);
     this.teamId = snapshot.teamId;
     const wasAlive = this.alive;
     this.alive = snapshot.alive;
@@ -1684,10 +1738,13 @@ export class Player {
     if (!this.alive || this.remoteDeathActive) return;
 
     const pose = this.getRemotePose(worldTime);
+    const carrying = this.isCarryingHarvestingBox();
     // Far LOD: hide weapon meshes (body silhouette stays); also hide during equip anim.
     this.loadout.setMeshesVisible(
-      this.remoteLodTier < 2 && !pose.switchingWeapon,
+      !carrying && this.remoteLodTier < 2 && !pose.switchingWeapon,
     );
+
+    if (carrying) return;
 
     const weaponChanged = this.targetActiveWeaponId !== this.remoteDisplayedWeaponId;
     if (weaponChanged && isWeaponId(this.targetActiveWeaponId)) {
@@ -1803,7 +1860,12 @@ export class Player {
 
     this.trySwitchWeapon(input);
     this.tryToggleMeleeEquip(input);
-    this.updateThrowableInput(input, pointer);
+    if (!this.isCarryingHarvestingBox()) {
+      this.updateThrowableInput(input, pointer);
+    } else {
+      this.loadout.setMeshesVisible(false);
+      this.syncFpArmsVisibility();
+    }
 
     // Slide: sprint + C, or C on/soon after landing — capture look-forward first.
     this.camera.getWorldDirection(this.forward);
@@ -1898,7 +1960,7 @@ export class Player {
     let ammoReloadProgress = 0;
     let ads = false;
 
-    if (active && !this.throwableEquipped) {
+    if (active && !this.throwableEquipped && !this.isCarryingHarvestingBox()) {
       if (input.isJustPressed('KeyR')) {
         this.pendingAutoReloadSec = 0;
         this.beginActiveWeaponReload();
@@ -2432,7 +2494,10 @@ export class Player {
   private syncFpArmsVisibility(): void {
     const meleeEquipped = this.loadout?.isMeleeEquipped() ?? false;
     const show =
-      !this.throwableEquipped && !meleeEquipped && !!this.loadout?.getActive();
+      !this.throwableEquipped &&
+      !meleeEquipped &&
+      !this.isCarryingHarvestingBox() &&
+      !!this.loadout?.getActive();
     this.fpArmsViewModel?.setVisible(show);
     if (!show) {
       this.fpArmsViewModel?.setReloading(false);
@@ -2535,7 +2600,8 @@ export class Player {
   }
 
   private tryToggleMeleeEquip(input: KeyboardInput): void {
-    if (!this.loadout || !input.isJustPressed('KeyX')) return;
+    if (!this.loadout || this.isCarryingHarvestingBox()) return;
+    if (!input.isJustPressed('KeyX')) return;
 
     const equip = !this.loadout.isMeleeEquipped();
     if (!this.loadout.tryEquipMelee(equip, { bypassCooldown: this.throwableEquipped })) return;
@@ -2557,7 +2623,7 @@ export class Player {
   }
 
   private trySwitchWeapon(input: KeyboardInput): void {
-    if (!this.loadout) return;
+    if (!this.loadout || this.isCarryingHarvestingBox()) return;
 
     for (let slot = 0; slot < LOADOUT_SIZE; slot++) {
       const code = `Digit${slot + 1}`;
@@ -2613,6 +2679,7 @@ export class Player {
   }
 
   private tryStartShieldRecharge(input: KeyboardInput): void {
+    if (this.isCarryingHarvestingBox()) return;
     if (!input.isJustPressed('Digit4')) return;
     this.onShieldRechargeNetwork?.();
   }
@@ -2628,7 +2695,7 @@ export class Player {
       ads: boolean;
     },
   ): void {
-    if (!this.shieldDomeAbility) return;
+    if (!this.shieldDomeAbility || this.isCarryingHarvestingBox()) return;
 
     this.shieldDomeAbility.tryActivate(
       input.isJustPressed(ShieldDomeAbility.activateKey),
@@ -2681,7 +2748,7 @@ export class Player {
     pointer: PointerInput,
     projectiles: ProjectileManager | null,
   ): void {
-    if (!this.loadout || !this.camera) return;
+    if (!this.loadout || !this.camera || this.isCarryingHarvestingBox()) return;
 
     const pressedV = input.isJustPressed('KeyV');
     // V always melee-attacks — auto-draw if a gun is currently equipped.
@@ -2746,7 +2813,7 @@ export class Player {
     pointer: PointerInput,
     projectiles: ProjectileManager | null,
   ): void {
-    if (!this.loadout || this.throwableEquipped) return;
+    if (!this.loadout || this.throwableEquipped || this.isCarryingHarvestingBox()) return;
 
     const active = this.loadout.getActive();
     if (!active || active.config.fireMode === 'melee') return;
@@ -2843,7 +2910,7 @@ export class Player {
 
   /** Start reload on the active gun (manual KeyR or auto-reload after empty). */
   private beginActiveWeaponReload(): boolean {
-    if (!this.loadout || this.throwableEquipped) return false;
+    if (!this.loadout || this.throwableEquipped || this.isCarryingHarvestingBox()) return false;
     if (this.loadout.isMeleeEquipped()) return false;
     if (!this.loadout.isWeaponReady() || this.weaponPose?.isSwitching()) return false;
 

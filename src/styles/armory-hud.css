@@ -1225,6 +1225,11 @@
   box-shadow: 0 0 12px rgba(0, 242, 255, 0.1);
 }
 
+.plasma-minerals-chip--armory .plasma-minerals-icon {
+  width: 2.1rem;
+  height: 2.1rem;
+}
+
 .plasma-minerals-chip--armory .plasma-minerals-get-more {
   pointer-events: auto;
 }

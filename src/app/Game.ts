@@ -1,17 +1,22 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
-import { DEFAULT_MAP_ID, getMapDef, mapHasMinimap, normalizeMapId, setClientMapDef, type MapId } from '../../shared/level/maps';
+import { DEFAULT_MAP_ID, getMapDef, mapHasMinimap, setClientMapDef, type MapId } from '../../shared/level/maps';
 import {
+  allowsMidMatchLoadoutSwitch,
   getCountdownDisplayValue,
   getMatchTimeRemaining,
   isCompetitiveGameMode,
+  isPlasmaHarvestGameMode,
   isTimedGameMode,
   normalizeGameMode,
+  resolveMapForGameMode,
+  usesEmptyStartingLoadout,
   type GameMode,
   type MatchPhase,
 } from '../../shared/combat/match';
 import { getSelectedMapId } from '../lobby/mapSelection';
+import { getSelectedGameMode } from '../lobby/gameModeSelection';
 import { KeyboardInput } from '../input/KeyboardInput';
 import { POINTER_PING, PointerInput } from '../input/PointerInput';
 import { TeamPingIndicators } from '../ui/TeamPingIndicators';
@@ -39,8 +44,8 @@ import { Player } from '../player/Player';
 import { PlayerControls } from '../player/PlayerControls';
 import { RenderContext } from '../render/RenderContext';
 import { KillCam } from '../render/KillCam';
+import { HarvestWinCam } from '../render/HarvestWinCam';
 import { updateEdgeLinesForCamera } from '../visuals/edgeLines';
-import type { LightBeams } from '../world/LightBeams';
 import { StaminaHud } from '../ui/StaminaHud';
 import { AmmoHud } from '../ui/AmmoHud';
 import { MessageHud } from '../ui/MessageHud';
@@ -67,11 +72,21 @@ import { ShieldRechargeHud } from '../ui/ShieldRechargeHud';
 import { ShieldDomeHud } from '../ui/ShieldDomeHud';
 import { ShieldPickupHud } from '../ui/ShieldPickupHud';
 import { WeaponPickupHud } from '../ui/WeaponPickupHud';
+import { CraftingHud } from '../ui/CraftingHud';
 import { PerformanceHud } from '../ui/PerformanceHud';
+import { CraftingStations } from '../world/CraftingStations';
+import { HarvestingBoxes } from '../world/HarvestingBoxes';
+import { getCraftingStationSpawns } from '../../shared/level/craftingStationSpawns';
+import { getHarvestingBoxSpawns } from '../../shared/level/harvestingBoxSpawns';
+import { HarvestingBoxHud } from '../ui/HarvestingBoxHud';
+import { MatchAlertHud } from '../ui/MatchAlertHud';
+import { isPickableWeaponId } from '../../shared/content/weaponIds';
+import type { CraftItemId } from '../../shared/content/craftingCatalog';
 import { MatchPerfStats } from '../debug/MatchPerfStats';
 import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
 import { loadTdmMapMinimapLayout } from '../content/tdmMapMinimap';
+import { loadHarvestMapMinimapLayout } from '../content/harvestMapMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { MatchResultsOverlay } from '../ui/MatchResultsOverlay';
@@ -141,7 +156,6 @@ import {
   MATCH_RESULTS_MUSIC_AUDIO,
 } from '../content/audioConfig';
 import { DEFAULT_LOADOUT_CONFIGS, PICKABLE_WEAPON_CONFIGS, KATANA_CONFIG } from '../content/weaponConfig';
-import type { DroneField } from '../world/DroneField';
 import { LoadingOverlay } from '../ui/LoadingOverlay';
 
 const MAX_FRAME_DELTA_SEC = 0.1;
@@ -161,6 +175,14 @@ export class Game {
   };
   private readonly onShieldPickupComplete = (target: { index: number }): void => {
     this.network.sendPickupShieldCharge(target.index);
+  };
+  private readonly onHarvestingBoxHoldComplete = (target: {
+    index: number;
+    mode: 'pickup' | 'drop' | 'install';
+  }): void => {
+    if (!this.network) return;
+    const feet = this.player.getFeetPosition();
+    this.network.sendInteractHarvestingBox(target.index, target.mode, feet.x, feet.z);
   };
   private staminaHud = new StaminaHud();
   private ammoHud = new AmmoHud();
@@ -185,6 +207,15 @@ export class Game {
   private shieldDomeHud = new ShieldDomeHud();
   private weaponPickupHud = new WeaponPickupHud();
   private shieldPickupHud = new ShieldPickupHud();
+  private craftingHud = new CraftingHud();
+  private craftingStations!: CraftingStations;
+  private harvestingBoxes!: HarvestingBoxes;
+  private harvestingBoxHud = new HarvestingBoxHud();
+  private matchAlertHud = new MatchAlertHud();
+  private prevOpponentHasHarvestBox = false;
+  private prevOpponentInstallingHarvestBox = false;
+  private craftingOpen = false;
+  private matchGameMode: GameMode = 'playground';
   private performanceHud = new PerformanceHud();
   private matchHud = new MatchHud();
   private matchCountdownOverlay = new MatchCountdownOverlay();
@@ -210,8 +241,10 @@ export class Game {
   private shieldDomeAbility: ShieldDomeAbility | null = null;
   private renderContext = new RenderContext();
   private readonly killCam = new KillCam();
-  private droneField: DroneField | null = null;
-  private lightBeams: LightBeams | null = null;
+  private readonly harvestWinCam = new HarvestWinCam();
+  /** After Plasma Harvest install win: wait for cinematic before results modal. */
+  private harvestWinCinematicPending = false;
+  private harvestWinCinematicDone = false;
   private lastFrameMs = 0;
   private simElapsedSec = 0;
   private wasAlive = true;
@@ -269,6 +302,7 @@ export class Game {
     shieldCapacity: getShieldCapacity(1),
     shieldCharges: DEFAULT_SHIELD_CHARGES,
     grenadeCount: DEFAULT_GRENADES,
+    matchPlasmaMinerals: 0,
     shieldRecharging: false,
     shieldRechargeEndAt: 0,
     shieldDomeChargeEndAt: 0,
@@ -285,8 +319,15 @@ export class Game {
     onConnected?: () => void,
     onLoadingMessage?: (message: string) => void,
   ): Promise<void> {
-    const initialMapId = normalizeMapId(joinIntent?.mapId ?? getSelectedMapId());
-    const competitive = isCompetitiveGameMode(joinIntent?.gameMode);
+    const matchGameMode = normalizeGameMode(
+      joinIntent?.gameMode ?? getSelectedGameMode(),
+    );
+    const initialMapId = resolveMapForGameMode(
+      matchGameMode,
+      joinIntent?.mapId ?? getSelectedMapId(),
+    );
+    const competitive = isCompetitiveGameMode(matchGameMode);
+    this.matchGameMode = matchGameMode;
     this.worldMapId = initialMapId;
     this.prevMatchPhase = null;
     this.matchEnd30Played = false;
@@ -316,7 +357,7 @@ export class Game {
       );
     }
 
-    // DroneField clones the FBX at world build — must be ready first.
+    // Ambient lobby drones also share this FBX — warm it before match start.
     reportLoad('Loading drone model…', 'assets', 10);
     await preloadDroneModel();
     this.initWorld(initialMapId);
@@ -338,7 +379,10 @@ export class Game {
     // audio / remaining assets finish.
     reportLoad('Loading loadouts…', 'assets', 55);
     await this.refreshLoadoutSwitcher();
-    this.initPlayer(initialMapId, joinIntent?.gameMode);
+    this.loadoutSwitcherHud.setPanelVisible(
+      allowsMidMatchLoadoutSwitch(this.matchGameMode),
+    );
+    this.initPlayer(initialMapId, matchGameMode);
     this.refreshInventoryHud();
     this.applyActiveMap();
     this.initResize();
@@ -436,6 +480,18 @@ export class Game {
         this.tacticalMapOverlay.setMapActive(true);
       } catch (error) {
         console.warn('[Game] Failed to load Chrono-Bowl minimap', error);
+        this.minimapHud.setMapActive(false);
+        this.tacticalMapOverlay.setMapActive(false);
+      }
+    } else if (initialMapId === 'harvest') {
+      try {
+        const minimapLayout = await loadHarvestMapMinimapLayout();
+        this.minimapHud.setLayout(minimapLayout);
+        this.tacticalMapOverlay.setLayout(minimapLayout);
+        this.minimapHud.setMapActive(true);
+        this.tacticalMapOverlay.setMapActive(true);
+      } catch (error) {
+        console.warn('[Game] Failed to load Harvest minimap', error);
         this.minimapHud.setMapActive(false);
         this.tacticalMapOverlay.setMapActive(false);
       }
@@ -538,7 +594,9 @@ export class Game {
     this.player?.setMapCollisionDef(mapDef);
     this.killCam.configureForMap(mapDef);
     this.renderContext.setMapLook(
-      this.worldMapId === 'killhouse_small' ? 'chrono_bowl' : 'default',
+      this.worldMapId === 'killhouse_small' || this.worldMapId === 'harvest'
+        ? 'chrono_bowl'
+        : 'default',
     );
   }
 
@@ -557,7 +615,7 @@ export class Game {
     const display = getCountdownDisplayValue(worldTime, match.matchCountdownEndAt);
     if (!display) return;
 
-    if (display === 'GO!') {
+    if (display === 'GO') {
       if (!this.gameStartSoundPlayed) {
         this.gameStartSoundPlayed = true;
         this.playMatchCue(FPS_GAME_START_MESSAGE, () => this.matchSounds.playGameStart());
@@ -598,19 +656,67 @@ export class Game {
   }
 
   private getActiveCamera(): THREE.PerspectiveCamera {
+    if (this.harvestWinCam.isActive()) return this.harvestWinCam.camera;
     return this.killCam.isActive() ? this.killCam.camera : this.player.camera!;
+  }
+
+  private resolveHarvestWinFocus(
+    winningTeamId: number,
+  ): { x: number; y: number; z: number } | null {
+    if (winningTeamId < 0) return null;
+
+    const spot = this.harvestingBoxes.getInstallSpotForTeam(winningTeamId);
+    // Prefer the stolen (enemy) box sitting on the ground after install.
+    for (const box of this.harvestingBoxes.getBoxes()) {
+      if (box.teamId === winningTeamId) continue;
+      if (box.carriedBySessionId) continue;
+      const pos = new THREE.Vector3();
+      box.group.getWorldPosition(pos);
+      if (!spot || Math.hypot(pos.x - spot.x, pos.z - spot.z) < 4) {
+        return { x: pos.x, y: pos.y, z: pos.z };
+      }
+    }
+
+    if (!spot) return null;
+    const ownHome = this.harvestingBoxes
+      .getBoxes()
+      .find((box) => box.teamId === winningTeamId);
+    return {
+      x: spot.x,
+      y: ownHome?.homeY ?? 0,
+      z: spot.z,
+    };
+  }
+
+  private beginHarvestWinCinematic(winningTeamId: number): void {
+    // Pull latest box placement before framing (install + clear carrier).
+    this.syncHarvestingBoxes();
+    const focus = this.resolveHarvestWinFocus(winningTeamId);
+    if (!focus) {
+      this.harvestWinCinematicPending = false;
+      this.harvestWinCinematicDone = true;
+      return;
+    }
+    this.killCam.deactivate();
+    this.harvestWinCam.activate(focus.x, focus.y, focus.z);
+    this.harvestWinCinematicPending = true;
+    this.harvestWinCinematicDone = false;
+  }
+
+  private finishHarvestWinCinematic(): void {
+    if (this.harvestWinCinematicDone) return;
+    this.harvestWinCinematicPending = false;
+    this.harvestWinCinematicDone = true;
+    this.harvestWinCam.deactivate();
+    this.matchSounds.unlock();
+    this.matchSounds.playResultsMusic();
   }
 
   private initWorld(mapId: MapId): void {
     const world = new WorldBuilder(mapId)
       .build()
       .withLighting()
-      .withTerrain()
-      .withLevel()
-      .withDrones()
-      .withLightBeams();
-    this.droneField = world.getDroneField();
-    this.lightBeams = world.getLightBeams();
+      .withLevel();
     this.scene = world.getScene();
     this.worldBuilder = world;
     this.projectiles = new ProjectileManager(this.scene);
@@ -620,17 +726,22 @@ export class Game {
     this.shieldDomeChargeManager = new ShieldDomeChargeManager(this.scene);
     this.projectiles.setShieldDomeManager(this.shieldDomeManager);
     const mapDef = getMapDef(mapId);
+    const plasmaHarvest = isPlasmaHarvestGameMode(this.matchGameMode);
     this.ammoPickups = new AmmoPickups(
       this.scene,
-      mapId === 'firing_range' ? [] : mapDef.ammoPositions,
+      plasmaHarvest || mapId === 'firing_range' ? [] : mapDef.ammoPositions,
     );
     this.grenadePickups = new GrenadePickups(
       this.scene,
-      mapId === 'firing_range' ? [] : (mapDef.getGrenadePositions?.() ?? []),
+      plasmaHarvest || mapId === 'firing_range'
+        ? []
+        : (mapDef.getGrenadePositions?.() ?? []),
       mapDef.grenadePickupGrant,
     );
     this.shieldChargePickups = new ShieldChargePickups(this.scene);
     this.weaponDrops = new WeaponDrops(this.scene);
+    this.craftingStations = new CraftingStations(this.scene);
+    this.harvestingBoxes = new HarvestingBoxes(this.scene);
     this.scene.add(this.teamPings.group);
 
     void this.initMapPhysics(mapId);
@@ -645,8 +756,12 @@ export class Game {
     try {
       if (mapDef.usesMeshCollision) {
         await world.whenMeshCollisionReady();
+        await this.loadCraftingStationsForMap(mapId);
+        await this.loadHarvestingBoxesForMap(mapId);
         await buildClientMapPhysics(mapDef, world.getMeshCollisionRoots(), this.scene);
       } else {
+        await this.loadCraftingStationsForMap(mapId);
+        await this.loadHarvestingBoxesForMap(mapId);
         await buildClientMapPhysics(mapDef, undefined, this.scene);
       }
     } catch (error) {
@@ -655,16 +770,131 @@ export class Game {
     }
   }
 
+  private async loadCraftingStationsForMap(mapId: MapId): Promise<void> {
+    const fromMap =
+      mapId === 'harvest'
+        ? this.worldBuilder?.getHarvestCraftingStationSpawns() ?? []
+        : [];
+    const fallback = getCraftingStationSpawns(mapId, this.matchGameMode);
+    const spawns =
+      isPlasmaHarvestGameMode(this.matchGameMode) && fromMap.length > 0
+        ? fromMap
+        : fallback;
+
+    try {
+      await this.craftingStations.load(spawns);
+      if (spawns.length > 0) {
+        console.info(
+          `[Game] Spawned ${spawns.length} crafting stations (${this.matchGameMode}/${mapId})`,
+        );
+      }
+    } catch (error) {
+      console.warn('[Game] Failed to load crafting stations', error);
+    }
+  }
+
+  private async loadHarvestingBoxesForMap(mapId: MapId): Promise<void> {
+    const fromMap =
+      mapId === 'harvest'
+        ? this.worldBuilder?.getHarvestHarvestingBoxSpawns() ?? []
+        : [];
+    const fallback = getHarvestingBoxSpawns(mapId, this.matchGameMode);
+    const spawns =
+      isPlasmaHarvestGameMode(this.matchGameMode) && fromMap.length > 0
+        ? fromMap
+        : fallback;
+    try {
+      await this.harvestingBoxes.load(spawns);
+      if (spawns.length > 0) {
+        console.info(
+          `[Game] Spawned ${spawns.length} harvesting boxes (${this.matchGameMode}/${mapId})`,
+        );
+      }
+    } catch (error) {
+      console.warn('[Game] Failed to load harvesting boxes', error);
+    }
+  }
+
+  private syncHarvestingBoxes(): void {
+    if (!this.network || !isPlasmaHarvestGameMode(this.matchGameMode)) return;
+    const states = this.network.getHarvestingBoxSnapshots();
+    this.harvestingBoxes.applyServerState(states);
+
+    const localId = this.network.getSessionId();
+    const camera = this.player.camera;
+    this.harvestingBoxes.syncCarryParents({
+      localSessionId: localId || null,
+      localCamera: camera,
+      getRemoteHand: (sessionId) =>
+        this.network.getRemotePlayer(sessionId)?.getRemoteHandRig() ?? null,
+    });
+  }
+
+  private updateHarvestingBoxAlerts(): void {
+    if (!this.network || !isPlasmaHarvestGameMode(this.matchGameMode)) {
+      this.matchAlertHud.setPersistent([]);
+      this.prevOpponentHasHarvestBox = false;
+      this.prevOpponentInstallingHarvestBox = false;
+      return;
+    }
+    // PlayerControls gates MatchAlertHud visibility with the play HUD.
+    if (!this.playerControls.isPlaying || !this.localCombat.alive) {
+      this.matchAlertHud.setPersistent([]);
+      this.prevOpponentHasHarvestBox = false;
+      this.prevOpponentInstallingHarvestBox = false;
+      return;
+    }
+
+    const localId = this.network.getSessionId();
+    const localTeam = this.localCombat.teamId;
+    let opponentHasBox = false;
+    let opponentInstalling = false;
+
+    for (const box of this.harvestingBoxes.getBoxes()) {
+      const carrierId = box.carriedBySessionId;
+      if (!carrierId || carrierId === localId) continue;
+      const carrier = this.network.getPlayerSnapshot(carrierId);
+      if (!carrier || carrier.teamId === localTeam) continue;
+      opponentHasBox = true;
+      if (carrier.installingHarvestingBox) {
+        opponentInstalling = true;
+      }
+    }
+
+    const alerts: string[] = [];
+    if (opponentInstalling) {
+      alerts.push('OPPONENT INSTALLING HARVESTING BOX');
+    }
+    if (opponentHasBox) {
+      alerts.push('OPPONENT HAS HARVESTING BOX');
+    }
+    this.matchAlertHud.setPersistent(alerts);
+
+    // Center toasts on rising edges so the warning is hard to miss.
+    if (opponentInstalling && !this.prevOpponentInstallingHarvestBox) {
+      this.messageHud.push('Opponent installing harvesting box');
+    } else if (
+      opponentHasBox &&
+      !this.prevOpponentHasHarvestBox &&
+      !opponentInstalling
+    ) {
+      this.messageHud.push('Opponent has harvesting box');
+    }
+
+    this.prevOpponentHasHarvestBox = opponentHasBox;
+    this.prevOpponentInstallingHarvestBox = opponentInstalling;
+  }
+
   private initPlayer(mapId: MapId, gameMode?: GameMode): void {
     this.player = Player.createLocal();
     // World-space barrel smoke for the local player's weapon.
     const gunJuiceGroup = this.player.getGunJuiceGroup();
     if (gunJuiceGroup) this.scene.add(gunJuiceGroup);
     const mapDef = getMapDef(mapId);
-    if (mapDef.emptyStartingLoadout) {
+    const mode = normalizeGameMode(gameMode ?? this.matchGameMode);
+    if (usesEmptyStartingLoadout(mode, mapDef.emptyStartingLoadout)) {
       this.player.applyEmptyLoadout();
     }
-    const mode = normalizeGameMode(gameMode);
     const spawn =
       isCompetitiveGameMode(mode) && mapDef.pickTeamSpawnPoint
         ? mapDef.pickTeamSpawnPoint(0, 0)
@@ -687,6 +917,11 @@ export class Game {
     this.playerControls.setShieldDomeHud(this.shieldDomeHud);
     this.playerControls.setWeaponPickupHud(this.weaponPickupHud);
     this.playerControls.setShieldPickupHud(this.shieldPickupHud);
+    this.playerControls.setHarvestingBoxHud(this.harvestingBoxHud);
+    this.playerControls.setMatchAlertHud(this.matchAlertHud);
+    this.harvestingBoxHud.setOnInstallHoldChange((holding) => {
+      this.network?.sendHarvestingBoxInstallHold(holding);
+    });
     this.playerControls.setLeaveHandler(() => {
       void this.leaveGame();
     });
@@ -744,6 +979,11 @@ export class Game {
     });
 
     this.loadoutSwitcherHud.setOnApplyRequest((request) => {
+      if (!allowsMidMatchLoadoutSwitch(this.matchGameMode)) {
+        this.messageHud.push('Loadout switching disabled in Plasma Harvest');
+        this.loadoutSwitcherHud.clearPending(request.loadoutId);
+        return;
+      }
       this.pendingLoadoutApply = {
         loadoutId: request.loadoutId,
         primaryWeaponId: request.primaryWeaponId,
@@ -925,6 +1165,44 @@ export class Game {
         this.refreshInventoryHud();
       }
     });
+    this.network.onCraftItemGranted((data) => {
+      if (typeof data.ammoClips === 'number' && data.ammoClips > 0) {
+        for (let i = 0; i < data.ammoClips; i++) {
+          this.player.addReserveClip();
+        }
+      }
+      if (data.weaponId) {
+        this.player.unequipThrowable({ discardCook: true });
+        const snapshot = this.network.getLocalSnapshot();
+        if (snapshot) {
+          this.player.applyLoadoutFromSnapshot(snapshot);
+        }
+        if (isWeaponId(data.weaponId)) {
+          this.player.applyCraftedWeaponAmmo(data.weaponId);
+        }
+      }
+      this.localCombat = {
+        ...this.localCombat,
+        matchPlasmaMinerals: data.matchPlasmaMinerals,
+        grenadeCount:
+          this.network.getLocalSnapshot()?.grenadeCount ??
+          this.localCombat.grenadeCount,
+        shieldCharges:
+          this.network.getLocalSnapshot()?.shieldCharges ??
+          this.localCombat.shieldCharges,
+      };
+      this.messageHud.push('Crafted item');
+      if (this.craftingOpen) {
+        this.refreshCraftingHud();
+      }
+      if (this.inventoryOpen) {
+        this.refreshInventoryHud();
+      }
+    });
+    this.craftingHud.setCallbacks(
+      (itemId) => this.requestCraftItem(itemId),
+      () => this.closeCrafting(),
+    );
     this.network.onShieldChargeDropGranted(() => {
       this.messageHud.push('Shield charge dropped');
       if (this.inventoryOpen) {
@@ -1018,6 +1296,7 @@ export class Game {
       this.messageHud.push('You died');
       this.closeInventory();
       this.closeTacticalMap();
+      this.closeCrafting();
       // Block input without the pause overlay — release the pointer softly
       // and refuse re-locks until respawn.
       this.playerControls.setDeadBlocked(true);
@@ -1037,6 +1316,7 @@ export class Game {
         this.playerControls.isPlaying &&
         !this.matchEndHandled &&
         !this.inventoryOpen &&
+        !this.craftingOpen &&
         !this.tacticalMapOverlay.isOpen()
       ) {
         this.playerControls.controls.lock();
@@ -1057,6 +1337,10 @@ export class Game {
   }
 
   private updateKillCam(delta: number): void {
+    if (this.harvestWinCam.isActive() || this.harvestWinCinematicPending) {
+      if (this.killCam.isActive()) this.killCam.deactivate();
+      return;
+    }
     if (!this.killCam.isActive()) return;
 
     const killerId = this.killCam.getTargetId();
@@ -1423,6 +1707,7 @@ export class Game {
   private toggleInventory(): void {
     if (!this.inventoryOpen) {
       this.closeTacticalMap();
+      this.closeCrafting();
     }
 
     this.inventoryOpen = !this.inventoryOpen;
@@ -1435,7 +1720,11 @@ export class Game {
       this.playerControls.controls.unlockSoft();
       this.crosshairHud.setVisible(false);
       this.refreshInventoryHud();
-      void this.refreshLoadoutSwitcher();
+      if (allowsMidMatchLoadoutSwitch(this.matchGameMode)) {
+        void this.refreshLoadoutSwitcher();
+      } else {
+        this.loadoutSwitcherHud.setPanelVisible(false);
+      }
       return;
     }
 
@@ -1446,10 +1735,81 @@ export class Game {
     }
   }
 
+  private getCraftingHudState() {
+    const snapshot = this.network?.getLocalSnapshot();
+    const owned = new Set<string>();
+    let filled = 0;
+    if (snapshot) {
+      for (const id of [
+        snapshot.weaponSlot0,
+        snapshot.weaponSlot1,
+        snapshot.weaponSlot2,
+      ]) {
+        if (isPickableWeaponId(id)) {
+          owned.add(id);
+          filled += 1;
+        }
+      }
+    }
+    return {
+      matchPlasmaMinerals:
+        snapshot?.matchPlasmaMinerals ?? this.localCombat.matchPlasmaMinerals,
+      ownedWeaponIds: owned,
+      emptyWeaponSlots: Math.max(0, 3 - filled),
+      grenadeCount: snapshot?.grenadeCount ?? this.localCombat.grenadeCount,
+      maxGrenades: MAX_GRENADES,
+      shieldCharges: snapshot?.shieldCharges ?? this.localCombat.shieldCharges,
+      maxShieldCharges: MAX_SHIELD_CHARGES,
+    };
+  }
+
+  private refreshCraftingHud(): void {
+    this.craftingHud.refresh(this.getCraftingHudState());
+  }
+
+  private openCrafting(): void {
+    if (this.craftingOpen || !this.localCombat.alive) return;
+    if (this.player.isCarryingHarvestingBox()) return;
+    this.closeInventory();
+    this.closeTacticalMap();
+    this.craftingOpen = true;
+    this.playerControls.setCraftingOpen(true);
+    this.playerControls.controls.unlockSoft();
+    this.crosshairHud.setVisible(false);
+    this.craftingHud.openPanel(this.getCraftingHudState());
+  }
+
+  private closeCrafting(options?: { deferRelock?: boolean }): void {
+    if (!this.craftingOpen) return;
+    this.craftingOpen = false;
+    this.playerControls.setCraftingOpen(false);
+    this.craftingHud.close(false);
+    if (this.playerControls.isPlaying && this.localCombat.alive) {
+      if (options?.deferRelock) {
+        window.setTimeout(() => {
+          if (!this.craftingOpen && !this.inventoryOpen) {
+            this.playerControls.controls.lock();
+            this.crosshairHud.setVisible(true);
+          }
+        }, 250);
+      } else {
+        this.playerControls.controls.lock();
+        this.crosshairHud.setVisible(true);
+      }
+    }
+  }
+
+  private requestCraftItem(itemId: CraftItemId): void {
+    if (!this.network || !this.craftingOpen) return;
+    const feet = this.player.getFeetPosition();
+    this.network.sendCraftItem(itemId, feet.x, feet.z);
+  }
+
   private initResize(): void {
     window.addEventListener('resize', () => {
       this.player.resize();
       this.killCam.resize();
+      this.harvestWinCam.resize();
       this.renderContext.resize();
     });
   }
@@ -1484,7 +1844,9 @@ export class Game {
     // to exit pointer lock (that's the pause path), so this only fires when
     // the pointer is already free.
     if (this.input.isJustPressed('Escape')) {
-      if (this.inventoryOpen) {
+      if (this.craftingOpen) {
+        this.closeCrafting({ deferRelock: true });
+      } else if (this.inventoryOpen) {
         this.closeInventory({ deferRelock: true });
       } else if (this.tacticalMapOverlay.isOpen()) {
         this.closeTacticalMap({ deferRelock: true });
@@ -1540,9 +1902,17 @@ export class Game {
     this.matchCountdownOverlay.update(match, worldTime);
     // Only build the (allocating) full roster snapshot once the match has
     // actually ended — the overlay ignores it otherwise.
+    const harvestResultsReady =
+      !isPlasmaHarvestGameMode(match?.gameMode) || this.harvestWinCinematicDone;
     const resultsRoster =
-      match?.phase === 'ended' ? (this.network?.getAllPlayers() ?? EMPTY_ROSTER) : EMPTY_ROSTER;
-    this.matchResultsOverlay.update(match, this.localCombat.teamId, resultsRoster);
+      match?.phase === 'ended' && harvestResultsReady
+        ? (this.network?.getAllPlayers() ?? EMPTY_ROSTER)
+        : EMPTY_ROSTER;
+    this.matchResultsOverlay.update(
+      match?.phase === 'ended' && harvestResultsReady ? match : null,
+      this.localCombat.teamId,
+      resultsRoster,
+    );
     // Keep match timer visible during Tab inventory (soft-unlock), not only when locked.
     this.matchHud.update(
       match,
@@ -1560,6 +1930,9 @@ export class Game {
       this.matchPerf.beginMatch();
       this.matchResultSubmittedFor = null;
       this.lastMatchRewards = null;
+      this.harvestWinCinematicPending = false;
+      this.harvestWinCinematicDone = false;
+      this.harvestWinCam.deactivate();
     }
     if (
       competitive &&
@@ -1569,6 +1942,12 @@ export class Game {
     ) {
       this.matchPerf.endMatch();
       void this.submitRankedMatchResult(match);
+      if (isPlasmaHarvestGameMode(match.gameMode) && match.winningTeamId >= 0) {
+        this.beginHarvestWinCinematic(match.winningTeamId);
+      } else {
+        this.harvestWinCinematicDone = true;
+        this.harvestWinCinematicPending = false;
+      }
     }
     if (
       matchPhase &&
@@ -1614,7 +1993,18 @@ export class Game {
       this.environmentSounds.stop();
       this.droneProximitySounds.stop();
       this.matchSounds.unlock();
-      this.matchSounds.playResultsMusic();
+      if (!this.harvestWinCinematicPending) {
+        this.matchSounds.playResultsMusic();
+      }
+    }
+
+    if (this.harvestWinCinematicPending && this.harvestWinCam.isActive()) {
+      if (this.harvestWinCam.update(delta)) {
+        this.finishHarvestWinCinematic();
+      }
+    } else if (this.harvestWinCinematicPending && !this.harvestWinCam.isActive()) {
+      // Focus resolve failed — show results immediately.
+      this.finishHarvestWinCinematic();
     }
 
     const tdmBlocksInput = competitive && match?.phase !== 'playing';
@@ -1641,7 +2031,9 @@ export class Game {
     // Panels unlock the pointer but must NOT pause the match. Combat input
     // is gated; physics/world/network keep running while isPlaying.
     const panelOpen =
-      this.inventoryOpen || this.tacticalMapOverlay.isOpen();
+      this.inventoryOpen ||
+      this.craftingOpen ||
+      this.tacticalMapOverlay.isOpen();
     const canAct =
       !tdmBlocksInput &&
       !connectionStalled &&
@@ -1675,7 +2067,9 @@ export class Game {
     this.network?.syncShieldDomes(this.shieldDomeManager);
     this.network?.interpolateRemotes(delta, camera);
     this.updateKillCam(delta);
-    if (this.killCam.isActive()) {
+    if (this.harvestWinCam.isActive()) {
+      camera = this.harvestWinCam.camera;
+    } else if (this.killCam.isActive()) {
       camera = this.getActiveCamera();
     }
     this.shieldDomeManager.update(delta, camera, worldTime);
@@ -1692,13 +2086,16 @@ export class Game {
     );
     this.network?.update(delta, this.player, this.playerControls);
     this.messageHud.update(delta);
+    this.matchAlertHud.update(delta);
+    this.updateHarvestingBoxAlerts();
     this.killFeedHud.update(delta);
     this.damageIndicatorHud.update(delta, camera ?? null);
     {
       const live =
         this.playerControls.isPlaying &&
         this.localCombat.alive &&
-        !this.killCam.isActive();
+        !this.killCam.isActive() &&
+        !this.harvestWinCam.isActive();
       const loco = this.player.getLocomotionState();
       this.speedLinesHud.setVisible(live);
       this.speedLinesHud.setActive(live && loco.isSprinting, live && loco.isSliding);
@@ -1712,24 +2109,22 @@ export class Game {
       this.player.object.position,
     );
     this.updateGrenadeThreatIndicators(camera ?? null);
-    this.droneField?.update(this.network?.getWorldTime() ?? 0, camera ?? undefined, delta);
-    this.lightBeams?.update(this.simElapsedSec);
-
-    if (this.audioUnlocked && this.droneField) {
-      this.droneProximitySounds.setActive(this.droneField.hasAnyInAudioView());
-    }
 
     if (this.playerControls.isPlaying && this.network) {
-      this.ammoPickups.tryPickup(
-        this.player.object.position.x,
-        this.player.object.position.z,
-        delta,
-      );
-      this.grenadePickups.tryPickup(
-        this.player.object.position.x,
-        this.player.object.position.z,
-        delta,
-      );
+      if (!isPlasmaHarvestGameMode(this.matchGameMode)) {
+        this.ammoPickups.tryPickup(
+          this.player.object.position.x,
+          this.player.object.position.z,
+          delta,
+        );
+        this.grenadePickups.tryPickup(
+          this.player.object.position.x,
+          this.player.object.position.z,
+          delta,
+        );
+      }
+
+      this.syncHarvestingBoxes();
 
       this.staminaHud.update(this.player.getSprintState());
       const ammo = this.player.getAmmoState();
@@ -1776,50 +2171,110 @@ export class Game {
 
       if (canAct && camera) {
         const feet = this.player.getFeetPosition();
-        const weaponPickupHit = this.weaponDrops.raycastFromCamera(
-          camera,
-          feet.x,
-          feet.z,
-        );
-        // Only build the (allocating) local snapshot when actually aiming at a drop.
-        const snapshot = weaponPickupHit ? this.network.getLocalSnapshot() : null;
-        const pickupTarget =
-          weaponPickupHit &&
-          snapshot &&
-          canPickupWeaponDrop(
-            snapshot,
-            snapshot.activeWeaponId,
-            weaponPickupHit.weaponId,
-          )
-            ? { index: weaponPickupHit.index, weaponId: weaponPickupHit.weaponId }
-            : null;
+        const localSnap = this.network.getLocalSnapshot();
+        const carryingIndex = localSnap?.carryingHarvestingBoxIndex ?? -1;
+        this.player.setCarryingHarvestingBoxIndex(carryingIndex);
 
-        if (pickupTarget) {
+        let harvestingHoldTarget: {
+          index: number;
+          mode: 'pickup' | 'drop' | 'install';
+        } | null = null;
+        if (carryingIndex >= 0) {
+          const carried = this.harvestingBoxes.getBox(carryingIndex);
+          const enemyBox =
+            carried && carried.teamId !== this.localCombat.teamId ? carried : null;
+          if (
+            enemyBox &&
+            this.harvestingBoxes.isNearInstallSpot(
+              enemyBox,
+              this.localCombat.teamId,
+              feet.x,
+              feet.z,
+            )
+          ) {
+            harvestingHoldTarget = { index: carryingIndex, mode: 'install' };
+          } else {
+            harvestingHoldTarget = { index: carryingIndex, mode: 'drop' };
+          }
+        } else if (isPlasmaHarvestGameMode(this.matchGameMode)) {
+          const nearBox = this.harvestingBoxes.findGroundInteractable(feet.x, feet.z);
+          if (nearBox) {
+            harvestingHoldTarget = { index: nearBox.index, mode: 'pickup' };
+          }
+        }
+
+        if (harvestingHoldTarget) {
+          this.craftingHud.setPromptVisible(false);
+          this.weaponPickupHud.update(null, false, NOOP_PICKUP);
           this.shieldPickupHud.update(null, false, NOOP_PICKUP);
-          this.weaponPickupHud.update(
-            pickupTarget,
+          this.harvestingBoxHud.update(
+            harvestingHoldTarget,
             this.input.isPressed('KeyF'),
-            this.onWeaponPickupComplete,
+            this.onHarvestingBoxHoldComplete,
           );
         } else {
-          this.weaponPickupHud.update(null, false, NOOP_PICKUP);
-          const shieldPickupHit =
-            this.localCombat.shieldCharges < MAX_SHIELD_CHARGES
-              ? this.shieldChargePickups.raycastFromCamera(camera)
-              : null;
-          this.shieldPickupHud.update(
-            shieldPickupHit ? { index: shieldPickupHit.index } : null,
-            this.input.isPressed('KeyF'),
-            this.onShieldPickupComplete,
+          this.harvestingBoxHud.update(null, false, this.onHarvestingBoxHoldComplete);
+
+          const craftStation = this.craftingStations.findInteractable(
+            feet.x,
+            feet.z,
           );
+          this.craftingHud.setPromptVisible(Boolean(craftStation));
+          if (craftStation && this.input.isJustPressed('KeyF')) {
+            this.openCrafting();
+          }
+
+          const weaponPickupHit = this.weaponDrops.raycastFromCamera(
+            camera,
+            feet.x,
+            feet.z,
+          );
+          // Only build the (allocating) local snapshot when actually aiming at a drop.
+          const snapshot = weaponPickupHit ? this.network.getLocalSnapshot() : null;
+          const pickupTarget =
+            weaponPickupHit &&
+            snapshot &&
+            canPickupWeaponDrop(
+              snapshot,
+              snapshot.activeWeaponId,
+              weaponPickupHit.weaponId,
+            )
+              ? { index: weaponPickupHit.index, weaponId: weaponPickupHit.weaponId }
+              : null;
+
+          if (pickupTarget) {
+            this.shieldPickupHud.update(null, false, NOOP_PICKUP);
+            this.weaponPickupHud.update(
+              pickupTarget,
+              this.input.isPressed('KeyF'),
+              this.onWeaponPickupComplete,
+            );
+          } else {
+            this.weaponPickupHud.update(null, false, NOOP_PICKUP);
+            const shieldPickupHit =
+              !isPlasmaHarvestGameMode(this.matchGameMode) &&
+              this.localCombat.shieldCharges < MAX_SHIELD_CHARGES
+                ? this.shieldChargePickups.raycastFromCamera(camera)
+                : null;
+            this.shieldPickupHud.update(
+              shieldPickupHit ? { index: shieldPickupHit.index } : null,
+              this.input.isPressed('KeyF'),
+              this.onShieldPickupComplete,
+            );
+          }
         }
       } else {
+        this.craftingHud.setPromptVisible(false);
         this.weaponPickupHud.update(null, false, NOOP_PICKUP);
         this.shieldPickupHud.update(null, false, NOOP_PICKUP);
+        this.harvestingBoxHud.update(null, false, this.onHarvestingBoxHoldComplete);
       }
 
       if (this.inventoryOpen) {
         this.refreshInventoryHud();
+      }
+      if (this.craftingOpen) {
+        this.refreshCraftingHud();
       }
     }
 

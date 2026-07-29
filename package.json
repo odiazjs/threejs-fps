@@ -8,6 +8,7 @@
     "sync:3d": "node scripts/sync-3d.mjs",
     "bake:firing-range": "tsx scripts/bake-firing-range.ts",
     "bake:tdm-map": "tsx scripts/bake-tdm-map.ts",
+    "bake:harvest-map": "tsx scripts/bake-harvest-map.ts",
     "compress:glb": "npx --yes @gltf-transform/cli optimize --compress quantize --texture-compress webp --simplify false --join false --flatten false --palette false --prune false --instance false",
     "dev": "npm run sync:sounds && npm run sync:images && npm run sync:3d && vite",
     "dev:server": "npm run dev --prefix server",

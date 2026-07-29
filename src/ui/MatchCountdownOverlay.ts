@@ -31,9 +31,9 @@ export class MatchCountdownOverlay {
     }
 
     this.valueEl.textContent = display;
-    this.valueEl.classList.toggle('go', display === 'GO!');
+    this.valueEl.classList.toggle('go', display === 'GO');
     this.subtitleEl.textContent =
-      display === 'GO!' ? 'FIGHT!' : 'Match starts in';
+      display === 'GO' ? 'FIGHT' : 'Match starts in';
     this.objectiveEl.textContent = getMatchObjectiveBanner(
       match.gameMode,
       match.matchDurationSec,

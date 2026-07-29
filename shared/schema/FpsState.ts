@@ -1,6 +1,7 @@
 import { Schema, type, MapSchema, ArraySchema } from '@colyseus/schema';
 import { PLAYER_MAX_HP } from '../combat/damage.js';
 import { DEFAULT_SHIELD_CHARGES, DEFAULT_GRENADES } from '../inventory/inventoryLimits.js';
+import { MATCH_PLASMA_MINERALS_START } from '../content/craftingCatalog.js';
 import { TDM_MATCH_DURATION_SEC } from '../combat/match.js';
 import { SHIELD_DEFAULT_LEVEL, getDefaultShieldPoints } from '../combat/shield.js';
 
@@ -16,6 +17,8 @@ export class PlayerState extends Schema {
   @type('number') shieldPoints = getDefaultShieldPoints(SHIELD_DEFAULT_LEVEL);
   @type('number') shieldCharges = DEFAULT_SHIELD_CHARGES;
   @type('number') grenadeCount = DEFAULT_GRENADES;
+  /** In-match craft currency (Plasma Harvest) — not account store minerals. */
+  @type('number') matchPlasmaMinerals = MATCH_PLASMA_MINERALS_START;
   @type('boolean') shieldRecharging = false;
   /** Server world time when the current shield recharge finishes (0 when idle). */
   @type('number') shieldRechargeEndAt = 0;
@@ -61,6 +64,13 @@ export class PlayerState extends Schema {
   @type('string') rankName = 'Bronze I';
   /** Client finished local asset/shader prep for this match. */
   @type('boolean') clientReady = false;
+  /**
+   * Index into `FpsState.harvestingBoxes` while carrying (-1 = none).
+   * Synced so remotes can attach the crate to this player.
+   */
+  @type('number') carryingHarvestingBoxIndex = -1;
+  /** Local player is holding F to install an enemy harvesting box. */
+  @type('boolean') installingHarvestingBox = false;
   /** Server world time when the shield dome charge completes (0 when idle). */
   @type('number') shieldDomeChargeEndAt = 0;
   /** Server world time when the shield dome expires (0 when inactive). */
@@ -101,10 +111,26 @@ export class WeaponDropState extends Schema {
   @type('boolean') collected = false;
 }
 
+/** Plasma Harvest objective crate (orange / blue base). */
+export class HarvestingBoxState extends Schema {
+  @type('number') index = 0;
+  /** 0 = Blue, 1 = Orange */
+  @type('number') teamId = 0;
+  @type('number') x = 0;
+  @type('number') y = 0;
+  @type('number') z = 0;
+  /** Immutable home marker (install proximity). */
+  @type('number') homeX = 0;
+  @type('number') homeY = 0;
+  @type('number') homeZ = 0;
+  /** Session id of carrier, or empty when on the ground. */
+  @type('string') carriedBySessionId = '';
+}
+
 export class FpsState extends Schema {
   @type('number') worldTime = 0;
   @type('boolean') friendlyFire = false;
-  @type('string') mapId = 'kilo_sector';
+  @type('string') mapId = 'firing_range';
   @type('string') gameMode = 'playground';
   @type('string') matchPhase = 'waiting';
   @type('number') expectedPlayers = 0;
@@ -126,4 +152,5 @@ export class FpsState extends Schema {
   @type([ShieldChargeState]) shieldCharges = new ArraySchema<ShieldChargeState>();
   @type([GrenadePickupState]) grenadePickups = new ArraySchema<GrenadePickupState>();
   @type([WeaponDropState]) weaponDrops = new ArraySchema<WeaponDropState>();
+  @type([HarvestingBoxState]) harvestingBoxes = new ArraySchema<HarvestingBoxState>();
 }

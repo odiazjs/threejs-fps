@@ -10,6 +10,7 @@ import {
   EnemyOutlineFx,
 } from '../effects/EnemyOutlineFx';
 import { TeammateOutlineFx } from '../effects/TeammateOutlineFx';
+import { HarvestingBoxOutlineFx } from '../effects/HarvestingBoxOutlineFx';
 import { TEAM_COLORS } from '../../shared/combat/teams';
 import { updateLineResolution } from '../visuals/edgeLines';
 import { AtmospherePass } from './AtmospherePass';
@@ -33,7 +34,28 @@ function configureOutlinePass(
   pass.pulsePeriod = 0;
   pass.visibleEdgeColor.setHex(visibleColor);
   // No through-wall x-ray — silhouette of the visible player only.
-  pass.hiddenEdgeColor.setHex(0x000000);
+  pass.hiddenEdgeColor.setRGB(0, 0, 0);
+  pass.resolution.set(
+    Math.max(1, Math.floor(resolution.x * 0.5)),
+    Math.max(1, Math.floor(resolution.y * 0.5)),
+  );
+}
+
+/** Strong pulsing silhouette for harvesting crates (team-colored, no x-ray). */
+function configureHarvestBoxOutlinePass(
+  pass: OutlinePass,
+  visibleColor: number,
+  resolution: THREE.Vector2,
+): void {
+  // Keep strength/pulse high for noticeability, but keep glow low so the blur
+  // does not bleed around occluders (looks like through-mesh x-ray).
+  pass.edgeStrength = 8;
+  pass.edgeThickness = 2.5;
+  pass.edgeGlow = 0.15;
+  pass.pulsePeriod = 1.6;
+  pass.visibleEdgeColor.setHex(visibleColor);
+  // Additive black = invisible; occluded silhouette must not draw.
+  pass.hiddenEdgeColor.setRGB(0, 0, 0);
   pass.resolution.set(
     Math.max(1, Math.floor(resolution.x * 0.5)),
     Math.max(1, Math.floor(resolution.y * 0.5)),
@@ -50,6 +72,8 @@ export class RenderContext {
   private renderPass: RenderPass | null = null;
   private enemyOutlinePass: OutlinePass | null = null;
   private teammateOutlinePass: OutlinePass | null = null;
+  private harvestBoxBlueOutlinePass: OutlinePass | null = null;
+  private harvestBoxOrangeOutlinePass: OutlinePass | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private atmospherePass: AtmospherePass | null = null;
   private scopeWorldBlurPass: ScopeWorldBlurPass | null = null;
@@ -128,6 +152,10 @@ export class RenderContext {
       this.enemyOutlinePass!.renderCamera = camera;
       this.teammateOutlinePass!.renderScene = scene;
       this.teammateOutlinePass!.renderCamera = camera;
+      this.harvestBoxBlueOutlinePass!.renderScene = scene;
+      this.harvestBoxBlueOutlinePass!.renderCamera = camera;
+      this.harvestBoxOrangeOutlinePass!.renderScene = scene;
+      this.harvestBoxOrangeOutlinePass!.renderCamera = camera;
       return;
     }
 
@@ -144,6 +172,30 @@ export class RenderContext {
     this.teammateOutlinePass = new OutlinePass(this.resolution.clone(), scene, camera);
     configureOutlinePass(this.teammateOutlinePass, this.teammateOutlineColor, this.resolution);
     this.composer.addPass(this.teammateOutlinePass);
+
+    this.harvestBoxBlueOutlinePass = new OutlinePass(
+      this.resolution.clone(),
+      scene,
+      camera,
+    );
+    configureHarvestBoxOutlinePass(
+      this.harvestBoxBlueOutlinePass,
+      teamColorToHex(0),
+      this.resolution,
+    );
+    this.composer.addPass(this.harvestBoxBlueOutlinePass);
+
+    this.harvestBoxOrangeOutlinePass = new OutlinePass(
+      this.resolution.clone(),
+      scene,
+      camera,
+    );
+    configureHarvestBoxOutlinePass(
+      this.harvestBoxOrangeOutlinePass,
+      teamColorToHex(1),
+      this.resolution,
+    );
+    this.composer.addPass(this.harvestBoxOrangeOutlinePass);
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(this.resolution.x, this.resolution.y),
@@ -167,7 +219,15 @@ export class RenderContext {
   }
 
   private syncComposerSize(): void {
-    if (!this.composer || !this.enemyOutlinePass || !this.teammateOutlinePass) return;
+    if (
+      !this.composer ||
+      !this.enemyOutlinePass ||
+      !this.teammateOutlinePass ||
+      !this.harvestBoxBlueOutlinePass ||
+      !this.harvestBoxOrangeOutlinePass
+    ) {
+      return;
+    }
     this.renderer.getSize(this.resolution);
     const pr = this.renderer.getPixelRatio();
     this.composer.setPixelRatio(pr);
@@ -176,6 +236,8 @@ export class RenderContext {
     const halfH = Math.max(1, Math.floor(this.resolution.y * 0.5));
     this.enemyOutlinePass.resolution.set(halfW, halfH);
     this.teammateOutlinePass.resolution.set(halfW, halfH);
+    this.harvestBoxBlueOutlinePass.resolution.set(halfW, halfH);
+    this.harvestBoxOrangeOutlinePass.resolution.set(halfW, halfH);
     this.bloomPass?.resolution.set(this.resolution.x, this.resolution.y);
   }
 
@@ -183,10 +245,16 @@ export class RenderContext {
     this.ensureComposer(scene, camera);
     const enemies = EnemyOutlineFx.getSelectedRoots();
     const teammates = TeammateOutlineFx.getSelectedRoots();
+    const blueBoxes = HarvestingBoxOutlineFx.getBlueRoots();
+    const orangeBoxes = HarvestingBoxOutlineFx.getOrangeRoots();
     this.enemyOutlinePass!.selectedObjects = enemies;
     this.teammateOutlinePass!.selectedObjects = teammates;
+    this.harvestBoxBlueOutlinePass!.selectedObjects = blueBoxes;
+    this.harvestBoxOrangeOutlinePass!.selectedObjects = orangeBoxes;
     this.enemyOutlinePass!.enabled = enemies.length > 0;
     this.teammateOutlinePass!.enabled = teammates.length > 0;
+    this.harvestBoxBlueOutlinePass!.enabled = blueBoxes.length > 0;
+    this.harvestBoxOrangeOutlinePass!.enabled = orangeBoxes.length > 0;
     this.composer!.render();
     this.labelRenderer.render(scene, camera);
   }

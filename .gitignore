@@ -149,3 +149,8 @@ server/dist/
 3d/props art/
 public/3d/props art/
 tmp/
+*.glb.bak
+scripts/inspect-harvest-out.json
+scripts/harvest-stations.json
+scripts/compress-harvest.log
+

@@ -1,4 +1,4 @@
-import { MAP_HALF } from '../level/kiloSectorColliders.js';
+const MAP_HALF = 60;
 
 export interface BaldPatch {
   x: number;

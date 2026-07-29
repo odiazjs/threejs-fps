@@ -5,7 +5,7 @@ import {
   type PlasmaMineralPackId,
 } from '../../shared/content/plasmaMineralPacks';
 import { apiPurchasePlasmaMinerals } from '../auth/meApi';
-import { formatPlasmaMinerals } from './plasmaMineralsHud';
+import { formatPlasmaMinerals, PLASMA_MINERALS_ICON_SRC } from './plasmaMineralsHud';
 import { showErrorSnackbar, showSuccessSnackbar } from './snackbar';
 
 export class PlasmaMineralsStoreModal {
@@ -73,6 +73,13 @@ export class PlasmaMineralsStoreModal {
           class="plasma-store-pack"
           data-plasma-pack-id="${pack.id}"
         >
+          <img
+            class="plasma-store-pack-icon"
+            src="${PLASMA_MINERALS_ICON_SRC}"
+            alt=""
+            width="36"
+            height="36"
+          />
           <span class="plasma-store-pack-amount">${formatPlasmaMinerals(pack.amount)}</span>
           <span class="plasma-store-pack-label">${pack.label}</span>
           <span class="plasma-store-pack-price">${formatPlasmaPackPrice(pack.priceUsd)}</span>

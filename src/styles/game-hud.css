@@ -890,6 +890,67 @@ body.game-page * {
   stroke-linecap: round;
   transition: stroke-dashoffset 50ms linear;
 }
+#harvesting-box-prompt {
+  position: fixed;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  max-width: min(90vw, 360px);
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  background: rgba(8, 12, 16, 0.72);
+  border: 1px solid rgba(0, 232, 255, 0.25);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 6;
+}
+#harvesting-box-prompt[hidden] {
+  display: none !important;
+}
+#harvesting-box-progress {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.55rem;
+  pointer-events: none;
+  z-index: 6;
+}
+#harvesting-box-progress[hidden] {
+  display: none !important;
+}
+.harvesting-box-spinner {
+  width: 4.5rem;
+  height: 4.5rem;
+  transform: rotate(-90deg);
+}
+.harvesting-box-ring-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 5;
+}
+.harvesting-box-ring-fill {
+  fill: none;
+  stroke: #00e8ff;
+  stroke-width: 5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 50ms linear;
+}
+.harvesting-box-timer {
+  color: #00e8ff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
 .shield-pickup-timer {
   color: #00e8ff;
   font-size: 0.78rem;
@@ -911,18 +972,79 @@ body.game-page * {
   pointer-events: none;
   z-index: 6;
 }
-#message-hud .message-toast {
-  padding: 0.45rem 0.85rem;
-  border: 1px solid rgba(130, 219, 219, 0.35);
+#match-alert-hud {
+  position: fixed;
+  top: 12.5rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+  max-width: min(94vw, 420px);
+  pointer-events: none;
+  z-index: 14;
+}
+#match-alert-hud[hidden] {
+  display: none !important;
+}
+.match-alert-toast {
+  padding: 0.85rem 1.35rem;
   border-radius: 4px;
-  background: rgba(20, 24, 28, 0.78);
-  color: rgba(255, 255, 255, 0.92);
-  font-size: 0.8rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  border: 2px solid rgba(255, 150, 70, 0.95);
+  background: rgba(28, 6, 4, 0.96);
+  color: #fff0e0;
+  font-family: Rajdhani, sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  text-transform: uppercase;
+  text-align: right;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+  box-shadow:
+    0 0 22px rgba(255, 100, 30, 0.45),
+    0 8px 28px rgba(0, 0, 0, 0.6);
+  animation: match-alert-in 200ms ease-out, match-alert-pulse 1.1s ease-in-out infinite;
+}
+@keyframes match-alert-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+@keyframes match-alert-pulse {
+  0%,
+  100% {
+    border-color: rgba(255, 140, 70, 0.85);
+    background: rgba(28, 6, 4, 0.96);
+    box-shadow:
+      0 0 16px rgba(255, 100, 30, 0.35),
+      0 8px 28px rgba(0, 0, 0, 0.6);
+  }
+  50% {
+    border-color: rgba(255, 210, 120, 1);
+    background: rgba(48, 12, 6, 0.98);
+    box-shadow:
+      0 0 34px rgba(255, 130, 40, 0.7),
+      0 8px 28px rgba(0, 0, 0, 0.6);
+  }
+}
+#message-hud .message-toast {
+  padding: 0.55rem 1rem;
+  border: 1px solid rgba(255, 170, 90, 0.55);
+  border-radius: 4px;
+  background: rgba(22, 10, 8, 0.88);
+  color: rgba(255, 245, 235, 0.96);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
   text-align: center;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.45);
 }
 #message-hud .message-toast-victim {
   color: #ff4d4d;
@@ -2646,4 +2768,229 @@ body.game-page * {
   #team-hud {
     display: none;
   }
+}
+
+/* Crafting station */
+#crafting-station-prompt {
+  position: fixed;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  max-width: min(90vw, 360px);
+  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  background: rgba(8, 12, 16, 0.72);
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 6;
+}
+
+#crafting-station-prompt[hidden] {
+  display: none !important;
+}
+
+#crafting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+}
+
+#crafting-overlay[hidden] {
+  display: none !important;
+}
+
+.crafting-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.72);
+}
+
+.crafting-panel {
+  position: relative;
+  z-index: 1;
+  width: min(60rem, calc(100vw - 1.5rem));
+  max-height: min(92dvh, 54rem);
+  overflow: hidden;
+  padding: 1.15rem 1.25rem 1.35rem;
+  border: 1px solid rgba(0, 242, 255, 0.28);
+  background: linear-gradient(180deg, rgba(8, 18, 32, 0.96), rgba(4, 10, 18, 0.98));
+  box-shadow: 0 0 40px rgba(0, 242, 255, 0.12);
+}
+
+.crafting-header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.45rem;
+}
+
+.crafting-eyebrow {
+  margin: 0;
+  color: var(--hud-cyan-dim);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.crafting-title {
+  margin: 0.15rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.crafting-balance-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid rgba(0, 242, 255, 0.35);
+  border-radius: 0.2rem;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--hud-cyan);
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crafting-balance-chip img {
+  width: 1.75rem;
+  height: 1.75rem;
+  object-fit: contain;
+}
+
+.crafting-close-btn {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(0, 242, 255, 0.4);
+  border-radius: 0.2rem;
+  background: rgba(0, 242, 255, 0.1);
+  color: var(--hud-cyan);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.crafting-close-btn:hover {
+  background: rgba(0, 242, 255, 0.2);
+}
+
+.crafting-subtitle {
+  margin: 0 0 0.85rem;
+  color: rgba(180, 210, 225, 0.7);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+
+.crafting-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .crafting-panel {
+    max-height: min(94dvh, 100%);
+    overflow: auto;
+  }
+
+  .crafting-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.crafting-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 10rem;
+  padding: 0.7rem 0.55rem 0.6rem;
+  border: 1px solid rgba(0, 242, 255, 0.22);
+  border-radius: 0.2rem;
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.crafting-card:hover:not(.is-disabled) {
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 14px rgba(0, 242, 255, 0.2);
+}
+
+.crafting-card.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.crafting-card-hold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0.28rem;
+  background: rgba(0, 242, 255, 0.12);
+}
+
+.crafting-card-hold-fill {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--hud-cyan);
+  box-shadow: 0 0 8px rgba(0, 242, 255, 0.55);
+}
+
+.crafting-card-icon {
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
+  margin-top: 0.2rem;
+}
+
+.crafting-card-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.crafting-card-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--hud-cyan-soft);
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.crafting-card-cost img {
+  width: 1rem;
+  height: 1rem;
+  object-fit: contain;
+}
+
+.crafting-card-hint {
+  margin-top: auto;
+  color: rgba(170, 200, 215, 0.65);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+  line-height: 1.25;
 }

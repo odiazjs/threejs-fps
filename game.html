@@ -45,6 +45,7 @@
       <div class="crosshair-ads-dot" aria-hidden="true"></div>
     </div>
     <div id="message-hud"></div>
+    <div id="match-alert-hud" hidden></div>
     <div id="match-hud" hidden>
       <div class="match-hud-timer">3:00</div>
       <div class="match-hud-scores"></div>
@@ -101,7 +102,7 @@
         </div>
         <p class="pre-match-tip">
           <span class="pre-match-tip-icon" aria-hidden="true">i</span>
-          Tip: Headshots deal more damage. Aim for the head!
+          Tip: Headshots deal more damage. Aim for the head
         </p>
         <div class="pre-match-progress" aria-hidden="true">
           <div class="pre-match-progress-fill" id="pre-match-progress-fill"></div>
@@ -234,6 +235,37 @@
         <circle class="shield-pickup-ring-fill" cx="36" cy="36" r="34" />
       </svg>
       <div class="shield-pickup-timer">Picking up shield charge</div>
+    </div>
+    <div id="crafting-station-prompt" hidden>
+      <div class="crafting-station-prompt-text">Press F — Crafting Station</div>
+    </div>
+    <div id="harvesting-box-prompt" hidden>
+      <div class="harvesting-box-prompt-text">Hold F — Harvesting Box</div>
+    </div>
+    <div id="harvesting-box-progress" hidden>
+      <svg class="harvesting-box-spinner" viewBox="0 0 72 72" aria-hidden="true">
+        <circle class="harvesting-box-ring-bg" cx="36" cy="36" r="34" />
+        <circle class="harvesting-box-ring-fill" cx="36" cy="36" r="34" />
+      </svg>
+      <div class="harvesting-box-timer">3.0</div>
+    </div>
+    <div id="crafting-overlay" hidden>
+      <div class="crafting-backdrop" aria-hidden="true"></div>
+      <div class="crafting-panel hud-panel" role="dialog" aria-modal="true" aria-labelledby="crafting-title">
+        <header class="crafting-header">
+          <div>
+            <p class="crafting-eyebrow">CRAFTING STATION</p>
+            <h2 id="crafting-title" class="crafting-title">BUILD LOADOUT</h2>
+          </div>
+          <div class="crafting-balance-chip">
+            <img src="/images/ui/plasma_minerals_icon.png" alt="" width="28" height="28" />
+            <span id="crafting-balance">0</span>
+          </div>
+          <button type="button" id="crafting-close-btn" class="crafting-close-btn">CLOSE</button>
+        </header>
+        <p class="crafting-subtitle">Hold click on an item for 3 seconds to craft. Drop owned weapons before re-crafting them.</p>
+        <div id="crafting-grid" class="crafting-grid"></div>
+      </div>
     </div>
     <div id="inventory-overlay" hidden>
       <div class="inventory-backdrop" aria-hidden="true"></div>

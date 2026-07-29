@@ -1,17 +1,5 @@
 import type { Aabb } from './levelData.js';
 import type { SpawnPickContext } from './spawnPick.js';
-import { AMMO_BOX_POSITIONS } from './ammoBoxSpawns.js';
-import { SHIELD_CHARGE_POSITIONS } from './shieldChargeSpawns.js';
-import {
-  FLOOR_SIZE as KILO_FLOOR_SIZE,
-  MAP_HALF as KILO_MAP_HALF,
-  getLevelColliders as getKiloColliders,
-  pickSpawnPoint as pickKiloSpawnPoint,
-  pickTeamSpawnPoint as pickKiloTeamSpawnPoint,
-  pickTeamSpawnBatch as pickKiloTeamSpawnBatch,
-  pickTeamRespawnPoint as pickKiloTeamRespawnPoint,
-  HUMAN_RESPAWN_POINT as KILO_RESPAWN_POINT,
-} from './kiloSectorColliders.js';
 import {
   FLOOR_SIZE as TDM_MAP_FLOOR_SIZE,
   MAP_HALF as TDM_MAP_HALF,
@@ -28,6 +16,22 @@ import {
   TDM_MAP_GRENADE_POSITIONS,
 } from './tdmMapColliders.js';
 import { TDM_MAP_WALL_THICK } from './tdmMapConfig.js';
+import {
+  FLOOR_SIZE as HARVEST_MAP_FLOOR_SIZE,
+  MAP_HALF as HARVEST_MAP_HALF,
+  MAP_HALF_X as HARVEST_MAP_HALF_X,
+  MAP_HALF_Z as HARVEST_MAP_HALF_Z,
+  pickSpawnPoint as pickHarvestMapSpawnPoint,
+  pickTeamSpawnPoint as pickHarvestMapTeamSpawnPoint,
+  pickTeamSpawnBatch as pickHarvestMapTeamSpawnBatch,
+  pickTeamRespawnPoint as pickHarvestMapTeamRespawnPoint,
+  HUMAN_RESPAWN_POINT as HARVEST_MAP_RESPAWN_POINT,
+  sampleGroundHeight as harvestMapGroundHeight,
+  HARVEST_MAP_AMMO_POSITIONS,
+  HARVEST_MAP_SHIELD_POSITIONS,
+  HARVEST_MAP_GRENADE_POSITIONS,
+} from './harvestMapColliders.js';
+import { HARVEST_MAP_WALL_THICK } from './harvestMapConfig.js';
 import {
   FLOOR_SIZE as FIRING_RANGE_FLOOR_SIZE,
   MAP_HALF as FIRING_RANGE_MAP_HALF,
@@ -47,12 +51,11 @@ import {
   getFiringRangeWeaponSpawns,
   type FiringRangeWeaponSpawn,
 } from './firingRangePickups.js';
-import { sampleGroundHeight as kiloGroundHeight } from './terrainHeight.js';
 import { getMapPhysics } from './mapMeshMovement.js';
 
-export type MapId = 'kilo_sector' | 'killhouse_small' | 'firing_range';
+export type MapId = 'firing_range' | 'killhouse_small' | 'harvest';
 
-export const DEFAULT_MAP_ID: MapId = 'kilo_sector';
+export const DEFAULT_MAP_ID: MapId = 'firing_range';
 
 export interface MapOption {
   id: MapId;
@@ -62,9 +65,9 @@ export interface MapOption {
 
 export const MAP_OPTIONS: readonly MapOption[] = [
   {
-    id: 'kilo_sector',
-    label: 'Kilo Sector',
-    description: 'Large outdoor arena',
+    id: 'firing_range',
+    label: 'Firing Range',
+    description: 'Sandbox range — editor map (firing_range_map.glb)',
   },
   {
     id: 'killhouse_small',
@@ -72,9 +75,9 @@ export const MAP_OPTIONS: readonly MapOption[] = [
     description: 'Compact 2v2 TDM arena (tdm_map.glb)',
   },
   {
-    id: 'firing_range',
-    label: 'Firing Range',
-    description: 'Sandbox range — editor map (firing_range_map.glb)',
+    id: 'harvest',
+    label: 'Harvest',
+    description: 'Plasma Harvest arena (harvest_map.glb)',
   },
 ] as const;
 
@@ -131,52 +134,6 @@ export interface MapCollisionDef {
 }
 
 const MAPS: Record<MapId, MapCollisionDef> = {
-  kilo_sector: {
-    id: 'kilo_sector',
-    label: 'Kilo Sector',
-    floorSize: KILO_FLOOR_SIZE,
-    mapHalf: KILO_MAP_HALF,
-    mapHalfX: KILO_MAP_HALF,
-    mapHalfZ: KILO_MAP_HALF,
-    wallThickness: 0,
-    outdoor: true,
-    getLevelColliders: getKiloColliders,
-    sampleGroundHeight: kiloGroundHeight,
-    pickSpawnPoint: pickKiloSpawnPoint,
-    pickTeamSpawnPoint: pickKiloTeamSpawnPoint,
-    pickTeamSpawnBatch: pickKiloTeamSpawnBatch,
-    pickTeamRespawnPoint: pickKiloTeamRespawnPoint,
-    humanRespawnPoint: KILO_RESPAWN_POINT,
-    ammoPositions: AMMO_BOX_POSITIONS,
-    shieldPositions: SHIELD_CHARGE_POSITIONS,
-    spawnTrainingBots: true,
-  },
-  killhouse_small: {
-    id: 'killhouse_small',
-    label: 'Chrono-Bowl',
-    floorSize: TDM_MAP_FLOOR_SIZE,
-    mapHalf: TDM_MAP_HALF,
-    mapHalfX: TDM_MAP_HALF_X,
-    mapHalfZ: TDM_MAP_HALF_Z,
-    wallThickness: TDM_MAP_WALL_THICK,
-    outdoor: false,
-    usesMeshCollision: true,
-    getLevelColliders: () => [],
-    getClientGameplayColliders: () => [],
-    sampleGroundHeight: tdmMapGroundHeight,
-    pickSpawnPoint: pickTdmMapSpawnPoint,
-    pickTeamSpawnPoint: pickTdmMapTeamSpawnPoint,
-    pickTeamSpawnBatch: pickTdmMapTeamSpawnBatch,
-    pickTeamRespawnPoint: pickTdmMapTeamRespawnPoint,
-    humanRespawnPoint: TDM_MAP_RESPAWN_POINT,
-    ammoPositions: TDM_MAP_AMMO_POSITIONS,
-    shieldPositions: TDM_MAP_SHIELD_POSITIONS,
-    getGrenadePositions: () => TDM_MAP_GRENADE_POSITIONS,
-    grenadePickupRespawnSec: 10,
-    grenadePickupGrant: 1,
-    respawnGrenadeCount: 1,
-    spawnTrainingBots: false,
-  },
   firing_range: {
     id: 'firing_range',
     label: 'Firing Range',
@@ -204,10 +161,66 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     spawnTrainingBots: false,
     emptyStartingLoadout: true,
   },
+  killhouse_small: {
+    id: 'killhouse_small',
+    label: 'Chrono-Bowl',
+    floorSize: TDM_MAP_FLOOR_SIZE,
+    mapHalf: TDM_MAP_HALF,
+    mapHalfX: TDM_MAP_HALF_X,
+    mapHalfZ: TDM_MAP_HALF_Z,
+    wallThickness: TDM_MAP_WALL_THICK,
+    outdoor: false,
+    usesMeshCollision: true,
+    getLevelColliders: () => [],
+    getClientGameplayColliders: () => [],
+    sampleGroundHeight: tdmMapGroundHeight,
+    pickSpawnPoint: pickTdmMapSpawnPoint,
+    pickTeamSpawnPoint: pickTdmMapTeamSpawnPoint,
+    pickTeamSpawnBatch: pickTdmMapTeamSpawnBatch,
+    pickTeamRespawnPoint: pickTdmMapTeamRespawnPoint,
+    humanRespawnPoint: TDM_MAP_RESPAWN_POINT,
+    ammoPositions: TDM_MAP_AMMO_POSITIONS,
+    shieldPositions: TDM_MAP_SHIELD_POSITIONS,
+    getGrenadePositions: () => TDM_MAP_GRENADE_POSITIONS,
+    grenadePickupRespawnSec: 10,
+    grenadePickupGrant: 1,
+    respawnGrenadeCount: 1,
+    spawnTrainingBots: false,
+  },
+  harvest: {
+    id: 'harvest',
+    label: 'Harvest',
+    floorSize: HARVEST_MAP_FLOOR_SIZE,
+    mapHalf: HARVEST_MAP_HALF,
+    mapHalfX: HARVEST_MAP_HALF_X,
+    mapHalfZ: HARVEST_MAP_HALF_Z,
+    wallThickness: HARVEST_MAP_WALL_THICK,
+    outdoor: false,
+    usesMeshCollision: true,
+    getLevelColliders: () => [],
+    getClientGameplayColliders: () => [],
+    sampleGroundHeight: harvestMapGroundHeight,
+    pickSpawnPoint: pickHarvestMapSpawnPoint,
+    pickTeamSpawnPoint: pickHarvestMapTeamSpawnPoint,
+    pickTeamSpawnBatch: pickHarvestMapTeamSpawnBatch,
+    pickTeamRespawnPoint: pickHarvestMapTeamRespawnPoint,
+    humanRespawnPoint: HARVEST_MAP_RESPAWN_POINT,
+    ammoPositions: HARVEST_MAP_AMMO_POSITIONS,
+    shieldPositions: HARVEST_MAP_SHIELD_POSITIONS,
+    getGrenadePositions: () => HARVEST_MAP_GRENADE_POSITIONS,
+    grenadePickupRespawnSec: 10,
+    grenadePickupGrant: 1,
+    respawnGrenadeCount: 1,
+    spawnTrainingBots: false,
+  },
 };
 
 export function isValidMapId(value: string | null | undefined): value is MapId {
-  return value === 'kilo_sector' || value === 'killhouse_small' || value === 'firing_range';
+  return (
+    value === 'firing_range' ||
+    value === 'killhouse_small' ||
+    value === 'harvest'
+  );
 }
 
 export function normalizeMapId(value: string | null | undefined): MapId {
@@ -215,7 +228,11 @@ export function normalizeMapId(value: string | null | undefined): MapId {
 }
 
 export function mapHasMinimap(mapId: MapId): boolean {
-  return mapId === 'firing_range' || mapId === 'killhouse_small';
+  return (
+    mapId === 'firing_range' ||
+    mapId === 'killhouse_small' ||
+    mapId === 'harvest'
+  );
 }
 
 export function getMapDef(mapId: MapId): MapCollisionDef {

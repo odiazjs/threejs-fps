@@ -3,6 +3,7 @@ import {
   getMatchTimeRemaining,
   isCompetitiveGameMode,
   isKillRaceGameMode,
+  isPlasmaHarvestGameMode,
   teamScoreToKills,
   type MatchPhase,
 } from '../../shared/combat/match';
@@ -38,19 +39,22 @@ export class MatchHud {
     }
 
     const killRace = isKillRaceGameMode(match.gameMode);
-    const timerText = killRace
-      ? match.killLimit > 0
-        ? `FIRST TO ${match.killLimit}`
-        : 'FIRST TO KILLS'
-      : formatMatchTimer(
-          getMatchTimeRemaining(
-            match.phase as MatchPhase,
-            worldTime,
-            match.matchStartAt,
-            match.matchEndAt,
-            match.matchDurationSec,
-          ),
-        );
+    const plasmaHarvest = isPlasmaHarvestGameMode(match.gameMode);
+    const timerText = plasmaHarvest
+      ? 'INSTALL ENEMY BOX'
+      : killRace
+        ? match.killLimit > 0
+          ? `FIRST TO ${match.killLimit}`
+          : 'FIRST TO KILLS'
+        : formatMatchTimer(
+            getMatchTimeRemaining(
+              match.phase as MatchPhase,
+              worldTime,
+              match.matchStartAt,
+              match.matchEndAt,
+              match.matchDurationSec,
+            ),
+          );
     if (timerText !== this.lastTimerText) {
       this.lastTimerText = timerText;
       this.timerEl.textContent = timerText;
@@ -65,10 +69,10 @@ export class MatchHud {
 
     for (let teamId = 0; teamId < teamCount; teamId++) {
       const raw = match.teamScores[teamId] ?? 0;
-      const score = killRace ? teamScoreToKills(raw) : raw;
+      const score = plasmaHarvest ? 0 : killRace ? teamScoreToKills(raw) : raw;
       if (score !== this.lastScores[teamId]) {
         this.lastScores[teamId] = score;
-        this.scoreEls[teamId]!.textContent = String(score);
+        this.scoreEls[teamId]!.textContent = plasmaHarvest ? '—' : String(score);
       }
     }
 

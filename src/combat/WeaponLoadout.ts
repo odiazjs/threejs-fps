@@ -423,6 +423,15 @@ export class WeaponLoadout {
     this.getActive()?.ammo.addReserveClip();
   }
 
+  /** Crafted weapons start with one full mag and empty reserve. */
+  setActiveMagazineOnly(): void {
+    this.getActive()?.ammo.setMagazineOnly();
+  }
+
+  setSlotMagazineOnly(weaponId: WeaponId): void {
+    this.weaponsById.get(weaponId)?.ammo.setMagazineOnly();
+  }
+
   refillAllAmmo(reserveRounds?: number): void {
     for (const slot of this.weaponsById.values()) {
       slot.ammo.refill(reserveRounds);

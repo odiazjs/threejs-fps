@@ -1,7 +1,6 @@
 import {
   DEFAULT_MAP_ID,
   isValidMapId,
-  normalizeMapId,
   type MapId,
 } from '../../shared/level/maps';
 import {
@@ -10,6 +9,7 @@ import {
   normalizeGameMode,
   normalizeKillRaceTarget,
   normalizeTdmDurationSec,
+  resolveMapForGameMode,
   resolveMatchRules,
   type GameMode,
 } from '../../shared/combat/match';
@@ -96,8 +96,11 @@ function readStoredKillTargetPreference(): number {
 }
 
 function normalizeJoinIntent(raw: Partial<GameJoinIntent>): GameJoinIntent | null {
-  const mapId = normalizeMapId(raw.mapId ?? readStoredMapPreference());
   const gameMode = normalizeGameMode(raw.gameMode ?? readStoredGameModePreference());
+  const mapId = resolveMapForGameMode(
+    gameMode,
+    raw.mapId ?? readStoredMapPreference(),
+  );
   const rules = resolveMatchRules(
     gameMode,
     raw.matchDurationSec ?? readStoredDurationPreference(),

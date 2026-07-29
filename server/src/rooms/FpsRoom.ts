@@ -15,7 +15,7 @@ import { applyForwardLimbWallClearance } from '../../../shared/physics/forwardWa
 import { CROUCH_EYE_HEIGHT } from '../../../shared/combat/crouch.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
-import { getMapDef, normalizeMapId, type MapCollisionDef } from '../../../shared/level/maps.js';
+import { getMapDef, type MapCollisionDef } from '../../../shared/level/maps.js';
 import type { SpawnPickContext } from '../../../shared/level/spawnPick.js';
 import {
   PLAYER_MAX_HP,
@@ -23,15 +23,19 @@ import {
 } from '../../../shared/combat/damage.js';
 import { isValidTeamId, isValidTdmTeamId } from '../../../shared/combat/teams.js';
 import {
+  allowsMidMatchLoadoutSwitch,
   defaultTdmExpectedPlayers,
   isCompetitiveGameMode,
   normalizeGameMode,
   PRE_MATCH_MIN_SEC,
+  resolveMapForGameMode,
   resolveMatchRules,
   resolveTdmTeamCount,
   TDM_COUNTDOWN_SEC,
   TDM_KILL_POINTS,
   teamScoreToKills,
+  usesEmptyStartingLoadout,
+  isPlasmaHarvestGameMode,
   type GameMode,
 } from '../../../shared/combat/match.js';
 import {
@@ -137,6 +141,8 @@ import { WEAPON_PICKUP_MAX_DISTANCE } from '../../../shared/network/weaponPickup
 import {
   EMPTY_WEAPON_SLOT,
   clearLoadoutSlots,
+  findLowestEmptyLoadoutSlot,
+  findLoadoutSlotForWeaponId,
   findLowestOccupiedLoadoutSlot,
   getLoadoutSlotWeapon,
   initDefaultLoadoutSlots,
@@ -145,6 +151,31 @@ import {
   sanitizeLoadoutSlots,
   setLoadoutSlotWeapon,
 } from '../../../shared/loadout/loadoutSlots.js';
+import {
+  CRAFTING_STATION_INTERACT_DISTANCE,
+  getCraftItem,
+  MATCH_PLASMA_MINERALS_START,
+} from '../../../shared/content/craftingCatalog.js';
+import {
+  CRAFTING_STATION_FRONT_OFFSET,
+  getCraftingStationSpawns,
+} from '../../../shared/level/craftingStationSpawns.js';
+import {
+  getHarvestingBoxSpawns,
+  HARVESTING_BOX_INTERACT_DISTANCE,
+  harvestingBoxInstallSpot,
+} from '../../../shared/level/harvestingBoxSpawns.js';
+import {
+  HARVESTING_BOX_INTERACT_MESSAGE,
+  HARVESTING_BOX_INSTALL_HOLD_MESSAGE,
+  type HarvestingBoxInteractMessage,
+  type HarvestingBoxInstallHoldMessage,
+} from '../../../shared/network/harvestingBox.js';
+import type {
+  CraftItemGrantedMessage,
+  CraftItemMessage,
+} from '../../../shared/network/crafting.js';
+import { MAX_GRENADES, MAX_SHIELD_CHARGES } from '../../../shared/inventory/inventoryLimits.js';
 import { applyWeaponLoadoutPreset } from '../../../shared/loadout/weaponLoadoutPreset.js';
 import type { WeaponLoadoutPresetWeapons } from '../../../shared/loadout/weaponLoadoutPreset.js';
 import {
@@ -160,10 +191,9 @@ import {
   resolveLoadoutWeaponPair,
 } from '../weapons/service.js';
 import type { WeaponEffectiveStats } from '../../../shared/content/weaponUpgrades.js';
-import { MAX_SHIELD_CHARGES, MAX_GRENADES } from '../../../shared/inventory/inventoryLimits.js';
 import { WORLD_PICKUP_RESPAWN_SEC } from '../../../shared/combat/worldPickupRespawn.js';
 import type { ProjectileSpawnMessage } from '../../../shared/network/projectile.js';
-import { AmmoBoxState, FpsState, GrenadePickupState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
+import { AmmoBoxState, FpsState, GrenadePickupState, HarvestingBoxState, PlayerState, ShieldChargeState, WeaponDropState } from '../../../shared/schema/FpsState.js';
 import { getPlayerStats, incrementDeaths, incrementKills } from '../stats/service.js';
 import { MATCH_CLIENT_READY_MESSAGE } from '../../../shared/network/matchReady.js';
 import { RoomMatchPerfCache } from '../progression/RoomMatchPerfCache.js';
@@ -274,11 +304,11 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     this.maxClients = this.inviteMatch ? partySize : 8;
     this.expectedPlayers = this.inviteMatch ? partySize : 0;
     this.state.friendlyFire = options.friendlyFire === true;
-    const mapId = normalizeMapId(options.mapId);
-    this.state.mapId = mapId;
-    this.mapDef = getMapDef(mapId);
     this.gameMode = normalizeGameMode(options.gameMode);
     this.state.gameMode = this.gameMode;
+    const mapId = resolveMapForGameMode(this.gameMode, options.mapId);
+    this.state.mapId = mapId;
+    this.mapDef = getMapDef(mapId);
 
     await loadMapPhysicsForServer(this.mapDef);
 
@@ -299,27 +329,45 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     }
     this.patchRate = 50;
 
-    for (const pos of this.mapDef.getAmmoPositions?.() ?? this.mapDef.ammoPositions) {
-      const box = new AmmoBoxState();
-      box.x = pos.x;
-      box.z = pos.z;
-      this.state.ammoBoxes.push(box);
+    const spawnWorldPickups = !isPlasmaHarvestGameMode(this.gameMode);
+
+    if (spawnWorldPickups) {
+      for (const pos of this.mapDef.getAmmoPositions?.() ?? this.mapDef.ammoPositions) {
+        const box = new AmmoBoxState();
+        box.x = pos.x;
+        box.z = pos.z;
+        this.state.ammoBoxes.push(box);
+      }
+
+      for (const pos of this.mapDef.getShieldPositions?.() ?? this.mapDef.shieldPositions) {
+        const charge = new ShieldChargeState();
+        charge.x = pos.x;
+        charge.y = this.mapDef.sampleGroundHeight(pos.x, pos.z);
+        charge.z = pos.z;
+        this.state.shieldCharges.push(charge);
+      }
+
+      for (const pos of this.mapDef.getGrenadePositions?.() ?? []) {
+        const pickup = new GrenadePickupState();
+        pickup.x = pos.x;
+        pickup.z = pos.z;
+        pickup.count = this.mapDef.grenadePickupGrant ?? GRENADE_PICKUP_GRANT;
+        this.state.grenadePickups.push(pickup);
+      }
     }
 
-    for (const pos of this.mapDef.getShieldPositions?.() ?? this.mapDef.shieldPositions) {
-      const charge = new ShieldChargeState();
-      charge.x = pos.x;
-      charge.y = this.mapDef.sampleGroundHeight(pos.x, pos.z);
-      charge.z = pos.z;
-      this.state.shieldCharges.push(charge);
-    }
-
-    for (const pos of this.mapDef.getGrenadePositions?.() ?? []) {
-      const pickup = new GrenadePickupState();
-      pickup.x = pos.x;
-      pickup.z = pos.z;
-      pickup.count = this.mapDef.grenadePickupGrant ?? GRENADE_PICKUP_GRANT;
-      this.state.grenadePickups.push(pickup);
+    for (const spawn of getHarvestingBoxSpawns(this.mapDef.id, this.gameMode)) {
+      const box = new HarvestingBoxState();
+      box.index = spawn.index;
+      box.teamId = spawn.teamId;
+      box.x = spawn.x;
+      box.y = spawn.y;
+      box.z = spawn.z;
+      box.homeX = spawn.x;
+      box.homeY = spawn.y;
+      box.homeZ = spawn.z;
+      box.carriedBySessionId = '';
+      this.state.harvestingBoxes.push(box);
     }
 
     for (const spawn of this.mapDef.getInitialWeaponSpawns?.() ?? []) {
@@ -513,6 +561,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.stopAutoFireSound(targetId);
       this.cancelShieldRecharge(target);
       this.cancelShieldDome(target);
+      this.dropHarvestingBoxForSession(targetId);
 
       const killFeed: KillFeedMessage = {
         killerId: grenade.throwerId,
@@ -624,6 +673,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   private addTeamScore(teamId: number, points: number): void {
+    // Plasma Harvest wins by install, not kill scores.
+    if (isPlasmaHarvestGameMode(this.gameMode)) return;
+
     switch (teamId) {
       case 0:
         this.state.teamScore0 += points;
@@ -870,6 +922,16 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     });
   }
 
+  /** End match with an explicit winner (Plasma Harvest install). */
+  private endMatchWithWinner(teamId: number): void {
+    if (this.state.matchPhase === 'ended') return;
+    this.state.matchPhase = 'ended';
+    this.state.winningTeamId = teamId;
+    void this.awardRankedMatchResults().catch((error) => {
+      console.error('[rank] failed to award match results', error);
+    });
+  }
+
   /** Persist XP/RP for every authenticated human from in-room performance cache. */
   private async awardRankedMatchResults(): Promise<void> {
     if (!this.isTdm()) return;
@@ -971,6 +1033,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   private tryStartShieldDomeCharge(player: PlayerState): boolean {
     const now = this.state.worldTime;
     if (!player.alive) return false;
+    if (player.carryingHarvestingBoxIndex >= 0) return false;
     if (now < player.shieldDomeCooldownEndAt) return false;
     if (now < player.shieldDomeEndAt) return false;
     if (now < player.shieldDomeChargeEndAt) return false;
@@ -1003,6 +1066,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   private tryStartShieldRecharge(player: PlayerState): boolean {
     if (!player.alive) return false;
+    if (player.carryingHarvestingBoxIndex >= 0) return false;
     if (player.shieldRecharging) return false;
     if (player.shieldCharges <= 0) return false;
     if (!canUseShieldCharge(player.shieldLevel, player.shieldPoints)) return false;
@@ -1206,6 +1270,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     reload: (client: Client, data: ReloadMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive || player.reloading) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
       if (!isWeaponId(data.weaponId)) return;
       if (data.weaponId === MELEE_WEAPON_ID) return;
 
@@ -1241,6 +1306,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     switchWeapon: (client: Client, data: SwitchWeaponMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
 
       const slot = data.slot;
       if (slot < 0 || slot >= LOADOUT_WEAPON_IDS.length) return;
@@ -1260,6 +1326,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     equipMelee: (client: Client, data: EquipMeleeMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
 
       if (data.equipped) {
         if (player.activeWeaponId === MELEE_WEAPON_ID) return;
@@ -1282,6 +1349,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     meleeAttack: (client: Client, _data: MeleeAttackMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
       if (!this.isMatchCombatAllowed()) return;
 
       // V can slash while a gun is out — auto-draw melee for the attack.
@@ -1413,6 +1481,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     shoot: (client: Client, data: ProjectileSpawnMessage) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
       if (!isWeaponId(player.activeWeaponId)) return;
       if (!this.isMatchCombatAllowed()) return;
       this.cancelShieldRecharge(player);
@@ -1480,6 +1549,101 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
       this.tryStartShieldDomeCharge(player);
+    },
+
+    craftItem: (client: Client, data: CraftItemMessage) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
+
+      const item = getCraftItem(data.itemId);
+      if (!item) return;
+
+      const stations = getCraftingStationSpawns(this.mapDef.id, this.gameMode);
+      if (stations.length === 0) return;
+
+      const px = Number.isFinite(data.x) ? data.x : player.x;
+      const pz = Number.isFinite(data.z) ? data.z : player.z;
+      const desync = Math.hypot(px - player.x, pz - player.z);
+      if (desync > PICKUP_MAX_DESYNC) return;
+
+      const nearStation = stations.some((spawn) => {
+        const forwardX = Math.sin(spawn.yaw);
+        const forwardZ = Math.cos(spawn.yaw);
+        const interactX = spawn.x + forwardX * CRAFTING_STATION_FRONT_OFFSET;
+        const interactZ = spawn.z + forwardZ * CRAFTING_STATION_FRONT_OFFSET;
+        const dist = Math.hypot(player.x - interactX, player.z - interactZ);
+        if (dist > CRAFTING_STATION_INTERACT_DISTANCE + 0.35) return false;
+        const facing =
+          (player.x - spawn.x) * forwardX + (player.z - spawn.z) * forwardZ;
+        return facing >= 0;
+      });
+      if (!nearStation) return;
+
+      if (player.matchPlasmaMinerals < item.cost) return;
+
+      const granted: CraftItemGrantedMessage = {
+        itemId: item.id,
+        matchPlasmaMinerals: player.matchPlasmaMinerals - item.cost,
+      };
+
+      if (item.kind === 'weapon') {
+        if (!isPickableWeaponId(item.id)) return;
+        if (findLoadoutSlotForWeaponId(player, item.id) >= 0) return;
+        const emptySlot = findLowestEmptyLoadoutSlot(player);
+        if (emptySlot < 0) return;
+        player.matchPlasmaMinerals -= item.cost;
+        setLoadoutSlotWeapon(player, emptySlot, item.id);
+        sanitizeLoadoutSlots(player);
+        player.activeWeaponId = item.id;
+        this.startWeaponSwitchAnim(player);
+        player.reloading = false;
+        player.reloadEndAt = 0;
+        client.send('craftItemGranted', {
+          ...granted,
+          matchPlasmaMinerals: player.matchPlasmaMinerals,
+          weaponId: item.id,
+          slotIndex: emptySlot,
+        } satisfies CraftItemGrantedMessage);
+        return;
+      }
+
+      if (item.kind === 'grenade') {
+        if (player.grenadeCount >= MAX_GRENADES) return;
+        player.matchPlasmaMinerals -= item.cost;
+        player.grenadeCount = Math.min(
+          MAX_GRENADES,
+          player.grenadeCount + item.grantAmount,
+        );
+        client.send('craftItemGranted', {
+          ...granted,
+          matchPlasmaMinerals: player.matchPlasmaMinerals,
+        } satisfies CraftItemGrantedMessage);
+        return;
+      }
+
+      if (item.kind === 'shield') {
+        if (player.shieldCharges >= MAX_SHIELD_CHARGES) return;
+        player.matchPlasmaMinerals -= item.cost;
+        player.shieldCharges = Math.min(
+          MAX_SHIELD_CHARGES,
+          player.shieldCharges + item.grantAmount,
+        );
+        client.send('craftItemGranted', {
+          ...granted,
+          matchPlasmaMinerals: player.matchPlasmaMinerals,
+        } satisfies CraftItemGrantedMessage);
+        return;
+      }
+
+      if (item.kind === 'ammo') {
+        player.matchPlasmaMinerals -= item.cost;
+        client.send('craftItemGranted', {
+          ...granted,
+          matchPlasmaMinerals: player.matchPlasmaMinerals,
+          ammoClips: item.grantAmount,
+        } satisfies CraftItemGrantedMessage);
+      }
     },
 
     pickupAmmo: (client: Client, data: PickupAmmoMessage) => {
@@ -1565,6 +1729,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     throwGrenade: (client: Client, data: GrenadeThrowRequest) => {
       const player = this.state.players.get(client.sessionId);
       if (!player?.alive) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
       if (!this.isMatchCombatAllowed()) return;
       if (player.grenadeCount <= 0) return;
 
@@ -1810,6 +1975,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
       this.stopAutoFireSound(data.targetId);
       this.cancelShieldRecharge(target);
       this.cancelShieldDome(target);
+      this.dropHarvestingBoxForSession(data.targetId);
 
       const killFeed: KillFeedMessage = {
         killerId: client.sessionId,
@@ -1832,6 +1998,27 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         if (this.isTdm() && this.state.matchPhase === 'ended') return;
         this.respawnPlayer(targetId);
       }, RESPAWN_DELAY_SEC * 1000);
+    },
+
+    [HARVESTING_BOX_INTERACT_MESSAGE]: (
+      client: Client,
+      data: HarvestingBoxInteractMessage,
+    ) => {
+      this.handleHarvestingBoxInteract(client, data);
+    },
+
+    [HARVESTING_BOX_INSTALL_HOLD_MESSAGE]: (
+      client: Client,
+      data: HarvestingBoxInstallHoldMessage,
+    ) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player?.alive) return;
+      if (!isPlasmaHarvestGameMode(this.gameMode)) return;
+      if (player.carryingHarvestingBoxIndex < 0) {
+        player.installingHarvestingBox = false;
+        return;
+      }
+      player.installingHarvestingBox = data.holding === true;
     },
   };
 
@@ -1885,6 +2072,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const shield = resetPlayerShield();
     player.shieldLevel = shield.shieldLevel;
     player.shieldPoints = shield.shieldPoints;
+    player.matchPlasmaMinerals = MATCH_PLASMA_MINERALS_START;
     player.alive = true;
     const spawn = this.pickSpawnForJoiningPlayer(player);
     player.x = spawn.x;
@@ -1896,6 +2084,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
 
   onLeave(client: Client): void {
     this.stopAutoFireSound(client.sessionId);
+    this.dropHarvestingBoxForSession(client.sessionId);
     this.holsteredWeaponIdBySession.delete(client.sessionId);
     this.defaultLoadoutBySession.delete(client.sessionId);
     this.weaponStatsBySession.delete(client.sessionId);
@@ -2078,6 +2267,110 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.meleeAttackEndAt = 0;
   }
 
+  private dropHarvestingBoxForSession(sessionId: string): void {
+    const player = this.state.players.get(sessionId);
+    if (player) {
+      player.carryingHarvestingBoxIndex = -1;
+      player.installingHarvestingBox = false;
+    }
+
+    for (const box of this.state.harvestingBoxes) {
+      if (box.carriedBySessionId !== sessionId) continue;
+      const x = player?.x ?? box.x;
+      const z = player?.z ?? box.z;
+      box.x = x;
+      box.y = player ? this.playerFeetY(player) : box.y;
+      box.z = z;
+      box.carriedBySessionId = '';
+    }
+  }
+
+  private findHarvestingBox(index: number): HarvestingBoxState | null {
+    for (const box of this.state.harvestingBoxes) {
+      if (box.index === index) return box;
+    }
+    return null;
+  }
+
+  private handleHarvestingBoxInteract(
+    client: Client,
+    data: HarvestingBoxInteractMessage,
+  ): void {
+    if (!isPlasmaHarvestGameMode(this.gameMode)) return;
+    const player = this.state.players.get(client.sessionId);
+    if (!player?.alive) return;
+    if (this.isTdm() && this.state.matchPhase !== 'playing') return;
+
+    const index = Math.floor(Number(data.index));
+    if (!Number.isFinite(index)) return;
+    const box = this.findHarvestingBox(index);
+    if (!box) return;
+
+    const px = Number.isFinite(data.x) ? data.x : player.x;
+    const pz = Number.isFinite(data.z) ? data.z : player.z;
+    const desync = Math.hypot(px - player.x, pz - player.z);
+    if (desync > PICKUP_MAX_DESYNC) return;
+
+    if (data.action === 'pickup') {
+      if (box.carriedBySessionId) return;
+      if (player.carryingHarvestingBoxIndex >= 0) return;
+      const dist = Math.hypot(player.x - box.x, player.z - box.z);
+      if (dist > HARVESTING_BOX_INTERACT_DISTANCE + 0.35) return;
+
+      this.cancelShieldRecharge(player);
+      this.cancelShieldDome(player);
+      player.reloading = false;
+      player.reloadEndAt = 0;
+      box.carriedBySessionId = client.sessionId;
+      player.carryingHarvestingBoxIndex = box.index;
+      player.installingHarvestingBox = false;
+      return;
+    }
+
+    if (data.action === 'drop') {
+      if (box.carriedBySessionId !== client.sessionId) return;
+      if (player.carryingHarvestingBoxIndex !== box.index) return;
+      box.x = player.x;
+      box.y = this.playerFeetY(player);
+      box.z = player.z;
+      box.carriedBySessionId = '';
+      player.carryingHarvestingBoxIndex = -1;
+      player.installingHarvestingBox = false;
+      return;
+    }
+
+    if (data.action === 'install') {
+      if (box.carriedBySessionId !== client.sessionId) return;
+      if (player.carryingHarvestingBoxIndex !== box.index) return;
+      // Steal enemy box → plant it at your own base install spot.
+      if (box.teamId === player.teamId) return;
+
+      let ownHomeX = 0;
+      let ownHomeZ = 0;
+      let foundOwn = false;
+      for (const other of this.state.harvestingBoxes) {
+        if (other.teamId !== player.teamId) continue;
+        ownHomeX = other.homeX;
+        ownHomeZ = other.homeZ;
+        foundOwn = true;
+        break;
+      }
+      if (!foundOwn) return;
+
+      const spot = harvestingBoxInstallSpot(ownHomeX, ownHomeZ);
+      const spotDist = Math.hypot(player.x - spot.x, player.z - spot.z);
+      if (spotDist > HARVESTING_BOX_INTERACT_DISTANCE + 0.35) return;
+
+      box.carriedBySessionId = '';
+      player.carryingHarvestingBoxIndex = -1;
+      player.installingHarvestingBox = false;
+      box.x = spot.x;
+      box.y = this.playerFeetY(player);
+      box.z = spot.z;
+      this.endMatchWithWinner(player.teamId);
+    }
+  }
+
   private respawnPlayer(sessionId: string): void {
     const player = this.state.players.get(sessionId);
     if (!player) return;
@@ -2128,6 +2421,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.crouching = false;
     player.sliding = false;
     this.holsteredWeaponIdBySession.delete(sessionId);
+    this.dropHarvestingBoxForSession(sessionId);
     this.initPlayerLoadout(player, sessionId);
     this.resetPlayerWeaponTiming(player);
     if (this.mapDef.respawnGrenadeCount !== undefined) {
@@ -2146,6 +2440,15 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     const player = this.state.players.get(client.sessionId);
     if (!player?.alive) {
       reply({ loadoutId: '', ok: false, error: 'You must be alive to switch loadouts' });
+      return;
+    }
+
+    if (!allowsMidMatchLoadoutSwitch(this.gameMode)) {
+      reply({
+        loadoutId: '',
+        ok: false,
+        error: 'Loadout switching is disabled in Plasma Harvest',
+      });
       return;
     }
 
@@ -2259,9 +2562,9 @@ export class FpsRoom extends Room<{ state: FpsState }> {
   }
 
   private initPlayerLoadout(player: PlayerState, sessionId?: string): void {
-    if (this.mapDef.emptyStartingLoadout) {
+    if (usesEmptyStartingLoadout(this.gameMode, this.mapDef.emptyStartingLoadout)) {
       clearLoadoutSlots(player);
-      player.activeWeaponId = EMPTY_WEAPON_SLOT;
+      player.activeWeaponId = MELEE_WEAPON_ID;
       sanitizeLoadoutSlots(player);
       return;
     }

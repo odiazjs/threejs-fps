@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { FLOOR_SIZE } from '../../shared/level/kiloSectorColliders';
 import { MAP_PALETTE } from '../../shared/level/mapPalette';
 import { shouldSkipGrass } from '../../shared/visuals/terrainPatches';
 
@@ -11,6 +10,8 @@ const GRID_STEP = 0.12;
 const EXTRA_BLADE_CHANCE = 0.72;
 const GLOBAL_HEIGHT_SCALE = 0.7225;
 const PATCH_HEIGHT_SCALE = 0.5;
+/** Default half-extent when callers omit `halfExtent` (legacy outdoor size). */
+const DEFAULT_HALF_EXTENT = 59;
 
 export interface GrassFieldOptions {
   halfExtent?: number;
@@ -234,7 +235,7 @@ export class GrassField {
     const bladeSegments = options.bladeSegments ?? 4;
     const drawRadius = options.drawRadius ?? 95;
     const geometry = createBladeGeometry(bladeWidth, bladeHeight, bladeSegments);
-    const half = options.halfExtent ?? FLOOR_SIZE / 2 - 1.0;
+    const half = options.halfExtent ?? DEFAULT_HALF_EXTENT;
     const maxCount = options.maxBlades ?? BLADE_COUNT;
     const gridStep = options.gridStep ?? GRID_STEP;
     const skipPatches = options.skipPatches ?? true;

@@ -4,6 +4,10 @@ import type { ProjectileSpawnMessage } from '../../shared/network/projectile';
 import type { WeaponShotSoundMessage } from '../../shared/network/weaponShot';
 import type { WeaponDropSpawnMessage } from '../../shared/network/weaponDrop';
 import type { WeaponPickupGrantedMessage } from '../../shared/network/weaponPickup';
+import type {
+  CraftItemGrantedMessage,
+  CraftItemMessage,
+} from '../../shared/network/crafting';
 import type { ApplyLoadoutResultMessage } from '../../shared/network/applyLoadout';
 import type { GrenadeDetonateRequest, GrenadeThrowRequest } from '../../shared/network/grenade';
 import type { TeamPingMessage, TeamPingRequest } from '../../shared/network/ping';
@@ -15,11 +19,17 @@ import { getShieldCapacity } from '../../shared/combat/shield';
 import {
   FpsState,
   type AmmoBoxState,
+  type HarvestingBoxState,
   type PlayerState,
   type GrenadePickupState,
   type ShieldChargeState,
   type WeaponDropState,
 } from '../../shared/schema/FpsState';
+import {
+  HARVESTING_BOX_INTERACT_MESSAGE,
+  HARVESTING_BOX_INSTALL_HOLD_MESSAGE,
+  type HarvestingBoxInteractAction,
+} from '../../shared/network/harvestingBox';
 import { getServerUrl } from '../config/serverUrl';
 import { DEFAULT_MAP_ID, isValidMapId, normalizeMapId, type MapId } from '../../shared/level/maps';
 import {
@@ -58,6 +68,8 @@ import type {
   ShieldChargeSnapshot,
   WeaponDropChangeHandler,
   WeaponDropSnapshot,
+  HarvestingBoxChangeHandler,
+  HarvestingBoxSnapshot,
   WeaponPickupGrantedHandler,
   WeaponShotSoundHandler,
 } from './types';
@@ -78,6 +90,7 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     shieldPoints: player.shieldPoints,
     shieldCharges: player.shieldCharges,
     grenadeCount: player.grenadeCount,
+    matchPlasmaMinerals: player.matchPlasmaMinerals ?? 0,
     shieldRecharging: player.shieldRecharging,
     shieldRechargeEndAt: player.shieldRechargeEndAt,
     alive: player.alive,
@@ -104,6 +117,8 @@ function toSnapshot(player: PlayerState): PlayerSnapshot {
     rankDivision: player.rankDivision || 1,
     rankName: player.rankName || 'Bronze I',
     clientReady: player.clientReady === true,
+    carryingHarvestingBoxIndex: player.carryingHarvestingBoxIndex ?? -1,
+    installingHarvestingBox: player.installingHarvestingBox === true,
     shieldDomeChargeEndAt: player.shieldDomeChargeEndAt,
     shieldDomeEndAt: player.shieldDomeEndAt,
     shieldDomeCooldownEndAt: player.shieldDomeCooldownEndAt,
@@ -150,12 +165,27 @@ function toWeaponDropSnapshot(drop: WeaponDropState): WeaponDropSnapshot {
   };
 }
 
+function toHarvestingBoxSnapshot(box: HarvestingBoxState): HarvestingBoxSnapshot {
+  return {
+    index: box.index,
+    teamId: box.teamId,
+    x: box.x,
+    y: box.y,
+    z: box.z,
+    homeX: box.homeX ?? box.x,
+    homeY: box.homeY ?? box.y,
+    homeZ: box.homeZ ?? box.z,
+    carriedBySessionId: box.carriedBySessionId || '',
+  };
+}
+
 export class RoomClient {
   private room: Room | null = null;
   private readonly boundAmmoBoxes = new Set<number>();
   private readonly boundShieldCharges = new Set<number>();
   private readonly boundGrenadePickups = new Set<number>();
   private readonly boundWeaponDrops = new Set<number>();
+  private readonly boundHarvestingBoxes = new Set<number>();
   private readonly boundPlayers = new Set<string>();
   private syncedWorldTime = 0;
   private worldTimeSyncAt = 0;
@@ -177,7 +207,9 @@ export class RoomClient {
   private onGrenadeThrownHandlers: GrenadeThrownHandler[] = [];
   private onGrenadeExplosionHandlers: GrenadeExplosionHandler[] = [];
   private onWeaponDropChangeHandlers: WeaponDropChangeHandler[] = [];
+  private onHarvestingBoxChangeHandlers: HarvestingBoxChangeHandler[] = [];
   private onWeaponPickupGrantedHandlers: WeaponPickupGrantedHandler[] = [];
+  private onCraftItemGrantedHandlers: Array<(data: CraftItemGrantedMessage) => void> = [];
   private onApplyLoadoutResultHandlers: Array<(data: ApplyLoadoutResultMessage) => void> = [];
   private onKillFeedHandlers: KillFeedHandler[] = [];
   private onLocalDamagedHandlers: LocalDamagedHandler[] = [];
@@ -299,6 +331,7 @@ export class RoomClient {
     this.bindGrenadePickupMessages();
     this.bindGrenadeCombatMessages();
     this.bindWeaponDropMessages();
+    this.bindCraftMessages();
     this.bindApplyLoadoutMessages();
     this.bindKillMessages();
     this.bindDamagedMessages();
@@ -421,8 +454,16 @@ export class RoomClient {
     this.onWeaponDropChangeHandlers.push(handler);
   }
 
+  onHarvestingBoxChange(handler: HarvestingBoxChangeHandler): void {
+    this.onHarvestingBoxChangeHandlers.push(handler);
+  }
+
   onWeaponPickupGranted(handler: WeaponPickupGrantedHandler): void {
     this.onWeaponPickupGrantedHandlers.push(handler);
+  }
+
+  onCraftItemGranted(handler: (data: CraftItemGrantedMessage) => void): void {
+    this.onCraftItemGrantedHandlers.push(handler);
   }
 
   onApplyLoadoutResult(handler: (data: ApplyLoadoutResultMessage) => void): void {
@@ -535,6 +576,29 @@ export class RoomClient {
     this.room?.send('pickupWeaponDrop', { index });
   }
 
+  sendCraftItem(itemId: string, feetX: number, feetZ: number): void {
+    const payload: CraftItemMessage = { itemId, x: feetX, z: feetZ };
+    this.room?.send('craftItem', payload);
+  }
+
+  sendInteractHarvestingBox(
+    index: number,
+    action: HarvestingBoxInteractAction,
+    feetX: number,
+    feetZ: number,
+  ): void {
+    this.room?.send(HARVESTING_BOX_INTERACT_MESSAGE, {
+      index,
+      action,
+      x: feetX,
+      z: feetZ,
+    });
+  }
+
+  sendHarvestingBoxInstallHold(holding: boolean): void {
+    this.room?.send(HARVESTING_BOX_INSTALL_HOLD_MESSAGE, { holding });
+  }
+
   sendHit(targetId: string, weaponId: WeaponId, bodyPart?: BodyPartId): void {
     this.room?.send('hit', { targetId, weaponId, bodyPart });
   }
@@ -606,6 +670,7 @@ export class RoomClient {
     this.boundShieldCharges.clear();
     this.boundGrenadePickups.clear();
     this.boundWeaponDrops.clear();
+    this.boundHarvestingBoxes.clear();
 
     try {
       await Promise.race([
@@ -680,6 +745,12 @@ export class RoomClient {
 
     this.room?.onMessage('weaponPickupGranted', (data: WeaponPickupGrantedMessage) => {
       this.onWeaponPickupGrantedHandlers.forEach((handler) => handler(data));
+    });
+  }
+
+  private bindCraftMessages(): void {
+    this.room?.onMessage('craftItemGranted', (data: CraftItemGrantedMessage) => {
+      this.onCraftItemGrantedHandlers.forEach((handler) => handler(data));
     });
   }
 
@@ -821,6 +892,22 @@ export class RoomClient {
         drop as WeaponDropState,
       );
     });
+
+    callbacks.onAdd('harvestingBoxes', (box, index) => {
+      this.bindHarvestingBoxCallbacks(
+        callbacks,
+        index as number,
+        box as HarvestingBoxState,
+      );
+    });
+
+    state.harvestingBoxes?.forEach((box, index) => {
+      this.bindHarvestingBoxCallbacks(
+        callbacks,
+        index as number,
+        box as HarvestingBoxState,
+      );
+    });
   }
 
   private bindPlayerCallbacks(
@@ -940,6 +1027,35 @@ export class RoomClient {
         handler(index, toWeaponDropSnapshot(drop)),
       );
     });
+  }
+
+  private bindHarvestingBoxCallbacks(
+    callbacks: ReturnType<typeof Callbacks.get>,
+    index: number,
+    box: HarvestingBoxState,
+  ): void {
+    if (this.boundHarvestingBoxes.has(index)) return;
+    this.boundHarvestingBoxes.add(index);
+
+    this.onHarvestingBoxChangeHandlers.forEach((handler) =>
+      handler(index, toHarvestingBoxSnapshot(box)),
+    );
+
+    callbacks.onChange(box, () => {
+      this.onHarvestingBoxChangeHandlers.forEach((handler) =>
+        handler(index, toHarvestingBoxSnapshot(box)),
+      );
+    });
+  }
+
+  getHarvestingBoxSnapshots(): HarvestingBoxSnapshot[] {
+    const state = this.room?.state as FpsState | undefined;
+    if (!state?.harvestingBoxes) return [];
+    const out: HarvestingBoxSnapshot[] = [];
+    state.harvestingBoxes.forEach((box) => {
+      out.push(toHarvestingBoxSnapshot(box as HarvestingBoxState));
+    });
+    return out;
   }
 }
 

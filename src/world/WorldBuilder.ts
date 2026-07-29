@@ -1,56 +1,52 @@
 import type * as THREE from 'three';
 import { getMapDef, normalizeMapId, type MapId } from '../../shared/level/maps';
+import type { CraftingStationSpawn } from '../../shared/level/craftingStationSpawns';
 import { SceneBuilder } from '../sceneBuilder';
 import { LevelBuilder } from './LevelBuilder';
 import { LightingBuilder } from './LightingBuilder';
-import { TerrainBuilder } from './TerrainBuilder';
-import { DroneField } from './DroneField';
-import { LightBeams } from './LightBeams';
-import { PlatformLiftParticles } from './PlatformLiftParticles';
 import { FiringRangeMap } from './FiringRangeMap';
+import { HarvestMap } from './HarvestMap';
 import { TdmMap } from './TdmMap';
-import { createKillhouseSkyboxTexture, createLobbySkyboxTexture, createSkyboxTexture } from './SkyboxBuilder';
+import {
+  createKillhouseSkyboxTexture,
+  createLobbySkyboxTexture,
+  createSkyboxTexture,
+} from './SkyboxBuilder';
 
 export class WorldBuilder {
   private sceneBuilder = new SceneBuilder();
-  private terrainBuilder: TerrainBuilder | null = null;
-  private droneField: DroneField | null = null;
-  private lightBeams: LightBeams | null = null;
-  private platformParticles: PlatformLiftParticles | null = null;
   private tdmMap: TdmMap | null = null;
+  private harvestMap: HarvestMap | null = null;
   private firingRangeMap: FiringRangeMap | null = null;
   private readonly mapDef;
 
-  constructor(mapId: MapId = 'kilo_sector') {
+  constructor(mapId: MapId = 'firing_range') {
     this.mapDef = getMapDef(normalizeMapId(mapId));
   }
 
   build(): this {
     const isChronoBowl = this.mapDef.id === 'killhouse_small';
+    const isHarvest = this.mapDef.id === 'harvest';
     const isFiringRange = this.mapDef.id === 'firing_range';
-    // Chrono-Bowl shares the lobby peach / lavender dusk sky.
-    const skybox = isChronoBowl
-      ? createLobbySkyboxTexture()
-      : isFiringRange
-        ? createKillhouseSkyboxTexture()
-        : createSkyboxTexture();
+    // Harvest + Chrono-Bowl share the lobby peach / lavender dusk sky.
+    const skybox =
+      isChronoBowl || isHarvest
+        ? createLobbySkyboxTexture()
+        : isFiringRange
+          ? createKillhouseSkyboxTexture()
+          : createSkyboxTexture();
 
     let fogColor: number;
     let fogNear: number;
     let fogFar: number;
-    if (isChronoBowl) {
-      // Lobby purple haze — readable across the arena without washing mid-range.
+    if (isChronoBowl || isHarvest) {
       fogColor = 0xb8a8c8;
-      fogNear = 22;
-      fogFar = 78;
+      fogNear = isHarvest ? 28 : 22;
+      fogFar = isHarvest ? 110 : 78;
     } else if (isFiringRange) {
       fogColor = 0xd0a868;
       fogNear = this.mapDef.mapHalf * 1.25;
       fogFar = this.mapDef.mapHalf * 4.6;
-    } else if (this.mapDef.outdoor) {
-      fogColor = 0x8ec8e8;
-      fogNear = this.mapDef.mapHalf * 0.5;
-      fogFar = this.mapDef.mapHalf * 2.15;
     } else {
       fogColor = 0x1a2228;
       fogNear = this.mapDef.mapHalf * 0.5;
@@ -65,7 +61,7 @@ export class WorldBuilder {
   }
 
   withLighting(): this {
-    if (this.mapDef.id === 'killhouse_small') {
+    if (this.mapDef.id === 'killhouse_small' || this.mapDef.id === 'harvest') {
       for (const light of new LightingBuilder().buildChronoBowl()) {
         this.sceneBuilder.addLight(light);
       }
@@ -76,13 +72,6 @@ export class WorldBuilder {
     return this;
   }
 
-  withTerrain(): this {
-    if (!this.mapDef.outdoor) return this;
-    this.terrainBuilder = new TerrainBuilder();
-    this.sceneBuilder.addObject(this.terrainBuilder.build());
-    return this;
-  }
-
   withLevel(): this {
     const [mapGroup] = new LevelBuilder().build(this.mapDef.id);
     this.sceneBuilder.addObject(mapGroup);
@@ -90,6 +79,11 @@ export class WorldBuilder {
     if (this.mapDef.id === 'killhouse_small') {
       this.tdmMap = new TdmMap();
       this.sceneBuilder.addObject(this.tdmMap.group);
+    }
+
+    if (this.mapDef.id === 'harvest') {
+      this.harvestMap = new HarvestMap();
+      this.sceneBuilder.addObject(this.harvestMap.group);
     }
 
     if (this.mapDef.id === 'firing_range') {
@@ -103,6 +97,9 @@ export class WorldBuilder {
     if (this.mapDef.id === 'killhouse_small' && this.tdmMap) {
       return this.tdmMap.whenReady;
     }
+    if (this.mapDef.id === 'harvest' && this.harvestMap) {
+      return this.harvestMap.whenReady;
+    }
     if (this.mapDef.id === 'firing_range' && this.firingRangeMap) {
       return this.firingRangeMap.whenReady;
     }
@@ -113,50 +110,25 @@ export class WorldBuilder {
     if (this.mapDef.id === 'killhouse_small' && this.tdmMap) {
       return this.tdmMap.getPhysicsRoots();
     }
+    if (this.mapDef.id === 'harvest' && this.harvestMap) {
+      return this.harvestMap.getPhysicsRoots();
+    }
     if (this.mapDef.id === 'firing_range' && this.firingRangeMap) {
       return this.firingRangeMap.getPhysicsRoots();
     }
     return [];
   }
 
-  withDrones(): this {
-    if (!this.mapDef.outdoor) return this;
-    this.droneField = new DroneField();
-    this.sceneBuilder.addObject(this.droneField.group);
-    return this;
+  getHarvestCraftingStationSpawns(): readonly CraftingStationSpawn[] {
+    return this.harvestMap?.getCraftingStationSpawns() ?? [];
   }
 
-  withLightBeams(): this {
-    if (!this.mapDef.outdoor) return this;
-    this.lightBeams = new LightBeams();
-    this.sceneBuilder.addObject(this.lightBeams.group);
-    return this;
-  }
-
-  withPlatformParticles(): this {
-    this.platformParticles = new PlatformLiftParticles();
-    this.sceneBuilder.addObject(this.platformParticles.group);
-    return this;
+  getHarvestHarvestingBoxSpawns(): readonly import('../../shared/level/harvestingBoxSpawns').HarvestingBoxSpawn[] {
+    return this.harvestMap?.getHarvestingBoxSpawns() ?? [];
   }
 
   getMapDef() {
     return this.mapDef;
-  }
-
-  getTerrain(): TerrainBuilder | null {
-    return this.terrainBuilder;
-  }
-
-  getDroneField(): DroneField | null {
-    return this.droneField;
-  }
-
-  getLightBeams(): LightBeams | null {
-    return this.lightBeams;
-  }
-
-  getPlatformParticles(): PlatformLiftParticles | null {
-    return this.platformParticles;
   }
 
   getScene(): THREE.Scene {

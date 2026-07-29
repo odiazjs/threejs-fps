@@ -68,6 +68,7 @@ export class NetworkManager {
     shieldCapacity: getShieldCapacity(1),
     shieldCharges: DEFAULT_SHIELD_CHARGES,
     grenadeCount: DEFAULT_GRENADES,
+    matchPlasmaMinerals: 0,
     shieldRecharging: false,
     shieldRechargeEndAt: 0,
     alive: true,
@@ -255,6 +256,7 @@ export class NetworkManager {
         shieldCapacity: getShieldCapacity(snapshot.shieldLevel),
         shieldCharges: snapshot.shieldCharges,
         grenadeCount: snapshot.grenadeCount,
+        matchPlasmaMinerals: snapshot.matchPlasmaMinerals,
         shieldRecharging: snapshot.shieldRecharging,
         shieldRechargeEndAt: snapshot.shieldRechargeEndAt,
         alive: snapshot.alive,
@@ -299,6 +301,7 @@ export class NetworkManager {
         shieldCapacity: getShieldCapacity(snapshot.shieldLevel),
         shieldCharges: snapshot.shieldCharges,
         grenadeCount: snapshot.grenadeCount,
+        matchPlasmaMinerals: snapshot.matchPlasmaMinerals,
         shieldRecharging: snapshot.shieldRecharging,
         shieldRechargeEndAt: snapshot.shieldRechargeEndAt,
         alive: snapshot.alive,
@@ -557,6 +560,33 @@ export class NetworkManager {
 
   onWeaponPickupGranted(handler: (data: { index: number; weaponId: string }) => void): void {
     this.roomClient.onWeaponPickupGranted(handler);
+  }
+
+  onCraftItemGranted(
+    handler: (data: import('../../shared/network/crafting').CraftItemGrantedMessage) => void,
+  ): void {
+    this.roomClient.onCraftItemGranted(handler);
+  }
+
+  sendCraftItem(itemId: string, feetX: number, feetZ: number): void {
+    this.roomClient.sendCraftItem(itemId, feetX, feetZ);
+  }
+
+  sendInteractHarvestingBox(
+    index: number,
+    action: 'pickup' | 'drop' | 'install',
+    feetX: number,
+    feetZ: number,
+  ): void {
+    this.roomClient.sendInteractHarvestingBox(index, action, feetX, feetZ);
+  }
+
+  sendHarvestingBoxInstallHold(holding: boolean): void {
+    this.roomClient.sendHarvestingBoxInstallHold(holding);
+  }
+
+  getHarvestingBoxSnapshots(): import('./types').HarvestingBoxSnapshot[] {
+    return this.roomClient.getHarvestingBoxSnapshots();
   }
 
   onShieldChargeDropGranted(handler: (data: { index: number }) => void): void {
