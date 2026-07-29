@@ -49,7 +49,18 @@
     <div id="match-hud" hidden>
       <div class="match-hud-timer">3:00</div>
       <div class="match-hud-scores"></div>
-      <div class="match-hud-local-team" hidden></div>
+      <div class="match-hud-local" hidden>
+        <div class="match-hud-local-team"></div>
+        <div class="match-hud-local-minerals" hidden>
+          <img
+            class="match-hud-local-minerals-icon"
+            src="/images/ui/plasma_minerals_icon.png"
+            alt=""
+            draggable="false"
+          />
+          <span class="match-hud-local-minerals-value">0</span>
+        </div>
+      </div>
     </div>
     <div id="pre-match-overlay" hidden>
       <div class="pre-match-bg" aria-hidden="true"></div>

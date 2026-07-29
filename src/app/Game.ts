@@ -2028,6 +2028,7 @@ export class Game {
       worldTime,
       this.playerControls.isPlaying || this.inventoryOpen,
       this.localCombat.teamId,
+      this.localCombat.matchPlasmaMinerals,
     );
 
     const matchPhase = match?.phase ?? null;
