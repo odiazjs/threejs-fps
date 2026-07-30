@@ -8,26 +8,10 @@ import {
 } from '../../shared/level/tdmMapConfig';
 import { prepareTdmMapRoot } from '../../shared/level/tdmMapMeshPrep';
 import { optimizeObjectTextures } from '../content/textureQuality';
+import { applyMeshyEmissiveMaterials } from './meshyEmissiveMaterial';
 
 const ASSET_BASE = '/3d/';
 const FLOOR_COLOR = 0x6a7078;
-
-/** The GLB's Floor material exports as transparent — swap in a plain gray. */
-function applyFloorMaterial(mapRoot: THREE.Object3D): void {
-  mapRoot.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (mesh.isMesh !== true || mesh.name !== 'Floor') return;
-
-    const oldMaterials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const material of oldMaterials) material?.dispose();
-
-    mesh.material = new THREE.MeshStandardMaterial({
-      color: FLOOR_COLOR,
-      roughness: 1,
-      metalness: 0,
-    });
-  });
-}
 
 function createFallbackFloor(): THREE.Group {
   const floor = createFlatKitMesh(
@@ -73,7 +57,8 @@ export class TdmMap {
       const mapRoot = gltf.scene;
       mapRoot.name = 'tdm_map';
       prepareTdmMapRoot(mapRoot);
-      applyFloorMaterial(mapRoot);
+      // Match Harvest: Meshy Phong instead of GLB MeshStandard (big iGPU win).
+      applyMeshyEmissiveMaterials(mapRoot, { floorSolidColor: FLOOR_COLOR });
       optimizeObjectTextures(mapRoot);
       this.group.add(mapRoot);
       this.loaded = true;

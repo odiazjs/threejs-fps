@@ -258,6 +258,8 @@ export class Game {
   private readonly pingRayDirection = new THREE.Vector3();
   private projectiles!: ProjectileManager;
   private worldBuilder: WorldBuilder | null = null;
+  /** Resolves when map GLB, mode props, and client physics are ready. */
+  private mapReadyPromise: Promise<void> = Promise.resolve();
   private shieldDomeManager!: ShieldDomeManager;
   private shieldDomeChargeManager!: ShieldDomeChargeManager;
   private shieldDomeAbility: ShieldDomeAbility | null = null;
@@ -385,6 +387,20 @@ export class Game {
       );
     }
 
+    // Re-hydrate THREE.Cache from the lobby Cache API (separate JS realm).
+    reportLoad('Restoring asset cache…', 'assets', 5);
+    try {
+      const { loadAssetManifest } = await import('../assets/assetManifest');
+      const { hydrateThreeCacheFromBrowser, enableThreeAssetCache } = await import(
+        '../assets/browserAssetCache'
+      );
+      enableThreeAssetCache();
+      const manifest = await loadAssetManifest();
+      await hydrateThreeCacheFromBrowser(manifest);
+    } catch (error) {
+      console.warn('[Game] Asset cache hydrate skipped', error);
+    }
+
     // Ambient lobby drones also share this FBX — warm it before match start.
     reportLoad('Loading drone model…', 'assets', 10);
     await preloadDroneModel();
@@ -422,17 +438,18 @@ export class Game {
       this.preMatchOverlay.update(this.network.getAllPlayers());
     }
 
-    reportLoad('Loading game assets…', 'assets', 70);
+    reportLoad('Loading map…', 'assets', 70);
     const rosterPumpId = competitive
       ? window.setInterval(() => {
           this.preMatchOverlay.update(this.network.getAllPlayers());
         }, 120)
       : 0;
     try {
+      // Await map GLB + crafting stations / harvesting boxes / physics for EVERY
+      // mode — previously only firing_range waited, so Harvest/TDM could start
+      // with missing walls and props on first visit.
       await Promise.all([
-        initialMapId === 'firing_range'
-          ? this.worldBuilder!.whenMeshCollisionReady()
-          : Promise.resolve(),
+        this.mapReadyPromise,
         this.weaponSounds.preload([
           ...collectWeaponSoundUrls(PICKABLE_WEAPON_CONFIGS),
           ...collectWeaponSoundUrls([KATANA_CONFIG]),
@@ -783,7 +800,7 @@ export class Game {
     this.harvestingBoxes = new HarvestingBoxes(this.scene);
     this.scene.add(this.teamPings.group);
 
-    void this.initMapPhysics(mapId);
+    this.mapReadyPromise = this.initMapPhysics(mapId);
   }
 
   private async initMapPhysics(mapId: MapId): Promise<void> {

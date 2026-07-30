@@ -19,6 +19,13 @@ import {
   INVENTORY_CONTROLS_HELP,
   type ControlHelpEntry,
 } from '../../content/controlsHelp';
+import {
+  getStoredGraphicsQualityPreference,
+  invalidateGraphicsQualityCache,
+  resolveGraphicsQuality,
+  storeGraphicsQualityPreference,
+  type GraphicsQualityPreference,
+} from '../../render/graphicsQuality';
 
 export class SettingsView {
   private root: HTMLElement | null = null;
@@ -31,6 +38,12 @@ export class SettingsView {
   private sensitivitySlider: HTMLInputElement | null = null;
   private sensitivityValueLabel: HTMLElement | null = null;
   private onSensitivityInput: ((event: Event) => void) | null = null;
+  private graphicsSelect: HTMLSelectElement | null = null;
+  private graphicsValueLabel: HTMLElement | null = null;
+  private graphicsApplyBtn: HTMLButtonElement | null = null;
+  private onGraphicsChange: ((event: Event) => void) | null = null;
+  private onGraphicsApply: ((event: Event) => void) | null = null;
+  private graphicsStoredPreference: GraphicsQualityPreference = 'auto';
 
   mount(root: HTMLElement = document.getElementById('app-view-settings')!): void {
     this.unmount();
@@ -38,6 +51,7 @@ export class SettingsView {
     this.mountMasterVolume();
     this.mountMusicVolume();
     this.mountMouseSensitivity();
+    this.mountGraphicsQuality();
     this.renderControlsList();
   }
 
@@ -62,6 +76,18 @@ export class SettingsView {
     this.sensitivitySlider = null;
     this.sensitivityValueLabel = null;
     this.onSensitivityInput = null;
+
+    if (this.graphicsSelect && this.onGraphicsChange) {
+      this.graphicsSelect.removeEventListener('change', this.onGraphicsChange);
+    }
+    if (this.graphicsApplyBtn && this.onGraphicsApply) {
+      this.graphicsApplyBtn.removeEventListener('click', this.onGraphicsApply);
+    }
+    this.graphicsSelect = null;
+    this.graphicsValueLabel = null;
+    this.graphicsApplyBtn = null;
+    this.onGraphicsChange = null;
+    this.onGraphicsApply = null;
     this.root = null;
   }
 
@@ -122,6 +148,58 @@ export class SettingsView {
     };
 
     this.sensitivitySlider.addEventListener('input', this.onSensitivityInput);
+  }
+
+  private mountGraphicsQuality(): void {
+    this.graphicsSelect = this.query<HTMLSelectElement>('[data-setting="graphics-quality"]');
+    this.graphicsValueLabel = this.query<HTMLElement>(
+      '[data-setting-value="graphics-quality"]',
+    );
+    this.graphicsApplyBtn = this.query<HTMLButtonElement>(
+      '[data-setting-apply="graphics-quality"]',
+    );
+    if (!this.graphicsSelect) return;
+
+    this.graphicsStoredPreference = getStoredGraphicsQualityPreference();
+    this.graphicsSelect.value = this.graphicsStoredPreference;
+    this.updateGraphicsLabel(this.graphicsStoredPreference);
+    this.syncGraphicsApplyEnabled();
+
+    this.onGraphicsChange = () => {
+      const next = this.graphicsSelect!.value as GraphicsQualityPreference;
+      this.updateGraphicsLabel(next);
+      this.syncGraphicsApplyEnabled();
+    };
+    this.graphicsSelect.addEventListener('change', this.onGraphicsChange);
+
+    if (this.graphicsApplyBtn) {
+      this.onGraphicsApply = () => {
+        const next = this.graphicsSelect!.value as GraphicsQualityPreference;
+        storeGraphicsQualityPreference(next);
+        invalidateGraphicsQualityCache();
+        this.graphicsStoredPreference = next;
+        this.graphicsApplyBtn!.disabled = true;
+        this.graphicsApplyBtn!.textContent = 'RELOADING…';
+        window.location.reload();
+      };
+      this.graphicsApplyBtn.addEventListener('click', this.onGraphicsApply);
+    }
+  }
+
+  private syncGraphicsApplyEnabled(): void {
+    if (!this.graphicsApplyBtn || !this.graphicsSelect) return;
+    const pending = this.graphicsSelect.value as GraphicsQualityPreference;
+    this.graphicsApplyBtn.disabled = pending === this.graphicsStoredPreference;
+  }
+
+  private updateGraphicsLabel(preference: GraphicsQualityPreference): void {
+    if (!this.graphicsValueLabel) return;
+    if (preference === 'auto') {
+      const resolved = resolveGraphicsQuality().tier.toUpperCase();
+      this.graphicsValueLabel.textContent = `AUTO → ${resolved}`;
+      return;
+    }
+    this.graphicsValueLabel.textContent = preference.toUpperCase();
   }
 
   private renderControlsList(): void {

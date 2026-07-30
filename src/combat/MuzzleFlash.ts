@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { MuzzleFlashConfig, SideVentFlashConfig } from '../../shared/content/weaponConfig';
 import { acquireFxLight, releaseFxLight } from '../effects/FxLightPool';
+import { resolveGraphicsQuality } from '../render/graphicsQuality';
 
 const FIRE_FORWARD = new THREE.Vector3(0, 0, -1);
 const _dir = new THREE.Vector3();
@@ -129,7 +130,11 @@ export class MuzzleFlash {
   ) {
     this.config = config;
     this.duration = config.duration;
-    this.particleCount = config.particleCount;
+    const particleScale = resolveGraphicsQuality().muzzleParticleScale;
+    this.particleCount = Math.max(
+      0,
+      Math.round(config.particleCount * particleScale),
+    );
     this.lightIntensity = config.lightIntensity * scale;
     this.particleFall = Math.max(0, config.particleFall ?? 0);
     this.sideVentDurationScale = config.sideVents?.durationScale ?? 1;
@@ -184,15 +189,15 @@ export class MuzzleFlash {
       }
     }
 
-    this.particlePositions = new Float32Array(config.particleCount * 3);
-    const particleColors = new Float32Array(config.particleCount * 3);
+    this.particlePositions = new Float32Array(this.particleCount * 3);
+    const particleColors = new Float32Array(this.particleCount * 3);
     const palette = [
       new THREE.Color(colorA),
       new THREE.Color(colorB),
       new THREE.Color(colorC),
     ];
 
-    for (let i = 0; i < config.particleCount; i++) {
+    for (let i = 0; i < this.particleCount; i++) {
       const i3 = i * 3;
       this.particleVelocities.push(new THREE.Vector3());
 
@@ -412,12 +417,17 @@ export class MuzzleFlash {
       new THREE.Color(colorC),
     ];
 
+    const ventParticleCount = Math.max(
+      0,
+      Math.round(ventConfig.particleCount * resolveGraphicsQuality().muzzleParticleScale),
+    );
+
     for (const offset of sideVentOffsets) {
-      const positions = new Float32Array(ventConfig.particleCount * 3);
-      const particleColors = new Float32Array(ventConfig.particleCount * 3);
+      const positions = new Float32Array(ventParticleCount * 3);
+      const particleColors = new Float32Array(ventParticleCount * 3);
       const velocities: THREE.Vector3[] = [];
 
-      for (let i = 0; i < ventConfig.particleCount; i++) {
+      for (let i = 0; i < ventParticleCount; i++) {
         const i3 = i * 3;
         velocities.push(new THREE.Vector3());
         const tone = palette[i % 3];
@@ -474,7 +484,7 @@ export class MuzzleFlash {
         points,
         positions,
         velocities,
-        particleCount: ventConfig.particleCount,
+        particleCount: ventParticleCount,
         particleBaseSize: ventParticleSize,
         streaks,
         streakMaterial,

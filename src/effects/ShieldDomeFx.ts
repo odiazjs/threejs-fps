@@ -1,17 +1,18 @@
 import * as THREE from 'three';
 import { SHIELD_DOME_RADIUS } from '../../shared/combat/shieldDomeAbility';
+import { resolveGraphicsQuality } from '../render/graphicsQuality';
 import { acquireFxLight, releaseFxLight } from './FxLightPool';
 import { createHexShieldMaterial } from './shieldHexMaterial';
 
 const DOME_COLOR = 0x00f0ff;
 const DOME_COLOR_BRIGHT = 0xd8ffff;
-const HEMISPHERE_SEGMENTS = { width: 48, height: 24 };
 
 function createHemisphereGeometry(radius: number): THREE.SphereGeometry {
+  const segments = resolveGraphicsQuality().shieldHemisphereSegments;
   return new THREE.SphereGeometry(
     radius,
-    HEMISPHERE_SEGMENTS.width,
-    HEMISPHERE_SEGMENTS.height,
+    segments.width,
+    segments.height,
     0,
     Math.PI * 2,
     0,

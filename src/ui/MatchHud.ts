@@ -85,7 +85,9 @@ export class MatchHud {
     }
     this.localTeamImg = localTeamImg;
 
-    let mineralsEl = this.localRoot.querySelector(
+    const topRight =
+      document.getElementById('game-top-right') ?? document.body;
+    let mineralsEl = document.querySelector(
       '.match-hud-local-minerals',
     ) as HTMLElement | null;
     if (!mineralsEl) {
@@ -101,7 +103,9 @@ export class MatchHud {
       value.className = 'match-hud-local-minerals-value';
       value.textContent = '0';
       mineralsEl.append(icon, value);
-      this.localRoot.appendChild(mineralsEl);
+      topRight.appendChild(mineralsEl);
+    } else if (mineralsEl.parentElement !== topRight) {
+      topRight.appendChild(mineralsEl);
     }
     this.mineralsEl = mineralsEl;
     this.mineralsValueEl = this.mineralsEl.querySelector(
@@ -135,6 +139,7 @@ export class MatchHud {
       match.phase === 'round_end'
     ) {
       this.root.hidden = true;
+      this.updateLocalMinerals(false, 0);
       return;
     }
 

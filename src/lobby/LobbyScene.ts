@@ -20,6 +20,10 @@ import { getRemoteWeaponMount } from '../player/remoteWeaponMount';
 import { createLobbySkyboxTexture } from '../world/SkyboxBuilder';
 import { updateEdgeLinesForCamera, updateLineResolution } from '../visuals/edgeLines';
 import { GrassField } from '../world/GrassField';
+import {
+  getGraphicsQualitySummary,
+  resolveGraphicsQuality,
+} from '../render/graphicsQuality';
 import { LobbyMap, type LandmarkFrameSide } from '../world/LobbyMap';
 import { preloadDroneModel } from '../content/droneModel';
 import { createDroneVisual } from '../world/DroneField';
@@ -122,11 +126,15 @@ export class LobbyScene {
     this.camera.position.set(0, BASE_CAMERA_Y, BASE_CAMERA_Z);
     this.camera.lookAt(0, CAMERA_LOOK_Y, 0);
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    const quality = resolveGraphicsQuality();
+    this.renderer = new THREE.WebGLRenderer({ antialias: quality.antialias });
     bindTextureQualityRenderer(this.renderer);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, quality.lobbyMaxPixelRatio),
+    );
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     container.appendChild(this.renderer.domElement);
+    console.info(`[Graphics] lobby ${getGraphicsQualitySummary()}`);
 
     this.labelRenderer = new CSS2DRenderer();
     this.labelRenderer.setSize(container.clientWidth, container.clientHeight);
@@ -321,13 +329,16 @@ export class LobbyScene {
       x: this.standPose.x,
       z: this.standPose.z,
     });
+    const grass = resolveGraphicsQuality(this.renderer).lobbyGrass;
     this.grassField = new GrassField(() => 0, {
       halfExtent: placement?.halfExtent ?? 7.5,
-      maxBlades: 48_000,
-      gridStep: 0.055,
+      maxBlades: grass.maxBlades,
+      gridStep: grass.gridStep,
+      bladeSegments: grass.bladeSegments,
       bladeHeight: 0.2,
       bladeWidth: 0.028,
-      extraBladeChance: 0.92,
+      extraBladeChance: grass.extraBladeChance,
+      frustumCulled: grass.frustumCulled,
       skipPatches: false,
       seed: 0x10bb3,
       sunDirection: LOBBY_SUN_DIR.clone(),
@@ -707,6 +718,12 @@ export class LobbyScene {
     const h = parent.clientHeight;
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.renderer.setPixelRatio(
+      Math.min(
+        window.devicePixelRatio,
+        resolveGraphicsQuality(this.renderer).lobbyMaxPixelRatio,
+      ),
+    );
     this.renderer.setSize(w, h);
     this.labelRenderer.setSize(w, h);
     updateLineResolution(w, h);

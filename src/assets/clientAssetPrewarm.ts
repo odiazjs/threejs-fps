@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { FootstepSoundService } from '../audio/FootstepSoundService';
 import { ImpactSoundService } from '../audio/ImpactSoundService';
 import { GrenadeSoundService } from '../audio/GrenadeSoundService';
@@ -47,6 +46,17 @@ import {
   preloadGameCharacterModels,
 } from '../player/characterModel';
 import { getPrewarmRenderContext } from './prewarmRenderer';
+import { loadAssetManifest } from './assetManifest';
+import {
+  enableThreeAssetCache,
+  ensureBrowserAssetsCached,
+  hydrateThreeCacheFromBrowser,
+} from './browserAssetCache';
+import {
+  preloadAllMapAssets,
+  preloadFpArmsAssets,
+  preloadGameModeProps,
+} from './preloadGameplayAssets';
 import {
   isClientAssetPrewarmComplete,
   markClientAssetPrewarmComplete,
@@ -105,7 +115,7 @@ async function preloadAllGameAudio(): Promise<void> {
 }
 
 async function fetchAudioBuffer(src: string): Promise<void> {
-  const response = await fetch(src);
+  const response = await fetch(src, { cache: 'force-cache' });
   if (!response.ok) {
     throw new Error(`Failed to preload audio: ${src}`);
   }
@@ -113,13 +123,40 @@ async function fetchAudioBuffer(src: string): Promise<void> {
 }
 
 /**
- * One-time first lobby load: fetch models/audio into the browser cache and
- * compile combat shaders on an offscreen renderer.
+ * Lobby bootstrap: download every public asset (maps, models, images, audio),
+ * decode gameplay-critical templates, and compile shaders so match join never
+ * races first-time downloads.
  */
 export async function runClientAssetPrewarm(
   onProgress: ClientAssetPrewarmProgress = () => {},
 ): Promise<void> {
-  if (isClientAssetPrewarmComplete()) return;
+  enableThreeAssetCache();
+
+  onProgress('Checking game assets...');
+  let manifestVersion: string | null = null;
+  try {
+    const manifest = await loadAssetManifest();
+    if (isClientAssetPrewarmComplete(manifest.version)) {
+      onProgress('Restoring asset cache...');
+      await hydrateThreeCacheFromBrowser(manifest);
+      onProgress('Assets ready');
+      return;
+    }
+
+    onProgress(`Downloading game assets (0/${manifest.fileCount})...`);
+    await ensureBrowserAssetsCached(manifest, (done, total) => {
+      onProgress(`Downloading game assets (${done}/${total})...`);
+    });
+    manifestVersion = manifest.version;
+  } catch (error) {
+    console.warn('[Prewarm] Asset manifest / cache step failed — continuing', error);
+  }
+
+  onProgress('Loading maps...');
+  await preloadAllMapAssets();
+
+  onProgress('Loading game mode props...');
+  await Promise.all([preloadGameModeProps(), preloadFpArmsAssets()]);
 
   onProgress('Loading weapon models...');
   await preloadWeaponMeshes();
@@ -145,6 +182,8 @@ export async function runClientAssetPrewarm(
   const { renderer, scene, camera } = getPrewarmRenderContext();
   await runShaderPrewarm(renderer, scene, camera);
 
-  markClientAssetPrewarmComplete();
+  if (manifestVersion) {
+    markClientAssetPrewarmComplete(manifestVersion);
+  }
   onProgress('Assets ready');
 }

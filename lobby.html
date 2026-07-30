@@ -876,6 +876,39 @@
         </div>
         <div class="settings-option">
           <div class="settings-option-header">
+            <label for="graphics-quality" class="settings-label">Graphics quality</label>
+            <span
+              id="graphics-quality-value"
+              class="settings-value"
+              data-setting-value="graphics-quality"
+            >AUTO</span>
+          </div>
+          <select
+            id="graphics-quality"
+            class="settings-select"
+            data-setting="graphics-quality"
+          >
+            <option value="auto">Auto (detect GPU)</option>
+            <option value="low">Low (integrated GPU)</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <div class="settings-apply-row">
+            <button
+              type="button"
+              class="hud-btn settings-apply-btn"
+              data-setting-apply="graphics-quality"
+              disabled
+            >
+              APPLY & RELOAD
+            </button>
+            <p class="settings-hint" data-setting-hint="graphics-quality">
+              Change quality, then apply to reload with the new settings.
+            </p>
+          </div>
+        </div>
+        <div class="settings-option">
+          <div class="settings-option-header">
             <span class="settings-label">Controls</span>
           </div>
           <div id="settings-controls-list" class="settings-controls-list" data-setting="controls-list"></div>

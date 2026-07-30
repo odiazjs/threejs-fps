@@ -39,7 +39,7 @@ export class LobbySettingsOverlay {
 
     const status = document.createElement('p');
     status.className = 'leaderboard-status leaderboard-swipe';
-    status.textContent = 'Audio, sensitivity & controls';
+    status.textContent = 'Audio, graphics, sensitivity & controls';
 
     const body = document.createElement('div');
     body.className = 'lobby-landmark-body';
@@ -71,7 +71,8 @@ export class LobbySettingsOverlay {
         value: 100,
         delayIndex: 5,
       }),
-      this.createControlsOption(6),
+      this.createGraphicsQualityOption(6),
+      this.createControlsOption(7),
     );
 
     const closeBtn = document.createElement('button');
@@ -147,6 +148,62 @@ export class LobbySettingsOverlay {
     input.dataset.setting = opts.setting;
 
     option.append(header, input);
+    return option;
+  }
+
+  private createGraphicsQualityOption(delayIndex: number): HTMLElement {
+    const option = document.createElement('div');
+    option.className = 'settings-option leaderboard-swipe';
+    option.style.setProperty('--swipe-delay', `${delayIndex * 90}ms`);
+
+    const header = document.createElement('div');
+    header.className = 'settings-option-header';
+
+    const id = 'lobby-overlay-graphics-quality';
+    const label = document.createElement('label');
+    label.className = 'settings-label';
+    label.htmlFor = id;
+    label.textContent = 'Graphics quality';
+
+    const value = document.createElement('span');
+    value.className = 'settings-value';
+    value.dataset.settingValue = 'graphics-quality';
+    value.textContent = 'AUTO';
+
+    header.append(label, value);
+
+    const select = document.createElement('select');
+    select.id = id;
+    select.className = 'settings-select';
+    select.dataset.setting = 'graphics-quality';
+    for (const [optValue, optLabel] of [
+      ['auto', 'Auto (detect GPU)'],
+      ['low', 'Low (integrated GPU)'],
+      ['medium', 'Medium'],
+      ['high', 'High'],
+    ] as const) {
+      const opt = document.createElement('option');
+      opt.value = optValue;
+      opt.textContent = optLabel;
+      select.appendChild(opt);
+    }
+
+    const applyRow = document.createElement('div');
+    applyRow.className = 'settings-apply-row';
+
+    const applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'hud-btn settings-apply-btn';
+    applyBtn.dataset.settingApply = 'graphics-quality';
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'APPLY & RELOAD';
+
+    const hint = document.createElement('p');
+    hint.className = 'settings-hint';
+    hint.textContent = 'Change quality, then apply to reload with the new settings.';
+
+    applyRow.append(applyBtn, hint);
+    option.append(header, select, applyRow);
     return option;
   }
 

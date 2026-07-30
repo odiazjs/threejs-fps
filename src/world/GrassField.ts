@@ -31,6 +31,8 @@ export interface GrassFieldOptions {
   shortBladeChance?: number;
   /** Height multiplier for short blades (default 0.5). */
   shortBladeScale?: number;
+  /** Allow GPU frustum culling (default false — large fields often span the view). */
+  frustumCulled?: boolean;
 }
 
 export interface GrassUpdateContext {
@@ -277,7 +279,7 @@ export class GrassField {
       'aPatchVariant',
       new THREE.InstancedBufferAttribute(patchVariants, 1),
     );
-    this.mesh.frustumCulled = false;
+    this.mesh.frustumCulled = options.frustumCulled ?? false;
     this.mesh.receiveShadow = false;
     this.mesh.castShadow = false;
 

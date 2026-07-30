@@ -4,6 +4,7 @@ import {
   MatchPerfStats,
 } from '../debug/MatchPerfStats';
 import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
+import { resolveGraphicsQuality } from '../render/graphicsQuality';
 
 const FPS_SAMPLE_SEC = 0.5;
 const WORST_WINDOW_SEC = 2;
@@ -46,6 +47,9 @@ export class PerformanceHud {
     this.timeEl = this.createRow('TIME', 'game-perf-meta');
     this.worstEl = this.createRow('WORST', 'game-perf-meta');
     this.gpuEl = this.createRow('GPU', 'game-perf-meta');
+    const gfxEl = this.createRow('GFX', 'game-perf-meta');
+    const quality = resolveGraphicsQuality();
+    gfxEl.textContent = quality.tier.toUpperCase();
 
     const rows: HTMLElement[] = [
       this.fpsEl.parentElement!,
@@ -53,6 +57,7 @@ export class PerformanceHud {
       this.timeEl.parentElement!,
       this.worstEl.parentElement!,
       this.gpuEl.parentElement!,
+      gfxEl.parentElement!,
     ];
 
     if (this.diagnosticsEnabled) {
@@ -74,7 +79,13 @@ export class PerformanceHud {
     }
 
     this.root.append(...rows);
-    document.body.appendChild(this.root);
+    const stack = document.getElementById('game-top-right');
+    if (stack) {
+      // FPS debug sits above Plasma Harvest minerals in the top-right cluster.
+      stack.prepend(this.root);
+    } else {
+      document.body.appendChild(this.root);
+    }
   }
 
   private createRow(label: string, valueClass: string): HTMLElement {

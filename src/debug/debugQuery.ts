@@ -50,6 +50,21 @@ export function buildGameUrl(path = '/game.html'): string {
     }
   }
 
+  // Propagate explicit graphics quality override into the match iframe.
+  const quality = current.get('quality');
+  if (quality) {
+    url.searchParams.set('quality', quality);
+  } else {
+    try {
+      const stored = localStorage.getItem('fps_graphics_quality');
+      if (stored && stored !== 'auto') {
+        url.searchParams.set('quality', stored);
+      }
+    } catch {
+      // Ignore.
+    }
+  }
+
   return `${url.pathname}${url.search}`;
 }
 

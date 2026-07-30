@@ -126,6 +126,11 @@ function loadTemplate(teamId: 0 | 1): Promise<THREE.Group> {
   return promise;
 }
 
+/** Warm both team-base templates for Plasma Harvest. */
+export function preloadTeamBaseModels(): Promise<THREE.Group[]> {
+  return Promise.all([loadTemplate(0), loadTemplate(1)]);
+}
+
 /**
  * Clone sized so local height matches `targetHeight` (marker / proxy AABB).
  */

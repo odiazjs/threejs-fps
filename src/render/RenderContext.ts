@@ -19,6 +19,10 @@ import { updateLineResolution } from '../visuals/edgeLines';
 import { AtmospherePass } from './AtmospherePass';
 import { ScopeWorldBlurPass } from './ScopeWorldBlurPass';
 import { bindTextureQualityRenderer } from '../content/textureQuality';
+import {
+  getGraphicsQualitySummary,
+  resolveGraphicsQuality,
+} from './graphicsQuality';
 
 export type MapLookPreset = 'default' | 'chrono_bowl';
 
@@ -75,8 +79,8 @@ function configureHarvestBoxOutlinePass(
 export class RenderContext {
   readonly renderer: THREE.WebGLRenderer;
   private readonly labelRenderer: CSS2DRenderer;
-  /** Cap DPR for TDM — OutlinePass + dual RT is very expensive at 2×. */
-  private maxPixelRatio = 1.5;
+  /** Cap DPR — OutlinePass + dual RT is very expensive at 2×. */
+  private maxPixelRatio: number;
 
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
@@ -88,13 +92,21 @@ export class RenderContext {
   private atmospherePass: AtmospherePass | null = null;
   private scopeWorldBlurPass: ScopeWorldBlurPass | null = null;
   private scopeWorldBlur = 0;
-  private mapLook: MapLookPreset = 'default';
   private teammateOutlineColor = teamColorToHex(0);
   private readonly resolution = new THREE.Vector2();
+  private readonly outlinesEnabled: boolean;
+  private readonly teammateOutlinesEnabled: boolean;
+  private readonly scopeWorldBlurEnabled: boolean;
 
   constructor() {
+    const quality = resolveGraphicsQuality();
+    this.maxPixelRatio = quality.gameMaxPixelRatio;
+    this.outlinesEnabled = quality.outlinesEnabled;
+    this.teammateOutlinesEnabled = quality.teammateOutlinesEnabled;
+    this.scopeWorldBlurEnabled = quality.scopeWorldBlurEnabled;
+
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: quality.antialias,
       powerPreference: 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -113,6 +125,7 @@ export class RenderContext {
     document.body.appendChild(this.labelRenderer.domElement);
 
     updateLineResolution(window.innerWidth, window.innerHeight);
+    console.info(`[Graphics] ${getGraphicsQualitySummary()}`);
   }
 
   setMaxPixelRatio(ratio: number): void {
@@ -122,14 +135,15 @@ export class RenderContext {
   }
 
   /** Map-specific tone mapping + post FX (Chrono-Bowl cinematic dusk). */
-  setMapLook(preset: MapLookPreset): void {
-    this.mapLook = preset;
+  setMapLook(_preset: MapLookPreset): void {
     this.applyMapLook();
   }
 
   /** 0–1 sniper ADS soft-focus on the main view. */
   setScopeWorldBlur(amount: number): void {
-    this.scopeWorldBlur = THREE.MathUtils.clamp(amount, 0, 1);
+    this.scopeWorldBlur = this.scopeWorldBlurEnabled
+      ? THREE.MathUtils.clamp(amount, 0, 1)
+      : 0;
     this.scopeWorldBlurPass?.setStrength(this.scopeWorldBlur);
   }
 
@@ -252,12 +266,40 @@ export class RenderContext {
     this.bloomPass?.resolution.set(this.resolution.x, this.resolution.y);
   }
 
+  private needsComposer(
+    enemies: THREE.Object3D[],
+    teammates: THREE.Object3D[],
+    blueBoxes: THREE.Object3D[],
+    orangeBoxes: THREE.Object3D[],
+  ): boolean {
+    if (this.scopeWorldBlur > 0.001) return true;
+    if (!this.outlinesEnabled) return false;
+    if (enemies.length > 0) return true;
+    if (this.teammateOutlinesEnabled && teammates.length > 0) return true;
+    if (blueBoxes.length > 0 || orangeBoxes.length > 0) return true;
+    return false;
+  }
+
   render(scene: THREE.Scene, camera: THREE.Camera): void {
+    const enemies = this.outlinesEnabled ? EnemyOutlineFx.getSelectedRoots() : [];
+    const teammates =
+      this.outlinesEnabled && this.teammateOutlinesEnabled
+        ? TeammateOutlineFx.getSelectedRoots()
+        : [];
+    const blueBoxes = this.outlinesEnabled
+      ? HarvestingBoxOutlineFx.getBlueRoots()
+      : [];
+    const orangeBoxes = this.outlinesEnabled
+      ? HarvestingBoxOutlineFx.getOrangeRoots()
+      : [];
+
+    if (!this.needsComposer(enemies, teammates, blueBoxes, orangeBoxes)) {
+      this.renderer.render(scene, camera);
+      this.labelRenderer.render(scene, camera);
+      return;
+    }
+
     this.ensureComposer(scene, camera);
-    const enemies = EnemyOutlineFx.getSelectedRoots();
-    const teammates = TeammateOutlineFx.getSelectedRoots();
-    const blueBoxes = HarvestingBoxOutlineFx.getBlueRoots();
-    const orangeBoxes = HarvestingBoxOutlineFx.getOrangeRoots();
     this.enemyOutlinePass!.selectedObjects = enemies;
     this.teammateOutlinePass!.selectedObjects = teammates;
     this.harvestBoxBlueOutlinePass!.selectedObjects = blueBoxes;

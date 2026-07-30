@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { resolveGraphicsQuality } from '../render/graphicsQuality';
 
 /**
  * Central texture quality for Meshy / FBX / GLB assets.
@@ -25,9 +26,11 @@ const DATA_MAP_KEYS = [
 
 let maxAnisotropy = 8;
 
-/** Cache GPU max anisotropy (and Three's default for newly created textures). */
+/** Cache GPU max anisotropy (clamped by graphics quality tier). */
 export function bindTextureQualityRenderer(renderer: THREE.WebGLRenderer): void {
-  maxAnisotropy = Math.max(1, renderer.capabilities.getMaxAnisotropy());
+  const gpuMax = Math.max(1, renderer.capabilities.getMaxAnisotropy());
+  const tierCap = resolveGraphicsQuality(renderer).maxAnisotropy;
+  maxAnisotropy = Math.max(1, Math.min(gpuMax, tierCap));
   // Affects textures created after this call (r152+).
   THREE.Texture.DEFAULT_ANISOTROPY = maxAnisotropy;
 }

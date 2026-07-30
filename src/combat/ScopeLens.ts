@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { SCOPE_CAMERA_DECAL_NAME } from '../content/physicalWeaponSights';
+import { resolveGraphicsQuality } from '../render/graphicsQuality';
 
 export { SCOPE_CAMERA_DECAL_NAME };
 
 const ADS_BLEND_SHOW = 0.08;
-const RT_HEIGHT = 720;
+
+function scopeRtHeight(): number {
+  return resolveGraphicsQuality().scopeRtHeight;
+}
 /**
  * A scope lens only covers a fraction of the screen. The same FOV that feels
  * "zoomed" fullscreen reads as zoomed-OUT inside that small circle next to the
@@ -78,7 +82,8 @@ export class ScopeLens {
   private lensRadius = 0.02;
 
   constructor() {
-    this.renderTarget = new THREE.WebGLRenderTarget(RT_HEIGHT, RT_HEIGHT, {
+    const rtH = scopeRtHeight();
+    this.renderTarget = new THREE.WebGLRenderTarget(rtH, rtH, {
       depthBuffer: true,
     });
     const map = this.renderTarget.texture;
@@ -247,9 +252,10 @@ export class ScopeLens {
     this.scopeCamera.updateProjectionMatrix();
 
     const aspect = Math.max(mainCamera.aspect, 0.1);
-    const rtW = Math.max(1, Math.round(RT_HEIGHT * aspect));
-    if (this.renderTarget.width !== rtW || this.renderTarget.height !== RT_HEIGHT) {
-      this.renderTarget.setSize(rtW, RT_HEIGHT);
+    const rtH = scopeRtHeight();
+    const rtW = Math.max(1, Math.round(rtH * aspect));
+    if (this.renderTarget.width !== rtW || this.renderTarget.height !== rtH) {
+      this.renderTarget.setSize(rtW, rtH);
     }
 
     // Circle UVs are 1:1 — map only the center square of the widescreen RT so

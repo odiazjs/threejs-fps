@@ -92,6 +92,11 @@ function loadTemplate(): Promise<THREE.Group> {
   return loadPromise;
 }
 
+/** Warm the center hill-wall template for Plasma Harvest. */
+export function preloadHillWallModel(): Promise<THREE.Group> {
+  return loadTemplate();
+}
+
 /**
  * Clone sized so its max axis matches `targetSize`'s max axis (uniform scale).
  */

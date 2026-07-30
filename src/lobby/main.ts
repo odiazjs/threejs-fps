@@ -32,7 +32,11 @@ import { maybeShowSeasonWelcomeModal } from './seasonWelcome';
 import type { AppPresenceView } from '../../shared/network/appView';
 
 const loading = LoadingOverlay.shared();
-loading.show(isClientAssetPrewarmComplete() ? 'Loading lobby...' : 'Loading assets...');
+loading.show(
+  isClientAssetPrewarmComplete()
+    ? 'Loading lobby...'
+    : 'Preparing game assets...',
+);
 bootstrapDebugFlags();
 handoffPageBoot();
 
@@ -48,10 +52,10 @@ async function startLobby(): Promise<void> {
   const initialView = parseShellViewFromUrl();
 
   try {
-    if (!isClientAssetPrewarmComplete()) {
-      await runClientAssetPrewarm((message) => loading.setMessage(message));
-      loading.setMessage('Loading lobby...');
-    }
+    // Always run — returns immediately when this build's manifest is already cached,
+    // otherwise downloads new/changed maps, models, images, and audio.
+    await runClientAssetPrewarm((message) => loading.setMessage(message));
+    loading.setMessage('Loading lobby...');
 
     const session = await initAppSession();
     try {
