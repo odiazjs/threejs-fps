@@ -181,6 +181,7 @@ export class LobbySettingsOverlay {
       ['low', 'Low (integrated GPU)'],
       ['medium', 'Medium'],
       ['high', 'High'],
+      ['ultra', 'Ultra (high-end GPU)'],
     ] as const) {
       const opt = document.createElement('option');
       opt.value = optValue;

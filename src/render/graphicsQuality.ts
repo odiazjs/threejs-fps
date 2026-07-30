@@ -4,11 +4,19 @@
  * Resolve order: `?quality=` ? localStorage preference ? auto (iGPU ? low).
  */
 
-export type GraphicsQualityTier = 'low' | 'medium' | 'high';
+export type GraphicsQualityTier = 'low' | 'medium' | 'high' | 'ultra';
 export type GraphicsQualityPreference = 'auto' | GraphicsQualityTier;
 
 const STORAGE_KEY = 'fps_graphics_quality';
 const QUERY_KEY = 'quality';
+
+const VALID_PREFERENCES = new Set<GraphicsQualityPreference>([
+  'auto',
+  'low',
+  'medium',
+  'high',
+  'ultra',
+]);
 
 export interface GraphicsQualityDials {
   readonly tier: GraphicsQualityTier;
@@ -19,7 +27,7 @@ export interface GraphicsQualityDials {
   readonly antialias: boolean;
   readonly maxAnisotropy: number;
   readonly outlinesEnabled: boolean;
-  /** Medium: enemy + harvest only. High: all outline passes. */
+  /** Medium: enemy + harvest only. High/Ultra: all outline passes. */
   readonly teammateOutlinesEnabled: boolean;
   readonly fxLightPoolSize: number;
   readonly scopeRtHeight: number;
@@ -44,8 +52,8 @@ function readQueryPreference(): GraphicsQualityPreference | null {
     const raw = new URLSearchParams(window.location.search).get(QUERY_KEY);
     if (!raw) return null;
     const value = raw.trim().toLowerCase();
-    if (value === 'auto' || value === 'low' || value === 'medium' || value === 'high') {
-      return value;
+    if (VALID_PREFERENCES.has(value as GraphicsQualityPreference)) {
+      return value as GraphicsQualityPreference;
     }
   } catch {
     // Ignore.
@@ -56,8 +64,8 @@ function readQueryPreference(): GraphicsQualityPreference | null {
 export function getStoredGraphicsQualityPreference(): GraphicsQualityPreference {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw === 'auto' || raw === 'low' || raw === 'medium' || raw === 'high') {
-      return raw;
+    if (VALID_PREFERENCES.has(raw as GraphicsQualityPreference)) {
+      return raw as GraphicsQualityPreference;
     }
   } catch {
     // Ignore.
@@ -113,6 +121,7 @@ export function detectAutoGraphicsTier(
       .deviceMemory;
     const lowMemory = deviceMemory !== undefined && deviceMemory <= 4;
 
+    // Auto never picks Ultra — that stays a manual high-end choice.
     detectedTier = integratedGpu || lowMemory ? 'low' : 'high';
     return detectedTier;
   } catch {
@@ -180,8 +189,36 @@ function dialsForTier(
     };
   }
 
+  if (tier === 'ultra') {
+    return {
+      tier,
+      preference,
+      autoDetectedTier,
+      gameMaxPixelRatio: 2,
+      lobbyMaxPixelRatio: 2,
+      antialias: true,
+      maxAnisotropy: Number.POSITIVE_INFINITY,
+      outlinesEnabled: true,
+      teammateOutlinesEnabled: true,
+      fxLightPoolSize: 12,
+      scopeRtHeight: 1080,
+      scopeWorldBlurEnabled: true,
+      edgeLinesEnabled: true,
+      shieldHemisphereSegments: { width: 64, height: 32 },
+      muzzleParticleScale: 1.25,
+      lobbyGrass: {
+        maxBlades: 72_000,
+        gridStep: 0.045,
+        bladeSegments: 4,
+        extraBladeChance: 0.95,
+        frustumCulled: false,
+      },
+    };
+  }
+
+  // high
   return {
-    tier,
+    tier: 'high',
     preference,
     autoDetectedTier,
     gameMaxPixelRatio: 1.5,
