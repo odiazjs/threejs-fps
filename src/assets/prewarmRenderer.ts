@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { bindGltfKtx2Renderer } from '../content/gltfLoader';
+import { bindTextureQualityRenderer } from '../content/textureQuality';
 
 /** Tiny offscreen renderer used only during first-load asset prewarm. */
 let renderer: THREE.WebGLRenderer | null = null;
@@ -17,6 +19,8 @@ export function getPrewarmRenderContext(): {
     });
     renderer.setSize(2, 2);
     renderer.setPixelRatio(1);
+    bindTextureQualityRenderer(renderer);
+    bindGltfKtx2Renderer(renderer);
 
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(60, 1, 0.1, 200);

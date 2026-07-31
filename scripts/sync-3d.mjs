@@ -13,6 +13,9 @@ function copyRecursive(srcDir, destDir) {
 
   for (const entry of readdirSync(srcDir)) {
     if (entry.startsWith('.')) continue;
+    // Keep local unquantized backups / editor dumps out of public/ prewarm.
+    if (entry.endsWith('.source.glb')) continue;
+    if (/\.(bak|tmp)$/i.test(entry)) continue;
 
     const sourcePath = join(srcDir, entry);
     const targetPath = join(destDir, entry);

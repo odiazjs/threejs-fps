@@ -153,4 +153,5 @@ tmp/
 scripts/inspect-harvest-out.json
 scripts/harvest-stations.json
 scripts/compress-harvest.log
+.tmp-compress-*.glb
 

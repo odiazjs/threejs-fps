@@ -87,8 +87,8 @@ export class PointerAimControls {
     return this.suppressPauseUntilRelock && !this.isLocked;
   }
 
-  resetLook(): void {
-    this.lookYaw = 0;
+  resetLook(yaw = 0): void {
+    this.lookYaw = yaw;
     this.lookPitch = 0;
     this.applyLook();
   }

@@ -26,6 +26,7 @@ import { initLobbyMusic, initUiSounds } from '../audio/initMenuAudio';
 import { initLobbyMapSelector } from './mapSelection';
 import { initLobbyGameModeSelector } from './gameModeSelection';
 import { initLobbyPanelCollapse } from './lobbyPanelCollapse';
+import { initLobbyChromeLayout } from './lobbyChromeLayout';
 import { onGameOverlayClosed, setGameOverlayBackgroundHooks } from './launchGameOverlay';
 import { maybeShowMatchXpResultsModal } from './showMatchXpResults';
 import { maybeShowSeasonWelcomeModal } from './seasonWelcome';
@@ -97,6 +98,7 @@ async function startLobby(): Promise<void> {
 
     appShell.bindNavigation();
     initLobbyPanelCollapse();
+    initLobbyChromeLayout();
     initLobbyGameModeSelector();
     initLobbyMapSelector();
     const plasmaStore = new PlasmaMineralsStoreModal(

@@ -1,13 +1,10 @@
 import * as THREE from 'three';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { FBX_WEAPON_ASSET_BASE } from '../content/fbxWeaponMesh';
-import { configureColorTexture } from '../content/textureQuality';
+import { createGltfLoader } from '../content/gltfLoader';
+import { configureColorTexture, optimizeObjectTextures } from '../content/textureQuality';
 import { CRAFTING_STATION_HEIGHT } from '../../shared/level/craftingStationSpawns';
 
-const STATION_FBX = 'game_modes/crafting_station.fbx';
-const STATION_TEXTURE = '/3d/game_modes/crafting_station_texture.png';
-
-const textureLoader = new THREE.TextureLoader();
+const ASSET_BASE = '/3d/';
+const STATION_GLB = 'game_modes/crafting_station_2.glb';
 
 let stationTemplate: THREE.Group | null = null;
 let stationLoadPromise: Promise<THREE.Group> | null = null;
@@ -17,46 +14,45 @@ let stationHalfExtents = {
   halfZ: 0.95,
 };
 
-function loadEmissiveTexture(url: string): Promise<THREE.Texture> {
-  return new Promise((resolve, reject) => {
-    textureLoader.load(
-      url,
-      (texture) => {
-        configureColorTexture(texture);
-        resolve(texture);
-      },
-      undefined,
-      reject,
-    );
-  });
+function pickAlbedoMap(material: THREE.Material): THREE.Texture | null {
+  if (
+    material instanceof THREE.MeshStandardMaterial ||
+    material instanceof THREE.MeshPhysicalMaterial ||
+    material instanceof THREE.MeshPhongMaterial ||
+    material instanceof THREE.MeshLambertMaterial
+  ) {
+    return material.map ?? material.emissiveMap ?? null;
+  }
+  if (material instanceof THREE.MeshBasicMaterial) {
+    return material.map ?? null;
+  }
+  return null;
 }
 
-function applyStationMaterials(
-  root: THREE.Object3D,
-  emissiveMap: THREE.Texture | null,
-): void {
-  const material = new THREE.MeshPhongMaterial({
-    color: 0x000000,
-    specular: 0x000000,
-    emissive: emissiveMap ? 0xffffff : 0x66e0ff,
-    emissiveIntensity: 1,
-    emissiveMap: emissiveMap ?? undefined,
-    shininess: 0,
-  });
-
+function applyStationMaterials(root: THREE.Object3D): void {
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
-    if (Array.isArray(child.material)) {
-      for (const old of child.material) old.dispose();
-    } else {
-      child.material.dispose();
-    }
-    child.material = material;
+    const sources = Array.isArray(child.material) ? child.material : [child.material];
+    const next = sources.map((source) => {
+      const map = pickAlbedoMap(source);
+      if (map) configureColorTexture(map);
+      const flat = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        map: map ?? undefined,
+        transparent: source.transparent,
+        opacity: source.opacity,
+        side: source.side,
+      });
+      source.dispose();
+      return flat;
+    });
+    child.material = next.length === 1 ? next[0]! : next;
+    child.castShadow = false;
+    child.receiveShadow = true;
   });
 }
 
 function normalizeStationRoot(root: THREE.Group): THREE.Group {
-  // Scale first, then fit feet to local origin (offset-before-scale → sky).
   root.updateMatrixWorld(true);
   let box = new THREE.Box3().setFromObject(root);
   const size = new THREE.Vector3();
@@ -92,17 +88,14 @@ function loadStationTemplate(): Promise<THREE.Group> {
   if (stationLoadPromise) return stationLoadPromise;
 
   stationLoadPromise = (async () => {
-    const loader = new FBXLoader();
-    loader.setResourcePath(`${FBX_WEAPON_ASSET_BASE}game_modes/`);
-    const fbx = await loader.loadAsync(`${FBX_WEAPON_ASSET_BASE}${STATION_FBX}`);
-    let emissiveMap: THREE.Texture | null = null;
-    try {
-      emissiveMap = await loadEmissiveTexture(STATION_TEXTURE);
-    } catch (error) {
-      console.warn('[CraftingStation] Emissive texture failed — using solid emissive', error);
-    }
-    applyStationMaterials(fbx as THREE.Group, emissiveMap);
-    stationTemplate = normalizeStationRoot(fbx as THREE.Group);
+    const loader = createGltfLoader();
+    loader.setResourcePath(ASSET_BASE);
+    const stationUrl = `${ASSET_BASE}${STATION_GLB.split('/').map(encodeURIComponent).join('/')}`;
+    const gltf = await loader.loadAsync(stationUrl);
+    const root = gltf.scene as THREE.Group;
+    applyStationMaterials(root);
+    optimizeObjectTextures(root);
+    stationTemplate = normalizeStationRoot(root);
     return stationTemplate;
   })().finally(() => {
     stationLoadPromise = null;

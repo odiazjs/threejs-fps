@@ -4,6 +4,7 @@ import { setMapPhysics } from '../../../shared/level/mapMeshMovement.js';
 import { getOrBuildTdmMapPhysicsWorld } from './tdmMapPhysicsCache.js';
 import { getOrBuildHarvestMapPhysicsWorld } from './harvestMapPhysicsCache.js';
 import { getOrBuildFiringRangePhysicsWorld } from './firingRangePhysicsCache.js';
+import { getOrBuildShowcaseMapPhysicsWorld } from './showcaseMapPhysicsCache.js';
 
 export async function loadMapPhysicsForServer(map: MapCollisionDef): Promise<void> {
   if (map.id === 'killhouse_small') {
@@ -14,6 +15,12 @@ export async function loadMapPhysicsForServer(map: MapCollisionDef): Promise<voi
 
   if (map.id === 'harvest') {
     const world = await getOrBuildHarvestMapPhysicsWorld();
+    setMapPhysics(world);
+    return;
+  }
+
+  if (map.id === 'showcase') {
+    const world = await getOrBuildShowcaseMapPhysicsWorld();
     setMapPhysics(world);
     return;
   }

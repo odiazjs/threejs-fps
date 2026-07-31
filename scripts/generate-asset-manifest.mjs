@@ -18,8 +18,9 @@ function walkFiles(dir, out = []) {
   if (!existsSync(dir)) return out;
   for (const entry of readdirSync(dir)) {
     if (entry.startsWith('.')) continue;
-    // Skip editor backups / temp files — not needed at runtime.
+    // Skip editor backups / temp files ï¿½ not needed at runtime.
     if (/\.(bak|tmp|DS_Store)$/i.test(entry)) continue;
+    if (entry.endsWith('.source.glb')) continue;
     const full = join(dir, entry);
     const stats = statSync(full);
     if (stats.isDirectory()) {

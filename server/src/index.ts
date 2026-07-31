@@ -47,6 +47,11 @@ async function main(): Promise<void> {
     console.warn('[physics] Firing Range collision warm-up failed (will retry on first match)', error);
   });
 
+  const { warmShowcaseMapPhysics } = await import('./level/showcaseMapPhysicsCache.js');
+  void warmShowcaseMapPhysics().catch((error) => {
+    console.warn('[physics] Showcase collision warm-up failed (will retry on first match)', error);
+  });
+
   await maybeRunMigrations();
 
   const { ensureCharacterCatalogLoaded } = await import('./characters/catalogCache.js');

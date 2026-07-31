@@ -21,38 +21,39 @@ export interface HarvestSpawnPoint {
 const S = HARVEST_MAP_SCALE;
 
 /**
- * Fallback spawn list from harvest_map.glb `spawn` / `spawn_N` empties
- * (Orange half z > 0, Blue half z < 0), scaled with the map.
+ * Fallback spawn list from harvest_map.glb team groups after prepare/ground-align
+ * (blue_spawn_group at +Z, orange_spawn_group at −Z).
  */
+const DEFAULT_BLUE_SPAWNS: readonly HarvestSpawnPoint[] = [
+  { x: 9.81 * S, z: 11.65 * S },
+  { x: -3.7 * S, z: 11.65 * S },
+  { x: 23.18 * S, z: 11.65 * S },
+  { x: 27.63 * S, z: 17.39 * S },
+  { x: -8.66 * S, z: 19.5 * S },
+  { x: -3.34 * S, z: 6.97 * S },
+  { x: 23.15 * S, z: 7.56 * S },
+  { x: 9.81 * S, z: 7.7 * S },
+];
+
+const DEFAULT_ORANGE_SPAWNS: readonly HarvestSpawnPoint[] = [
+  { x: 9.81 * S, z: -16.85 * S },
+  { x: -3.7 * S, z: -16.85 * S },
+  { x: 23.18 * S, z: -16.85 * S },
+  { x: 27.63 * S, z: -11.11 * S },
+  { x: -8.66 * S, z: -9 * S },
+  { x: -3.34 * S, z: -21.53 * S },
+  { x: 23.15 * S, z: -20.94 * S },
+  { x: 9.81 * S, z: -20.8 * S },
+];
+
 const DEFAULT_HARVEST_SPAWNS: readonly HarvestSpawnPoint[] = [
-  { x: 5.88 * S, z: 16.1 * S },
-  { x: 1.41 * S, z: 16.99 * S },
-  { x: 11.65 * S, z: 10.49 * S },
-  { x: 16.12 * S, z: 12.16 * S },
-  { x: -6.53 * S, z: 12.16 * S },
-  { x: -1.56 * S, z: 7.86 * S },
-  { x: -16.18 * S, z: 5.49 * S },
-  { x: -12.56 * S, z: 17.43 * S },
-  { x: 5.88 * S, z: -10.53 * S },
-  { x: 1.41 * S, z: -9.64 * S },
-  { x: 11.65 * S, z: -16.14 * S },
-  { x: 13.14 * S, z: -15.31 * S },
-  { x: -6.53 * S, z: -14.47 * S },
-  { x: -1.56 * S, z: -17.41 * S },
-  { x: -16.18 * S, z: -12.17 * S },
-  { x: -12.56 * S, z: -5.86 * S },
+  ...DEFAULT_BLUE_SPAWNS,
+  ...DEFAULT_ORANGE_SPAWNS,
 ];
 
 let registeredSpawns: readonly HarvestSpawnPoint[] | null = null;
-
-export function setHarvestMapSpawnPoints(points: readonly HarvestSpawnPoint[]): void {
-  if (points.length === 0) return;
-  registeredSpawns = dedupeSpawns(points);
-}
-
-export function getHarvestMapSpawnPoints(): readonly HarvestSpawnPoint[] {
-  return registeredSpawns ?? DEFAULT_HARVEST_SPAWNS;
-}
+let registeredBlueSpawns: readonly HarvestSpawnPoint[] | null = null;
+let registeredOrangeSpawns: readonly HarvestSpawnPoint[] | null = null;
 
 function dedupeSpawns(points: readonly HarvestSpawnPoint[]): HarvestSpawnPoint[] {
   const seen = new Set<string>();
@@ -66,19 +67,49 @@ function dedupeSpawns(points: readonly HarvestSpawnPoint[]): HarvestSpawnPoint[]
   return unique;
 }
 
+/** Register a flat spawn list (legacy bake). Team pools fall back to Z-split. */
+export function setHarvestMapSpawnPoints(points: readonly HarvestSpawnPoint[]): void {
+  if (points.length === 0) return;
+  registeredSpawns = dedupeSpawns(points);
+  registeredBlueSpawns = null;
+  registeredOrangeSpawns = null;
+}
+
+/** Register authored team spawn pools from blue/orange spawn groups. */
+export function setHarvestMapTeamSpawnPoints(
+  blue: readonly HarvestSpawnPoint[],
+  orange: readonly HarvestSpawnPoint[],
+): void {
+  const blueUnique = dedupeSpawns(blue);
+  const orangeUnique = dedupeSpawns(orange);
+  if (blueUnique.length === 0 && orangeUnique.length === 0) return;
+  registeredBlueSpawns = blueUnique.length > 0 ? blueUnique : null;
+  registeredOrangeSpawns = orangeUnique.length > 0 ? orangeUnique : null;
+  registeredSpawns = dedupeSpawns([...blueUnique, ...orangeUnique]);
+}
+
+export function getHarvestMapSpawnPoints(): readonly HarvestSpawnPoint[] {
+  return registeredSpawns ?? DEFAULT_HARVEST_SPAWNS;
+}
+
 const SPAWN_ZONE_SPREAD = { spreadX: 1.6, spreadZ: 1.6 } as const;
 
 function toZone(point: HarvestSpawnPoint): SpawnZone {
   return { x: point.x, z: point.z, ...SPAWN_ZONE_SPREAD };
 }
 
-/** Blue holds the south half (z < 0), orange/red the north half (z >= 0). */
 function blueZones(): SpawnZone[] {
-  return getHarvestMapSpawnPoints().filter((p) => p.z < 0).map(toZone);
+  const points = registeredBlueSpawns
+    ?? getHarvestMapSpawnPoints().filter((p) => p.z >= 0);
+  const zones = (points.length > 0 ? points : DEFAULT_BLUE_SPAWNS).map(toZone);
+  return zones;
 }
 
 function redZones(): SpawnZone[] {
-  return getHarvestMapSpawnPoints().filter((p) => p.z >= 0).map(toZone);
+  const points = registeredOrangeSpawns
+    ?? getHarvestMapSpawnPoints().filter((p) => p.z < 0);
+  const zones = (points.length > 0 ? points : DEFAULT_ORANGE_SPAWNS).map(toZone);
+  return zones;
 }
 
 function greenZones(): SpawnZone[] {
@@ -97,7 +128,7 @@ function teamPool(teamId: number): readonly SpawnZone[] {
   return pool.length > 0 ? pool : getHarvestMapSpawnPoints().map(toZone);
 }
 
-export const HUMAN_RESPAWN_POINT = DEFAULT_HARVEST_SPAWNS[0]!;
+export const HUMAN_RESPAWN_POINT = DEFAULT_BLUE_SPAWNS[0]!;
 
 export function pickTeamSpawnPoint(
   teamId: number,

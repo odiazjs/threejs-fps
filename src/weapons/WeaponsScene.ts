@@ -14,6 +14,7 @@ import {
   weaponUsesPhysicalSights,
 } from '../content/physicalWeaponSights';
 import { createWeaponMesh, preloadWeaponMeshes } from '../content/weaponMeshes';
+import { bindGltfKtx2Renderer } from '../content/gltfLoader';
 import { bindTextureQualityRenderer } from '../content/textureQuality';
 import { createSkyboxTexture } from '../world/SkyboxBuilder';
 import { disposeObject3D } from './disposeMesh';
@@ -66,6 +67,7 @@ export class WeaponsScene {
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     bindTextureQualityRenderer(this.renderer);
+    bindGltfKtx2Renderer(this.renderer);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // Drawing buffer only — CSS sizes the canvas to the stage (avoids first-open stretch).
     this.renderer.setSize(1, 1, false);

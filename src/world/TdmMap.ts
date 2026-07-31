@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createFlatKitMesh } from '../../shared/visuals/edgeLines';
 import {
   TDM_MAP_DEPTH,
@@ -7,6 +6,7 @@ import {
   TDM_MAP_WIDTH,
 } from '../../shared/level/tdmMapConfig';
 import { prepareTdmMapRoot } from '../../shared/level/tdmMapMeshPrep';
+import { createGltfLoader } from '../content/gltfLoader';
 import { optimizeObjectTextures } from '../content/textureQuality';
 import { applyMeshyEmissiveMaterials } from './meshyEmissiveMaterial';
 
@@ -49,7 +49,7 @@ export class TdmMap {
   }
 
   private async build(): Promise<void> {
-    const loader = new GLTFLoader();
+    const loader = createGltfLoader();
     loader.setResourcePath(ASSET_BASE);
 
     try {

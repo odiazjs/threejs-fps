@@ -30,6 +30,7 @@ import { createDroneVisual } from '../world/DroneField';
 import { LobbyPerfHud } from '../ui/LobbyPerfHud';
 import { LobbyPartyAvatar, partyMemberOffsets } from './LobbyPartyAvatar';
 import { fetchDefaultPrimaryWeaponId } from './lobbyLoadoutWeapon';
+import { bindGltfKtx2Renderer } from '../content/gltfLoader';
 import { bindTextureQualityRenderer } from '../content/textureQuality';
 
 /** Soft warm key — matches lobby dawn sky / reference lighting. */
@@ -129,6 +130,7 @@ export class LobbyScene {
     const quality = resolveGraphicsQuality();
     this.renderer = new THREE.WebGLRenderer({ antialias: quality.antialias });
     bindTextureQualityRenderer(this.renderer);
+    bindGltfKtx2Renderer(this.renderer);
     this.renderer.setPixelRatio(
       Math.min(window.devicePixelRatio, quality.lobbyMaxPixelRatio),
     );

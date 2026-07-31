@@ -31,7 +31,10 @@ import {
   HARVEST_MAP_SHIELD_POSITIONS,
   HARVEST_MAP_GRENADE_POSITIONS,
 } from './harvestMapColliders.js';
-import { HARVEST_MAP_WALL_THICK } from './harvestMapConfig.js';
+import {
+  HARVEST_MAP_WALL_THICK,
+  harvestSpawnYawForTeam,
+} from './harvestMapConfig.js';
 import {
   FLOOR_SIZE as FIRING_RANGE_FLOOR_SIZE,
   MAP_HALF as FIRING_RANGE_MAP_HALF,
@@ -52,8 +55,27 @@ import {
   type FiringRangeWeaponSpawn,
 } from './firingRangePickups.js';
 import { getMapPhysics } from './mapMeshMovement.js';
+import {
+  FLOOR_SIZE as SHOWCASE_MAP_FLOOR_SIZE,
+  MAP_HALF as SHOWCASE_MAP_HALF,
+  MAP_HALF_X as SHOWCASE_MAP_HALF_X,
+  MAP_HALF_Z as SHOWCASE_MAP_HALF_Z,
+  pickSpawnPoint as pickShowcaseMapSpawnPoint,
+  pickTeamSpawnPoint as pickShowcaseMapTeamSpawnPoint,
+  pickTeamSpawnBatch as pickShowcaseMapTeamSpawnBatch,
+  pickTeamRespawnPoint as pickShowcaseMapTeamRespawnPoint,
+  HUMAN_RESPAWN_POINT as SHOWCASE_MAP_RESPAWN_POINT,
+  sampleGroundHeight as showcaseMapGroundHeight,
+  SHOWCASE_MAP_AMMO_POSITIONS,
+  SHOWCASE_MAP_SHIELD_POSITIONS,
+  SHOWCASE_MAP_GRENADE_POSITIONS,
+} from './showcaseMapColliders.js';
+import {
+  SHOWCASE_MAP_SPAWN_YAW,
+  SHOWCASE_MAP_WALL_THICK,
+} from './showcaseMapConfig.js';
 
-export type MapId = 'firing_range' | 'killhouse_small' | 'harvest';
+export type MapId = 'firing_range' | 'killhouse_small' | 'harvest' | 'showcase';
 
 export const DEFAULT_MAP_ID: MapId = 'firing_range';
 
@@ -131,7 +153,25 @@ export interface MapCollisionDef {
   spawnTrainingBots: boolean;
   /** Join and respawn with no weapons — players must pick them up. */
   emptyStartingLoadout?: boolean;
+  /** Initial look yaw (radians) when joining / respawning on this map. */
+  spawnYaw?: number;
+  /** Per-team look yaw (overrides {@link spawnYaw} when present). */
+  spawnYawForTeam?: (teamId: number) => number;
+  /**
+   * Soft XZ clamp to mapHalf (invisible edge delimiter).
+   * Default true. Disable when the GLB mesh defines the playable bounds.
+   */
+  clampToMapBounds?: boolean;
 }
+
+export function resolveMapSpawnYaw(
+  mapDef: MapCollisionDef,
+  teamId = 0,
+): number {
+  if (mapDef.spawnYawForTeam) return mapDef.spawnYawForTeam(teamId);
+  return mapDef.spawnYaw ?? 0;
+}
+
 
 const MAPS: Record<MapId, MapCollisionDef> = {
   firing_range: {
@@ -197,6 +237,7 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     wallThickness: HARVEST_MAP_WALL_THICK,
     outdoor: false,
     usesMeshCollision: true,
+    clampToMapBounds: false,
     getLevelColliders: () => [],
     getClientGameplayColliders: () => [],
     sampleGroundHeight: harvestMapGroundHeight,
@@ -213,6 +254,32 @@ const MAPS: Record<MapId, MapCollisionDef> = {
     /** Plasma Harvest starts / respawns with no throwable / shield charges. */
     respawnGrenadeCount: 0,
     spawnTrainingBots: false,
+    spawnYawForTeam: harvestSpawnYawForTeam,
+  },
+  showcase: {
+    id: 'showcase',
+    label: 'Showcase',
+    floorSize: SHOWCASE_MAP_FLOOR_SIZE,
+    mapHalf: SHOWCASE_MAP_HALF,
+    mapHalfX: SHOWCASE_MAP_HALF_X,
+    mapHalfZ: SHOWCASE_MAP_HALF_Z,
+    wallThickness: SHOWCASE_MAP_WALL_THICK,
+    outdoor: false,
+    usesMeshCollision: true,
+    clampToMapBounds: false,
+    getLevelColliders: () => [],
+    getClientGameplayColliders: () => [],
+    sampleGroundHeight: showcaseMapGroundHeight,
+    pickSpawnPoint: pickShowcaseMapSpawnPoint,
+    pickTeamSpawnPoint: pickShowcaseMapTeamSpawnPoint,
+    pickTeamSpawnBatch: pickShowcaseMapTeamSpawnBatch,
+    pickTeamRespawnPoint: pickShowcaseMapTeamRespawnPoint,
+    humanRespawnPoint: SHOWCASE_MAP_RESPAWN_POINT,
+    ammoPositions: SHOWCASE_MAP_AMMO_POSITIONS,
+    shieldPositions: SHOWCASE_MAP_SHIELD_POSITIONS,
+    getGrenadePositions: () => SHOWCASE_MAP_GRENADE_POSITIONS,
+    spawnTrainingBots: false,
+    spawnYaw: SHOWCASE_MAP_SPAWN_YAW,
   },
 };
 
@@ -220,7 +287,8 @@ export function isValidMapId(value: string | null | undefined): value is MapId {
   return (
     value === 'firing_range' ||
     value === 'killhouse_small' ||
-    value === 'harvest'
+    value === 'harvest' ||
+    value === 'showcase'
   );
 }
 
@@ -232,7 +300,8 @@ export function mapHasMinimap(mapId: MapId): boolean {
   return (
     mapId === 'firing_range' ||
     mapId === 'killhouse_small' ||
-    mapId === 'harvest'
+    mapId === 'harvest' ||
+    mapId === 'showcase'
   );
 }
 

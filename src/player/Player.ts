@@ -1399,18 +1399,24 @@ export class Player {
     return readWorldPlayerAim(this.camera);
   }
 
-  setEyePosition(x: number, y: number, z: number, resetLook = true): void {
+  setEyePosition(
+    x: number,
+    y: number,
+    z: number,
+    resetLook = true,
+    lookYaw = 0,
+  ): void {
     this.object.position.set(x, y - EYE_HEIGHT, z);
     this.object.rotation.set(0, 0, 0);
     this.physics = { verticalVelocity: 0, grounded: true };
     this.horizontal.reset();
     this.wasSlidingLastFrame = false;
     if (resetLook) {
-      this.resetLocalView();
+      this.resetLocalView(lookYaw);
     }
   }
 
-  private resetLocalView(): void {
+  private resetLocalView(lookYaw = 0): void {
     if (!this.camera) return;
 
     this.unequipThrowable({ discardCook: true });
@@ -1431,9 +1437,9 @@ export class Player {
       this.headBob.apply(this.headRig, false);
     }
 
-    applyLookYaw(this.aimRig!, 0);
+    applyLookYaw(this.aimRig!, lookYaw);
     applyLookPitch(this.pitchRig!, 0);
-    this.aimControls?.resetLook();
+    this.aimControls?.resetLook(lookYaw);
     this.loadout?.reset();
     this.weaponPose?.reset();
     this.weaponSway?.reset();

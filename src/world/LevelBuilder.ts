@@ -9,11 +9,15 @@ emptyTdmMapGroup.name = 'tdm_map_level_placeholder';
 const emptyHarvestMapGroup = new THREE.Group();
 emptyHarvestMapGroup.name = 'harvest_map_level_placeholder';
 
+const emptyShowcaseMapGroup = new THREE.Group();
+emptyShowcaseMapGroup.name = 'showcase_map_level_placeholder';
+
 export class LevelBuilder {
   build(mapId: MapId = 'firing_range') {
     const id = normalizeMapId(mapId);
     if (id === 'killhouse_small') return [emptyTdmMapGroup];
     if (id === 'harvest') return [emptyHarvestMapGroup];
+    if (id === 'showcase') return [emptyShowcaseMapGroup];
     if (id === 'firing_range') return [firingRangeMap];
     return [emptyTdmMapGroup];
   }

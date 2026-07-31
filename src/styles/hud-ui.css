@@ -13,6 +13,25 @@
   --hud-bg-page: #04080e;
   --hud-font: 'Rajdhani', 'Segoe UI', system-ui, sans-serif;
   --hud-scrim: rgba(4, 8, 14, 0.78);
+
+  /*
+   * Fluid root scale (design @ 1080p short side → 16px).
+   * Grows with the viewport, never below --hud-root-min or above --hud-root-max.
+   * Uses vmin so ultrawide / portrait don't blow up type from a single axis.
+   */
+  --hud-root-base: 16px;
+  --hud-root-min: 13px;
+  --hud-root-max: 20px;
+  --hud-ref-vmin: 1080px;
+  --hud-ui-scale: clamp(
+    calc(var(--hud-root-min) / var(--hud-root-base)),
+    100vmin / var(--hud-ref-vmin),
+    calc(var(--hud-root-max) / var(--hud-root-base))
+  );
+}
+
+html {
+  font-size: calc(var(--hud-root-base) * var(--hud-ui-scale));
 }
 
 *,

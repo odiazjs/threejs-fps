@@ -22,21 +22,19 @@ function yawTowardOrigin(x: number, z: number): number {
 }
 
 /**
- * Harvest team ends: orange/red north (z >= 0), blue south (z < 0).
- * Mid stations face their half's base (±Z) so the screen isn't aimed at the
- * center hill. Corner stations still face mid.
+ * Harvest team ends: orange south (z < 0), blue north (z >= 0).
+ * Stations face toward midfield / origin.
  */
 export function yawForHarvestCraftingStation(x: number, z: number): number {
-  // Mid pair sits ~6ñ9m from origin; corners sit ~23m out.
-  if (Math.hypot(x, z) < 12 * S) {
-    return z >= 0 ? 0 : Math.PI;
+  if (Math.hypot(x, z) < 12 * Math.max(S, 1)) {
+    return z >= 0 ? Math.PI : 0;
   }
   return yawTowardOrigin(x, z);
 }
 
 /** Base authored height before the world scale bump. */
 const STATION_BASE_HEIGHT = 2.2;
-/** Runtime station height (base ◊ 1.20). */
+/** Runtime station height (base ù 1.20). */
 export const CRAFTING_STATION_SCALE = 1.2;
 export const CRAFTING_STATION_HEIGHT = STATION_BASE_HEIGHT * CRAFTING_STATION_SCALE;
 /** Front interact point distance from station origin (scales with model). */
@@ -53,33 +51,33 @@ export const CRAFTING_STATION_COLLISION_HALF = {
 } as const;
 
 /**
- * Fallback `crafting_station` marker xz (scaled). Y is unused for placement ó
- * stations sit on the ground (feet at y=0).
+ * Fallback `crafting_station_*` marker xz from blue/orange side groups.
+ * Y is unused for placement ù stations sit on the ground (feet at y=0).
  */
 const HARVEST_STATIONS: readonly CraftingStationSpawn[] = [
   {
-    x: 16.44 * S,
+    x: 24.49 * S,
     y: 0,
-    z: -16.64 * S,
-    yaw: yawForHarvestCraftingStation(16.44 * S, -16.64 * S),
+    z: 24.88 * S,
+    yaw: yawForHarvestCraftingStation(24.49 * S, 24.88 * S),
   },
   {
-    x: -17.11 * S,
+    x: -4.74 * S,
     y: 0,
-    z: 16.93 * S,
-    yaw: yawForHarvestCraftingStation(-17.11 * S, 16.93 * S),
+    z: 24.83 * S,
+    yaw: yawForHarvestCraftingStation(-4.74 * S, 24.83 * S),
   },
   {
-    x: 7.34 * S,
+    x: -4.86 * S,
     y: 0,
-    z: 1.46 * S,
-    yaw: yawForHarvestCraftingStation(7.34 * S, 1.46 * S),
+    z: -24.82 * S,
+    yaw: yawForHarvestCraftingStation(-4.86 * S, -24.82 * S),
   },
   {
-    x: -6.1 * S,
+    x: 24.36 * S,
     y: 0,
-    z: -1.42 * S,
-    yaw: yawForHarvestCraftingStation(-6.1 * S, -1.42 * S),
+    z: -24.77 * S,
+    yaw: yawForHarvestCraftingStation(24.36 * S, -24.77 * S),
   },
 ];
 

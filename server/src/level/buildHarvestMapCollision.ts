@@ -2,9 +2,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { HARVEST_MAP_MODEL } from '../../../shared/level/harvestMapConfig.js';
 import { prepareHarvestMapRoot } from '../../../shared/level/harvestMapMeshPrep.js';
+import { createNodeGltfLoader } from './nodeGltfLoader.js';
 
 /** Build a collision-marked scene from harvest_map.glb for the bake script. */
 export async function buildHarvestMapCollisionScene(
@@ -15,7 +15,7 @@ export async function buildHarvestMapCollisionScene(
     throw new Error(`[ServerPhysics] Missing ${HARVEST_MAP_MODEL} in ${assetDir}`);
   }
 
-  const loader = new GLTFLoader();
+  const loader = createNodeGltfLoader();
   const resourcePath = `${pathToFileURL(join(assetDir, '/')).href}`;
   const bytes = readFileSync(modelPath);
   const gltf = await loader.parseAsync(

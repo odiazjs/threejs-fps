@@ -43,7 +43,7 @@ const AtmosphereShader = {
       color.r += uWarmth;
       color.b -= uWarmth * 0.55;
 
-      // Soft vignette ù darker edges, clear center for HUD readability.
+      // Soft vignette ? darker edges, clear center for HUD readability.
       vec2 d = vUv - 0.5;
       float r = length(d) * 1.41421356;
       float vig = smoothstep(0.35, 1.15, r);
@@ -64,7 +64,7 @@ export class AtmospherePass extends ShaderPass {
     this.enabled = enabled;
   }
 
-  /** Chrono-Bowl ù barely-there grade (fog does the heavy lifting). */
+  /** Chrono-Bowl ? barely-there grade (fog does the heavy lifting). */
   applyChronoBowl(): void {
     this.uniforms.uVignette.value = 0.06;
     this.uniforms.uContrast.value = 1.01;

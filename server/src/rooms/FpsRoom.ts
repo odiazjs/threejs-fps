@@ -15,7 +15,11 @@ import { applyForwardLimbWallClearance } from '../../../shared/physics/forwardWa
 import { CROUCH_EYE_HEIGHT } from '../../../shared/combat/crouch.js';
 import { EYE_HEIGHT, PLAYER_HALF_WIDTH } from '../../../shared/level/levelData.js';
 import { PLAYER_HIT_CAPSULE_HEIGHT } from '../../../shared/combat/playerHitbox.js';
-import { getMapDef, type MapCollisionDef } from '../../../shared/level/maps.js';
+import {
+  getMapDef,
+  resolveMapSpawnYaw,
+  type MapCollisionDef,
+} from '../../../shared/level/maps.js';
 import type { SpawnPickContext } from '../../../shared/level/spawnPick.js';
 import {
   PLAYER_MAX_HP,
@@ -920,6 +924,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         player.x = spawn.x;
         player.z = spawn.z;
         player.y = EYE_HEIGHT;
+        player.yaw = resolveMapSpawnYaw(this.mapDef, player.teamId);
+        player.pitch = 0;
         occupied.push(spawn);
       }
       return;
@@ -950,6 +956,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
         player.x = spawn.x;
         player.z = spawn.z;
         player.y = EYE_HEIGHT;
+        player.yaw = resolveMapSpawnYaw(this.mapDef, teamId);
+        player.pitch = 0;
         globalOccupied.push(spawn);
       }
     }
@@ -2242,6 +2250,8 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
+    player.yaw = resolveMapSpawnYaw(this.mapDef, player.teamId);
+    player.pitch = 0;
     this.initPlayerLoadout(player, client.sessionId);
     this.applySpawnConsumables(player);
     this.state.players.set(client.sessionId, player);
@@ -2583,7 +2593,7 @@ export class FpsRoom extends Room<{ state: FpsState }> {
     player.x = spawn.x;
     player.y = EYE_HEIGHT;
     player.z = spawn.z;
-    player.yaw = 0;
+    player.yaw = resolveMapSpawnYaw(this.mapDef, player.teamId);
     player.pitch = 0;
     this.resetPlayerWeaponTiming(player);
     player.sprinting = false;

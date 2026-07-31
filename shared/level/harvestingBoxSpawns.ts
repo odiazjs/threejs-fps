@@ -30,7 +30,7 @@ export const HARVESTING_BOX_INTERACT_DISTANCE = 2.75;
 /** Fallback install offset toward midfield when no authored install marker. */
 export const HARVESTING_BOX_INSTALL_FORWARD_M = 1;
 /**
- * Authored empties sit slightly above the pad ù nudge feet down so crates
+ * Authored empties sit slightly above the pad ? nudge feet down so crates
  * rest flush on the base platform.
  */
 export const HARVESTING_BOX_SURFACE_Y_NUDGE = -0.22;
@@ -42,30 +42,30 @@ export function harvestingBoxSurfaceY(authoredY: number): number {
 }
 
 /**
- * Server / fallback poses from `base_own_box_spawn` + `base_install_box_pos`
- * under `team_*_base` (world coords after {@link HARVEST_MAP_SCALE}).
- * Prefer GLB extraction on the client.
+ * Server / fallback poses from side-group markers
+ * (`harvesting_box_orange` / `harvesting_box_blue_1` + `*_install`).
+ * Prefer GLB extraction on the client after prepare/ground-align.
  */
 const HARVEST_BOXES: readonly HarvestingBoxSpawn[] = [
   {
     index: 0,
     teamId: 1,
-    x: 17.773757,
-    y: 1.467864,
-    z: 19.218005,
-    installX: 16.478728,
-    installY: 1.467864,
-    installZ: 19.218005,
+    x: 8.92,
+    y: 1.99,
+    z: -24.75,
+    installX: 10.73,
+    installY: 1.99,
+    installZ: -24.75,
   }, // orange
   {
     index: 1,
     teamId: 0,
-    x: -16.664131,
-    y: 1.467864,
-    z: -19.41884,
-    installX: -15.369102,
-    installY: 1.467864,
-    installZ: -19.41884,
+    x: 10.73,
+    y: 2.36,
+    z: 24.12,
+    installX: 8.88,
+    installY: 2.36,
+    installZ: 24.12,
   }, // blue
 ];
 
@@ -80,8 +80,11 @@ export function getHarvestingBoxSpawns(
 
 export function harvestingBoxTeamFromName(name: string): number | null {
   const lower = name.trim().toLowerCase();
+  if (lower.endsWith('_install')) return null;
   if (lower === 'harvesting_box_orange') return 1;
-  if (lower === 'harvesting_box_blue') return 0;
+  if (lower === 'harvesting_box_blue' || /^harvesting_box_blue_\d+$/i.test(lower)) {
+    return 0;
+  }
   return null;
 }
 

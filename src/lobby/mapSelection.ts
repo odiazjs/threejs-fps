@@ -16,6 +16,7 @@ const MAP_PREVIEW_SRC: Record<MapId, string> = {
   firing_range: '/images/firing_range.png',
   killhouse_small: '/images/chrono_bowl.png',
   harvest: '/images/ui/harvest_map_icon.png',
+  showcase: '/images/firing_range.png',
 };
 
 export function getSelectedMapId(): MapId {

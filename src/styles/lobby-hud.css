@@ -1,5 +1,44 @@
 @import './hud-ui.css';
 
+:root {
+  /*
+   * Lobby chrome scale — rides the shared fluid rem, with a dedicated type ramp
+   * and panel geometry clamps (min readable / max on large external displays).
+   */
+  --lobby-ui-density: 1;
+  --lobby-inset: clamp(0.85rem, 0.7rem + 0.8vmin, 1.6rem);
+  --lobby-gutter: clamp(0.75rem, 0.6rem + 0.6vmin, 1.35rem);
+  --lobby-col-left: clamp(18rem, 16rem + 6vmin, 26rem);
+  --lobby-col-right: clamp(20rem, 18rem + 8vmin, 34rem);
+  --lobby-safe-top: env(safe-area-inset-top, 0px);
+  --lobby-safe-right: env(safe-area-inset-right, 0px);
+  --lobby-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --lobby-safe-left: env(safe-area-inset-left, 0px);
+  /* Fallback band until ResizeObserver publishes live values */
+  --lobby-profile-end: clamp(8.5rem, 22vh, 14rem);
+  --lobby-friends-end: clamp(11rem, 28vh, 18rem);
+  --lobby-top-right-slot: clamp(9rem, 8rem + 4vmin, 14rem);
+
+  /* Type ramp — all lobby chrome should prefer these over one-off sizes */
+  --lobby-text-2xs: clamp(0.55rem, 0.5rem + 0.12vmin, 0.65rem);
+  --lobby-text-xs: clamp(0.62rem, 0.56rem + 0.16vmin, 0.74rem);
+  --lobby-text-sm: clamp(0.78rem, 0.7rem + 0.22vmin, 0.95rem);
+  --lobby-text-md: clamp(0.95rem, 0.88rem + 0.28vmin, 1.15rem);
+  --lobby-text-lg: clamp(1.15rem, 1.05rem + 0.35vmin, 1.45rem);
+  --lobby-text-xl: clamp(1.35rem, 1.2rem + 0.45vmin, 1.75rem);
+}
+
+/*
+ * Lobby root — prefers JS-published px after monitor hot-plug, else CSS fluid rem.
+ * Min 13px / max 20px (see hud-ui.css + lobbyChromeLayout syncUiScale).
+ */
+html:has(body.lobby-page) {
+  font-size: var(
+    --lobby-computed-root-px,
+    calc(var(--hud-root-base) * var(--hud-ui-scale) * var(--lobby-ui-density))
+  );
+}
+
 #lobby-canvas {
   position: fixed;
   inset: 0;
@@ -18,23 +57,35 @@
 .lobby-ui {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  min-height: 100dvh;
   pointer-events: none;
 }
 
-/* Left sidebar navigation — bracket tabs with a subtle panel behind the items */
+/* Left sidebar navigation — sits in the band between profile and friends */
 .lobby-nav {
   position: fixed;
-  top: 42%;
-  left: 1.25rem;
-  transform: translateY(-50%);
+  top: max(
+    calc(var(--lobby-profile-end) + var(--lobby-gutter)),
+    calc(var(--lobby-inset) + var(--lobby-safe-top) + 7rem)
+  );
+  left: max(var(--lobby-inset), var(--lobby-safe-left));
+  bottom: max(
+    calc(var(--lobby-friends-end) + var(--lobby-gutter)),
+    calc(var(--lobby-inset) + var(--lobby-safe-bottom) + 8rem)
+  );
+  transform: none;
   z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.2rem;
-  width: min(22rem, 46vw);
-  padding: 0.65rem 0.75rem;
+  justify-content: center;
+  gap: clamp(0.3rem, 0.45em, 0.65rem);
+  width: min(
+    var(--lobby-col-left),
+    calc(50vw - 2 * var(--lobby-inset) - 0.5 * var(--lobby-gutter))
+  );
+  max-height: none;
+  padding: 0.6rem 0.75rem;
   border: 1px solid rgba(160, 170, 185, 0.12);
   border-radius: 6px;
   background: rgba(8, 12, 18, 0.28);
@@ -43,6 +94,10 @@
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   pointer-events: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 242, 255, 0.28) transparent;
 }
 
 .lobby-nav-item {
@@ -52,7 +107,7 @@
   background: transparent;
   color: rgba(255, 255, 255, 0.62);
   font-family: var(--hud-font);
-  font-size: 1.05rem;
+  font-size: var(--lobby-text-md);
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -96,16 +151,25 @@
 /* Profile — top left */
 .lobby-profile {
   position: fixed;
-  top: 1.25rem;
-  left: 1.25rem;
+  top: max(var(--lobby-inset), var(--lobby-safe-top));
+  left: max(var(--lobby-inset), var(--lobby-safe-left));
   z-index: 2;
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-rows: auto auto;
   gap: 0 1rem;
   align-items: center;
-  width: min(24rem, 44vw);
-  padding: 0.85rem 1rem 0.75rem;
+  width: min(
+    var(--lobby-col-left),
+    calc(
+      100vw - var(--lobby-top-right-slot) - 3 * var(--lobby-inset) -
+        var(--lobby-safe-left) - var(--lobby-safe-right)
+    )
+  );
+  max-width: calc(
+    50vw - 2 * var(--lobby-inset) - 0.5 * var(--lobby-gutter)
+  );
+  padding: 0.85rem 0.95rem 0.75rem;
   pointer-events: auto;
 }
 
@@ -133,7 +197,7 @@
 }
 
 .lobby-profile-label {
-  font-size: 0.58rem;
+  font-size: var(--lobby-text-2xs);
   font-weight: 600;
   letter-spacing: 0.18em;
   color: var(--hud-cyan-dim);
@@ -141,7 +205,7 @@
 }
 
 .lobby-username {
-  font-size: 1.05rem;
+  font-size: var(--lobby-text-md);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: #fff;
@@ -150,7 +214,7 @@
 
 .lobby-email {
   margin-top: 0.15rem;
-  font-size: 0.72rem;
+  font-size: var(--lobby-text-xs);
   font-weight: 500;
   color: rgba(255, 255, 255, 0.45);
   word-break: break-all;
@@ -199,7 +263,7 @@
 }
 
 .lobby-rank-name {
-  font-size: 1.05rem;
+  font-size: var(--lobby-text-md);
   font-weight: 700;
   letter-spacing: 0.08em;
   color: #fff;
@@ -211,7 +275,7 @@
 }
 
 .lobby-rank-xp {
-  font-size: 0.82rem;
+  font-size: var(--lobby-text-sm);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
@@ -228,7 +292,7 @@
   background: rgba(0, 242, 255, 0.1);
   color: var(--hud-cyan);
   font-family: inherit;
-  font-size: 0.68rem;
+  font-size: var(--lobby-text-xs);
   font-weight: 700;
   letter-spacing: 0.12em;
   cursor: pointer;
@@ -251,7 +315,7 @@
 
 .lobby-stat-label {
   display: block;
-  font-size: 0.55rem;
+  font-size: var(--lobby-text-2xs);
   font-weight: 600;
   letter-spacing: 0.16em;
   color: var(--hud-cyan-dim);
@@ -259,7 +323,7 @@
 }
 
 .lobby-stat-value {
-  font-size: 1.5rem;
+  font-size: var(--lobby-text-xl);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--hud-cyan);
@@ -326,19 +390,19 @@
 /* Top-right cluster: plasma minerals + perf */
 .lobby-top-right {
   position: fixed;
-  top: 1.25rem;
-  right: 1.25rem;
+  top: max(var(--lobby-inset), var(--lobby-safe-top));
+  right: max(var(--lobby-inset), var(--lobby-safe-right));
   z-index: 2;
   display: flex;
   align-items: stretch;
-  gap: 0.55rem;
+  gap: 0.7rem;
   pointer-events: none;
 }
 
 .lobby-top-right .plasma-minerals-chip {
-  min-width: 9.5rem;
-  padding: 0.7rem 0.9rem;
-  gap: 0.4rem;
+  min-width: 10.5rem;
+  padding: 0.75rem 0.95rem;
+  gap: 0.45rem;
 }
 
 .lobby-top-right .plasma-minerals-icon {
@@ -347,13 +411,13 @@
 }
 
 .lobby-top-right .plasma-minerals-value {
-  font-size: 1.35rem;
+  font-size: var(--lobby-text-lg);
   letter-spacing: 0.05em;
 }
 
 .lobby-top-right .plasma-minerals-get-more {
   padding: 0.4rem 0.55rem;
-  font-size: 0.68rem;
+  font-size: var(--lobby-text-xs);
   letter-spacing: 0.12em;
 }
 
@@ -600,8 +664,8 @@
   flex-direction: column;
   gap: 0.35rem;
   width: max-content;
-  min-width: 9.5rem;
-  padding: 0.65rem 0.85rem;
+  min-width: 10.5rem;
+  padding: 0.7rem 0.95rem;
   pointer-events: none;
 }
 
@@ -610,7 +674,7 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 1rem;
-  font-size: 0.68rem;
+  font-size: var(--lobby-text-xs);
   font-weight: 600;
   letter-spacing: 0.12em;
 }
@@ -674,13 +738,22 @@
 /* Friends / social — bottom left */
 .friends-panel {
   position: fixed;
-  left: 1.25rem;
-  bottom: 1.25rem;
+  left: max(var(--lobby-inset), var(--lobby-safe-left));
+  bottom: max(var(--lobby-inset), var(--lobby-safe-bottom));
   z-index: 2;
-  width: min(22rem, 46vw);
+  width: min(
+    var(--lobby-col-left),
+    calc(50vw - 2 * var(--lobby-inset) - 0.5 * var(--lobby-gutter))
+  );
+  max-height: min(
+    42dvh,
+    calc(100dvh - var(--lobby-profile-end) - 2 * var(--lobby-gutter) - 6rem)
+  );
   padding: 0;
   pointer-events: auto;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background-image:
     linear-gradient(rgba(0, 242, 255, 0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(0, 242, 255, 0.03) 1px, transparent 1px);
@@ -695,6 +768,8 @@
 .friends-panel-body {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 
 .friends-panel-tabs {
@@ -710,7 +785,7 @@
   border: none;
   background: transparent;
   font-family: var(--hud-font);
-  font-size: 0.72rem;
+  font-size: var(--lobby-text-xs);
   font-weight: 700;
   letter-spacing: 0.16em;
   color: rgba(255, 255, 255, 0.35);
@@ -746,8 +821,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  max-height: 9.5rem;
+  max-height: clamp(6.5rem, 16dvh, 11rem);
   overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
   margin: 0;
   padding: 0 0.15rem 0 0;
   scrollbar-width: thin;
@@ -1131,17 +1208,25 @@
 /* Matchmaking — bottom right */
 .lobby-match-panel {
   position: fixed;
-  right: 1.25rem;
-  bottom: 1.25rem;
+  right: max(var(--lobby-inset), var(--lobby-safe-right));
+  bottom: max(var(--lobby-inset), var(--lobby-safe-bottom));
   z-index: 2;
-  width: min(32.5rem, 65vw);
-  padding: 1.55rem 1.1rem 1.1rem;
+  width: min(
+    var(--lobby-col-right),
+    calc(50vw - 2 * var(--lobby-inset) - 0.5 * var(--lobby-gutter))
+  );
+  max-height: min(52dvh, calc(100dvh - 7rem));
+  padding: 1.25rem 1.05rem 1.05rem;
   pointer-events: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 242, 255, 0.28) transparent;
 }
 
 .lobby-match-panel .lobby-panel-toggle {
-  margin: -1.55rem -1.1rem 0.85rem;
-  width: calc(100% + 2.2rem);
+  margin: -1.25rem -1.05rem 0.85rem;
+  width: calc(100% + 2.1rem);
   border-bottom-color: rgba(0, 242, 255, 0.18);
 }
 
@@ -1287,8 +1372,8 @@
 
 .lobby-select-card {
   position: relative;
-  flex: 0 0 6.4rem;
-  width: 6.4rem;
+  flex: 0 0 6rem;
+  width: 6rem;
   margin: 0;
   padding: 0.35rem 0.35rem 0.45rem;
   display: flex;
@@ -1378,7 +1463,7 @@
 }
 
 .lobby-select-card-name {
-  font-size: 0.62rem;
+  font-size: var(--lobby-text-xs);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-align: center;
@@ -1391,7 +1476,7 @@
 }
 
 .lobby-queue-estimate {
-  font-size: 0.68rem;
+  font-size: var(--lobby-text-xs);
   font-weight: 600;
   letter-spacing: 0.12em;
   color: rgba(255, 255, 255, 0.4);
@@ -1415,7 +1500,7 @@
   background: linear-gradient(180deg, rgba(0, 242, 255, 0.35) 0%, rgba(0, 120, 150, 0.55) 100%);
   color: #fff;
   font-family: var(--hud-font);
-  font-size: 0.95rem;
+  font-size: var(--lobby-text-md);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1794,6 +1879,35 @@ body.leaderboard-page {
   border-top-color: var(--hud-cyan);
 }
 
+/* Short desktop viewports — shrink vertical chrome so panels don't collide */
+@media (max-height: 820px) and (min-width: 901px) {
+  .lobby-nav {
+    gap: 0.25rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .lobby-nav-item {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.92rem;
+  }
+
+  .friends-panel {
+    max-height: min(
+      34dvh,
+      calc(100dvh - var(--lobby-profile-end) - 2 * var(--lobby-gutter) - 5rem)
+    );
+  }
+
+  .friends-list {
+    max-height: clamp(5rem, 12dvh, 8rem);
+  }
+
+  .lobby-match-panel {
+    max-height: min(44dvh, calc(100dvh - 5.5rem));
+    padding: 1rem 0.9rem 0.9rem;
+  }
+}
+
 @media (max-width: 900px) {
   .lobby-perf {
     display: none;
@@ -1804,16 +1918,18 @@ body.leaderboard-page {
   }
 
   .lobby-nav {
-    top: max(0.65rem, env(safe-area-inset-top, 0px));
-    left: max(0.65rem, env(safe-area-inset-left, 0px));
-    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    top: max(0.65rem, var(--lobby-safe-top));
+    left: max(0.65rem, var(--lobby-safe-left));
+    right: max(0.65rem, var(--lobby-safe-right));
     bottom: auto;
     transform: none;
     flex-direction: row;
     align-items: center;
+    justify-content: flex-start;
     gap: 0.15rem;
     width: auto;
     max-width: none;
+    max-height: none;
     padding: 0.35rem 0.45rem;
     overflow-x: auto;
     overflow-y: hidden;
@@ -1834,15 +1950,18 @@ body.leaderboard-page {
   }
 
   .lobby-profile {
-    top: calc(5.25rem + env(safe-area-inset-top, 0px));
-    left: max(0.65rem, env(safe-area-inset-left, 0px));
+    top: calc(5.25rem + var(--lobby-safe-top));
+    left: max(0.65rem, var(--lobby-safe-left));
     right: auto;
-    /* Leave a dedicated column for the plasma chip on the right */
-    width: calc(
-      100vw - 9.75rem - max(0.65rem, env(safe-area-inset-left, 0px)) -
-        max(0.65rem, env(safe-area-inset-right, 0px))
+    width: min(
+      24rem,
+      calc(
+        100vw - var(--lobby-top-right-slot, 8.5rem) - 1.4rem -
+          max(0.65rem, var(--lobby-safe-left)) -
+          max(0.65rem, var(--lobby-safe-right))
+      )
     );
-    max-width: 24rem;
+    max-width: none;
     grid-template-columns: auto minmax(0, 1fr);
     padding: 0.7rem 0.8rem 0.65rem;
   }
@@ -1859,11 +1978,11 @@ body.leaderboard-page {
   }
 
   .lobby-top-right {
-    top: calc(5.25rem + env(safe-area-inset-top, 0px));
-    right: max(0.65rem, env(safe-area-inset-right, 0px));
+    top: calc(5.25rem + var(--lobby-safe-top));
+    right: max(0.65rem, var(--lobby-safe-right));
     left: auto;
-    width: 8.5rem;
-    max-width: 8.5rem;
+    width: var(--lobby-top-right-slot, 8.5rem);
+    max-width: var(--lobby-top-right-slot, 8.5rem);
     flex-shrink: 0;
   }
 
@@ -1884,12 +2003,12 @@ body.leaderboard-page {
     flex-direction: column;
     gap: 0.55rem;
     position: fixed;
-    left: max(0.65rem, env(safe-area-inset-left, 0px));
-    right: max(0.65rem, env(safe-area-inset-right, 0px));
-    bottom: max(0.65rem, env(safe-area-inset-bottom, 0px));
+    left: max(0.65rem, var(--lobby-safe-left));
+    right: max(0.65rem, var(--lobby-safe-right));
+    bottom: max(0.65rem, var(--lobby-safe-bottom));
     z-index: 5;
     pointer-events: none;
-    max-height: calc(100dvh - 8rem - env(safe-area-inset-top, 0px));
+    max-height: calc(100dvh - 8rem - var(--lobby-safe-top));
   }
 
   .lobby-ui .friends-panel.hud-panel,
@@ -1901,6 +2020,7 @@ body.leaderboard-page {
     bottom: auto;
     width: 100%;
     max-width: none;
+    max-height: none;
     pointer-events: auto;
   }
 
@@ -1955,16 +2075,24 @@ body.leaderboard-page {
     display: none;
   }
 
+  :root {
+    --lobby-top-right-slot: 8rem;
+  }
+
   .lobby-profile {
-    width: calc(
-      100vw - 9.25rem - max(0.65rem, env(safe-area-inset-left, 0px)) -
-        max(0.65rem, env(safe-area-inset-right, 0px))
+    width: min(
+      24rem,
+      calc(
+        100vw - var(--lobby-top-right-slot) - 1.4rem -
+          max(0.65rem, var(--lobby-safe-left)) -
+          max(0.65rem, var(--lobby-safe-right))
+      )
     );
   }
 
   .lobby-top-right {
-    width: 8rem;
-    max-width: 8rem;
+    width: var(--lobby-top-right-slot);
+    max-width: var(--lobby-top-right-slot);
   }
 
   .lobby-select-viewport {
@@ -1978,30 +2106,38 @@ body.leaderboard-page {
     padding: 0.6rem 0.55rem;
   }
 
+  :root {
+    --lobby-top-right-slot: 7.75rem;
+  }
+
   .lobby-profile {
-    width: calc(
-      100vw - 8.5rem - max(0.65rem, env(safe-area-inset-left, 0px)) -
-        max(0.65rem, env(safe-area-inset-right, 0px))
+    width: min(
+      24rem,
+      calc(
+        100vw - var(--lobby-top-right-slot) - 1.2rem -
+          max(0.65rem, var(--lobby-safe-left)) -
+          max(0.65rem, var(--lobby-safe-right))
+      )
     );
   }
 
   .lobby-top-right {
-    width: auto;
-    max-width: none;
+    width: var(--lobby-top-right-slot);
+    max-width: var(--lobby-top-right-slot);
   }
 
   .lobby-top-right .plasma-minerals-chip {
-    min-width: 9rem;
-    padding: 0.65rem 0.8rem;
+    min-width: 0;
+    padding: 0.55rem 0.65rem;
   }
 
   .lobby-top-right .plasma-minerals-icon {
-    width: 2.35rem;
-    height: 2.35rem;
+    width: 2.1rem;
+    height: 2.1rem;
   }
 
   .lobby-top-right .plasma-minerals-value {
-    font-size: 1.15rem;
+    font-size: 1.05rem;
   }
 
   .plasma-minerals-value {
@@ -2081,7 +2217,7 @@ body.leaderboard-page {
 .season-welcome-title {
   margin: 0 0 0.85rem;
   color: #fff;
-  font-size: clamp(1.45rem, 4vw, 2rem);
+  font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-shadow: 0 0 22px var(--hud-cyan-glow);
@@ -2169,7 +2305,7 @@ body.leaderboard-page {
 
 .match-xp-title {
   margin: 0;
-  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  font-size: 1.85rem;
   letter-spacing: 0.08em;
 }
 

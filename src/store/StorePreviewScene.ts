@@ -10,6 +10,7 @@ import {
   applyMeshyCharacterMaterial,
   isSharedCharacterMesh,
 } from '../content/meshyCharacterMaterial';
+import { bindGltfKtx2Renderer } from '../content/gltfLoader';
 import { bindTextureQualityRenderer } from '../content/textureQuality';
 import { DEFAULT_CHARACTER_ITEM_ID } from '../../shared/content/storeItemTypes';
 import { applyCharacterFace } from '../player/characterFace';
@@ -129,6 +130,7 @@ export class StorePreviewScene {
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     bindTextureQualityRenderer(this.renderer);
+    bindGltfKtx2Renderer(this.renderer);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(1, 1, false);
     this.renderer.setClearColor(0x000000, 0);

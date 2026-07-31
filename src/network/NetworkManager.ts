@@ -422,7 +422,13 @@ export class NetworkManager {
   applyLocalSpawn(player: Player, options?: { resetLook?: boolean }): void {
     const snapshot = this.roomClient.getLocalSnapshot();
     if (!snapshot) return;
-    player.setEyePosition(snapshot.x, snapshot.y, snapshot.z, options?.resetLook ?? true);
+    player.setEyePosition(
+      snapshot.x,
+      snapshot.y,
+      snapshot.z,
+      options?.resetLook ?? true,
+      snapshot.yaw,
+    );
     player.setProjectileSpawnOptions(snapshot.teamId, this.roomClient.sessionId ?? '');
     player.setFromSnapshot(snapshot, true);
     player.applyRespawnFromServer(snapshot);

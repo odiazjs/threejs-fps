@@ -4,18 +4,21 @@ import {
   HARVEST_MAP_SCALE,
   HARVEST_TEAM_BASE_DEFAULT_HEIGHT,
   isHarvestMapBackgroundName,
+  isHarvestMapBlueSpawnGroupName,
   isHarvestMapEditorJunkName,
   isHarvestMapEmbeddedStationName,
+  isHarvestMapEmbeddedStationPropName,
   isHarvestMapHarvestingBoxName,
   isHarvestMapOwnBoxSpawnName,
   isHarvestMapInstallBoxPosName,
+  isHarvestMapOrangeSpawnGroupName,
   isHarvestMapSpawnName,
   isHarvestMapTeamBaseName,
   harvestTeamBaseTeamId,
   isHarvestMapHillWallName,
 } from './harvestMapConfig.js';
 import {
-  setHarvestMapSpawnPoints,
+  setHarvestMapTeamSpawnPoints,
   type HarvestSpawnPoint,
 } from './harvestMapColliders.js';
 import {
@@ -26,10 +29,13 @@ import {
   harvestingBoxTeamFromName,
   type HarvestingBoxSpawn,
 } from './harvestingBoxSpawns.js';
+import { collectLevelCollisionMeshes } from './levelMeshCollisionUtils.js';
+import type { Aabb } from './levelData.js';
 
 const _spawnWorldPos = new THREE.Vector3();
 const _baseBox = new THREE.Box3();
 const _baseSize = new THREE.Vector3();
+const _structuralBox = new THREE.Box3();
 
 export interface HarvestTeamBaseAnchor {
   readonly teamId: 0 | 1;
@@ -41,64 +47,105 @@ export interface HarvestTeamBaseAnchor {
   readonly size: THREE.Vector3;
 }
 
-/**
- * Poses from the previous embedded `team_base_blue` / `team_base_orange` meshes.
- * Used only when the current GLB has no team-base markers.
- */
-const HARVEST_TEAM_BASE_FALLBACK_ANCHORS: readonly HarvestTeamBaseAnchor[] = [
-  {
-    teamId: 0,
-    position: new THREE.Vector3(-16.019567, 0, -19.410256),
-    quaternion: new THREE.Quaternion(0, 0, 0, 1),
-    groundY: 0,
-    size: new THREE.Vector3(5, 5, 5),
-  },
-  {
-    teamId: 1,
-    position: new THREE.Vector3(17.129193, 0, 19.209421),
-    quaternion: new THREE.Quaternion(0, 1, 0, 0),
-    groundY: 0,
-    size: new THREE.Vector3(5, 5, 5),
-  },
-];
+export interface HarvestTeamSpawnPoints {
+  readonly blue: HarvestSpawnPoint[];
+  readonly orange: HarvestSpawnPoint[];
+}
 
-function isUnderNamedNode(
-  object: THREE.Object3D,
-  predicate: (name: string | undefined) => boolean,
-): boolean {
-  let node: THREE.Object3D | null = object;
-  while (node) {
-    if (predicate(node.name)) return true;
-    node = node.parent;
+function markSubtreeNonCollision(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    child.visible = false;
+    if (isThreeMesh(child)) {
+      child.userData.skipCollision = true;
+      child.userData.collisionMesh = false;
+    }
+  });
+}
+
+/**
+ * Bounds from gameplay collision meshes only  skips hidden editor junk /
+ * characters so they cannot shift ground-align.
+ */
+function collisionBoundsFromRoot(root: THREE.Object3D): THREE.Box3 {
+  const box = new THREE.Box3();
+  let hasMesh = false;
+  root.updateMatrixWorld(true);
+  root.traverse((child) => {
+    if (!isThreeMesh(child)) return;
+    if (child.userData.skipCollision === true) return;
+    if (child.userData.collisionMesh !== true) return;
+    box.expandByObject(child);
+    hasMesh = true;
+  });
+  if (!hasMesh) {
+    return new THREE.Box3().setFromObject(root);
   }
-  return false;
+  return box;
+}
+
+/** Ground-align an imported map root (center XZ, min Y on floor). */
+export function groundAlignHarvestMapRoot(root: THREE.Object3D): THREE.Box3 {
+  const box = collisionBoundsFromRoot(root);
+  const center = box.getCenter(new THREE.Vector3());
+  root.position.x -= center.x;
+  root.position.z -= center.z;
+  root.position.y -= box.min.y;
+  root.updateMatrixWorld(true);
+  return collisionBoundsFromRoot(root);
 }
 
 /**
  * Mark gameplay collision meshes in harvest_map.glb.
- * RocksBG / rock dressing and the editor player armature are never collidable.
+ * RocksBG / rock dressing, editor junk, spawns, craft/box markers are excluded.
  */
 export function markHarvestMapCollisionMeshes(root: THREE.Object3D): void {
+  const skipRoots: THREE.Object3D[] = [];
+  const backgroundRoots: THREE.Object3D[] = [];
+  root.traverse((child) => {
+    if (isHarvestMapBackgroundName(child.name)) {
+      backgroundRoots.push(child);
+      return;
+    }
+    if (
+      isHarvestMapEditorJunkName(child.name) ||
+      isHarvestMapSpawnName(child.name) ||
+      isHarvestMapEmbeddedStationName(child.name) ||
+      isHarvestMapEmbeddedStationPropName(child.name) ||
+      isHarvestMapHarvestingBoxName(child.name) ||
+      isHarvestMapInstallBoxPosName(child.name) ||
+      isHarvestMapTeamBaseName(child.name) ||
+      isHarvestMapHillWallName(child.name)
+    ) {
+      skipRoots.push(child);
+    }
+  });
+  for (const skipRoot of skipRoots) {
+    markSubtreeNonCollision(skipRoot);
+  }
+  for (const bg of backgroundRoots) {
+    bg.traverse((child) => {
+      if (!isThreeMesh(child)) return;
+      child.userData.skipCollision = true;
+      child.userData.collisionMesh = false;
+    });
+  }
+
   root.traverse((child) => {
     if (!isThreeMesh(child)) return;
-    if (
-      isUnderNamedNode(child, isHarvestMapBackgroundName) ||
-      isUnderNamedNode(child, isHarvestMapEditorJunkName) ||
-      isUnderNamedNode(child, isHarvestMapEmbeddedStationName) ||
-      isUnderNamedNode(child, isHarvestMapHarvestingBoxName) ||
-      isUnderNamedNode(child, isHarvestMapTeamBaseName) ||
-      isUnderNamedNode(child, isHarvestMapHillWallName)
-    ) {
+    if (child.userData.skipCollision === true) return;
+    if ((child as THREE.SkinnedMesh).isSkinnedMesh === true) {
       child.userData.skipCollision = true;
+      child.userData.collisionMesh = false;
+      child.visible = false;
       return;
     }
     child.userData.collisionMesh = true;
-    child.castShadow = true;
+    child.castShadow = false;
     child.receiveShadow = true;
   });
 }
 
-/** Hide the leftover Mixamo player used as an editor scale reference. */
+/** Hide the leftover Mixamo / character used as an editor scale reference. */
 export function hideHarvestMapEditorJunk(root: THREE.Object3D): void {
   root.traverse((child) => {
     if (!isHarvestMapEditorJunkName(child.name)) return;
@@ -106,20 +153,72 @@ export function hideHarvestMapEditorJunk(root: THREE.Object3D): void {
   });
 }
 
-/** Hide embedded craft meshes - runtime FBX stations replace them. */
+/** Hide embedded craft empties / props - runtime GLB stations replace them. */
 export function hideHarvestMapEmbeddedStations(root: THREE.Object3D): void {
   root.traverse((child) => {
-    if (!isHarvestMapEmbeddedStationName(child.name)) return;
+    if (
+      !isHarvestMapEmbeddedStationName(child.name) &&
+      !isHarvestMapEmbeddedStationPropName(child.name)
+    ) {
+      return;
+    }
     child.visible = false;
   });
 }
 
-/** Hide embedded harvesting crate meshes  runtime FBX replaces them. */
+/** Hide embedded harvesting crate / install empties  runtime FBX replaces them. */
 export function hideHarvestMapHarvestingBoxes(root: THREE.Object3D): void {
   root.traverse((child) => {
-    if (!isHarvestMapHarvestingBoxName(child.name)) return;
+    if (
+      !isHarvestMapHarvestingBoxName(child.name) &&
+      !isHarvestMapInstallBoxPosName(child.name)
+    ) {
+      return;
+    }
     child.visible = false;
   });
+}
+
+function collectSpawnsUnderGroup(
+  group: THREE.Object3D,
+): HarvestSpawnPoint[] {
+  const points: HarvestSpawnPoint[] = [];
+  group.traverse((child) => {
+    if (child === group) return;
+    if (!isHarvestMapSpawnName(child.name)) return;
+    child.getWorldPosition(_spawnWorldPos);
+    points.push({ x: _spawnWorldPos.x, z: _spawnWorldPos.z });
+  });
+  return points;
+}
+
+/**
+ * Team spawn pools from `blue_spawn_group` / `orange_spawn_group`.
+ * Falls back to any `player_spawn*` empties split by Z sign when groups missing.
+ */
+export function extractHarvestMapTeamSpawnPoints(
+  root: THREE.Object3D,
+): HarvestTeamSpawnPoints {
+  root.updateWorldMatrix(true, true);
+  let blue: HarvestSpawnPoint[] = [];
+  let orange: HarvestSpawnPoint[] = [];
+
+  root.traverse((child) => {
+    if (isHarvestMapBlueSpawnGroupName(child.name) && blue.length === 0) {
+      blue = collectSpawnsUnderGroup(child);
+    }
+    if (isHarvestMapOrangeSpawnGroupName(child.name) && orange.length === 0) {
+      orange = collectSpawnsUnderGroup(child);
+    }
+  });
+
+  if (blue.length === 0 && orange.length === 0) {
+    const all = extractHarvestMapSpawnPoints(root);
+    blue = all.filter((p) => p.z >= 0);
+    orange = all.filter((p) => p.z < 0);
+  }
+
+  return { blue, orange };
 }
 
 export function extractHarvestMapSpawnPoints(
@@ -136,7 +235,7 @@ export function extractHarvestMapSpawnPoints(
 }
 
 /**
- * World poses for `crafting_station` markers  xz from authored pivots.
+ * World poses for `crafting_station_*` markers  xz from authored pivots.
  * Y is ignored at spawn (stations sit on the ground).
  */
 export function extractHarvestMapCraftingStationSpawns(
@@ -166,7 +265,6 @@ function findChildByNamePredicate(
   for (const child of parent.children) {
     if (predicate(child.name)) return child;
   }
-  // Blender may nest empties one level deeper.
   for (const child of parent.children) {
     for (const grand of child.children) {
       if (predicate(grand.name)) return grand;
@@ -175,9 +273,17 @@ function findChildByNamePredicate(
   return null;
 }
 
+function boxHomePriority(name: string): number {
+  const lower = name.trim().toLowerCase();
+  // Prefer numbered blue home (`harvesting_box_blue_1`) over bare `harvesting_box_blue`.
+  if (/^harvesting_box_blue_\d+$/i.test(lower)) return 2;
+  if (lower === 'harvesting_box_blue' || lower === 'harvesting_box_orange') return 1;
+  return 0;
+}
+
 /**
- * Prefer `base_own_box_spawn` + `base_install_box_pos` under each team base.
- * Falls back to legacy `harvesting_box_orange` / `harvesting_box_blue` markers.
+ * Prefer side-group `harvesting_box_*` + `*_install` markers.
+ * Also accepts legacy `base_own_box_spawn` / `base_install_box_pos` under team bases.
  */
 export function extractHarvestMapHarvestingBoxSpawns(
   root: THREE.Object3D,
@@ -186,6 +292,7 @@ export function extractHarvestMapHarvestingBoxSpawns(
 
   type PartialBox = {
     teamId: 0 | 1;
+    homePriority: number;
     x?: number;
     y?: number;
     z?: number;
@@ -200,13 +307,14 @@ export function extractHarvestMapHarvestingBoxSpawns(
     const teamId = harvestTeamBaseTeamId(child.name);
     if (teamId === null) return;
 
-    const entry: PartialBox = byTeam.get(teamId) ?? { teamId };
+    const entry: PartialBox = byTeam.get(teamId) ?? { teamId, homePriority: 0 };
     const own = findChildByNamePredicate(child, isHarvestMapOwnBoxSpawnName);
     if (own) {
       own.getWorldPosition(_spawnWorldPos);
       entry.x = _spawnWorldPos.x;
       entry.y = _spawnWorldPos.y;
       entry.z = _spawnWorldPos.z;
+      entry.homePriority = 1;
     }
     const install = findChildByNamePredicate(child, isHarvestMapInstallBoxPosName);
     if (install) {
@@ -218,17 +326,30 @@ export function extractHarvestMapHarvestingBoxSpawns(
     byTeam.set(teamId, entry);
   });
 
-  // Legacy flat markers fill any missing team homes.
   root.traverse((child) => {
+    if (isHarvestMapInstallBoxPosName(child.name)) {
+      const teamId = /blue/i.test(child.name) ? 0 : /orange/i.test(child.name) ? 1 : null;
+      if (teamId === null) return;
+      const entry: PartialBox = byTeam.get(teamId) ?? { teamId, homePriority: 0 };
+      child.getWorldPosition(_spawnWorldPos);
+      entry.installX = _spawnWorldPos.x;
+      entry.installY = _spawnWorldPos.y;
+      entry.installZ = _spawnWorldPos.z;
+      byTeam.set(teamId, entry);
+      return;
+    }
+
     if (!isHarvestMapHarvestingBoxName(child.name)) return;
     const teamId = harvestingBoxTeamFromName(child.name);
     if (teamId !== 0 && teamId !== 1) return;
-    const entry: PartialBox = byTeam.get(teamId) ?? { teamId };
-    if (entry.x === undefined) {
+    const priority = boxHomePriority(child.name);
+    const entry: PartialBox = byTeam.get(teamId) ?? { teamId, homePriority: 0 };
+    if (entry.x === undefined || priority >= entry.homePriority) {
       child.getWorldPosition(_spawnWorldPos);
       entry.x = _spawnWorldPos.x;
       entry.y = _spawnWorldPos.y;
       entry.z = _spawnWorldPos.z;
+      entry.homePriority = priority;
     }
     byTeam.set(teamId, entry);
   });
@@ -263,7 +384,7 @@ export function extractHarvestMapHarvestingBoxSpawns(
 /**
  * World pose for `team_blue_base` / `team_orange_base` markers.
  * Empty markers use {@link HARVEST_TEAM_BASE_DEFAULT_HEIGHT} with feet on the
- * arena floor (y=0). Box child empties are for crates, not base elevation.
+ * arena floor (y=0). Returns [] when the map has no team-base markers.
  */
 export function extractHarvestMapTeamBaseAnchors(
   root: THREE.Object3D,
@@ -288,7 +409,6 @@ export function extractHarvestMapTeamBaseAnchors(
       _baseBox.getCenter(position);
       groundY = _baseBox.min.y;
     } else {
-      // Empty marker: xz + yaw from the empty; feet on the arena floor.
       const height = HARVEST_TEAM_BASE_DEFAULT_HEIGHT;
       size.set(height, height, height);
       groundY = 0;
@@ -302,14 +422,7 @@ export function extractHarvestMapTeamBaseAnchors(
       size,
     });
   });
-  if (anchors.length > 0) return anchors;
-  return HARVEST_TEAM_BASE_FALLBACK_ANCHORS.map((a) => ({
-    teamId: a.teamId,
-    position: a.position.clone(),
-    quaternion: a.quaternion.clone(),
-    groundY: a.groundY,
-    size: a.size.clone(),
-  }));
+  return anchors;
 }
 
 /** Hide team-base markers  runtime FBX replaces them. */
@@ -342,7 +455,6 @@ export function extractHarvestMapHillWallAnchors(
     child.getWorldQuaternion(quaternion);
     _baseBox.setFromObject(child);
     _baseBox.getSize(_baseSize);
-    // Prefer geometric center for placement (FBX is origin-centered).
     if (!_baseBox.isEmpty()) {
       _baseBox.getCenter(position);
     }
@@ -363,27 +475,53 @@ export function hideHarvestMapHillWalls(root: THREE.Object3D): void {
   });
 }
 
+export function extractHarvestMapStructuralBoxes(root: THREE.Object3D): Aabb[] {
+  const meshes = collectLevelCollisionMeshes([root]);
+  const boxes: Aabb[] = [];
+
+  for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true, false);
+    _structuralBox.setFromObject(mesh);
+    if (_structuralBox.isEmpty()) continue;
+
+    boxes.push({
+      minX: _structuralBox.min.x,
+      minY: _structuralBox.min.y,
+      minZ: _structuralBox.min.z,
+      maxX: _structuralBox.max.x,
+      maxY: _structuralBox.max.y,
+      maxZ: _structuralBox.max.z,
+    });
+  }
+
+  return boxes;
+}
+
+export function registerHarvestMapSpawnsFromRoot(mapRoot: THREE.Object3D): void {
+  const { blue, orange } = extractHarvestMapTeamSpawnPoints(mapRoot);
+  if (blue.length > 0 || orange.length > 0) {
+    setHarvestMapTeamSpawnPoints(blue, orange);
+    return;
+  }
+  console.warn(
+    '[HarvestMap] No blue_spawn_group / orange_spawn_group player_spawn markers  using baked defaults',
+  );
+}
+
 export function prepareHarvestMapRoot(
   mapRoot: THREE.Object3D,
   scale = HARVEST_MAP_SCALE,
-): void {
+): THREE.Box3 {
   if (scale !== 1) {
     mapRoot.scale.setScalar(scale);
   }
-  mapRoot.updateMatrixWorld(true);
   markHarvestMapCollisionMeshes(mapRoot);
   hideHarvestMapEditorJunk(mapRoot);
   hideHarvestMapEmbeddedStations(mapRoot);
   hideHarvestMapHarvestingBoxes(mapRoot);
   hideHarvestMapTeamBases(mapRoot);
   hideHarvestMapHillWalls(mapRoot);
-
-  const spawns = extractHarvestMapSpawnPoints(mapRoot);
-  if (spawns.length > 0) {
-    setHarvestMapSpawnPoints(spawns);
-  } else {
-    console.warn(
-      '[HarvestMap] No spawn / spawn_N markers found - using baked defaults',
-    );
-  }
+  const bounds = groundAlignHarvestMapRoot(mapRoot);
+  registerHarvestMapSpawnsFromRoot(mapRoot);
+  return bounds;
 }

@@ -2,11 +2,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FIRING_RANGE_MODEL } from '../../../shared/level/firingRangeConfig.js';
 import {
   prepareFiringRangeMapRoot,
 } from '../../../shared/level/firingRangeMeshPrep.js';
+import { createNodeGltfLoader } from './nodeGltfLoader.js';
 
 export function installThreeNodePolyfills(): void {
   globalThis.self ??= globalThis as unknown as Window & typeof globalThis;
@@ -57,7 +57,7 @@ export async function buildFiringRangeCollisionScene(assetDir: string): Promise<
     throw new Error(`[ServerPhysics] Missing ${FIRING_RANGE_MODEL} in ${assetDir}`);
   }
 
-  const loader = new GLTFLoader();
+  const loader = createNodeGltfLoader();
   const resourcePath = `${pathToFileURL(join(assetDir, '/')).href}`;
   const bytes = readFileSync(modelPath);
   const gltf = await loader.parseAsync(

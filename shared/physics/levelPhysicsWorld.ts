@@ -423,6 +423,7 @@ export class LevelPhysicsWorld {
     z: number,
     map: MapCollisionDef,
   ): { x: number; z: number } {
+    if (map.clampToMapBounds === false) return { x, z };
     const wallPad = map.wallThickness > 0 ? map.wallThickness : 0.5;
     const limitX = map.mapHalfX - PLAYER_HALF_WIDTH - wallPad;
     const limitZ = map.mapHalfZ - PLAYER_HALF_WIDTH - wallPad;

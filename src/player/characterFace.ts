@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { DEFAULT_FACE_ID, getFaceDef } from '../content/characterFaces';
+import { createGltfLoader } from '../content/gltfLoader';
 import { optimizeObjectTextures } from '../content/textureQuality';
 
 const FACE_ATTACH_NAME = 'characterFaceAttach';
@@ -91,7 +91,8 @@ function loadFbx(loader: FBXLoader, url: string): Promise<THREE.Group> {
   });
 }
 
-function loadGltf(loader: GLTFLoader, url: string): Promise<THREE.Group> {
+function loadGltf(url: string): Promise<THREE.Group> {
+  const loader = createGltfLoader();
   return new Promise((resolve, reject) => {
     loader.load(
       url,
@@ -105,7 +106,7 @@ function loadGltf(loader: GLTFLoader, url: string): Promise<THREE.Group> {
 async function loadFaceSource(modelFile: string): Promise<THREE.Group> {
   const url = assetUrl(modelFile);
   if (isGlbModel(modelFile)) {
-    return loadGltf(new GLTFLoader(), url);
+    return loadGltf(url);
   }
 
   const loader = new FBXLoader();

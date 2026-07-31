@@ -9,11 +9,13 @@ import {
 } from '../../shared/level/levelMeshCollisionUtils';
 import { TDM_MAP_COLLISION_BAKE } from '../../shared/level/tdmMapConfig';
 import { HARVEST_MAP_COLLISION_BAKE } from '../../shared/level/harvestMapConfig';
+import { SHOWCASE_MAP_COLLISION_BAKE } from '../../shared/level/showcaseMapConfig';
 import { LevelPhysicsWorld } from '../../shared/physics/levelPhysicsWorld';
 import { initRapier } from '../../shared/physics/rapierInit';
 import { setMapPhysics } from '../../shared/level/mapMeshMovement';
 import { loadTdmMapGroundCollider } from '../../shared/level/tdmMapGroundCollider';
 import { loadHarvestMapGroundCollider } from '../../shared/level/harvestMapGroundCollider';
+import { loadShowcaseMapGroundCollider } from '../../shared/level/showcaseMapGroundCollider';
 import {
   buildCraftingStationColliders,
   getCraftingStationSpawns,
@@ -71,6 +73,16 @@ async function fetchHarvestMapCollisionBake(): Promise<BakedLevelCollisionData> 
   return parseLevelCollisionBake(await response.arrayBuffer());
 }
 
+async function fetchShowcaseMapCollisionBake(): Promise<BakedLevelCollisionData> {
+  const response = await fetch(`/3d/${SHOWCASE_MAP_COLLISION_BAKE}`);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch ${SHOWCASE_MAP_COLLISION_BAKE} (${response.status})`,
+    );
+  }
+  return parseLevelCollisionBake(await response.arrayBuffer());
+}
+
 export async function buildClientMapPhysics(
   map: MapCollisionDef,
   collisionRoots?: readonly THREE.Object3D[],
@@ -87,6 +99,21 @@ export async function buildClientMapPhysics(
     const { positions, indices } = await fetchTdmMapCollisionBake();
     clientPhysics.loadTrimesh(positions, indices);
     loadTdmMapGroundCollider(clientPhysics);
+
+    console.info(
+      `[ClientPhysics] Loaded ${map.label} baked trimesh (${Math.round(indices.length / 3)} tris)`,
+    );
+
+    if (isPhysicsColliderDebugEnabled() && scene) {
+      const debugGeometry = new THREE.BufferGeometry();
+      debugGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      debugGeometry.setIndex(new THREE.BufferAttribute(indices, 1));
+      attachPhysicsColliderDebug(scene, createTrimeshColliderDebugMesh(debugGeometry));
+    }
+  } else if (map.usesMeshCollision && map.id === 'showcase') {
+    const { positions, indices } = await fetchShowcaseMapCollisionBake();
+    clientPhysics.loadTrimesh(positions, indices);
+    loadShowcaseMapGroundCollider(clientPhysics);
 
     console.info(
       `[ClientPhysics] Loaded ${map.label} baked trimesh (${Math.round(indices.length / 3)} tris)`,
@@ -140,6 +167,8 @@ export async function buildClientMapPhysics(
       loadTdmMapGroundCollider(clientPhysics);
     } else if (map.id === 'harvest') {
       loadHarvestMapGroundCollider(clientPhysics);
+    } else if (map.id === 'showcase') {
+      loadShowcaseMapGroundCollider(clientPhysics);
     } else if (map.id === 'firing_range') {
       loadFiringRangeGroundCollider(clientPhysics);
       const crateCount = loadFiringRangeCrateColliders(clientPhysics);

@@ -56,6 +56,12 @@ async function cacheOne(
       console.warn(`[AssetCache] Failed ${url} (${response.status})`);
       return 'failed';
     }
+    const contentType = response.headers.get('content-type') ?? '';
+    // Vite SPA fallback can return index.html with 200 for missing assets.
+    if (/text\/html/i.test(contentType)) {
+      console.warn(`[AssetCache] Refusing HTML response for ${url}`);
+      return 'failed';
+    }
     await cache.put(url, response.clone());
     await putInThreeCache(url, response);
     return 'fetched';

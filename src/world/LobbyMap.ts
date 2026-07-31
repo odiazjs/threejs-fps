@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { createGltfLoader } from '../content/gltfLoader';
 import { configureColorTexture, optimizeObjectTextures } from '../content/textureQuality';
 
 const ASSET_BASE = '/3d/';
@@ -311,7 +311,7 @@ export class LobbyMap {
   }
 
   private async build(): Promise<void> {
-    const loader = new GLTFLoader();
+    const loader = createGltfLoader();
     loader.setResourcePath(ASSET_BASE);
 
     try {

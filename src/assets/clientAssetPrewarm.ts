@@ -127,10 +127,28 @@ async function fetchAudioBuffer(src: string): Promise<void> {
  * decode gameplay-critical templates, and compile shaders so match join never
  * races first-time downloads.
  */
+async function prewarmStep(
+  name: string,
+  run: () => Promise<void>,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    const detail =
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    const wrapped = new Error(`[Prewarm] ${name} failed — ${detail}`);
+    (wrapped as Error & { cause?: unknown }).cause = error;
+    console.error(wrapped);
+    throw wrapped;
+  }
+}
+
 export async function runClientAssetPrewarm(
   onProgress: ClientAssetPrewarmProgress = () => {},
 ): Promise<void> {
   enableThreeAssetCache();
+  // Ensure KTX2/Basis transcoder support before any GLB preload parse.
+  getPrewarmRenderContext();
 
   onProgress('Checking game assets...');
   let manifestVersion: string | null = null;
@@ -152,35 +170,49 @@ export async function runClientAssetPrewarm(
     console.warn('[Prewarm] Asset manifest / cache step failed — continuing', error);
   }
 
-  onProgress('Loading maps...');
-  await preloadAllMapAssets();
+  await prewarmStep('Loading maps', async () => {
+    onProgress('Loading maps...');
+    await preloadAllMapAssets();
+  });
 
-  onProgress('Loading game mode props...');
-  await Promise.all([preloadGameModeProps(), preloadFpArmsAssets()]);
+  await prewarmStep('Loading game mode props', async () => {
+    onProgress('Loading game mode props...');
+    await Promise.all([preloadGameModeProps(), preloadFpArmsAssets()]);
+  });
 
-  onProgress('Loading weapon models...');
-  await preloadWeaponMeshes();
-  await preloadGrenadeModel();
+  await prewarmStep('Loading weapon models', async () => {
+    onProgress('Loading weapon models...');
+    await preloadWeaponMeshes();
+    await preloadGrenadeModel();
+  });
 
-  onProgress('Loading drone model...');
-  const { preloadDroneModel } = await import('../content/droneModel');
-  await preloadDroneModel();
+  await prewarmStep('Loading drone model', async () => {
+    onProgress('Loading drone model...');
+    const { preloadDroneModel } = await import('../content/droneModel');
+    await preloadDroneModel();
+  });
 
-  onProgress('Loading character models...');
-  await Promise.all([
-    preloadGameCharacterModels(),
-    loadLobbyCharacterTemplate(),
-  ]);
+  await prewarmStep('Loading character models', async () => {
+    onProgress('Loading character models...');
+    await Promise.all([
+      preloadGameCharacterModels(),
+      loadLobbyCharacterTemplate(),
+    ]);
+  });
 
-  onProgress('Loading audio...');
-  await preloadAllGameAudio();
+  await prewarmStep('Loading audio', async () => {
+    onProgress('Loading audio...');
+    await preloadAllGameAudio();
+  });
 
   onProgress('Preparing combat effects...');
   warmHitSplashPool();
 
-  onProgress('Compiling shaders...');
-  const { renderer, scene, camera } = getPrewarmRenderContext();
-  await runShaderPrewarm(renderer, scene, camera);
+  await prewarmStep('Compiling shaders', async () => {
+    onProgress('Compiling shaders...');
+    const { renderer, scene, camera } = getPrewarmRenderContext();
+    await runShaderPrewarm(renderer, scene, camera);
+  });
 
   if (manifestVersion) {
     markClientAssetPrewarmComplete(manifestVersion);

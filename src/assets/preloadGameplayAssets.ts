@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { createGltfLoader } from '../content/gltfLoader';
 import { HARVEST_MAP_COLLISION_BAKE, HARVEST_MAP_METADATA_BAKE, HARVEST_MAP_MODEL } from '../../shared/level/harvestMapConfig';
 import { TDM_MAP_COLLISION_BAKE, TDM_MAP_METADATA_BAKE, TDM_MAP_MODEL } from '../../shared/level/tdmMapConfig';
 import { FIRING_RANGE_MODEL } from '../../shared/level/firingRangeConfig';
@@ -7,8 +7,6 @@ import { FIRING_RANGE_METADATA_BAKE } from '../../shared/level/firingRangeBake';
 import { LOBBY_MAP_MODEL } from '../world/LobbyMap';
 import { preloadCraftingStationModel } from '../world/craftingStationVisual';
 import { preloadHarvestingBoxModel } from '../world/harvestingBoxVisual';
-import { preloadTeamBaseModels } from '../world/teamBaseVisual';
-import { preloadHillWallModel } from '../world/hillWallVisual';
 import {
   FP_ARMS_PISTOL_IDLE_FILE,
   FP_ARMS_RELOAD_FILE,
@@ -37,7 +35,7 @@ async function prefetchUrl(url: string): Promise<void> {
     await response.arrayBuffer();
     return;
   }
-  // Match FileLoader expectations — never stash images as ArrayBuffers.
+  // Match FileLoader expectations ï¿½ never stash images as ArrayBuffers.
   if (/\.(json|txt)$/i.test(url)) {
     THREE.Cache.add(url, await response.text());
     return;
@@ -55,7 +53,7 @@ async function prefetchUrl(url: string): Promise<void> {
  */
 export async function preloadAllMapAssets(): Promise<void> {
   enableThreeAssetCache();
-  const loader = new GLTFLoader();
+  const loader = createGltfLoader();
   loader.setResourcePath(ASSET_BASE);
 
   const glbFiles = [
@@ -67,7 +65,7 @@ export async function preloadAllMapAssets(): Promise<void> {
 
   await Promise.all([
     ...glbFiles.map(async (file) => {
-      const url = mapUrl(file);
+      const url = `${ASSET_BASE}${file.split('/').map(encodeURIComponent).join('/')}`;
       try {
         await loader.loadAsync(url);
       } catch (error) {
@@ -95,8 +93,6 @@ export async function preloadGameModeProps(): Promise<void> {
   await Promise.all([
     preloadCraftingStationModel(),
     preloadHarvestingBoxModel(),
-    preloadTeamBaseModels(),
-    preloadHillWallModel(),
   ]);
 }
 

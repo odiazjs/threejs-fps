@@ -2,24 +2,41 @@
 export const HARVEST_MAP_MODEL = 'harvest_map.glb';
 export const HARVEST_MAP_METADATA_BAKE = 'harvest_map_bake.json';
 export const HARVEST_MAP_COLLISION_BAKE = 'harvest_map_collision.bin';
-export const HARVEST_MAP_SCALE = 1.25;
+export const HARVEST_MAP_SCALE = 1;
 
 /**
- * Playable footprint from harvest_map.glb world bounds at {@link HARVEST_MAP_SCALE}.
- * Unscaled authored extents were ~90 x 118.
+ * Playable footprint from bake bounds of harvest_map.glb.
+ * Values are world extents after prepare (scale + ground-align).
  */
-export const HARVEST_MAP_WIDTH = 90 * HARVEST_MAP_SCALE;
-export const HARVEST_MAP_DEPTH = 118 * HARVEST_MAP_SCALE;
-export const HARVEST_MAP_WALL_THICK = 0.55;
+export const HARVEST_MAP_WIDTH = 61;
+export const HARVEST_MAP_DEPTH = 55.3;
+export const HARVEST_MAP_WALL_THICK = 0;
 export const HARVEST_MAP_GROUND_THICK = 0.02;
 
+/** Ceiling-mounted neon spotlights (pointing straight down). */
+export const HARVEST_MAP_CEILING_Y = 7.25;
+export const HARVEST_NEON_ORANGE = 0xff5a00;
+export const HARVEST_NEON_BLUE = 0x2a8cff;
+
 /**
- * Actual player spawn empties are `spawn` / `spawn_N`.
- * Group markers like `Spawn_Points_Orange` must not count as spawns.
+ * Player spawn empties: `player_spawn` / `player_spawn_N`.
+ * Team pools come from `blue_spawn_group` / `orange_spawn_group`.
  */
+const HARVEST_SPAWN_NAME_RE = /^player_spawn(?:_\d+)?$/i;
+
 export function isHarvestMapSpawnName(name: string | undefined): boolean {
   if (typeof name !== 'string') return false;
-  return /^spawn(_\d+)?$/i.test(name.trim());
+  return HARVEST_SPAWN_NAME_RE.test(name.trim());
+}
+
+export function isHarvestMapBlueSpawnGroupName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  return name.trim().toLowerCase() === 'blue_spawn_group';
+}
+
+export function isHarvestMapOrangeSpawnGroupName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  return name.trim().toLowerCase() === 'orange_spawn_group';
 }
 
 /** RocksBG / rock_* / LOD rock meshes are environmental dressing. */
@@ -36,29 +53,60 @@ export function isHarvestMapBackgroundName(name: string | undefined): boolean {
 /** Editor leftover character / mixamo armature - hide + no collision. */
 export function isHarvestMapEditorJunkName(name: string | undefined): boolean {
   if (typeof name !== 'string') return false;
-  const lower = name.toLowerCase();
+  const lower = name.trim().toLowerCase();
   return (
+    lower === 'character' ||
+    lower.startsWith('character_') ||
     lower === 'player' ||
     lower === 'temp' ||
-    lower.startsWith('mixamorig')
+    lower.startsWith('mixamorig') ||
+    isHarvestMapBlueSpawnGroupName(name) ||
+    isHarvestMapOrangeSpawnGroupName(name)
   );
 }
 
-/** Embedded GLB craft props - we spawn runtime FBX stations at these markers. */
+/**
+ * Crafting-station placement empties:
+ * `crafting_station_1`, `crafting_station_1_1`, `crafting_station_1_2`, ù
+ */
 export function isHarvestMapEmbeddedStationName(name: string | undefined): boolean {
   if (typeof name !== 'string') return false;
-  return /^crafting_station(_\d+)?$/i.test(name.trim());
+  return /^crafting_station(?:_\d+)+$/i.test(name.trim());
 }
 
-/** Embedded harvesting crate markers ó runtime FBX replaces them. */
-export function isHarvestMapHarvestingBoxName(name: string | undefined): boolean {
+/** Embedded station mesh in the GLB ù runtime loads crafting_station_2.glb. */
+export function isHarvestMapEmbeddedStationPropName(
+  name: string | undefined,
+): boolean {
   if (typeof name !== 'string') return false;
-  return /^harvesting_box_(orange|blue)$/i.test(name.trim());
+  const lower = name.trim().toLowerCase();
+  return lower === 'crafting_station_2glb' || lower.includes('crafting_station_2');
 }
 
 /**
- * Team base placement markers in harvest_map.glb.
- * Accepts `team_blue_base` / `team_orange_base` (preferred) and legacy
+ * Harvesting-box home markers (not install spots).
+ * Prefers `harvesting_box_blue_1` when present; also accepts `harvesting_box_blue`.
+ */
+export function isHarvestMapHarvestingBoxName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  const lower = name.trim().toLowerCase();
+  if (lower.endsWith('_install')) return false;
+  return (
+    lower === 'harvesting_box_orange' ||
+    lower === 'harvesting_box_blue' ||
+    /^harvesting_box_blue_\d+$/i.test(lower)
+  );
+}
+
+/** Install pad empties: `harvesting_box_blue_install` / `harvesting_box_orange_install`. */
+export function isHarvestMapInstallBoxPosName(name: string | undefined): boolean {
+  if (typeof name !== 'string') return false;
+  return /^harvesting_box_(orange|blue)_install$/i.test(name.trim());
+}
+
+/**
+ * Team base placement markers (legacy ù new harvest_map has no FBX bases).
+ * Accepts `team_blue_base` / `team_orange_base` and legacy
  * `team_base_blue` / `team_base_orange`.
  */
 export function isHarvestMapTeamBaseName(name: string | undefined): boolean {
@@ -74,26 +122,22 @@ export function harvestTeamBaseTeamId(name: string | undefined): 0 | 1 | null {
   return /blue/i.test(name!) ? 0 : 1;
 }
 
-/** Child of a team base: where that team's harvesting box spawns. */
+/** Legacy child of a team base: where that team's harvesting box spawns. */
 export function isHarvestMapOwnBoxSpawnName(name: string | undefined): boolean {
   if (typeof name !== 'string') return false;
   return /^base_own_box_spawn(_\d+)?$/i.test(name.trim());
 }
 
-/**
- * Child of a team base: where an opponent's harvesting box is installed
- * to score.
- */
-export function isHarvestMapInstallBoxPosName(name: string | undefined): boolean {
-  if (typeof name !== 'string') return false;
-  return /^base_install_box_pos(_\d+)?$/i.test(name.trim());
-}
-
 /** Default world height for empty team-base markers (drives FBX uniform scale). */
 export const HARVEST_TEAM_BASE_DEFAULT_HEIGHT = 5;
 
-/** Center hill wall mesh replaced at runtime by Meshy FBX. */
+/** Center hill wall mesh replaced at runtime by Meshy FBX (legacy). */
 export function isHarvestMapHillWallName(name: string | undefined): boolean {
   if (typeof name !== 'string') return false;
   return /^hill_wall$/i.test(name.trim());
+}
+
+/** Blue (+Z) faces midfield (?Z); orange (?Z) faces midfield (+Z). */
+export function harvestSpawnYawForTeam(teamId: number): number {
+  return teamId % 2 === 0 ? Math.PI : 0;
 }

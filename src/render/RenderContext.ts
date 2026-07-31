@@ -18,6 +18,7 @@ import {
 import { updateLineResolution } from '../visuals/edgeLines';
 import { AtmospherePass } from './AtmospherePass';
 import { ScopeWorldBlurPass } from './ScopeWorldBlurPass';
+import { bindGltfKtx2Renderer } from '../content/gltfLoader';
 import { bindTextureQualityRenderer } from '../content/textureQuality';
 import {
   getGraphicsQualitySummary,
@@ -113,6 +114,7 @@ export class RenderContext {
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.toneMappingExposure = 1;
     bindTextureQualityRenderer(this.renderer);
+    bindGltfKtx2Renderer(this.renderer);
     this.applyPixelRatio();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(this.renderer.domElement);
@@ -134,7 +136,7 @@ export class RenderContext {
     this.syncComposerSize();
   }
 
-  /** Map-specific tone mapping + post FX (Chrono-Bowl cinematic dusk). */
+  /** Map-specific tone mapping + post FX. */
   setMapLook(_preset: MapLookPreset): void {
     this.applyMapLook();
   }

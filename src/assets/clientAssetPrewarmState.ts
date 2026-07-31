@@ -1,5 +1,5 @@
 /** Bump when bootstrap code paths change (beyond content hashes). */
-export const CLIENT_ASSET_PREWARM_CODE_VERSION = 2;
+export const CLIENT_ASSET_PREWARM_CODE_VERSION = 3;
 
 const STORAGE_KEY = 'fps:client-assets-prewarmed';
 const MANIFEST_KEY = 'fps:client-assets-manifest-version';

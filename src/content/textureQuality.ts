@@ -26,6 +26,10 @@ const DATA_MAP_KEYS = [
 
 let maxAnisotropy = 8;
 
+function isCompressedTexture(texture: THREE.Texture): boolean {
+  return (texture as THREE.CompressedTexture).isCompressedTexture === true;
+}
+
 /** Cache GPU max anisotropy (clamped by graphics quality tier). */
 export function bindTextureQualityRenderer(renderer: THREE.WebGLRenderer): void {
   const gpuMax = Math.max(1, renderer.capabilities.getMaxAnisotropy());
@@ -39,24 +43,27 @@ export function getTextureMaxAnisotropy(): number {
   return maxAnisotropy;
 }
 
-/** Albedo / emissive / other sRGB color maps. */
-export function configureColorTexture(texture: THREE.Texture): void {
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.generateMipmaps = true;
+function applySharedTextureFilters(texture: THREE.Texture): void {
+  // KTX2/Basis already ships mip chains — do not ask WebGL to regenerate them.
+  if (!isCompressedTexture(texture)) {
+    texture.generateMipmaps = true;
+  }
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.anisotropy = maxAnisotropy;
   texture.needsUpdate = true;
 }
 
+/** Albedo / emissive / other sRGB color maps. */
+export function configureColorTexture(texture: THREE.Texture): void {
+  texture.colorSpace = THREE.SRGBColorSpace;
+  applySharedTextureFilters(texture);
+}
+
 /** Normals / roughness / metalness / AO (linear data). */
 export function configureDataTexture(texture: THREE.Texture): void {
   texture.colorSpace = THREE.NoColorSpace;
-  texture.generateMipmaps = true;
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  texture.magFilter = THREE.LinearFilter;
-  texture.anisotropy = maxAnisotropy;
-  texture.needsUpdate = true;
+  applySharedTextureFilters(texture);
 }
 
 /**

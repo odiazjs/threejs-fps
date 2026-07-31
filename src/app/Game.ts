@@ -1,7 +1,14 @@
 import * as THREE from 'three';
 import { EYE_HEIGHT } from '../../shared/level/levelData';
 import { feetYFromNetworkEyeY } from '../../shared/combat/crouch';
-import { DEFAULT_MAP_ID, getMapDef, mapHasMinimap, setClientMapDef, type MapId } from '../../shared/level/maps';
+import {
+  DEFAULT_MAP_ID,
+  getMapDef,
+  mapHasMinimap,
+  resolveMapSpawnYaw,
+  setClientMapDef,
+  type MapId,
+} from '../../shared/level/maps';
 import {
   allowsMidMatchLoadoutSwitch,
   getCountdownDisplayValue,
@@ -98,6 +105,7 @@ import { MatchPlaytestLog } from '../debug/MatchPlaytestLog';
 import { loadFiringRangeMinimapLayout } from '../content/firingRangeMinimap';
 import { loadTdmMapMinimapLayout } from '../content/tdmMapMinimap';
 import { loadHarvestMapMinimapLayout } from '../content/harvestMapMinimap';
+import { loadShowcaseMapMinimapLayout } from '../content/showcaseMapMinimap';
 import { MatchHud, resolveMatchSnapshot } from '../ui/MatchHud';
 import { MatchCountdownOverlay } from '../ui/MatchCountdownOverlay';
 import { HarvestRoundOverlay } from '../ui/HarvestRoundOverlay';
@@ -544,6 +552,18 @@ export class Game {
         this.minimapHud.setMapActive(false);
         this.tacticalMapOverlay.setMapActive(false);
       }
+    } else if (initialMapId === 'showcase') {
+      try {
+        const minimapLayout = await loadShowcaseMapMinimapLayout();
+        this.minimapHud.setLayout(minimapLayout);
+        this.tacticalMapOverlay.setLayout(minimapLayout);
+        this.minimapHud.setMapActive(true);
+        this.tacticalMapOverlay.setMapActive(true);
+      } catch (error) {
+        console.warn('[Game] Failed to load Showcase minimap', error);
+        this.minimapHud.setMapActive(false);
+        this.tacticalMapOverlay.setMapActive(false);
+      }
     } else {
       this.minimapHud.setMapActive(false);
       this.tacticalMapOverlay.setMapActive(false);
@@ -971,10 +991,13 @@ export class Game {
       isCompetitiveGameMode(mode) && mapDef.pickTeamSpawnPoint
         ? mapDef.pickTeamSpawnPoint(0, 0)
         : mapDef.pickSpawnPoint(0);
-    this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z);
+    const spawnYaw = resolveMapSpawnYaw(mapDef, 0);
+    this.player.setMapCollisionDef(mapDef);
+    this.player.setEyePosition(spawn.x, EYE_HEIGHT, spawn.z, true, spawnYaw);
     this.player.attachToScene(this.scene);
     this.playerControls = new PlayerControls(this.player.aimRig!, this.player.pitchRig!);
     this.player.bindAimControls(this.playerControls.controls);
+    this.playerControls.controls.resetLook(spawnYaw);
     this.playerControls.setStaminaHud(this.staminaHud);
     this.playerControls.setAmmoHud(this.ammoHud);
     this.playerControls.setHealthHud(this.healthHud);

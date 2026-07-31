@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createFlatKitMesh } from '../../shared/visuals/edgeLines';
 import {
   FIRING_RANGE_DEPTH,
@@ -9,6 +8,7 @@ import {
 import {
   prepareFiringRangeMapRoot,
 } from '../../shared/level/firingRangeMeshPrep';
+import { createGltfLoader } from '../content/gltfLoader';
 import { optimizeObjectTextures } from '../content/textureQuality';
 
 const ASSET_BASE = '/3d/';
@@ -49,7 +49,7 @@ export class FiringRangeMap {
   }
 
   private async build(): Promise<void> {
-    const loader = new GLTFLoader();
+    const loader = createGltfLoader();
     loader.setResourcePath(ASSET_BASE);
 
     try {
