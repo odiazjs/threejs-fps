@@ -34,7 +34,7 @@ export function yawForHarvestCraftingStation(x: number, z: number): number {
 
 /** Base authored height before the world scale bump. */
 const STATION_BASE_HEIGHT = 2.2;
-/** Runtime station height (base ù 1.20). */
+/** Runtime station height (base ÔøΩ 1.20). */
 export const CRAFTING_STATION_SCALE = 1.2;
 export const CRAFTING_STATION_HEIGHT = STATION_BASE_HEIGHT * CRAFTING_STATION_SCALE;
 /** Front interact point distance from station origin (scales with model). */
@@ -52,7 +52,7 @@ export const CRAFTING_STATION_COLLISION_HALF = {
 
 /**
  * Fallback `crafting_station_*` marker xz from blue/orange side groups.
- * Y is unused for placement ù stations sit on the ground (feet at y=0).
+ * Y is unused for placement ÔøΩ stations sit on the ground (feet at y=0).
  */
 const HARVEST_STATIONS: readonly CraftingStationSpawn[] = [
   {

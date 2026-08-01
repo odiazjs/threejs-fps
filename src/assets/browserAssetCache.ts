@@ -17,7 +17,7 @@ export function enableThreeAssetCache(): void {
 
 /**
  * Formats safe for THREE.FileLoader's Cache (ArrayBuffer / text).
- * Never put images here ù ImageLoader expects HTMLImageElement / ImageBitmap;
+ * Never put images here ÔøΩ ImageLoader expects HTMLImageElement / ImageBitmap;
  * an ArrayBuffer causes `texSubImage2D` overload failures.
  */
 function isFileLoaderAsset(url: string): boolean {
@@ -36,7 +36,7 @@ async function putInThreeCache(url: string, response: Response): Promise<void> {
     const buffer = await response.clone().arrayBuffer();
     THREE.Cache.add(url, buffer);
   } catch {
-    // Cache miss is fine ù loaders will fetch normally.
+    // Cache miss is fine ÔøΩ loaders will fetch normally.
   }
 }
 
@@ -93,7 +93,7 @@ async function mapPool<T, R>(
 
 /**
  * Copy Cache API entries into THREE.Cache for this JS realm (lobby and game
- * iframe do not share memory ù call on each page boot after a prior download).
+ * iframe do not share memory ÔøΩ call on each page boot after a prior download).
  */
 export async function hydrateThreeCacheFromBrowser(
   manifest: AssetManifest,
@@ -124,7 +124,7 @@ export async function ensureBrowserAssetsCached(
   enableThreeAssetCache();
 
   if (typeof caches === 'undefined') {
-    // Private mode / unsupported ó still warm THREE.Cache via fetch.
+    // Private mode / unsupported ÔøΩ still warm THREE.Cache via fetch.
     const urls = Object.keys(manifest.files);
     let done = 0;
     let fetched = 0;

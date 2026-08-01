@@ -17,7 +17,7 @@ const sourceDir = join(
 const targetDir = join(process.cwd(), 'public', 'basis');
 
 if (!statSync(sourceDir, { throwIfNoEntry: false })?.isDirectory()) {
-  console.error(`[sync-basis] Missing ${sourceDir} — run npm install`);
+  console.error(`[sync-basis] Missing ${sourceDir} ï¿½ run npm install`);
   process.exit(1);
 }
 

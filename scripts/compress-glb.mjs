@@ -14,8 +14,8 @@ import { fileURLToPath } from 'node:url';
  *   npm run compress:glb -- <input.glb> <output.glb>
  *
  * Modes (COMPRESS_KTX2_MODE):
- *   mix   (default) — UASTC for normal/ORM, high-quality ETC1S for the rest
- *   uastc           — UASTC for every texture (highest quality, larger files)
+ *   mix   (default) ï¿½ UASTC for normal/ORM, high-quality ETC1S for the rest
+ *   uastc           ï¿½ UASTC for every texture (highest quality, larger files)
  */
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -121,7 +121,7 @@ try {
   ensureKtxTools();
   if (inputPath === outputPath) {
     console.warn(
-      '[compress:glb] Input and output are the same file — prefer compressing from a .source.glb backup',
+      '[compress:glb] Input and output are the same file ï¿½ prefer compressing from a .source.glb backup',
     );
   }
 

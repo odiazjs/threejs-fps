@@ -145,7 +145,7 @@ vite.config.ts.timestamp-*
 # Colyseus server build
 server/dist/
 
-# Lobby map source props (FBX/PNG) — not shipped; runtime uses lobby_map.glb
+# Lobby map source props (FBX/PNG) ï¿½ not shipped; runtime uses lobby_map.glb
 3d/props art/
 public/3d/props art/
 tmp/

@@ -67,14 +67,14 @@ export function isHarvestMapEditorJunkName(name: string | undefined): boolean {
 
 /**
  * Crafting-station placement empties:
- * `crafting_station_1`, `crafting_station_1_1`, `crafting_station_1_2`, ù
+ * `crafting_station_1`, `crafting_station_1_1`, `crafting_station_1_2`, ÔøΩ
  */
 export function isHarvestMapEmbeddedStationName(name: string | undefined): boolean {
   if (typeof name !== 'string') return false;
   return /^crafting_station(?:_\d+)+$/i.test(name.trim());
 }
 
-/** Embedded station mesh in the GLB ù runtime loads crafting_station_2.glb. */
+/** Embedded station mesh in the GLB ÔøΩ runtime loads crafting_station_2.glb. */
 export function isHarvestMapEmbeddedStationPropName(
   name: string | undefined,
 ): boolean {
@@ -105,7 +105,7 @@ export function isHarvestMapInstallBoxPosName(name: string | undefined): boolean
 }
 
 /**
- * Team base placement markers (legacy ù new harvest_map has no FBX bases).
+ * Team base placement markers (legacy ÔøΩ new harvest_map has no FBX bases).
  * Accepts `team_blue_base` / `team_orange_base` and legacy
  * `team_base_blue` / `team_base_orange`.
  */

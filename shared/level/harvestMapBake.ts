@@ -40,12 +40,12 @@ export function parseHarvestMapBakeMetadata(raw: string): HarvestMapBakeMetadata
   }
   if (!Array.isArray(data.spawns) || data.spawns.length === 0) {
     throw new Error(
-      'harvest map bake is missing spawns — re-run `npm run bake:harvest-map`',
+      'harvest map bake is missing spawns ï¿½ re-run `npm run bake:harvest-map`',
     );
   }
   if (!Array.isArray(data.structuralBoxes)) {
     throw new Error(
-      'harvest map bake is missing structuralBoxes — re-run `npm run bake:harvest-map`',
+      'harvest map bake is missing structuralBoxes ï¿½ re-run `npm run bake:harvest-map`',
     );
   }
   // Accept v1 bakes (no team pools) by normalizing to v2 shape.

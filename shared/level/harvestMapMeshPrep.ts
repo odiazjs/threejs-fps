@@ -63,7 +63,7 @@ function markSubtreeNonCollision(root: THREE.Object3D): void {
 }
 
 /**
- * Bounds from gameplay collision meshes only ù skips hidden editor junk /
+ * Bounds from gameplay collision meshes only ÔøΩ skips hidden editor junk /
  * characters so they cannot shift ground-align.
  */
 function collisionBoundsFromRoot(root: THREE.Object3D): THREE.Box3 {
@@ -166,7 +166,7 @@ export function hideHarvestMapEmbeddedStations(root: THREE.Object3D): void {
   });
 }
 
-/** Hide embedded harvesting crate / install empties ù runtime FBX replaces them. */
+/** Hide embedded harvesting crate / install empties ÔøΩ runtime FBX replaces them. */
 export function hideHarvestMapHarvestingBoxes(root: THREE.Object3D): void {
   root.traverse((child) => {
     if (
@@ -235,7 +235,7 @@ export function extractHarvestMapSpawnPoints(
 }
 
 /**
- * World poses for `crafting_station_*` markers ù xz from authored pivots.
+ * World poses for `crafting_station_*` markers ÔøΩ xz from authored pivots.
  * Y is ignored at spawn (stations sit on the ground).
  */
 export function extractHarvestMapCraftingStationSpawns(
@@ -425,7 +425,7 @@ export function extractHarvestMapTeamBaseAnchors(
   return anchors;
 }
 
-/** Hide team-base markers ù runtime FBX replaces them. */
+/** Hide team-base markers ÔøΩ runtime FBX replaces them. */
 export function hideHarvestMapTeamBases(root: THREE.Object3D): void {
   root.traverse((child) => {
     if (!isHarvestMapTeamBaseName(child.name)) return;
@@ -467,7 +467,7 @@ export function extractHarvestMapHillWallAnchors(
   return anchors;
 }
 
-/** Hide authored hill wall ù runtime FBX replaces it. */
+/** Hide authored hill wall ÔøΩ runtime FBX replaces it. */
 export function hideHarvestMapHillWalls(root: THREE.Object3D): void {
   root.traverse((child) => {
     if (!isHarvestMapHillWallName(child.name)) return;
@@ -504,7 +504,7 @@ export function registerHarvestMapSpawnsFromRoot(mapRoot: THREE.Object3D): void 
     return;
   }
   console.warn(
-    '[HarvestMap] No blue_spawn_group / orange_spawn_group player_spawn markers ù using baked defaults',
+    '[HarvestMap] No blue_spawn_group / orange_spawn_group player_spawn markers ÔøΩ using baked defaults',
   );
 }
 

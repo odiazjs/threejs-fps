@@ -4,8 +4,8 @@ import type { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 
 /**
  * Bake / server collision only needs mesh geometry. KTX2 textures in the GLB
- * still force GLTFLoader to call setKTX2Loader — provide a stub that returns
- * a 1×1 placeholder instead of running the Basis transcoder in Node.
+ * still force GLTFLoader to call setKTX2Loader ï¿½ provide a stub that returns
+ * a 1ï¿½1 placeholder instead of running the Basis transcoder in Node.
  */
 function createStubKtx2Loader(): KTX2Loader {
   const stub = {
