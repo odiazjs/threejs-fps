@@ -93,8 +93,15 @@ export class WeaponSwaySystem {
   private adsBlocksCarry = false;
   private wasShooting = false;
 
-  /** 0..1 sway scale computed per frame (ADS / reload / breath). */
+  /** 0..1 sway scale for weapon + camera (ADS / reload / breath). */
   private swayScale = 1;
+  /** Separate scale for HUD crosshair float (can stay lively while gun is steady). */
+  private crosshairSwayScale = 1;
+  /**
+   * Extra scale on idle figure-8 / camera breathe only (hip + standing still).
+   * Walk / strafe / jump use {@link swayScale} without this boost.
+   */
+  private idleSwayBoost = 1;
   /** Look-lag scale this frame (ADS can zero it for sniper). */
   private lookLagScale = 1;
   private reloading = false;
@@ -152,6 +159,7 @@ export class WeaponSwaySystem {
     this.adsBlocksCarry = false;
     this.wasShooting = false;
     this.swayScale = 1;
+    this.crosshairSwayScale = 1;
     this.lookLagScale = 1;
     this.reloading = false;
     this.adsFactor = 1;
@@ -255,6 +263,34 @@ export class WeaponSwaySystem {
     const reloadDamp = input.reloading ? 0.12 : 1;
     this.swayScale = this.adsFactor * reloadDamp * (1 - this.carryBlend);
     this.lookLagScale = THREE.MathUtils.lerp(1, feel.lookLagAdsScale, input.adsBlend);
+
+    // Idle-only hipfire boost: fade out with ADS, walk, strafe/move, or airborne.
+    const hipIdle = feel.hipIdleSwayScale ?? 1;
+    const moveBusy = THREE.MathUtils.clamp(
+      Math.hypot(input.moveX, input.moveZ),
+      0,
+      1,
+    );
+    const locoBusy = Math.max(
+      this.walkBlend,
+      moveBusy,
+      input.grounded ? 0 : 1,
+      input.sprinting ? 1 : 0,
+    );
+    const hipIdleAtRest = THREE.MathUtils.lerp(hipIdle, 1, input.adsBlend);
+    this.idleSwayBoost = THREE.MathUtils.lerp(hipIdleAtRest, 1, locoBusy);
+
+    // Crosshair can keep (or boost) ADS wander while the weapon stays nearly still.
+    const crossBase = feel.crosshairAdsScale ?? feel.adsScale;
+    const crossBoost = feel.crosshairAdsBoost ?? 1;
+    const crossAdsAmp = breath
+      ? crossBase * breath.adsAmpMultiplier * breathScale * crossBoost
+      : crossBase * crossBoost;
+    this.crosshairSwayScale =
+      THREE.MathUtils.lerp(1, crossAdsAmp, input.adsBlend) *
+      reloadDamp *
+      (1 - this.carryBlend) *
+      this.idleSwayBoost;
 
     /* ---- phase advance ---- */
     const freq = feel.idleFreq * THREE.MathUtils.lerp(1, feel.walkFreqMultiplier, this.walkBlend);
@@ -361,8 +397,11 @@ export class WeaponSwaySystem {
 
     /* ---- idle / walk figure-8 + layered noise + breath bob ---- */
     const walkAmp = this.walkAmpFactor();
-    const p = feel.idleAmp * walkAmp * this.swayScale;
-    const r = feel.idleRotAmp * walkAmp * this.swayScale;
+    // idleSwayBoost only amplifies standing-still hipfire; walkAmp already
+    // handles locomotion amplitude without the idle multiplier.
+    const idleScale = this.swayScale * this.idleSwayBoost;
+    const p = feel.idleAmp * walkAmp * idleScale;
+    const r = feel.idleRotAmp * walkAmp * idleScale;
 
     if (p > 0 || r > 0) {
       const t = this.phase * TAU;
@@ -383,7 +422,7 @@ export class WeaponSwaySystem {
 
     // Slow breathing bob — strongest at true idle, eased while walking.
     const breathIdle = 1 - this.walkBlend * 0.65;
-    const breathAmp = feel.idleBobAmp * this.swayScale * breathIdle;
+    const breathAmp = feel.idleBobAmp * idleScale * breathIdle;
     if (breathAmp > 1e-5) {
       weapon.position.y += Math.sin(this.breathPhase * TAU) * breathAmp;
     }
@@ -433,7 +472,12 @@ export class WeaponSwaySystem {
    * Jump/land pitch is mirrored lightly so landings read when the gun is hand-bound.
    */
   applyCamera(yawRig: THREE.Object3D, pitchRig: THREE.Object3D): void {
-    const r = this.feel.idleRotAmp * this.walkAmpFactor() * this.swayScale * CAMERA_SWAY_SCALE;
+    const r =
+      this.feel.idleRotAmp *
+      this.walkAmpFactor() *
+      this.swayScale *
+      this.idleSwayBoost *
+      CAMERA_SWAY_SCALE;
     if (r > 0) {
       const t = this.phase * TAU;
       const nX = layeredNoise1D(this.noiseTime * 0.55, 3.1) * this.feel.noiseAmp;
@@ -447,5 +491,33 @@ export class WeaponSwaySystem {
       pitchRig.rotation.x += this.locoPitch.value * camLoco;
       // Tiny vertical feel via pitch rig only — avoid fighting HeadBob on position.
     }
+  }
+
+  /**
+   * Screen-space crosshair float matching camera idle sway (radians → px).
+   * Uses {@link crosshairSwayScale} so sniper can keep reticle wander with a steady gun.
+   */
+  readCrosshairSwayOffset(
+    out: { x: number; y: number },
+    viewHeight: number,
+    fovDeg: number,
+  ): void {
+    out.x = 0;
+    out.y = 0;
+    const r =
+      this.feel.idleRotAmp * this.walkAmpFactor() * this.crosshairSwayScale * CAMERA_SWAY_SCALE;
+    if (!(r > 0) || !(viewHeight > 0) || !(fovDeg > 0)) return;
+
+    const t = this.phase * TAU;
+    const nX = layeredNoise1D(this.noiseTime * 0.55, 3.1) * this.feel.noiseAmp;
+    const nY = layeredNoise1D(this.noiseTime * 0.47, 7.7) * this.feel.noiseAmp;
+    const yawRad = (Math.sin(t) * 0.4 + nX * 0.6) * r * 0.55;
+    const pitchRad = (Math.sin(t * 2) * 0.35 + nY * 0.6) * r * 0.7;
+
+    const halfFov = THREE.MathUtils.degToRad(fovDeg) * 0.5;
+    const pxPerRad = viewHeight * 0.5 / Math.tan(halfFov);
+    out.x = Math.tan(yawRad) * pxPerRad;
+    // Pitch up → crosshair moves up (negative CSS Y).
+    out.y = -Math.tan(pitchRad) * pxPerRad;
   }
 }

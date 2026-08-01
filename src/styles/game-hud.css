@@ -183,6 +183,27 @@ body.game-page * {
   background: rgb(255, 72, 58);
   box-shadow: 0 0 8px rgba(255, 60, 45, 0.9);
 }
+/* Sniper ADS: soft dark ring on the optic rim only — inside & outside stay clear. */
+#scope-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  display: none;
+  background: radial-gradient(
+    circle at var(--scope-x, 50%) var(--scope-y, 50%),
+    transparent 0px,
+    transparent calc(var(--scope-r, 200px) * 0.86),
+    rgba(0, 0, 0, 0.28) calc(var(--scope-r, 200px) * 0.94),
+    rgba(0, 0, 0, 0.62) var(--scope-r, 200px),
+    rgba(0, 0, 0, 0.28) calc(var(--scope-r, 200px) * 1.05),
+    transparent calc(var(--scope-r, 200px) * 1.14),
+    transparent 100%
+  );
+}
+#scope-vignette.visible {
+  display: block;
+}
 #crosshair {
   position: fixed;
   top: 50%;
@@ -263,16 +284,91 @@ body.game-page * {
 #crosshair.ads .crosshair-ads-dot {
   display: block;
 }
-/* Sniper scope lens has its own glass reticle — no HUD center dot. */
-#crosshair.ads-scope-lens .crosshair-ads-dot {
-  display: none;
-}
 #crosshair.ads.hit .crosshair-ads-dot {
   border-color: rgb(255, 72, 58);
   background: rgba(255, 72, 58, 0.4);
   box-shadow:
     0 0 6px rgba(255, 60, 45, 0.95),
     0 0 14px rgba(255, 60, 45, 0.55);
+}
+/* Hide all reticle art while sniper ADS pose is still blending. */
+#crosshair.ads-suppress .crosshair-reticle,
+#crosshair.ads-suppress .crosshair-ads-dot,
+#crosshair.ads-suppress .crosshair-optic-pip {
+  display: none !important;
+}
+/* Sniper optic ADS: thin crisp cross sized in JS to match scope end ring. */
+#crosshair.ads-optic-cross {
+  width: 256px;
+  height: 256px;
+}
+#crosshair.ads-optic-cross .crosshair-ads-dot {
+  display: none;
+}
+#crosshair.ads-optic-cross .crosshair-reticle {
+  display: block;
+}
+#crosshair.ads-optic-cross .crosshair-reticle span {
+  width: 2px;
+  height: 50%;
+  border-radius: 0;
+  background: rgb(46, 252, 255);
+  box-shadow: 0 0 3px rgba(46, 252, 255, 0.55);
+}
+#crosshair.ads-optic-cross .crosshair-reticle span:nth-child(1) {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+#crosshair.ads-optic-cross .crosshair-reticle span:nth-child(2) {
+  top: 50%;
+  right: 0;
+  width: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+#crosshair.ads-optic-cross .crosshair-reticle span:nth-child(3) {
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
+#crosshair.ads-optic-cross .crosshair-reticle span:nth-child(4) {
+  top: 50%;
+  left: 0;
+  width: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+#crosshair.ads-optic-cross.hit .crosshair-reticle span {
+  background: rgb(255, 72, 58);
+  box-shadow: 0 0 3px rgba(255, 60, 45, 0.7);
+}
+/* Sniper ADS center pip — small glowing red dot at the cross intersection. */
+.crosshair-optic-pip {
+  display: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5.75px;
+  height: 5.75px;
+  margin: -2.875px 0 0 -2.875px;
+  border-radius: 50%;
+  background: rgb(255, 52, 42);
+  box-shadow:
+    0 0 4px rgba(255, 56, 48, 1),
+    0 0 10px rgba(255, 40, 30, 0.85),
+    0 0 18px rgba(255, 30, 20, 0.45);
+  pointer-events: none;
+  z-index: 2;
+}
+#crosshair.ads-optic-cross .crosshair-optic-pip {
+  display: block;
+}
+#crosshair.ads-optic-cross.hit .crosshair-optic-pip {
+  background: rgb(255, 72, 58);
+  box-shadow:
+    0 0 4px rgba(255, 60, 45, 1),
+    0 0 12px rgba(255, 50, 40, 0.9);
 }
 #stamina-hud {
   position: fixed;

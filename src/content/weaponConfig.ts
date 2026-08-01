@@ -277,14 +277,16 @@ export const SNIPER_RIFLE_CONFIG: WeaponConfig = {
   view: {
     // Hip: 10% closer to camera.
     hip: { x: 0.1, y: -0.24, z: -0.396 },
-    // Closer ADS hold so the optic fills more of the view while keeping the lens readable.
-    ads: { x: 0, y: -0.15, z: -0.23 },
-    // Optic base FOV (ScopeLens × SCOPE_PIP_FOV_SCALE → ~7.6° lens).
-    adsFov: 12,
-    // Mild main-view zoom — full adsFov is far too tight for the outer frame.
-    mainAdsFov: 52,
-    scopeLensAds: true,
-    // Look speed while scoped is derived from lens FOV / hip FOV (see Player).
+    // ADS hold — 20% farther from camera than prior z=-0.23 so the end ring reads clearly.
+    // Y: closer to zero is higher up.
+    ads: { x: 0, y: -0.153, z: -0.276 },
+    // Main-camera sniper zoom (no second scope camera / RT).
+    // +15% magnification vs prior 21.2 FOV (21.2 / 1.15).
+    adsFov: 17.5,
+    opticAds: true,
+    // Tip muzzle while scoped so the barrel clears the optic bore (radians; tune freely).
+    adsEuler: { x: -0.02, y: 0, z: 0 },
+    // Look speed while scoped is derived from adsFov / hip FOV (see Player).
     localMeshEuler: { x: 0, y: Math.PI, z: 0 },
     remoteHand: { x: 0, y: 0, z: 0 },
     remoteMeshEuler: { x: 0, y: 0, z: 0 },

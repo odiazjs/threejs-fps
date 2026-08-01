@@ -2389,6 +2389,20 @@ export class Game {
         this.crosshairHud,
         window.innerWidth,
         window.innerHeight,
+        delta,
+      );
+      const scopeOverlay = this.player.getSniperScopeOverlay();
+      this.renderContext.setScopeCircleBlur(
+        scopeOverlay.enabled
+          ? {
+              enabled: true,
+              viewWidth: window.innerWidth,
+              viewHeight: window.innerHeight,
+              offsetX: scopeOverlay.offsetX,
+              offsetY: scopeOverlay.offsetY,
+              diameterPx: scopeOverlay.diameterPx,
+            }
+          : null,
       );
       this.crosshairHud.update(delta);
       this.healthHud.update(this.localCombat);
@@ -2529,17 +2543,12 @@ export class Game {
       if (this.craftingOpen) {
         this.refreshCraftingHud();
       }
+    } else {
+      this.renderContext.setScopeCircleBlur(null);
     }
 
     updateEdgeLinesForCamera(camera);
     this.player.object.updateMatrixWorld(true);
-    // Sniper optic glass RT must bake before the main view samples it.
-    if (camera) {
-      this.player.renderScopeLens(this.renderContext.renderer, this.scene);
-      this.renderContext.setScopeWorldBlur(this.player.getScopeWorldBlur());
-    } else {
-      this.renderContext.setScopeWorldBlur(0);
-    }
     this.renderContext.setTeammateOutlineTeamId(this.localCombat.teamId);
     this.renderContext.render(this.scene, camera);
     this.performanceHud.update(delta, this.renderContext.renderer);

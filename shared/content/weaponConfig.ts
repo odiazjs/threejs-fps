@@ -30,22 +30,22 @@ export interface WeaponViewConfig {
   readonly ads: WeaponViewOffset;
   /**
    * ADS zoom FOV for the main camera (higher = less zoom). Defaults to 68.
-   * With `scopeLensAds`, prefer `mainAdsFov` for the main view and keep this
-   * as the optic's base zoom target.
+   * Sniper optics use a tight value here (no second scope camera).
    */
   readonly adsFov?: number;
   /**
-   * Optional milder main-camera ADS FOV when `scopeLensAds` is set.
-   * Falls back to `adsFov` when omitted.
+   * When true, ADS uses optic look-sensitivity scaling (`adsFov / hipFov`),
+   * sniper scope mesh visuals (body hide, transparent lens), and an enlarged
+   * thin HUD cross instead of the ADS circle (see {@link syncSniperScopeAdsVisuals}).
    */
-  readonly mainAdsFov?: number;
-  /**
-   * When true, ADS also bakes a tighter zoom onto the optic's `scope_camera_decal`
-   * render target (in addition to the main-camera FOV).
-   */
-  readonly scopeLensAds?: boolean;
+  readonly opticAds?: boolean;
   /** Mouse look speed multiplier when fully ADS (1 = unchanged). */
   readonly adsLookSensitivity?: number;
+  /**
+   * Extra euler (radians) blended in with ADS (0 at hip → full at ADS).
+   * Useful for tipping a long barrel out of an optic sight picture.
+   */
+  readonly adsEuler?: WeaponViewOffset;
   /** Extra euler (radians) added on first-person attach rotation. */
   readonly localMeshEuler?: WeaponViewOffset;
   /** Extra euler (radians) added on third-person attach rotation. */

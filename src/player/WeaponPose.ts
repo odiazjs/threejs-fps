@@ -146,9 +146,7 @@ export class WeaponPose {
   private slashDuration = KATANA_SLASH_DURATION_SEC;
   private slashTimeLeft = 0;
   private adsFov = DEFAULT_ADS_FOV;
-  private mainAdsFov = DEFAULT_ADS_FOV;
   private adsBlendSpeed = DEFAULT_ADS_BLEND_SPEED;
-  private scopeLensAds = false;
   private view: WeaponViewConfig | null = null;
 
   get hipOffset(): THREE.Vector3 {
@@ -200,9 +198,6 @@ export class WeaponPose {
   setViewConfig(view: WeaponViewConfig, adsTimeSec?: number): void {
     this.view = view;
     this.adsFov = view.adsFov ?? DEFAULT_ADS_FOV;
-    this.scopeLensAds = view.scopeLensAds === true;
-    this.mainAdsFov =
-      view.mainAdsFov ?? (this.scopeLensAds ? DEFAULT_ADS_FOV : this.adsFov);
     if (adsTimeSec !== undefined && Number.isFinite(adsTimeSec) && adsTimeSec > 0) {
       this.adsBlendSpeed = adsBlendSpeedFromAdsTime(adsTimeSec);
     }
@@ -305,6 +300,7 @@ export class WeaponPose {
       if (pose) {
         applyPoseRotation(_weaponRot, _weaponRot, pose);
       }
+      this.applyAdsEuler(_weaponRot);
       weapon.rotation.copy(_weaponRot);
     }
   }
@@ -334,23 +330,27 @@ export class WeaponPose {
     if (pose) {
       applyPoseRotation(_weaponRot, _weaponRot, pose);
     }
+    this.applyAdsEuler(_weaponRot);
 
     return _weaponRot;
   }
 
+  /** Blend view.adsEuler onto the weapon as ADS settles (hip = 0). */
+  private applyAdsEuler(target: THREE.Euler): void {
+    const adsEuler = this.view?.adsEuler;
+    if (!adsEuler || this.blend <= 1e-4) return;
+    target.x += adsEuler.x * this.blend;
+    target.y += adsEuler.y * this.blend;
+    target.z += adsEuler.z * this.blend;
+  }
+
   applyCamera(camera: THREE.PerspectiveCamera): void {
-    // Main view uses mainAdsFov; scope-lens optic still uses the tighter adsFov.
-    camera.fov = THREE.MathUtils.lerp(HIP_FOV, this.mainAdsFov, this.blend);
+    camera.fov = THREE.MathUtils.lerp(HIP_FOV, this.adsFov, this.blend);
     camera.near = THREE.MathUtils.lerp(HIP_CAMERA_NEAR, ADS_CAMERA_NEAR, this.blend);
     camera.updateProjectionMatrix();
   }
 
-  /** ADS FOV used by the scope-lens camera (or main camera when not scope-lens). */
   getAdsFov(): number {
     return this.adsFov;
-  }
-
-  usesScopeLensAds(): boolean {
-    return this.scopeLensAds;
   }
 }

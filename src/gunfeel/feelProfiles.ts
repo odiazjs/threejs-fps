@@ -127,8 +127,20 @@ export interface SwayFeel {
   readonly walkBobAmp: number;
   /** Footstep-synced lateral weapon bob while walking (m). */
   readonly walkBobLateralAmp: number;
-  /** Sway multiplier at full ADS (before breath modifiers). */
+  /** Sway multiplier at full ADS for weapon + camera (before breath modifiers). */
   readonly adsScale: number;
+  /**
+   * Extra multiplier on idle figure-8 / noise / camera breathe while hipfire
+   * and standing still (default 1). Does not affect walk, strafe, jump/land.
+   */
+  readonly hipIdleSwayScale?: number;
+  /**
+   * When set, HUD crosshair ADS sway uses this scale instead of {@link adsScale}
+   * (lets sniper keep a floating reticle while the gun stays steady).
+   */
+  readonly crosshairAdsScale?: number;
+  /** Extra multiplier on crosshair ADS sway (e.g. 1.15 = +15%). */
+  readonly crosshairAdsBoost?: number;
   /** Weapon shift (m) opposite to strafe direction at full input. */
   readonly moveSwayAmp: number;
   /** Smoothing speed for the movement-sway offset. */
@@ -493,8 +505,13 @@ const SNIPER_FEEL: WeaponFeelProfile = {
     walkFreqMultiplier: 2.4,
     walkBobAmp: 0.009,
     walkBobLateralAmp: 0.005,
-    // Scope lens keeps main FOV wide — ADS sway must stay readable on the glass.
-    adsScale: 0.34,
+    // Strong idle hipfire aim float only; locomotion keeps normal amps.
+    hipIdleSwayScale: 3.8,
+    // Weapon / camera nearly frozen while scoped — reticle carries the wander.
+    adsScale: 0.03,
+    // Prior ADS sway amount (0.34) for the HUD cross, then +15%.
+    crosshairAdsScale: 0.34,
+    crosshairAdsBoost: 1.15,
     moveSwayAmp: 0.016,
     moveSwaySmoothing: 5.5,
     strafeRollAmp: 0.05,
@@ -512,9 +529,9 @@ const SNIPER_FEEL: WeaponFeelProfile = {
       maxRad: 0.13,
       posPerRad: 0.22,
     },
-    lookLagAdsScale: 0.2,
+    lookLagAdsScale: 0.1,
     breath: {
-      // Scope wander; Shift hold-breath steadies but does not freeze.
+      // Scope wander on the crosshair; Shift hold-breath steadies but does not freeze.
       adsAmpMultiplier: 0.78,
       holdSteadyScale: 0.14,
       holdDurationSec: 3.2,

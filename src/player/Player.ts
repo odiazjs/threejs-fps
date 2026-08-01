@@ -54,7 +54,14 @@ import {
   syncPhysicalSightOnWeapon,
   weaponUsesPhysicalSights,
 } from '../content/physicalWeaponSights';
-import { getScopeLensLookSensitivityScale, ScopeLens } from '../combat/ScopeLens';
+import {
+  getOpticAdsLookSensitivityScale,
+  isSniperOpticAdsReady,
+  measureSniperScopeEndOnScreen,
+  OPTIC_HUD_REVEAL_DELAY_SEC,
+  SNIPER_OPTIC_HIP_READY_BLEND,
+  syncSniperScopeAdsVisuals,
+} from '../combat/SniperScopeAds';
 import { readCrosshairWorldRay, readWeaponMuzzleWorldPosition, readWeaponSideVentFlashOffsets, readScreenHoldWorldPosition } from '../combat/aiming';
 import { readPelletDirection } from '../combat/pelletSpread';
 import type { KeyboardInput } from '../input/KeyboardInput';
@@ -282,8 +289,16 @@ export class Player {
   private readonly pelletDirection = new THREE.Vector3();
   private weaponPose: WeaponPose | null = null;
   private weaponSway: WeaponSwaySystem | null = null;
-  /** Sniper optic glass — zoomed world view on `scope_camera_decal`. */
-  private readonly scopeLens = new ScopeLens();
+  /** Last ADS button state — used when remounting sights mid-frame. */
+  private lastAdsIntent = false;
+  /** Seconds spent at settled optic ADS — HUD/vignette/blur wait for {@link OPTIC_HUD_REVEAL_DELAY_SEC}. */
+  private opticHudReadyElapsed = 0;
+  private sniperScopeOverlay: {
+    enabled: boolean;
+    offsetX: number;
+    offsetY: number;
+    diameterPx: number;
+  } = { enabled: false, offsetX: 0, offsetY: 0, diameterPx: 256 };
   /** Screen flash + barrel smoke layers (world-space; group added by Game). */
   private gunJuice: GunJuice | null = null;
   /** Previous-frame pointer look, for look-lag deltas + recoil smoothing speed. */
@@ -1045,23 +1060,6 @@ export class Player {
     return this.loadout?.getActiveWeaponId() ?? null;
   }
 
-  /**
-   * Bake the zoomed feed and sync the display circle to the decal / camera.
-   * Call before the main scene render while the optic is bound (including hipfire
-   * so the opaque glass plug keeps tracking the weapon).
-   */
-  renderScopeLens(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
-    if (!this.camera || !this.scopeLens.isBound) return;
-    this.scopeLens.render(renderer, scene, this.camera);
-  }
-
-  /** 0–1 main-view blur while sniper scope-lens ADS is active. */
-  getScopeWorldBlur(): number {
-    if (!this.scopeLens.isBound) return 0;
-    if (this.loadout?.getActive()?.config.view.scopeLensAds !== true) return 0;
-    return this.weaponPose?.adsBlend ?? 0;
-  }
-
   getActiveDamage(): number {
     return this.loadout?.getActiveDamage() ?? 0;
   }
@@ -1243,14 +1241,88 @@ export class Player {
     return this.targetShieldRechargeEndAt;
   }
 
-  updateCrosshairAim(hud: CrosshairHud, _width: number, _height: number): void {
-    // Camera-recoil aim: reticle stays screen-center; weapon sway/visual kick are cosmetic only.
-    hud.setAimOffset(0, 0);
-    // Global ADS rule: centered neon cyan circle — except sniper scope lens (optic reticle).
-    const ads = (this.weaponPose?.adsBlend ?? 0) > 0.15;
-    const scopeLensAds = this.loadout?.getActive()?.config.view.scopeLensAds === true;
-    hud.setAdsActive(ads, { hideCenterDot: ads && scopeLensAds });
+  updateCrosshairAim(
+    hud: CrosshairHud,
+    width: number,
+    height: number,
+    delta = 0,
+  ): void {
+    const adsBlend = this.weaponPose?.adsBlend ?? 0;
+    const active = this.loadout?.getActive();
+    const opticAds = active?.config.view.opticAds === true;
+    // Pose/FOV settled first; HUD + vignette + blur wait an extra beat.
+    const opticReady = opticAds && isSniperOpticAdsReady(adsBlend);
+    if (opticReady) {
+      this.opticHudReadyElapsed += Math.max(0, delta);
+    } else {
+      this.opticHudReadyElapsed = 0;
+    }
+    const opticHudShown =
+      opticReady && this.opticHudReadyElapsed >= OPTIC_HUD_REVEAL_DELAY_SEC;
+    const opticTransitioning =
+      opticAds && !opticHudShown && adsBlend > SNIPER_OPTIC_HIP_READY_BLEND;
+    const ads = opticAds ? opticHudShown : adsBlend > 0.15;
+    hud.setAdsActive(ads, {
+      opticCross: opticHudShown,
+      suppress: opticTransitioning,
+    });
     hud.setMovementSpread(this.locomotionMoving, this.locomotionSprinting);
+
+    if (opticReady && this.camera && active && width > 0 && height > 0) {
+      const endScreen = measureSniperScopeEndOnScreen(
+        active.mesh,
+        this.camera,
+        width,
+        height,
+      );
+      const diameterPx =
+        endScreen?.sizePx ?? Math.min(width, height) * 0.88 * 0.9;
+      let offsetX = endScreen?.offsetX ?? 0;
+      let offsetY = endScreen?.offsetY ?? 0;
+      if (this.weaponSway) {
+        const sway = { x: 0, y: 0 };
+        this.weaponSway.readCrosshairSwayOffset(sway, height, this.camera.fov);
+        offsetX += sway.x;
+        offsetY += sway.y;
+      }
+
+      if (opticHudShown) {
+        hud.setOpticCrossSizePx(diameterPx);
+        hud.setAimOffset(offsetX, offsetY);
+        this.sniperScopeOverlay = {
+          enabled: true,
+          offsetX,
+          offsetY,
+          diameterPx,
+        };
+      } else {
+        hud.setAimOffset(0, 0);
+        this.sniperScopeOverlay = {
+          enabled: false,
+          offsetX: 0,
+          offsetY: 0,
+          diameterPx,
+        };
+      }
+    } else {
+      hud.setAimOffset(0, 0);
+      this.sniperScopeOverlay = {
+        enabled: false,
+        offsetX: 0,
+        offsetY: 0,
+        diameterPx: 256,
+      };
+    }
+  }
+
+  /** Sniper ADS circle blur / vignette sync — nullish when inactive. */
+  getSniperScopeOverlay(): {
+    enabled: boolean;
+    offsetX: number;
+    offsetY: number;
+    diameterPx: number;
+  } {
+    return this.sniperScopeOverlay;
   }
 
   getFeetPosition(): THREE.Vector3 {
@@ -2051,14 +2123,10 @@ export class Player {
       if (this.aimControls) {
         const adsBlend = meleeEquipped ? 0 : (this.weaponPose?.adsBlend ?? 0);
         let adsLookSensitivity = active.config.view.adsLookSensitivity ?? 1;
-        // Sniper optic: scale look speed by lensFov/hipFov so aim tracks magnification
-        // (e.g. lens FOV at 50% of hip → 50% of the user's current sensitivity).
-        if (active.config.view.scopeLensAds === true) {
-          const opticAdsFov = active.config.view.adsFov ?? 18;
-          const mainAdsFov = active.config.view.mainAdsFov ?? HIP_FOV;
-          adsLookSensitivity = getScopeLensLookSensitivityScale(
-            opticAdsFov,
-            mainAdsFov,
+        // Sniper optic: scale look speed by adsFov/hipFov so aim tracks magnification.
+        if (active.config.view.opticAds === true) {
+          adsLookSensitivity = getOpticAdsLookSensitivityScale(
+            active.config.view.adsFov ?? 18.43,
             HIP_FOV,
           );
         }
@@ -2145,9 +2213,10 @@ export class Player {
         }
       } else {
         this.weaponPose?.applyCamera(this.camera);
-        // Hand-bind path skips pose/sight sync — still update scope-lens zoom.
-        this.syncScopeLens(active);
       }
+      // Intent (button), not adsBlend — scope body/lens snap instantly on release.
+      this.lastAdsIntent = ads;
+      this.syncSniperScopeAds(active, ads);
       this.syncFpArmsToActiveWeapon();
       // After hand-bind so melee hide can't unbind/rebind in the same frame.
       this.syncFpArmsVisibility();
@@ -2403,7 +2472,6 @@ export class Player {
     if (this.camera) {
       this.fpArmsViewModel?.syncWeaponHandBinding(null, this.camera, false);
     }
-    this.scopeLens.dispose();
     this.loadout?.dispose();
     this.loadout = null;
     this.matchWeaponStatsById = null;
@@ -3197,22 +3265,18 @@ export class Player {
     this.weaponPose?.apply(target, wallPullback, baseRotation);
   }
 
-  private syncScopeLens(active: { mesh: THREE.Object3D; config: { view: { scopeLensAds?: boolean; adsFov?: number } } }): void {
-    if (!this.camera || !active.config.view.scopeLensAds) {
-      this.scopeLens.unbind();
-      return;
-    }
-
-    // Hide the FP camera subtree (viewmodel + arms) while baking the lens feed.
-    if (!this.scopeLens.bind(active.mesh, this.camera)) {
-      this.scopeLens.unbind();
-      return;
-    }
-
-    this.scopeLens.setZoom(
-      this.weaponPose?.adsBlend ?? 0,
-      active.config.view.adsFov ?? 18,
-    );
+  private syncSniperScopeAds(
+    active: {
+      mesh: THREE.Object3D;
+      config: { view: { opticAds?: boolean } };
+    },
+    adsIntent = false,
+  ): void {
+    if (active.config.view.opticAds !== true) return;
+    syncSniperScopeAdsVisuals(active.mesh, {
+      adsIntent,
+      adsBlend: this.weaponPose?.adsBlend ?? 0,
+    });
   }
 
   private syncActiveDigitalSight(mesh: THREE.Object3D): void {
@@ -3225,11 +3289,10 @@ export class Player {
     // Pistol (and any gun with sight_mount): real 3D optic on the rail.
     if (weaponUsesPhysicalSights(mesh)) {
       syncPhysicalSightOnWeapon(mesh, sightId, active.weaponId);
-      this.syncScopeLens(active);
+      // Keep current ADS intent — never force hip visuals mid ADS/un-ADS.
+      this.syncSniperScopeAds(active, this.lastAdsIntent);
       return;
     }
-
-    this.scopeLens.unbind();
 
     // Legacy digital reticle sprites for guns without a rail socket yet.
     const adsBlend = this.weaponPose?.adsBlend ?? 0;

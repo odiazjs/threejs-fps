@@ -30,8 +30,6 @@ export interface GraphicsQualityDials {
   /** Medium: enemy + harvest only. High/Ultra: all outline passes. */
   readonly teammateOutlinesEnabled: boolean;
   readonly fxLightPoolSize: number;
-  readonly scopeRtHeight: number;
-  readonly scopeWorldBlurEnabled: boolean;
   readonly edgeLinesEnabled: boolean;
   readonly shieldHemisphereSegments: { width: number; height: number };
   readonly muzzleParticleScale: number;
@@ -121,7 +119,7 @@ export function detectAutoGraphicsTier(
       .deviceMemory;
     const lowMemory = deviceMemory !== undefined && deviceMemory <= 4;
 
-    // Auto never picks Ultra — that stays a manual high-end choice.
+    // Auto never picks Ultra  that stays a manual high-end choice.
     detectedTier = integratedGpu || lowMemory ? 'low' : 'high';
     return detectedTier;
   } catch {
@@ -147,8 +145,6 @@ function dialsForTier(
       outlinesEnabled: false,
       teammateOutlinesEnabled: false,
       fxLightPoolSize: 2,
-      scopeRtHeight: 360,
-      scopeWorldBlurEnabled: false,
       edgeLinesEnabled: false,
       shieldHemisphereSegments: { width: 24, height: 12 },
       muzzleParticleScale: 0.5,
@@ -174,8 +170,6 @@ function dialsForTier(
       outlinesEnabled: true,
       teammateOutlinesEnabled: false,
       fxLightPoolSize: 4,
-      scopeRtHeight: 540,
-      scopeWorldBlurEnabled: true,
       edgeLinesEnabled: true,
       shieldHemisphereSegments: { width: 32, height: 16 },
       muzzleParticleScale: 0.75,
@@ -201,8 +195,6 @@ function dialsForTier(
       outlinesEnabled: true,
       teammateOutlinesEnabled: true,
       fxLightPoolSize: 12,
-      scopeRtHeight: 1080,
-      scopeWorldBlurEnabled: true,
       edgeLinesEnabled: true,
       shieldHemisphereSegments: { width: 64, height: 32 },
       muzzleParticleScale: 1.25,
@@ -228,8 +220,6 @@ function dialsForTier(
     outlinesEnabled: true,
     teammateOutlinesEnabled: true,
     fxLightPoolSize: 8,
-    scopeRtHeight: 720,
-    scopeWorldBlurEnabled: true,
     edgeLinesEnabled: true,
     shieldHemisphereSegments: { width: 48, height: 24 },
     muzzleParticleScale: 1,

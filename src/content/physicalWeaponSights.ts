@@ -15,7 +15,7 @@ import { configureColorTexture } from './textureQuality';
 
 export const SIGHT_MOUNT_NAME = 'sight_mount';
 export const PHYSICAL_SIGHT_OBJECT_NAME = 'physicalSight';
-/** Optic glass mesh that receives the sniper scope render-target view. */
+/** Optic glass / lens mesh — opaque in hipfire; transparent cyan cross while ADS. */
 export const SCOPE_CAMERA_DECAL_NAME = 'scope_camera_decal';
 
 /**
@@ -128,7 +128,7 @@ const templateCache = new Map<string, THREE.Group>();
 const templateLoads = new Map<string, Promise<THREE.Group>>();
 
 /** Bump when mount pose / asset paths change so hot reload does not reuse a stale template. */
-const SIGHT_TEMPLATE_POSE_VERSION = 'pose18';
+const SIGHT_TEMPLATE_POSE_VERSION = 'pose23';
 
 function sightTemplateCacheKey(asset: PhysicalSightAsset): string {
   const fit = asset.fitGeoMean ?? PHYSICAL_SIGHT_FIT_GEO_MEAN;
@@ -184,12 +184,20 @@ function applySightMaterials(root: THREE.Object3D, emissiveMap: THREE.Texture): 
 
   root.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
-    // Scope glass gets a live RT material from ScopeLens — leave it alone.
-    if (child.name.toLowerCase() === SCOPE_CAMERA_DECAL_NAME) return;
     if (Array.isArray(child.material)) {
       for (const old of child.material) old.dispose();
     } else {
       child.material.dispose();
+    }
+    // Lens keeps its own material instance so ADS can swap to a transparent cross.
+    if (child.name.toLowerCase() === SCOPE_CAMERA_DECAL_NAME) {
+      const lensMaterial = material.clone();
+      child.material = lensMaterial;
+      child.userData.scopeLensHipMaterial = lensMaterial;
+      child.visible = true;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      return;
     }
     child.material = material;
     child.castShadow = true;
@@ -206,6 +214,11 @@ function cloneSightTemplate(template: THREE.Group): THREE.Group {
       child.material = child.material.map((material) => material.clone());
     } else {
       child.material = child.material.clone();
+    }
+    if (child.name.toLowerCase() === SCOPE_CAMERA_DECAL_NAME) {
+      const hip = Array.isArray(child.material) ? child.material[0] : child.material;
+      child.userData.scopeLensHipMaterial = hip;
+      delete child.userData.scopeLensAdsMaterial;
     }
   });
   return clone;

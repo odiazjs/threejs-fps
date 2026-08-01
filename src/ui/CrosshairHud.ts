@@ -18,6 +18,7 @@ export class CrosshairHud {
   private readonly root: HTMLElement;
   private readonly referenceRoot: HTMLElement;
   private readonly hitRoot: HTMLElement;
+  private readonly scopeVignette: HTMLElement | null;
   private readonly weaponReticle: HTMLElement;
   private readonly hitReticle: HTMLElement;
   private hitElapsed = 0;
@@ -28,8 +29,12 @@ export class CrosshairHud {
   private playVisible = false;
   /** Global ADS style: centered neon cyan circle for every weapon. */
   private adsActive = false;
-  /** Sniper scope lens draws its own reticle — hide the HUD center dot. */
-  private hideAdsDot = false;
+  /** Sniper optic ADS: enlarged thin screen-center cross instead of the circle. */
+  private opticCross = false;
+  /** Hide all reticle art (sniper ADS enter/exit before pose settles). */
+  private suppressReticle = false;
+  /** Pixel size of the optic cross (matches projected scope end ring). */
+  private opticCrossSizePx = 256;
   private moving = false;
   private sprinting = false;
   private spreadPx = 0;
@@ -39,6 +44,7 @@ export class CrosshairHud {
     this.root = document.getElementById('crosshair')!;
     this.referenceRoot = document.getElementById('crosshair-reference')!;
     this.hitRoot = document.getElementById('crosshair-hit')!;
+    this.scopeVignette = document.getElementById('scope-vignette');
     this.weaponReticle = this.root.querySelector('.crosshair-reticle')!;
     this.hitReticle = this.hitRoot.querySelector('.crosshair-reticle')!;
     this.applyRootTransform();
@@ -60,17 +66,76 @@ export class CrosshairHud {
 
   /**
    * When true, hip 4-line reticle is replaced by a screen-centered neon cyan
-   * circle. Scope-lens weapons pass `hideCenterDot` so only the optic reticle shows.
+   * circle — unless `opticCross`, which keeps an enlarged thin cross instead.
+   * `suppress` hides all reticle art (used while sniper ADS is still blending).
    */
-  setAdsActive(ads: boolean, options?: { hideCenterDot?: boolean }): void {
-    const hideCenterDot = options?.hideCenterDot === true;
-    if (this.adsActive === ads && this.hideAdsDot === hideCenterDot) return;
+  setAdsActive(
+    ads: boolean,
+    options?: { opticCross?: boolean; suppress?: boolean },
+  ): void {
+    const opticCross = options?.opticCross === true;
+    const suppress = options?.suppress === true;
+    if (
+      this.adsActive === ads &&
+      this.opticCross === opticCross &&
+      this.suppressReticle === suppress
+    ) {
+      return;
+    }
     this.adsActive = ads;
-    this.hideAdsDot = hideCenterDot;
+    this.opticCross = opticCross;
+    this.suppressReticle = suppress;
     this.root.classList.toggle('ads', ads);
-    this.root.classList.toggle('ads-scope-lens', ads && hideCenterDot);
+    this.root.classList.toggle('ads-optic-cross', ads && opticCross);
+    this.root.classList.toggle('ads-suppress', suppress);
+    if (!opticCross || !ads) {
+      this.root.style.removeProperty('width');
+      this.root.style.removeProperty('height');
+    } else {
+      this.applyOpticCrossSize();
+    }
     this.syncSpreadTarget();
     this.applyVisibility();
+  }
+
+  /**
+   * Size the sniper ADS cross to the projected `sniper_sight_01.end` diameter
+   * so the arms span the visible eye-ring like a lens reticle.
+   */
+  setOpticCrossSizePx(sizePx: number): void {
+    const next = Math.max(48, Math.min(sizePx, 2400));
+    if (Math.abs(next - this.opticCrossSizePx) < 0.5) return;
+    this.opticCrossSizePx = next;
+    if (this.adsActive && this.opticCross) {
+      this.applyOpticCrossSize();
+    }
+  }
+
+  private applyOpticCrossSize(): void {
+    const px = `${this.opticCrossSizePx.toFixed(1)}px`;
+    this.root.style.width = px;
+    this.root.style.height = px;
+    this.applyScopeVignette();
+  }
+
+  /** Circular black vignette around the sniper optic cross (same center + radius). */
+  private applyScopeVignette(): void {
+    if (!this.scopeVignette) return;
+    const active =
+      this.playVisible && this.adsActive && this.opticCross && !this.suppressReticle;
+    this.scopeVignette.classList.toggle('visible', active);
+    if (!active) return;
+
+    const radiusPx = this.opticCrossSizePx * 0.5;
+    this.scopeVignette.style.setProperty(
+      '--scope-x',
+      `calc(50% + ${this.aimOffsetX.toFixed(2)}px)`,
+    );
+    this.scopeVignette.style.setProperty(
+      '--scope-y',
+      `calc(50% + ${this.aimOffsetY.toFixed(2)}px)`,
+    );
+    this.scopeVignette.style.setProperty('--scope-r', `${radiusPx.toFixed(1)}px`);
   }
 
   /** Drive hip-fire arm separation from locomotion (tweened in {@link update}). */
@@ -97,17 +162,24 @@ export class CrosshairHud {
   private applyVisibility(): void {
     const crosshairDisplay = this.playVisible ? 'block' : 'none';
     this.root.style.display = crosshairDisplay;
-    // Soft reference pip is hip-only — ADS uses the neon circle.
-    this.referenceRoot.style.display = this.playVisible && !this.adsActive ? 'block' : 'none';
+    // Soft reference pip is hip-only — ADS / sniper blend suppress hide it.
+    this.referenceRoot.style.display =
+      this.playVisible && !this.adsActive && !this.suppressReticle ? 'block' : 'none';
     const hitDisplay =
-      this.playVisible && (!this.adsActive || this.hitMode != null) ? 'block' : 'none';
+      this.playVisible &&
+      !this.suppressReticle &&
+      (!this.adsActive || this.hitMode != null)
+        ? 'block'
+        : 'none';
     this.hitRoot.style.display = hitDisplay;
+    this.applyScopeVignette();
   }
 
   setAimOffset(x: number, y: number): void {
     this.aimOffsetX = x;
     this.aimOffsetY = y;
     this.applyRootTransform();
+    this.applyScopeVignette();
   }
 
   onHit(weaponId: WeaponId): void {

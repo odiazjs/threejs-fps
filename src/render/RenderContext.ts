@@ -17,7 +17,10 @@ import {
 } from '../../shared/combat/teams';
 import { updateLineResolution } from '../visuals/edgeLines';
 import { AtmospherePass } from './AtmospherePass';
-import { ScopeWorldBlurPass } from './ScopeWorldBlurPass';
+import {
+  ScopeCircleBlurPass,
+  type ScopeCircleBlurParams,
+} from './ScopeCircleBlurPass';
 import { bindGltfKtx2Renderer } from '../content/gltfLoader';
 import { bindTextureQualityRenderer } from '../content/textureQuality';
 import {
@@ -91,20 +94,18 @@ export class RenderContext {
   private harvestBoxOrangeOutlinePass: OutlinePass | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private atmospherePass: AtmospherePass | null = null;
-  private scopeWorldBlurPass: ScopeWorldBlurPass | null = null;
-  private scopeWorldBlur = 0;
+  private scopeCircleBlurPass: ScopeCircleBlurPass | null = null;
+  private scopeBlurParams: ScopeCircleBlurParams | null = null;
   private teammateOutlineColor = teamColorToHex(0);
   private readonly resolution = new THREE.Vector2();
   private readonly outlinesEnabled: boolean;
   private readonly teammateOutlinesEnabled: boolean;
-  private readonly scopeWorldBlurEnabled: boolean;
 
   constructor() {
     const quality = resolveGraphicsQuality();
     this.maxPixelRatio = quality.gameMaxPixelRatio;
     this.outlinesEnabled = quality.outlinesEnabled;
     this.teammateOutlinesEnabled = quality.teammateOutlinesEnabled;
-    this.scopeWorldBlurEnabled = quality.scopeWorldBlurEnabled;
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: quality.antialias,
@@ -141,20 +142,18 @@ export class RenderContext {
     this.applyMapLook();
   }
 
-  /** 0–1 sniper ADS soft-focus on the main view. */
-  setScopeWorldBlur(amount: number): void {
-    this.scopeWorldBlur = this.scopeWorldBlurEnabled
-      ? THREE.MathUtils.clamp(amount, 0, 1)
-      : 0;
-    this.scopeWorldBlurPass?.setStrength(this.scopeWorldBlur);
-  }
-
   /** Local team's color for teammate silhouettes (blue / orange). */
   setTeammateOutlineTeamId(teamId: number): void {
     const hex = teamColorToHex(teamId);
     if (hex === this.teammateOutlineColor) return;
     this.teammateOutlineColor = hex;
     this.teammateOutlinePass?.visibleEdgeColor.setHex(hex);
+  }
+
+  /** Sniper ADS: blur outside the optic circle; sharp inside. */
+  setScopeCircleBlur(params: ScopeCircleBlurParams | null): void {
+    this.scopeBlurParams = params?.enabled ? params : null;
+    this.scopeCircleBlurPass?.setScopeBlur(this.scopeBlurParams);
   }
 
   private applyPixelRatio(): void {
@@ -233,12 +232,12 @@ export class RenderContext {
     this.bloomPass.enabled = false;
     this.composer.addPass(this.bloomPass);
 
-    this.scopeWorldBlurPass = new ScopeWorldBlurPass();
-    this.scopeWorldBlurPass.setStrength(this.scopeWorldBlur);
-    this.composer.addPass(this.scopeWorldBlurPass);
-
     this.atmospherePass = new AtmospherePass();
     this.composer.addPass(this.atmospherePass);
+
+    this.scopeCircleBlurPass = new ScopeCircleBlurPass();
+    this.scopeCircleBlurPass.setScopeBlur(this.scopeBlurParams);
+    this.composer.addPass(this.scopeCircleBlurPass);
 
     this.composer.addPass(new OutputPass());
     this.syncComposerSize();
@@ -274,7 +273,7 @@ export class RenderContext {
     blueBoxes: THREE.Object3D[],
     orangeBoxes: THREE.Object3D[],
   ): boolean {
-    if (this.scopeWorldBlur > 0.001) return true;
+    if (this.scopeBlurParams?.enabled) return true;
     if (!this.outlinesEnabled) return false;
     if (enemies.length > 0) return true;
     if (this.teammateOutlinesEnabled && teammates.length > 0) return true;
@@ -302,6 +301,7 @@ export class RenderContext {
     }
 
     this.ensureComposer(scene, camera);
+    this.scopeCircleBlurPass?.setScopeBlur(this.scopeBlurParams);
     this.enemyOutlinePass!.selectedObjects = enemies;
     this.teammateOutlinePass!.selectedObjects = teammates;
     this.harvestBoxBlueOutlinePass!.selectedObjects = blueBoxes;
