@@ -60,6 +60,10 @@ async function main(): Promise<void> {
 
   server.listen(port);
   console.log(`[Colyseus] listening on http://localhost:${port}`);
+
+  // Dev: expose localhost so Lemon Squeezy webhooks can reach this process.
+  const { maybeStartNgrokTunnel } = await import('./dev/startNgrokTunnel.js');
+  await maybeStartNgrokTunnel(port);
 }
 
 function shutdown(): void {

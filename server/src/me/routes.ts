@@ -1,5 +1,6 @@
 import type { Express, Response } from 'express';
 import { requireAuth } from '../auth/middleware.js';
+import { isPlasmaPurchaseMockEnabled } from '../payments/config.js';
 import { getMe, purchasePlasmaMinerals } from './service.js';
 
 function sendError(res: Response, status: number, message: string): void {
@@ -21,7 +22,16 @@ export function registerMeRoutes(app: Express): void {
     }
   });
 
+  /** Offline-only mock credit. Production uses POST /api/payments/checkout. */
   app.post('/api/me/plasma-minerals/purchase', requireAuth, async (req, res) => {
+    if (!isPlasmaPurchaseMockEnabled()) {
+      return sendError(
+        res,
+        403,
+        'Mock plasma purchases are disabled. Use Lemon Squeezy checkout.',
+      );
+    }
+
     const body = (req.body ?? {}) as Record<string, unknown>;
     const packId = readString(body, 'packId');
     if (!packId) {

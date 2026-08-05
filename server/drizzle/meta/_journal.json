@@ -379,6 +379,13 @@
       "when": 1784710000000,
       "tag": "0053_season_01_plasma_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1784720000000,
+      "tag": "0054_payment_transactions",
+      "breakpoints": true
     }
   ]
 }

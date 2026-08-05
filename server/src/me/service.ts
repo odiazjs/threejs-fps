@@ -21,7 +21,7 @@ export async function getMe(auth: AuthContext): Promise<MeResponse> {
   };
 }
 
-/** Mock store purchase — credits pack amount with no payment provider. */
+/** Offline mock purchase (`PLASMA_PURCHASE_MOCK=true`) — no payment provider. */
 export async function purchasePlasmaMinerals(
   auth: AuthContext,
   packIdRaw: string,

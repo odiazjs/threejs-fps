@@ -12,11 +12,13 @@
     "reset:minerals": "tsx src/db/resetPlasmaMinerals.ts",
     "reset:unlocks": "tsx src/db/resetStoreCharacterUnlocks.ts",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test:payments-signature": "tsx src/payments/verifySignatureSelfTest.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.1076.0",
     "@colyseus/schema": "^4.0.26",
+    "@ngrok/ngrok": "^1.7.0",
     "aws-jwt-verify": "^5.1.0",
     "colyseus": "^0.17.10",
     "dotenv": "^17.4.2",
