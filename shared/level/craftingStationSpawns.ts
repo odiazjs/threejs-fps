@@ -51,33 +51,34 @@ export const CRAFTING_STATION_COLLISION_HALF = {
 } as const;
 
 /**
- * Fallback `crafting_station_*` marker xz from blue/orange side groups.
- * Y is unused for placement � stations sit on the ground (feet at y=0).
+ * Authored `crafting_station_*` marker xz from harvest_map.glb
+ * (`crafting_stations_group` / `crafting_stations_group_1`).
+ * Must match client WorldBuilder extraction used for visuals + F-prompt.
  */
 const HARVEST_STATIONS: readonly CraftingStationSpawn[] = [
   {
-    x: 24.49 * S,
+    x: 14.67 * S,
     y: 0,
-    z: 24.88 * S,
-    yaw: yawForHarvestCraftingStation(24.49 * S, 24.88 * S),
+    z: 24.85 * S,
+    yaw: yawForHarvestCraftingStation(14.67 * S, 24.85 * S),
   },
   {
-    x: -4.74 * S,
+    x: -14.55 * S,
     y: 0,
-    z: 24.83 * S,
-    yaw: yawForHarvestCraftingStation(-4.74 * S, 24.83 * S),
+    z: 24.8 * S,
+    yaw: yawForHarvestCraftingStation(-14.55 * S, 24.8 * S),
   },
   {
-    x: -4.86 * S,
+    x: -14.67 * S,
     y: 0,
-    z: -24.82 * S,
-    yaw: yawForHarvestCraftingStation(-4.86 * S, -24.82 * S),
+    z: -24.85 * S,
+    yaw: yawForHarvestCraftingStation(-14.67 * S, -24.85 * S),
   },
   {
-    x: 24.36 * S,
+    x: 14.55 * S,
     y: 0,
-    z: -24.77 * S,
-    yaw: yawForHarvestCraftingStation(24.36 * S, -24.77 * S),
+    z: -24.8 * S,
+    yaw: yawForHarvestCraftingStation(14.55 * S, -24.8 * S),
   },
 ];
 

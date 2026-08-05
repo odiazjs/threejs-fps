@@ -196,21 +196,19 @@ export class PlayerControls {
   }
 
   /**
-   * Called when the match is ready. Desktop shows click-to-play;
-   * mobile skips that overlay and enters play-ready without pointer lock.
+   * Called when the match is ready to accept input.
+   * Enters play-ready immediately (HUD on, no click-to-play / pause wall).
+   * Pointer lock still needs a user gesture — first click captures via the body handler.
    */
   revealEntryOverlay(): void {
-    if (this.skipClickToPlayOverlay) {
-      this.beginPlayingWithoutPointerLock();
-      return;
-    }
-    this.blocker.hidden = false;
-    this.blocker.style.display = 'flex';
-    this.instructionsTitle.textContent = 'Click to play';
-    this.leaveButton.hidden = true;
+    this.beginPlayingWithoutPointerLock();
   }
 
-  private beginPlayingWithoutPointerLock(): void {
+  /**
+   * Mark the session as playing and hide the blocker without requiring pointer lock yet.
+   * Used for match start (all platforms) and mobile soft unlock recovery.
+   */
+  beginPlayingWithoutPointerLock(): void {
     this.hasLockedOnce = true;
     this.isPaused = false;
     this.blocker.hidden = true;
@@ -219,6 +217,26 @@ export class PlayerControls {
     this.setPlayHudVisible(true);
     document.addEventListener('contextmenu', this.preventContextMenu);
     this.onEngage?.();
+  }
+
+  /**
+   * After death → respawn: clear any pause UI and keep soft-unlock so the
+   * next click re-locks without flashing the pause overlay.
+   */
+  resumeAfterRespawn(): void {
+    this.isPaused = false;
+    this.deadBlocked = false;
+    this.blocker.hidden = true;
+    this.blocker.style.display = 'none';
+    this.leaveButton.hidden = true;
+    this.setPlayHudVisible(true);
+    this.crosshairHud?.setVisible(true);
+    document.addEventListener('contextmenu', this.preventContextMenu);
+    if (!this.controls.isLocked) {
+      // Re-assert soft unlock so a failed programmatic lock (if any) never
+      // opens the pause wall, and body click can capture the pointer.
+      this.controls.unlockSoft();
+    }
   }
 
   private initUI(): void {
@@ -239,7 +257,9 @@ export class PlayerControls {
       ) {
         return;
       }
-      if (this.isPaused || this.controls.isLocked || !this.hasLockedOnce) return;
+      // Capture pointer on first click after match start (or after ESC pause resume).
+      if (this.controls.isLocked || !this.hasLockedOnce) return;
+      if (this.isPaused) return;
       if (event.target === this.leaveButton) return;
       this.onEngage?.();
       this.controls.lock();
@@ -274,6 +294,8 @@ export class PlayerControls {
       ) {
         return;
       }
+      // Soft-unlocked (death, inventory, awaiting click) — don't flash pause.
+      if (this.controls.isSoftUnlocked) return;
       this.isPaused = true;
       this.blocker.hidden = false;
       this.blocker.style.display = 'flex';
@@ -284,11 +306,12 @@ export class PlayerControls {
     };
 
     this.controls.onUnlock = () => {
-      // Soft-unlock / panel mode must never show the pause overlay.
+      // Soft-unlock / panel / death must never show the pause overlay.
       if (
         this.inventoryOpen ||
         this.tacticalMapOpen ||
         this.craftingOpen ||
+        this.deadBlocked ||
         this.controls.isSoftUnlocked
       ) {
         this.isPaused = false;

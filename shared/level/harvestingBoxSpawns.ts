@@ -42,30 +42,34 @@ export function harvestingBoxSurfaceY(authoredY: number): number {
 }
 
 /**
- * Server / fallback poses from side-group markers
- * (`harvesting_box_orange` / `harvesting_box_blue_1` + `*_install`).
- * Prefer GLB extraction on the client after prepare/ground-align.
+ * Authored poses from harvest_map.glb markers:
+ * - blue home: `harvesting_box_blue_1` (prefer over bare `harvesting_box_blue`)
+ * - blue install: `harvesting_box_blue_install`
+ * - orange home: `harvesting_box_orange`
+ * - orange install: `harvesting_box_orange_install`
+ * Index 0 = orange, index 1 = blue (matches GLB extraction).
+ * Client and server must share these — do not diverge from map markers.
  */
 const HARVEST_BOXES: readonly HarvestingBoxSpawn[] = [
   {
     index: 0,
     teamId: 1,
-    x: 8.92,
-    y: 1.99,
-    z: -24.75,
-    installX: 10.73,
-    installY: 1.99,
-    installZ: -24.75,
+    x: -0.9,
+    y: 1.86,
+    z: -24.78,
+    installX: 0.91,
+    installY: 1.86,
+    installZ: -24.78,
   }, // orange
   {
     index: 1,
     teamId: 0,
-    x: 10.73,
-    y: 2.36,
-    z: 24.12,
-    installX: 8.88,
-    installY: 2.36,
-    installZ: 24.12,
+    x: 0.91,
+    y: 2.22,
+    z: 24.09,
+    installX: -0.93,
+    installY: 2.22,
+    installZ: 24.09,
   }, // blue
 ];
 

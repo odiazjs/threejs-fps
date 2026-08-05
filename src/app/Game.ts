@@ -847,15 +847,19 @@ export class Game {
   }
 
   private async loadCraftingStationsForMap(mapId: MapId): Promise<void> {
+    // Shared catalog is authoritative for proximity (server validates the same list).
+    // Prefer it over GLB extraction so client F-prompt and server craft never drift.
+    const shared = getCraftingStationSpawns(mapId, this.matchGameMode);
     const fromMap =
       mapId === 'harvest'
         ? this.worldBuilder?.getHarvestCraftingStationSpawns() ?? []
         : [];
-    const fallback = getCraftingStationSpawns(mapId, this.matchGameMode);
     const spawns =
-      isPlasmaHarvestGameMode(this.matchGameMode) && fromMap.length > 0
-        ? fromMap
-        : fallback;
+      shared.length > 0
+        ? shared
+        : isPlasmaHarvestGameMode(this.matchGameMode) && fromMap.length > 0
+          ? fromMap
+          : [];
 
     try {
       await this.craftingStations.load(spawns);
@@ -870,15 +874,18 @@ export class Game {
   }
 
   private async loadHarvestingBoxesForMap(mapId: MapId): Promise<void> {
+    // Shared catalog is authoritative (server seeds boxes from the same list).
+    const shared = getHarvestingBoxSpawns(mapId, this.matchGameMode);
     const fromMap =
       mapId === 'harvest'
         ? this.worldBuilder?.getHarvestHarvestingBoxSpawns() ?? []
         : [];
-    const fallback = getHarvestingBoxSpawns(mapId, this.matchGameMode);
     const spawns =
-      isPlasmaHarvestGameMode(this.matchGameMode) && fromMap.length > 0
-        ? fromMap
-        : fallback;
+      shared.length > 0
+        ? shared
+        : isPlasmaHarvestGameMode(this.matchGameMode) && fromMap.length > 0
+          ? fromMap
+          : [];
     try {
       await this.harvestingBoxes.load(spawns);
       if (spawns.length > 0) {
@@ -1283,15 +1290,36 @@ export class Game {
           }
         }
       }
-      if (data.weaponId) {
+      if (data.weaponId && isWeaponId(data.weaponId)) {
         this.player.unequipThrowable({ discardCook: true });
+        // Prefer grant payload over schema snapshot — Colyseus patch can lag one frame.
         const snapshot = this.network.getLocalSnapshot();
-        if (snapshot) {
-          this.player.applyLoadoutFromSnapshot(snapshot);
+        const slotIndex =
+          typeof data.slotIndex === 'number' &&
+          data.slotIndex >= 0 &&
+          data.slotIndex <= 2
+            ? data.slotIndex
+            : null;
+        if (snapshot && slotIndex != null) {
+          const merged = {
+            ...snapshot,
+            weaponSlot0: slotIndex === 0 ? data.weaponId : snapshot.weaponSlot0,
+            weaponSlot1: slotIndex === 1 ? data.weaponId : snapshot.weaponSlot1,
+            weaponSlot2: slotIndex === 2 ? data.weaponId : snapshot.weaponSlot2,
+            activeWeaponId: data.weaponId,
+          };
+          this.player.applyLoadoutFromSnapshot(merged);
+        } else if (snapshot) {
+          this.player.applyLoadoutFromSnapshot({
+            ...snapshot,
+            activeWeaponId: data.weaponId,
+          });
         }
-        if (isWeaponId(data.weaponId)) {
-          this.player.applyCraftedWeaponAmmo(data.weaponId);
-        }
+        this.player.applyCraftedWeaponAmmo(data.weaponId);
+        const name = getWeaponConfig(data.weaponId)?.name ?? data.weaponId;
+        this.messageHud.push(`Crafted ${name}`);
+      } else {
+        this.messageHud.push('Crafted item');
       }
       this.localCombat = {
         ...this.localCombat,
@@ -1303,9 +1331,9 @@ export class Game {
           this.network.getLocalSnapshot()?.shieldCharges ??
           this.localCombat.shieldCharges,
       };
-      this.messageHud.push('Crafted item');
+      // One craft per station visit — re-open with F to craft again.
       if (this.craftingOpen) {
-        this.refreshCraftingHud();
+        this.closeCrafting({ deferRelock: true });
       }
       if (this.inventoryOpen) {
         this.refreshInventoryHud();
@@ -1439,6 +1467,8 @@ export class Game {
       this.lastCombatShooterId = null;
       this.network.applyLocalSpawn(this.player);
       this.playerControls.setDeadBlocked(false);
+      // Do not auto-lock (no user gesture → lock error → pause wall). Stay
+      // play-ready; first click captures the pointer like match start.
       if (
         this.playerControls.isPlaying &&
         !this.matchEndHandled &&
@@ -1446,7 +1476,7 @@ export class Game {
         !this.craftingOpen &&
         !this.tacticalMapOverlay.isOpen()
       ) {
-        this.playerControls.controls.lock();
+        this.playerControls.resumeAfterRespawn();
         this.crosshairHud.setVisible(true);
       }
     }
@@ -2081,7 +2111,7 @@ export class Game {
         (match.phase === 'countdown' || match.phase === 'playing' || match.phase === 'ended')
       ) {
         this.preMatchOverlay.hide();
-        // Countdown uses pointer-events:none so click-to-play can unlock audio.
+        // Enter play-ready without the click-to-play / pause wall.
         if (!this.playerControls.isPlaying) {
           this.playerControls.revealEntryOverlay();
         }
