@@ -174,7 +174,6 @@
             <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>
               GET MORE
             </button>
-            <span class="plasma-minerals-coming-soon">Coming soon</span>
           </aside>
           <aside class="lobby-perf hud-panel">
             <div class="lobby-perf-row">
@@ -575,7 +574,6 @@
               <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>
                 GET MORE
               </button>
-              <span class="plasma-minerals-coming-soon">Coming soon</span>
             </aside>
           </header>
 
@@ -769,7 +767,6 @@
               <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>
                 GET MORE
               </button>
-              <span class="plasma-minerals-coming-soon">Coming soon</span>
             </aside>
           </header>
           <div
@@ -968,21 +965,31 @@
 
     <div
       id="plasma-purchase-congrats-modal"
-      class="store-dialog-modal hud-overlay-scrim"
+      class="store-dialog-modal plasma-purchase-congrats-modal hud-overlay-scrim"
       hidden
       role="dialog"
       aria-modal="true"
       aria-labelledby="plasma-purchase-congrats-title"
     >
       <div class="store-dialog-backdrop" aria-hidden="true"></div>
-      <div class="store-dialog-panel hud-panel" role="document">
-        <p class="store-dialog-eyebrow">PURCHASE COMPLETE</p>
-        <h2 id="plasma-purchase-congrats-title" class="store-dialog-title">CONGRATULATIONS</h2>
-        <p class="store-dialog-body">
-          <span id="plasma-purchase-congrats-amount">0</span> plasma minerals have been credited
-          to your account.
+      <div class="store-dialog-panel plasma-purchase-congrats-panel hud-panel" role="document">
+        <img
+          class="plasma-purchase-congrats-icon"
+          src="/images/ui/plasma_minerals_icon.png"
+          alt=""
+          width="88"
+          height="88"
+        />
+        <p class="store-dialog-eyebrow plasma-purchase-congrats-eyebrow">PURCHASE COMPLETE</p>
+        <h2 id="plasma-purchase-congrats-title" class="store-dialog-title plasma-purchase-congrats-title">
+          CONGRATULATIONS
+        </h2>
+        <p class="store-dialog-body plasma-purchase-congrats-body">
+          Your
+          <span id="plasma-purchase-congrats-amount" class="plasma-purchase-congrats-amount">0</span>
+          plasma minerals have been credited to your account.
         </p>
-        <div class="store-dialog-actions">
+        <div class="store-dialog-actions plasma-purchase-congrats-actions">
           <button
             type="button"
             class="armory-btn armory-btn--primary"
