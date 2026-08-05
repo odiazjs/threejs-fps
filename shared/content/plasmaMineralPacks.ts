@@ -1,4 +1,4 @@
-/** Mock store packs for plasma minerals (no real payment yet). */
+/** Store packs for plasma minerals (amounts credited server-side after Lemon Squeezy payment). */
 export const PLASMA_MINERAL_PACK_IDS = ['pack_1k', 'pack_10k', 'pack_100k'] as const;
 
 export type PlasmaMineralPackId = (typeof PLASMA_MINERAL_PACK_IDS)[number];

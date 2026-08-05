@@ -171,7 +171,7 @@
               />
               <span class="plasma-minerals-value" data-plasma-minerals>—</span>
             </div>
-            <button type="button" class="plasma-minerals-get-more" data-plasma-get-more disabled aria-disabled="true">
+            <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>
               GET MORE
             </button>
             <span class="plasma-minerals-coming-soon">Coming soon</span>
@@ -572,7 +572,7 @@
                 />
                 <span class="plasma-minerals-value" data-plasma-minerals>—</span>
               </div>
-              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more disabled aria-disabled="true">
+              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>
                 GET MORE
               </button>
               <span class="plasma-minerals-coming-soon">Coming soon</span>
@@ -766,7 +766,7 @@
                 />
                 <span class="plasma-minerals-value" data-plasma-minerals>—</span>
               </div>
-              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more disabled aria-disabled="true">
+              <button type="button" class="plasma-minerals-get-more" data-plasma-get-more>
                 GET MORE
               </button>
               <span class="plasma-minerals-coming-soon">Coming soon</span>
@@ -967,6 +967,41 @@
     </div>
 
     <div
+      id="plasma-purchase-congrats-modal"
+      class="store-dialog-modal hud-overlay-scrim"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="plasma-purchase-congrats-title"
+    >
+      <div class="store-dialog-backdrop" aria-hidden="true"></div>
+      <div class="store-dialog-panel hud-panel" role="document">
+        <p class="store-dialog-eyebrow">PURCHASE COMPLETE</p>
+        <h2 id="plasma-purchase-congrats-title" class="store-dialog-title">CONGRATULATIONS</h2>
+        <p class="store-dialog-body">
+          <span id="plasma-purchase-congrats-amount">0</span> plasma minerals have been credited
+          to your account.
+        </p>
+        <div class="store-dialog-actions">
+          <button
+            type="button"
+            class="armory-btn armory-btn--primary"
+            id="plasma-purchase-congrats-store"
+          >
+            GO TO STORE
+          </button>
+          <button
+            type="button"
+            class="armory-btn"
+            id="plasma-purchase-congrats-continue"
+          >
+            CONTINUE
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
       id="plasma-minerals-store-modal"
       class="plasma-store-modal hud-overlay-scrim"
       hidden
@@ -975,12 +1010,17 @@
       aria-labelledby="plasma-store-title"
     >
       <div class="plasma-store-panel hud-panel" role="document">
-        <header class="plasma-store-header">
-          <h2 id="plasma-store-title" class="plasma-store-title">GET MORE PLASMA</h2>
-          <button type="button" class="plasma-store-close" data-plasma-store-close aria-label="Close">
-            ×
-          </button>
-        </header>
+        <button type="button" class="plasma-store-close" data-plasma-store-close aria-label="Close">
+          ×
+        </button>
+        <img
+          class="plasma-store-hero-icon"
+          src="/images/ui/plasma_minerals_icon.png"
+          alt=""
+          width="64"
+          height="64"
+        />
+        <h2 id="plasma-store-title" class="plasma-store-title">GET MORE PLASMA</h2>
         <p class="plasma-store-subtitle">Choose a mineral pack</p>
         <p class="plasma-store-status" data-plasma-store-status hidden></p>
         <div class="plasma-store-packs" data-plasma-store-packs></div>

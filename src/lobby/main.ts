@@ -28,6 +28,7 @@ import { initLobbyGameModeSelector } from './gameModeSelection';
 import { initLobbyPanelCollapse } from './lobbyPanelCollapse';
 import { initLobbyChromeLayout } from './lobbyChromeLayout';
 import { onGameOverlayClosed, setGameOverlayBackgroundHooks } from './launchGameOverlay';
+import { maybeHandlePlasmaPurchaseReturn } from './plasmaPurchaseReturn';
 import { maybeShowMatchXpResultsModal } from './showMatchXpResults';
 import { maybeShowSeasonWelcomeModal } from './seasonWelcome';
 import type { AppPresenceView } from '../../shared/network/appView';
@@ -130,8 +131,12 @@ async function startLobby(): Promise<void> {
 
     // Cold boot / refresh after closing the tab on the match-end screen.
     const showedMatchXp = await maybeShowMatchXpResultsModal();
+    const showedPlasmaPurchase = appShell
+      ? await maybeHandlePlasmaPurchaseReturn(appShell)
+      : false;
     welcomeUserId = session.userId;
-    showSeasonWelcome = !showedMatchXp && initialView === 'lobby';
+    showSeasonWelcome =
+      !showedMatchXp && !showedPlasmaPurchase && initialView === 'lobby';
 
     window.addEventListener('pagehide', () => {
       appShell?.teardown();

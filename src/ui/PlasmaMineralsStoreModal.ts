@@ -4,9 +4,9 @@ import {
   PLASMA_MINERAL_PACKS,
   type PlasmaMineralPackId,
 } from '../../shared/content/plasmaMineralPacks';
-import { apiPurchasePlasmaMinerals } from '../auth/meApi';
+import { apiCreatePlasmaCheckout } from '../auth/paymentsApi';
 import { formatPlasmaMinerals, PLASMA_MINERALS_ICON_SRC } from './plasmaMineralsHud';
-import { showErrorSnackbar, showSuccessSnackbar } from './snackbar';
+import { showErrorSnackbar } from './snackbar';
 
 export class PlasmaMineralsStoreModal {
   private readonly root: HTMLElement;
@@ -122,18 +122,13 @@ export class PlasmaMineralsStoreModal {
 
   private async purchase(packId: PlasmaMineralPackId): Promise<void> {
     this.setPurchasing(true);
-    this.setStatus('Processing purchase...');
+    this.setStatus('Redirecting to checkout...');
     try {
-      const result = await apiPurchasePlasmaMinerals(packId);
-      const message = `Added ${formatPlasmaMinerals(result.amountGranted)} plasma minerals`;
-      this.setStatus(message);
-      showSuccessSnackbar(message);
-      this.setPurchasing(false);
-      window.setTimeout(() => {
-        if (!this.purchasing) this.close();
-      }, 700);
+      const result = await apiCreatePlasmaCheckout(packId);
+      // Hosted Lemon Squeezy checkout — wallet credits via signed webhook.
+      window.location.assign(result.checkoutUrl);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Purchase failed';
+      const message = error instanceof Error ? error.message : 'Checkout failed';
       this.setStatus(message);
       showErrorSnackbar(message);
       this.setPurchasing(false);
